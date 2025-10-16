@@ -29,7 +29,9 @@ try:
     from shared.utils.service_discovery import init_service_discovery
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+    )
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -74,7 +76,11 @@ config = ServiceConfig.from_env(
 jwt_secret_key = settings.jwt_secret_key
 environment = os.getenv("ENVIRONMENT", "development").lower()
 if environment == "production":
-    if not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
+    if not jwt_secret_key or jwt_secret_key in (
+        "your-secret-key-here",
+        "default_secret_key",
+        "",
+    ):
         logger.error(
             "Production environment must set JWT_SECRET_KEY environment variable, and cannot use default value"
         )
@@ -83,7 +89,11 @@ if environment == "production":
             "Please set JWT_SECRET_KEY in .env file, or ***REMOVED*** through environment variable."
         )
 # Development environment: if not set, use default value and warn
-elif not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
+elif not jwt_secret_key or jwt_secret_key in (
+    "your-secret-key-here",
+    "default_secret_key",
+    "",
+):
     logger.warning(
         "JWT_SECRET_KEY not set or using default value, "
         "this is unsafe in production environment. "

@@ -16,7 +16,9 @@ try:
     from shared.config.nacos_config import NacosManager
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+    )
     from shared.common.exceptions import ServiceUnavailableError
     from shared.common.loguru_config import get_logger
     from shared.config.nacos_config import NacosManager
@@ -62,7 +64,9 @@ class LoadBalancer:
             instances = await self._get_instances(service_name)
 
             if not instances:
-                logger.warning("No service instances found", extra={"service_name": service_name})
+                logger.warning(
+                    "No service instances found", extra={"service_name": service_name}
+                )
                 raise ServiceUnavailableError(
                     message="No available service instances",
                     code=503,
@@ -70,10 +74,14 @@ class LoadBalancer:
                 )
 
             # Filter healthy instances
-            healthy_instances = [inst for inst in instances if inst.get("healthy", True)]
+            healthy_instances = [
+                inst for inst in instances if inst.get("healthy", True)
+            ]
 
             if not healthy_instances:
-                logger.warning("No healthy service instances", extra={"service_name": service_name})
+                logger.warning(
+                    "No healthy service instances", extra={"service_name": service_name}
+                )
                 raise ServiceUnavailableError(
                     message="No healthy service instances",
                     code=503,
@@ -103,7 +111,9 @@ class LoadBalancer:
                 extra={"service_name": service_name, "error": str(e)},
                 exc_info=True,
             )
-            raise ServiceUnavailableError(message=str(e), code=503, details={"service_name": service_name})
+            raise ServiceUnavailableError(
+                message=str(e), code=503, details={"service_name": service_name}
+            )
 
     async def _get_instances(self, service_name: str) -> List[Dict[str, Any]]:
         """Get service instance list
@@ -118,7 +128,9 @@ class LoadBalancer:
         """
         # Check cache
         if service_name in self.service_instances_cache:
-            logger.debug("Get service instances from cache", extra={"service_name": service_name})
+            logger.debug(
+                "Get service instances from cache", extra={"service_name": service_name}
+            )
             return self.service_instances_cache[service_name]
 
         # Get from Nacos
@@ -145,7 +157,9 @@ class LoadBalancer:
             )
             return []
 
-    def _select_instance_weighted(self, instances: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _select_instance_weighted(
+        self, instances: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Weighted random selection of instance
 
         Randomly select based on instance weight, higher weight has higher probability of being selected
@@ -188,7 +202,9 @@ class LoadBalancer:
         if service_name:
             if service_name in self.service_instances_cache:
                 del self.service_instances_cache[service_name]
-                logger.info("Clear service instance cache", extra={"service_name": service_name})
+                logger.info(
+                    "Clear service instance cache", extra={"service_name": service_name}
+                )
         else:
             self.service_instances_cache.clear()
             logger.info("Clear all service instance cache")
@@ -204,7 +220,9 @@ class LoadBalancer:
         """
         return await self._get_instances(service_name)
 
-    async def check_instance_health(self, service_name: str, ip: str, port: int) -> bool:
+    async def check_instance_health(
+        self, service_name: str, ip: str, port: int
+    ) -> bool:
         """Check instance health status
 
         Args:

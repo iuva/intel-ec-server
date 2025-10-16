@@ -16,7 +16,9 @@ class TokenResponse(BaseModel):
     refresh_token: str = Field(description="Refresh token")
     token_type: str = Field(default="bearer", description="Token type")
     expires_in: int = Field(description="Expiration time (seconds)")
-    refresh_expires_in: Optional[int] = Field(default=None, description="Refresh token expiration time (seconds)")
+    refresh_expires_in: Optional[int] = Field(
+        default=None, description="Refresh token expiration time (seconds)"
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -49,7 +51,9 @@ class AutoRefreshTokenRequest(BaseModel):
     """Auto-refresh Token Request (renew both access_token and refresh_token simultaneously)"""
 
     refresh_token: str = Field(description="Current refresh token")
-    auto_renew: bool = Field(default=True, description="Whether to automatically renew refresh_token")
+    auto_renew: bool = Field(
+        default=True, description="Whether to automatically renew refresh_token"
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -79,17 +83,27 @@ class IntrospectResponse(BaseModel):
     """Token Validation Response"""
 
     active: bool = Field(description="Whether the token is valid")
-    id: Optional[str] = Field(default=None, description="User/Device ID (unified field name)")
+    id: Optional[str] = Field(
+        default=None, description="User/Device ID (unified field name)"
+    )
     username: Optional[str] = Field(default=None, description="Username")
-    user_id: Optional[str] = Field(default=None, description="User ID (compatibility field, deprecated, use id)")
+    user_id: Optional[str] = Field(
+        default=None, description="User ID (compatibility field, deprecated, use id)"
+    )
     exp: Optional[int] = Field(default=None, description="Expiration timestamp")
     token_type: Optional[str] = Field(default=None, description="Token type")
     # Additional fields: Support additional information for device login
-    user_type: Optional[str] = Field(default=None, description="User type (admin/device)")
+    user_type: Optional[str] = Field(
+        default=None, description="User type (admin/device)"
+    )
     mg_id: Optional[str] = Field(default=None, description="Device management ID")
     host_ip: Optional[str] = Field(default=None, description="Host IP")
-    sub: Optional[str] = Field(default=None, description="Subject (user/device ID, compatibility field)")
-    error: Optional[str] = Field(default=None, description="Error message (when active=False)")
+    sub: Optional[str] = Field(
+        default=None, description="Subject (user/device ID, compatibility field)"
+    )
+    error: Optional[str] = Field(
+        default=None, description="Error message (when active=False)"
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -163,7 +177,9 @@ class LoginResponse(BaseModel):
     refresh_token: Optional[str] = Field(default=None, description="Refresh token")
     token_type: str = Field(default="bearer", description="Token type")
     expires_in: int = Field(description="Expiration time (seconds)")
-    refresh_expires_in: Optional[int] = Field(default=None, description="Refresh token expiration time (seconds)")
+    refresh_expires_in: Optional[int] = Field(
+        default=None, description="Refresh token expiration time (seconds)"
+    )
 
     model_config = {
         "json_schema_extra": {

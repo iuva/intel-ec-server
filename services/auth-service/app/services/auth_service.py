@@ -36,7 +36,9 @@ except ImportError:
     # If import fails, add project root directory to Python path
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+    )
     from shared.common.cache import get_cache, set_cache
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -261,7 +263,9 @@ class AuthService:
 
     # ==================== Business Methods ===================
 
-    async def refresh_access_token(self, refresh_data: RefreshTokenRequest) -> TokenResponse:
+    async def refresh_access_token(
+        self, refresh_data: RefreshTokenRequest
+    ) -> TokenResponse:
         """Refresh access token
 
         ✅ Performance optimization: Use common helper methods, reduce code duplication
@@ -277,7 +281,9 @@ class AuthService:
         """
         try:
             # ✅ Use common method to verify token and check blacklist
-            payload = await self._verify_refresh_token_and_check_blacklist(refresh_data.refresh_token, "refresh_token")
+            payload = await self._verify_refresh_token_and_check_blacklist(
+                refresh_data.refresh_token, "refresh_token"
+            )
 
             # ✅ Consistently use id field (extract from sub if not available, compatible with old tokens)
             user_id = payload.get("id") or payload.get("sub")
@@ -297,7 +303,9 @@ class AuthService:
             access_token = self.jwt_manager.create_access_token(data=token_data)
 
             # ✅ Use common method to add old token to blacklist
-            await self._add_token_to_blacklist(refresh_data.refresh_token, payload, "refresh_token")
+            await self._add_token_to_blacklist(
+                refresh_data.refresh_token, payload, "refresh_token"
+            )
 
             logger.info(
                 "Token refresh successful",
@@ -332,7 +340,9 @@ class AuthService:
                 error_code="AUTH_REFRESH_FAILED",
             )
 
-    async def auto_refresh_tokens(self, refresh_data: AutoRefreshTokenRequest) -> TokenResponse:
+    async def auto_refresh_tokens(
+        self, refresh_data: AutoRefreshTokenRequest
+    ) -> TokenResponse:
         """Auto-renew access token and refresh token (dual token renewal mechanism)
 
         ✅ Performance optimization: Use common helper methods, reduce code duplication
@@ -370,7 +380,9 @@ class AuthService:
             extra_fields = {k: v for k, v in payload.items() if k not in excluded_keys}
 
             # ✅ Use common method to build token payload
-            token_data = self._build_token_payload(str(user_id), str(username), str(user_type), extra_fields)
+            token_data = self._build_token_payload(
+                str(user_id), str(username), str(user_type), extra_fields
+            )
 
             # Generate new access token
             access_token = self.jwt_manager.create_access_token(data=token_data)
@@ -378,7 +390,9 @@ class AuthService:
             # If auto-renewal of refresh_token is needed
             new_refresh_token = refresh_data.refresh_token
             if refresh_data.auto_renew:
-                new_refresh_token = self.jwt_manager.create_refresh_token(data=token_data)
+                new_refresh_token = self.jwt_manager.create_refresh_token(
+                    data=token_data
+                )
 
                 logger.info(
                     "Token auto-renewal successful",
@@ -401,7 +415,9 @@ class AuthService:
                 )
 
             # ✅ Use common method to add old token to blacklist
-            await self._add_token_to_blacklist(refresh_data.refresh_token, payload, "auto_refresh_tokens")
+            await self._add_token_to_blacklist(
+                refresh_data.refresh_token, payload, "auto_refresh_tokens"
+            )
 
             return TokenResponse(
                 access_token=access_token,
@@ -535,7 +551,11 @@ class AuthService:
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(
                 "Token validation exception",
-                extra={"operation": "introspect_token", "error_type": type(e).__name__, "error_message": str(e)},
+                extra={
+                    "operation": "introspect_token",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
                 exc_info=True,
             )
             return IntrospectResponse(active=False)
@@ -620,7 +640,9 @@ class AuthService:
                 access_token = self.jwt_manager.create_access_token(
                     data={
                         "id": str(user.id),  # ✅ Unify field name to id
-                        "sub": str(user.id),  # Retain sub field for compatibility with old token
+                        "sub": str(
+                            user.id
+                        ),  # Retain sub field for compatibility with old token
                         "username": user.user_account,
                         "user_type": "admin",
                         "user_name": user.user_name,
@@ -640,7 +662,9 @@ class AuthService:
                 refresh_token = self.jwt_manager.create_refresh_token(
                     data={
                         "id": str(user.id),  # ✅ Unify field name to id
-                        "sub": str(user.id),  # Retain sub field for compatibility with old token
+                        "sub": str(
+                            user.id
+                        ),  # Retain sub field for compatibility with old token
                         "username": user.user_account,
                         "user_type": "admin",
                         "user_name": user.user_name,
@@ -765,7 +789,8 @@ class AuthService:
 
                     # 1. Find default configuration (def_pwd, def_port)
                     conf_stmt = select(SysConf).where(
-                        SysConf.conf_key.in_(["def_pwd", "def_port"]), SysConf.del_flag == 0
+                        SysConf.conf_key.in_(["def_pwd", "def_port"]),
+                        SysConf.del_flag == 0,
                     )
                     conf_result = await db_session.execute(conf_stmt)
                     sys_confs = conf_result.scalars().all()
@@ -829,7 +854,9 @@ class AuthService:
                 access_token = self.jwt_manager.create_access_token(
                     data={
                         "id": str(host_rec.id),  # ✅ Unify field name to id
-                        "sub": str(host_rec.id),  # Retain sub field for compatibility with old token
+                        "sub": str(
+                            host_rec.id
+                        ),  # Retain sub field for compatibility with old token
                         "mg_id": login_data.mg_id,
                         "host_ip": login_data.host_ip,
                         "username": login_data.username,
@@ -851,7 +878,9 @@ class AuthService:
                 refresh_token = self.jwt_manager.create_refresh_token(
                     data={
                         "id": str(host_rec.id),  # ✅ Unify field name to id
-                        "sub": str(host_rec.id),  # Retain sub field for compatibility with old token
+                        "sub": str(
+                            host_rec.id
+                        ),  # Retain sub field for compatibility with old token
                         "mg_id": login_data.mg_id,
                         "host_ip": login_data.host_ip,
                         "username": login_data.username,
@@ -921,7 +950,9 @@ class AuthService:
             # Delete session record
             session_factory = self.session_factory
             async with session_factory() as db_session:
-                stmt = select(UserSession).where(UserSession.access_token == token, ~UserSession.del_flag)
+                stmt = select(UserSession).where(
+                    UserSession.access_token == token, ~UserSession.del_flag
+                )
                 result = await db_session.execute(stmt)
                 user_session = result.scalar_one_or_none()
 
@@ -931,7 +962,11 @@ class AuthService:
 
             logger.info(
                 "User logout successful",
-                extra={"operation": "logout", "user_id": payload.get("sub"), "username": payload.get("username")},
+                extra={
+                    "operation": "logout",
+                    "user_id": payload.get("sub"),
+                    "username": payload.get("username"),
+                },
             )
             return True
 
@@ -940,7 +975,11 @@ class AuthService:
         except (ValueError, KeyError, AttributeError, ConnectionError) as e:
             logger.error(
                 "User logout exception",
-                extra={"operation": "logout", "error_type": type(e).__name__, "error_message": str(e)},
+                extra={
+                    "operation": "logout",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
                 exc_info=True,
             )
             raise BusinessError(

@@ -22,7 +22,9 @@ try:
     from shared.common.response import ErrorResponse
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+    )
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
     from starlette.responses import JSONResponse
@@ -105,7 +107,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
         # ✅ Read HTTP client timeout configuration from unified config
-        self.timeout = httpx.Timeout(settings.auth_middleware_timeout, connect=settings.auth_middleware_connect_timeout)
+        self.timeout = httpx.Timeout(
+            settings.auth_middleware_timeout,
+            connect=settings.auth_middleware_connect_timeout,
+        )
 
     async def dispatch(self, request: Request, call_next):
         """Handle request
@@ -169,7 +174,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         extra={
                             "header_key": key,
                             "header_value": value,
-                            "header_value_preview": value[:20] + "..." if len(value) > 20 else value,
+                            "header_value_preview": value[:20] + "..."
+                            if len(value) > 20
+                            else value,
                         },
                     )
                     break
@@ -243,7 +250,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 extra={
                     "path": request.url.path,
                     "method": request.method,
-                    "auth_header_prefix": auth_header[:20] if len(auth_header) > 20 else auth_header,
+                    "auth_header_prefix": auth_header[:20]
+                    if len(auth_header) > 20
+                    else auth_header,
                 },
             )
             return self._unauthorized_response(
@@ -325,7 +334,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         "path": request.url.path,
                         "method": request.method,
                         "service": "auth-service",
-                        "hint": ("Authentication service is currently responding slowly, please try again later"),
+                        "hint": (
+                            "Authentication service is currently responding slowly, please try again later"
+                        ),
                     },
                 )
 
@@ -397,7 +408,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 details={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": ("System internal error, please contact system administrator"),
+                    "hint": (
+                        "System internal error, please contact system administrator"
+                    ),
                 },
             )
 
@@ -516,7 +529,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                         "hint": "Auth Service returned empty id, token is invalid",
                                     },
                                 )
-                                return None  # Return None to indicate verification failure
+                                return (
+                                    None  # Return None to indicate verification failure
+                                )
 
                             # ✅ Check if user/host has been deleted (read from Redis)
                             try:
@@ -595,9 +610,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                 "auth_service_response": {
                                     "code": result.get("code"),
                                     "message": result.get("message"),
-                                    "data_keys": list(data.keys()) if isinstance(data, dict) else [],
+                                    "data_keys": list(data.keys())
+                                    if isinstance(data, dict)
+                                    else [],
                                 },
-                                "hint": ("Token may be expired, blacklisted, or malformed"),
+                                "hint": (
+                                    "Token may be expired, blacklisted, or malformed"
+                                ),
                             },
                         )
                     else:
@@ -617,7 +636,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         "Token verification failed - HTTP status code abnormal",
                         extra={
                             "status_code": response.status_code,
-                            "response_text": response.text[:200] if response.text else "",
+                            "response_text": response.text[:200]
+                            if response.text
+                            else "",
                             "token_preview": token_preview,
                             "request_path": request_path,
                             "request_method": request_method,

@@ -34,7 +34,9 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+    )
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
@@ -46,7 +48,9 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/admin/login", response_model=Result[LoginResponse], summary="Admin Login")
+@router.post(
+    "/admin/login", response_model=Result[LoginResponse], summary="Admin Login"
+)
 @handle_api_errors
 async def admin_login(
     login_data: AdminLoginRequest,
@@ -86,7 +90,9 @@ async def admin_login(
     )
 
 
-@router.post("/device/login", response_model=Result[LoginResponse], summary="Device Login")
+@router.post(
+    "/device/login", response_model=Result[LoginResponse], summary="Device Login"
+)
 @handle_api_errors
 async def device_login(
     login_data: DeviceLoginRequest,
@@ -129,7 +135,9 @@ async def device_login(
                 current_user_id = None
 
     # Execute login, ***REMOVED*** current user ID for audit
-    login_response = await auth_service.device_login(login_data, current_user_id=current_user_id)
+    login_response = await auth_service.device_login(
+        login_data, current_user_id=current_user_id
+    )
 
     logger.info(
         "Device login successful",
@@ -188,7 +196,9 @@ async def refresh_token(
     )
 
 
-@router.post("/auto-refresh", response_model=Result[TokenResponse], summary="Auto Renew Token")
+@router.post(
+    "/auto-refresh", response_model=Result[TokenResponse], summary="Auto Renew Token"
+)
 @handle_api_errors
 async def auto_refresh_tokens(
     refresh_data: AutoRefreshTokenRequest,
@@ -251,7 +261,9 @@ async def introspect_token(
 
         return Result(
             code=200,
-            message=t("success.operation", locale=locale, default="Validation successful"),
+            message=t(
+                "success.operation", locale=locale, default="Validation successful"
+            ),
             data=introspect_response,
             locale=locale,
         )
@@ -278,7 +290,11 @@ async def introspect_token(
         )
         return Result(
             code=200,
-            message=t("error.auth.token_expired", locale=locale, default="Token validation failed"),
+            message=t(
+                "error.auth.token_expired",
+                locale=locale,
+                default="Token validation failed",
+            ),
             data=error_response,
             locale=locale,
         )

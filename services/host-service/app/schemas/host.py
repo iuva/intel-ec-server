@@ -15,7 +15,9 @@ class HostBase(BaseModel):
     hostname: str = Field(description="Host name")
     ip_address: str = Field(description="IP address")
     os_type: Optional[str] = Field(default=None, description="Operating system type")
-    os_version: Optional[str] = Field(default=None, description="Operating system version")
+    os_version: Optional[str] = Field(
+        default=None, description="Operating system version"
+    )
 
 
 class HostCreate(HostBase):
@@ -28,7 +30,9 @@ class HostUpdate(BaseModel):
     hostname: Optional[str] = Field(default=None, description="Host name")
     ip_address: Optional[str] = Field(default=None, description="IP address")
     os_type: Optional[str] = Field(default=None, description="Operating system type")
-    os_version: Optional[str] = Field(default=None, description="Operating system version")
+    os_version: Optional[str] = Field(
+        default=None, description="Operating system version"
+    )
     status: Optional[str] = Field(default=None, description="Host status")
 
 
@@ -40,7 +44,9 @@ class HostStatusUpdate(BaseModel):
     2. Use host_state and appr_state integer fields (advanced usage)
     """
 
-    status: Optional[str] = Field(default=None, description="Host status (online, offline, error)")
+    status: Optional[str] = Field(
+        default=None, description="Host status (online, offline, error)"
+    )
     host_state: Optional[int] = Field(
         default=None,
         description=(
@@ -49,7 +55,8 @@ class HostStatusUpdate(BaseModel):
         ),
     )
     appr_state: Optional[int] = Field(
-        default=None, description="Approval state (0-disabled, 1-enabled/new, 2-has changes)"
+        default=None,
+        description="Approval state (0-disabled, 1-enabled/new, 2-has changes)",
     )
 
 
@@ -58,7 +65,9 @@ class HostResponse(HostBase):
 
     id: int = Field(description="Primary key ID")
     status: str = Field(description="Host status")
-    last_heartbeat: Optional[datetime] = Field(default=None, description="Last heartbeat time")
+    last_heartbeat: Optional[datetime] = Field(
+        default=None, description="Last heartbeat time"
+    )
     created_time: datetime = Field(description="Creation time")
     updated_time: datetime = Field(description="Update time")
     del_flag: bool = Field(description="Whether deleted")
@@ -83,9 +92,14 @@ class VNCConnectionReport(BaseModel):
     cycle_name: str = Field(..., description="Cycle name")
     user_name: str = Field(..., description="User name")
     host_id: str = Field(..., description="Host ID")
-    connection_status: str = Field(..., description="Connection status (success/failed)", pattern=r"^(success|failed)$")
+    connection_status: str = Field(
+        ...,
+        description="Connection status (success/failed)",
+        pattern=r"^(success|failed)$",
+    )
     connection_time: datetime = Field(
-        ..., description="Connection time (supports formats: yyyy/MM/dd HH:mm:ss or ISO 8601)"
+        ...,
+        description="Connection time (supports formats: yyyy/MM/dd HH:mm:ss or ISO 8601)",
     )
 
     model_config = {"from_attributes": True}
@@ -135,7 +149,9 @@ class VNCConnectionReport(BaseModel):
                         f"or ISO 8601 (e.g., 2025-01-30T10:00:00Z), current value: {value}"
                     ) from e
 
-        raise ValueError(f"Connection time must be string or datetime object, current type: {type(value).__name__}")
+        raise ValueError(
+            f"Connection time must be string or datetime object, current type: {type(value).__name__}"
+        )
 
 
 class VNCConnectionResponse(BaseModel):
@@ -186,9 +202,12 @@ class AgentVNCConnectionReportResponse(BaseModel):
     """Agent VNC connection state report response"""
 
     host_id: int = Field(..., description="Host ID")
-    host_state: int = Field(..., description="Updated host state (0=free, 1=locked, 2=occupied)")
+    host_state: int = Field(
+        ..., description="Updated host state (0=free, 1=locked, 2=occupied)"
+    )
     vnc_state: int = Field(
-        ..., description="Reported VNC connection state (1=connection succeeded, 2=connection disconnected)"
+        ...,
+        description="Reported VNC connection state (1=connection succeeded, 2=connection disconnected)",
     )
     updated: bool = Field(..., description="Whether update succeeded")
 
@@ -211,7 +230,9 @@ class QueryAvailableHostsRequest(BaseModel):
     tc_id: str = Field(description="Test case ID")
     cycle_name: str = Field(description="Test cycle name")
     user_name: str = Field(description="Username")
-    page_size: int = Field(default=20, ge=1, le=100, description="Items per page (1-100)")
+    page_size: int = Field(
+        default=20, ge=1, le=100, description="Items per page (1-100)"
+    )
     last_id: Optional[str] = Field(
         default=None,
         description=(
@@ -243,7 +264,9 @@ class DMRBoardMetaData(BaseModel):
 class DMRBoard(BaseModel):
     """DMR board configuration"""
 
-    board_meta_data: Optional[DMRBoardMetaData] = Field(default=None, description="Board metadata")
+    board_meta_data: Optional[DMRBoardMetaData] = Field(
+        default=None, description="Board metadata"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -252,7 +275,9 @@ class DMRPlatformMetaData(BaseModel):
     """DMR platform metadata"""
 
     platform: Optional[str] = Field(default=None, description="Platform type")
-    label_plt_cfg: Optional[str] = Field(default=None, description="Platform configuration label")
+    label_plt_cfg: Optional[str] = Field(
+        default=None, description="Platform configuration label"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -260,7 +285,9 @@ class DMRPlatformMetaData(BaseModel):
 class DMRMainboard(BaseModel):
     """DMR mainboard configuration"""
 
-    plt_meta_data: Optional[DMRPlatformMetaData] = Field(default=None, description="Platform metadata")
+    plt_meta_data: Optional[DMRPlatformMetaData] = Field(
+        default=None, description="Platform metadata"
+    )
     board: Optional[DMRBoard] = Field(default=None, description="Board configuration")
 
     model_config = {"from_attributes": True}
@@ -270,7 +297,9 @@ class DMRConfig(BaseModel):
     """DMR configuration"""
 
     revision: Optional[int] = Field(default=None, description="Revision number")
-    mainboard: Optional[DMRMainboard] = Field(default=None, description="Mainboard configuration")
+    mainboard: Optional[DMRMainboard] = Field(
+        default=None, description="Mainboard configuration"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -280,8 +309,12 @@ class HardwareHostData(BaseModel):
 
     hardware_id: str = Field(description="Hardware ID")
     name: Optional[str] = Field(default=None, description="Host configuration name")
-    dmr_config: Optional[DMRConfig] = Field(default=None, description="DMR configuration")
-    updated_time: Optional[str] = Field(default=None, description="Update time (ISO format string)")
+    dmr_config: Optional[DMRConfig] = Field(
+        default=None, description="DMR configuration"
+    )
+    updated_time: Optional[str] = Field(
+        default=None, description="Update time (ISO format string)"
+    )
     updated_by: Optional[str] = Field(default=None, description="Updated by")
     tags: Optional[List[str]] = Field(default=None, description="Tag list")
     # Compatible with old fields
@@ -324,7 +357,8 @@ class AvailableHostsListResponse(BaseModel):
     page_size: int = Field(description="Page size")
     has_next: bool = Field(description="Whether there is next page")
     last_id: Optional[str] = Field(
-        default=None, description="ID of last record in current page, used for next page request"
+        default=None,
+        description="ID of last record in current page, used for next page request",
     )
 
     model_config = {"from_attributes": True}
@@ -404,10 +438,12 @@ class AdminHostListRequest(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number (starts from 1)")
     page_size: int = Field(default=20, ge=1, le=100, description="Page size (1-100)")
     mac: Optional[str] = Field(
-        default=None, description="MAC address (optional search condition, corresponds to host_rec.mac_addr)"
+        default=None,
+        description="MAC address (optional search condition, corresponds to host_rec.mac_addr)",
     )
     username: Optional[str] = Field(
-        default=None, description="Host account (optional search condition, corresponds to host_rec.host_acct)"
+        default=None,
+        description="Host account (optional search condition, corresponds to host_rec.host_acct)",
     )
     host_state: Optional[int] = Field(
         default=None,
@@ -419,10 +455,12 @@ class AdminHostListRequest(BaseModel):
         ),
     )
     mg_id: Optional[str] = Field(
-        default=None, description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)"
+        default=None,
+        description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)",
     )
     use_by: Optional[str] = Field(
-        default=None, description="Used by (optional search condition, corresponds to host_exec_log.user_name)"
+        default=None,
+        description="Used by (optional search condition, corresponds to host_exec_log.user_name)",
     )
 
     model_config = {"from_attributes": True}
@@ -432,12 +470,25 @@ class AdminHostInfo(BaseModel):
     """Admin backend host information response schema"""
 
     host_id: str = Field(description="Host ID (host_rec table primary key id)")
-    username: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
-    mg_id: Optional[str] = Field(default=None, description="Unique boot ID (host_rec table mg_id)")
-    mac: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
-    use_by: Optional[str] = Field(default=None, description="Used by (host_exec_log table user_name, latest record)")
-    host_state: Optional[int] = Field(default=None, description="Host state (host_rec table host_state)")
-    appr_state: Optional[int] = Field(default=None, description="Approval state (host_rec table appr_state)")
+    username: Optional[str] = Field(
+        default=None, description="Host account (host_rec table host_acct)"
+    )
+    mg_id: Optional[str] = Field(
+        default=None, description="Unique boot ID (host_rec table mg_id)"
+    )
+    mac: Optional[str] = Field(
+        default=None, description="MAC address (host_rec table mac_addr)"
+    )
+    use_by: Optional[str] = Field(
+        default=None,
+        description="Used by (host_exec_log table user_name, latest record)",
+    )
+    host_state: Optional[int] = Field(
+        default=None, description="Host state (host_rec table host_state)"
+    )
+    appr_state: Optional[int] = Field(
+        default=None, description="Approval state (host_rec table appr_state)"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -484,8 +535,12 @@ class AdminHostDisableResponse(BaseModel):
     """Admin backend host disable response schema"""
 
     id: str = Field(description="Host ID")
-    appr_state: int = Field(default=0, description="Updated approval state (0=disabled)")
-    host_state: int = Field(default=7, description="Updated host state (7=manually disabled)")
+    appr_state: int = Field(
+        default=0, description="Updated approval state (0=disabled)"
+    )
+    host_state: int = Field(
+        default=7, description="Updated host state (7=manually disabled)"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -521,7 +576,9 @@ class AdminHostHwDetailInfo(BaseModel):
     hw_info: Optional[Dict[str, Any]] = Field(
         default=None, description="Hardware information (host_hw_rec table hw_info)"
     )
-    appr_time: Optional[datetime] = Field(default=None, description="Approval time (host_hw_rec table appr_time)")
+    appr_time: Optional[datetime] = Field(
+        default=None, description="Approval time (host_hw_rec table appr_time)"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -529,12 +586,24 @@ class AdminHostHwDetailInfo(BaseModel):
 class AdminHostDetailResponse(BaseModel):
     """Admin backend host detail response schema"""
 
-    mg_id: Optional[str] = Field(default=None, description="Unique boot ID (host_rec table mg_id)")
-    mac: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
-    ip: Optional[str] = Field(default=None, description="IP address (host_rec table host_ip)")
-    username: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
-    ***REMOVED***word: Optional[str] = Field(default=None, description="Host ***REMOVED***word (host_rec table host_pwd, decrypted)")
-    port: Optional[int] = Field(default=None, description="Port (host_rec table host_port)")
+    mg_id: Optional[str] = Field(
+        default=None, description="Unique boot ID (host_rec table mg_id)"
+    )
+    mac: Optional[str] = Field(
+        default=None, description="MAC address (host_rec table mac_addr)"
+    )
+    ip: Optional[str] = Field(
+        default=None, description="IP address (host_rec table host_ip)"
+    )
+    username: Optional[str] = Field(
+        default=None, description="Host account (host_rec table host_acct)"
+    )
+    ***REMOVED***word: Optional[str] = Field(
+        default=None, description="Host ***REMOVED***word (host_rec table host_pwd, decrypted)"
+    )
+    port: Optional[int] = Field(
+        default=None, description="Port (host_rec table host_port)"
+    )
     hw_list: List[AdminHostHwDetailInfo] = Field(
         default_factory=list,
         description=(
@@ -550,7 +619,9 @@ class AdminHostUpdatePasswordRequest(BaseModel):
 
     host_id: int = Field(..., ge=1, description="Host ID (host_rec.id)")
     ***REMOVED***word: str = Field(
-        ..., min_length=1, description="New ***REMOVED***word (plaintext, will be AES encrypted before storage)"
+        ...,
+        min_length=1,
+        description="New ***REMOVED***word (plaintext, will be AES encrypted before storage)",
     )
 
     model_config = {"from_attributes": True}
@@ -577,16 +648,31 @@ class AdminHostExecLogListRequest(BaseModel):
 class AdminHostExecLogInfo(BaseModel):
     """Admin backend host execution log information response schema"""
 
-    log_id: Optional[str] = Field(default=None, description="Execution log ID (host_exec_log table id)")
-    exec_date: Optional[str] = Field(default=None, description="Execution date (format: %Y-%m-%d)")
-    exec_time: Optional[str] = Field(default=None, description="Execution duration (format: %H:%M:%S)")
-    tc_id: Optional[str] = Field(default=None, description="Test execution ID (host_exec_log table tc_id)")
-    use_by: Optional[str] = Field(default=None, description="Used by (host_exec_log table user_name)")
-    case_state: Optional[int] = Field(
-        default=None, description="Execution state (0-free, 1-started, 2-success, 3-failed)"
+    log_id: Optional[str] = Field(
+        default=None, description="Execution log ID (host_exec_log table id)"
     )
-    result_msg: Optional[str] = Field(default=None, description="Execution result (host_exec_log table result_msg)")
-    log_url: Optional[str] = Field(default=None, description="Execution log URL (host_exec_log table log_url)")
+    exec_date: Optional[str] = Field(
+        default=None, description="Execution date (format: %Y-%m-%d)"
+    )
+    exec_time: Optional[str] = Field(
+        default=None, description="Execution duration (format: %H:%M:%S)"
+    )
+    tc_id: Optional[str] = Field(
+        default=None, description="Test execution ID (host_exec_log table tc_id)"
+    )
+    use_by: Optional[str] = Field(
+        default=None, description="Used by (host_exec_log table user_name)"
+    )
+    case_state: Optional[int] = Field(
+        default=None,
+        description="Execution state (0-free, 1-started, 2-success, 3-failed)",
+    )
+    result_msg: Optional[str] = Field(
+        default=None, description="Execution result (host_exec_log table result_msg)"
+    )
+    log_url: Optional[str] = Field(
+        default=None, description="Execution log URL (host_exec_log table log_url)"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -594,7 +680,9 @@ class AdminHostExecLogInfo(BaseModel):
 class AdminHostExecLogListResponse(BaseModel):
     """Admin backend host execution log list response schema"""
 
-    logs: List[AdminHostExecLogInfo] = Field(default_factory=list, description="Execution log list")
+    logs: List[AdminHostExecLogInfo] = Field(
+        default_factory=list, description="Execution log list"
+    )
     total: int = Field(description="Total record count")
     page: int = Field(description="Current page number")
     page_size: int = Field(description="Page size")
@@ -611,10 +699,12 @@ class AdminApprHostListRequest(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number (starts from 1)")
     page_size: int = Field(default=20, ge=1, le=100, description="Page size (1-100)")
     mac: Optional[str] = Field(
-        default=None, description="MAC address (optional search condition, corresponds to host_rec.mac_addr)"
+        default=None,
+        description="MAC address (optional search condition, corresponds to host_rec.mac_addr)",
     )
     mg_id: Optional[str] = Field(
-        default=None, description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)"
+        default=None,
+        description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)",
     )
     host_state: Optional[int] = Field(
         default=None,
@@ -632,8 +722,12 @@ class AdminApprHostInfo(BaseModel):
     """Admin backend pending approval host information response schema"""
 
     host_id: str = Field(description="Host ID (host_rec table primary key id)")
-    mg_id: Optional[str] = Field(default=None, description="Unique boot ID (host_rec table mg_id)")
-    mac_addr: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
+    mg_id: Optional[str] = Field(
+        default=None, description="Unique boot ID (host_rec table mg_id)"
+    )
+    mac_addr: Optional[str] = Field(
+        default=None, description="MAC address (host_rec table mac_addr)"
+    )
     host_state: Optional[int] = Field(
         default=None,
         description=(
@@ -642,7 +736,9 @@ class AdminApprHostInfo(BaseModel):
             "5-pending activation, 6-hardware changed, 7-manually disabled, 8-updating)"
         ),
     )
-    subm_time: Optional[datetime] = Field(default=None, description="Submission time (host_rec table subm_time)")
+    subm_time: Optional[datetime] = Field(
+        default=None, description="Submission time (host_rec table subm_time)"
+    )
     diff_state: Optional[int] = Field(
         default=None,
         description=(
@@ -657,7 +753,9 @@ class AdminApprHostInfo(BaseModel):
 class AdminApprHostListResponse(BaseModel):
     """Admin backend pending approval host list response schema"""
 
-    hosts: List[AdminApprHostInfo] = Field(default_factory=list, description="Pending approval host list")
+    hosts: List[AdminApprHostInfo] = Field(
+        default_factory=list, description="Pending approval host list"
+    )
     total: int = Field(description="Total record count")
     page: int = Field(description="Current page number")
     page_size: int = Field(description="Page size")
@@ -671,7 +769,9 @@ class AdminApprHostListResponse(BaseModel):
 class AdminApprHostDetailRequest(BaseModel):
     """Admin backend pending approval host detail query request schema"""
 
-    host_id: int = Field(..., ge=1, description="Host ID (host_rec table primary key id)")
+    host_id: int = Field(
+        ..., ge=1, description="Host ID (host_rec table primary key id)"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -679,7 +779,9 @@ class AdminApprHostDetailRequest(BaseModel):
 class AdminApprHostHwInfo(BaseModel):
     """Admin backend pending approval host hardware information response schema"""
 
-    created_time: Optional[datetime] = Field(default=None, description="Creation time (host_hw_rec table created_time)")
+    created_time: Optional[datetime] = Field(
+        default=None, description="Creation time (host_hw_rec table created_time)"
+    )
     hw_info: Optional[Dict[str, Any]] = Field(
         default=None, description="Hardware information (host_hw_rec table hw_info)"
     )
@@ -690,12 +792,24 @@ class AdminApprHostHwInfo(BaseModel):
 class AdminApprHostDetailResponse(BaseModel):
     """Admin backend pending approval host detail response schema"""
 
-    mg_id: Optional[str] = Field(default=None, description="Unique boot ID (host_rec table mg_id)")
-    mac: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
-    ip: Optional[str] = Field(default=None, description="IP address (host_rec table host_ip)")
-    username: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
-    ***REMOVED***word: Optional[str] = Field(default=None, description="Host ***REMOVED***word (host_rec table host_pwd, decrypted)")
-    port: Optional[int] = Field(default=None, description="Port (host_rec table host_port)")
+    mg_id: Optional[str] = Field(
+        default=None, description="Unique boot ID (host_rec table mg_id)"
+    )
+    mac: Optional[str] = Field(
+        default=None, description="MAC address (host_rec table mac_addr)"
+    )
+    ip: Optional[str] = Field(
+        default=None, description="IP address (host_rec table host_ip)"
+    )
+    username: Optional[str] = Field(
+        default=None, description="Host account (host_rec table host_acct)"
+    )
+    ***REMOVED***word: Optional[str] = Field(
+        default=None, description="Host ***REMOVED***word (host_rec table host_pwd, decrypted)"
+    )
+    port: Optional[int] = Field(
+        default=None, description="Port (host_rec table host_port)"
+    )
     host_state: Optional[int] = Field(
         default=None,
         description=(
@@ -754,7 +868,9 @@ class AdminApprHostApproveResponse(BaseModel):
 class AdminMaintainEmailRequest(BaseModel):
     """Admin backend maintenance notification email setting request schema"""
 
-    email: str = Field(..., description="Email address (multiple emails separated by comma)")
+    email: str = Field(
+        ..., description="Email address (multiple emails separated by comma)"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -773,8 +889,12 @@ class OtaConfigItem(BaseModel):
 
     conf_name: Optional[str] = Field(default=None, description="Configuration name")
     conf_ver: Optional[str] = Field(default=None, description="Configuration version")
-    conf_url: Optional[str] = Field(default=None, description="OTA package download URL")
-    conf_md5: Optional[str] = Field(default=None, description="OTA package MD5 checksum")
+    conf_url: Optional[str] = Field(
+        default=None, description="OTA package download URL"
+    )
+    conf_md5: Optional[str] = Field(
+        default=None, description="OTA package MD5 checksum"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -786,7 +906,9 @@ class AgentInitConfigItem(BaseModel):
     conf_val: Optional[str] = Field(default=None, description="Configuration value")
     conf_ver: Optional[str] = Field(default=None, description="Configuration version")
     conf_name: Optional[str] = Field(default=None, description="Configuration name")
-    conf_json: Optional[Dict[str, Any]] = Field(default=None, description="Configuration JSON")
+    conf_json: Optional[Dict[str, Any]] = Field(
+        default=None, description="Configuration JSON"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -794,7 +916,9 @@ class AgentInitConfigItem(BaseModel):
 class AgentInitConfigListResponse(BaseModel):
     """Agent initialization configuration list response"""
 
-    configs: List[AgentInitConfigItem] = Field(..., description="Initialization configuration list")
+    configs: List[AgentInitConfigItem] = Field(
+        ..., description="Initialization configuration list"
+    )
     total: int = Field(..., description="Total number of configurations")
 
     model_config = {"from_attributes": True}
@@ -804,10 +928,16 @@ class AdminOtaConfigInfo(BaseModel):
     """Admin backend OTA configuration information"""
 
     id: str = Field(description="Configuration ID (primary key)")
-    conf_ver: Optional[str] = Field(default=None, description="Configuration version number")
+    conf_ver: Optional[str] = Field(
+        default=None, description="Configuration version number"
+    )
     conf_name: Optional[str] = Field(default=None, description="Configuration name")
-    conf_url: Optional[str] = Field(default=None, description="OTA package download address")
-    conf_md5: Optional[str] = Field(default=None, description="OTA package MD5 checksum")
+    conf_url: Optional[str] = Field(
+        default=None, description="OTA package download address"
+    )
+    conf_md5: Optional[str] = Field(
+        default=None, description="OTA package MD5 checksum"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -841,7 +971,9 @@ class AdminOtaDeployRequest(BaseModel):
     id: int = Field(..., description="Configuration ID (primary key)", gt=0)
     conf_ver: str = Field(..., description="Configuration version number", min_length=1)
     conf_name: str = Field(..., description="Configuration name", min_length=1)
-    conf_url: str = Field(..., description="OTA package download address (string, allows any format)")
+    conf_url: str = Field(
+        ..., description="OTA package download address (string, allows any format)"
+    )
     conf_md5: Optional[str] = Field(
         default=None,
         description="OTA package MD5 checksum (32-digit hexadecimal, optional)",
@@ -860,8 +992,12 @@ class AdminOtaDeployResponse(BaseModel):
     conf_ver: str = Field(description="Configuration version number")
     conf_name: str = Field(description="Configuration name")
     conf_url: str = Field(description="OTA package download address")
-    conf_md5: Optional[str] = Field(default=None, description="OTA package MD5 checksum (optional)")
-    broadcast_count: int = Field(description="Number of hosts that successfully received broadcast message")
+    conf_md5: Optional[str] = Field(
+        default=None, description="OTA package MD5 checksum (optional)"
+    )
+    broadcast_count: int = Field(
+        description="Number of hosts that successfully received broadcast message"
+    )
 
     model_config = {"from_attributes": True}
 
@@ -872,9 +1008,12 @@ class HardwareReportResponse(BaseModel):
     status: str = Field(description="Status (first_report/hardware_changed/no_change)")
     hw_rec_id: Optional[int] = Field(default=None, description="Hardware record ID")
     diff_state: Optional[int] = Field(
-        default=None, description="Difference state (1-version changed, 2-content changed)"
+        default=None,
+        description="Difference state (1-version changed, 2-content changed)",
     )
-    diff_details: Optional[Dict[str, Any]] = Field(default=None, description="Difference details")
+    diff_details: Optional[Dict[str, Any]] = Field(
+        default=None, description="Difference details"
+    )
     message: str = Field(description="Response message")
 
     model_config = {"from_attributes": True}
@@ -883,9 +1022,15 @@ class HardwareReportResponse(BaseModel):
 class AgentOtaUpdateStatusRequest(BaseModel):
     """Agent OTA update status report request schema"""
 
-    app_name: str = Field(..., description="Application name (corresponds to host_upd table app_name)", min_length=1)
+    app_name: str = Field(
+        ...,
+        description="Application name (corresponds to host_upd table app_name)",
+        min_length=1,
+    )
     app_ver: str = Field(
-        ..., description="Application version number (corresponds to host_upd table app_ver)", min_length=1
+        ...,
+        description="Application version number (corresponds to host_upd table app_ver)",
+        min_length=1,
     )
     biz_state: int = Field(
         ...,
@@ -906,13 +1051,19 @@ class AgentOtaUpdateStatusResponse(BaseModel):
     """Agent OTA update status report response schema"""
 
     host_id: int = Field(description="Host ID")
-    host_upd_id: int = Field(description="Update record ID (host_upd table primary key)")
-    app_state: int = Field(description="Updated state (0=pre-update, 1=updating, 2=success, 3=failed)")
+    host_upd_id: int = Field(
+        description="Update record ID (host_upd table primary key)"
+    )
+    app_state: int = Field(
+        description="Updated state (0=pre-update, 1=updating, 2=success, 3=failed)"
+    )
     host_state: Optional[int] = Field(
         default=None,
         description="Updated host state (if update succeeds, then 0=free)",
     )
-    agent_ver: Optional[str] = Field(default=None, description="Updated Agent version number")
+    agent_ver: Optional[str] = Field(
+        default=None, description="Updated Agent version number"
+    )
     updated: bool = Field(description="Whether update succeeded")
 
     model_config = {"from_attributes": True}
@@ -932,7 +1083,11 @@ class ResetHostForTestResponse(BaseModel):
     host_id: str = Field(description="Host ID")
     appr_state: int = Field(description="Approval state (1=enabled)")
     host_state: int = Field(description="Host state (0=free)")
-    subm_time: Optional[str] = Field(default=None, description="Submission time (null after reset)")
-    deleted_log_count: int = Field(description="Number of deleted execution log records")
+    subm_time: Optional[str] = Field(
+        default=None, description="Submission time (null after reset)"
+    )
+    deleted_log_count: int = Field(
+        description="Number of deleted execution log records"
+    )
 
     model_config = {"from_attributes": True}

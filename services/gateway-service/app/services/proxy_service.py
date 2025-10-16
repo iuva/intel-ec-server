@@ -27,14 +27,20 @@ try:
         raise_protocol_error,
         raise_timeout_error,
     )
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
+    from shared.common.exceptions import (
+        BusinessError,
+        ServiceErrorCodes,
+        ServiceNotFoundError,
+    )
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import ServiceDiscovery
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+    )
     # Compatible with different versions of httpx
     from httpx import ConnectError, TimeoutException
 
@@ -45,7 +51,11 @@ except ImportError:
         raise_protocol_error,
         raise_timeout_error,
     )
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
+    from shared.common.exceptions import (
+        BusinessError,
+        ServiceErrorCodes,
+        ServiceNotFoundError,
+    )
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
@@ -102,26 +112,46 @@ class ProxyService:
         # ✅ Read configuration from settings
         self.http_client_config = http_client_config or HTTPClientConfig(
             timeout=float(os.getenv("PROXY_HTTP_TIMEOUT", str(settings.http_timeout))),
-            connect_timeout=float(os.getenv("PROXY_CONNECT_TIMEOUT", str(settings.http_connect_timeout))),
-            max_keepalive_connections=int(
-                os.getenv("PROXY_MAX_KEEPALIVE", str(settings.http_max_keepalive_connections))
+            connect_timeout=float(
+                os.getenv("PROXY_CONNECT_TIMEOUT", str(settings.http_connect_timeout))
             ),
-            max_connections=int(os.getenv("PROXY_MAX_CONNECTIONS", str(settings.http_max_connections))),
-            max_retries=int(os.getenv("PROXY_MAX_RETRIES", str(settings.http_max_retries))),
-            retry_delay=float(os.getenv("PROXY_RETRY_DELAY", str(settings.http_retry_delay))),
+            max_keepalive_connections=int(
+                os.getenv(
+                    "PROXY_MAX_KEEPALIVE", str(settings.http_max_keepalive_connections)
+                )
+            ),
+            max_connections=int(
+                os.getenv("PROXY_MAX_CONNECTIONS", str(settings.http_max_connections))
+            ),
+            max_retries=int(
+                os.getenv("PROXY_MAX_RETRIES", str(settings.http_max_retries))
+            ),
+            retry_delay=float(
+                os.getenv("PROXY_RETRY_DELAY", str(settings.http_retry_delay))
+            ),
             client_name="gateway_proxy_http_client",
         )
 
-        self.health_check_client_config = health_check_client_config or HTTPClientConfig(
-            timeout=float(os.getenv("PROXY_HEALTH_TIMEOUT", str(settings.health_check_timeout))),
-            connect_timeout=float(
-                os.getenv("PROXY_HEALTH_CONNECT_TIMEOUT", str(settings.health_check_connect_timeout))
-            ),
-            max_keepalive_connections=settings.health_check_max_keepalive_connections,
-            max_connections=settings.health_check_max_connections,
-            max_retries=settings.health_check_max_retries,
-            retry_delay=settings.health_check_retry_delay,
-            client_name="gateway_proxy_health_check_client",
+        self.health_check_client_config = (
+            health_check_client_config
+            or HTTPClientConfig(
+                timeout=float(
+                    os.getenv(
+                        "PROXY_HEALTH_TIMEOUT", str(settings.health_check_timeout)
+                    )
+                ),
+                connect_timeout=float(
+                    os.getenv(
+                        "PROXY_HEALTH_CONNECT_TIMEOUT",
+                        str(settings.health_check_connect_timeout),
+                    )
+                ),
+                max_keepalive_connections=settings.health_check_max_keepalive_connections,
+                max_connections=settings.health_check_max_connections,
+                max_retries=settings.health_check_max_retries,
+                retry_delay=settings.health_check_retry_delay,
+                client_name="gateway_proxy_health_check_client",
+            )
         )
 
         # Service name mapping (short name -> full service name)
@@ -130,10 +160,17 @@ class ProxyService:
 
         # ✅ WebSocket connection management (read from settings)
         self.max_websocket_connections = max_websocket_connections or int(
-            os.getenv("PROXY_MAX_WEBSOCKET_CONNECTIONS", str(settings.websocket_max_connections))
+            os.getenv(
+                "PROXY_MAX_WEBSOCKET_CONNECTIONS",
+                str(settings.websocket_max_connections),
+            )
         )
-        self.active_websocket_connections: Dict[str, Any] = {}  # Track active connections
-        self._websocket_connection_lock: Optional[asyncio.Lock] = None  # Connection limit lock (lazy creation)
+        self.active_websocket_connections: Dict[
+            str, Any
+        ] = {}  # Track active connections
+        self._websocket_connection_lock: Optional[asyncio.Lock] = (
+            None  # Connection limit lock (lazy creation)
+        )
 
         logger.info(
             "Proxy service initialization completed",
@@ -151,7 +188,9 @@ class ProxyService:
         self.http_client = AsyncHTTPClient(config=self.http_client_config)
 
         # Health check dedicated client (cached to avoid repeated creation)
-        self._health_check_client = AsyncHTTPClient(config=self.health_check_client_config)
+        self._health_check_client = AsyncHTTPClient(
+            config=self.health_check_client_config
+        )
 
     async def get_service_url(self, service_name: str) -> str:
         """Get service URL (async method)
@@ -175,8 +214,13 @@ class ProxyService:
         # Use service discovery
         if self.service_discovery:
             try:
-                service_url = await self.service_discovery.get_service_url(full_service_name)
-                logger.debug("Get service address", extra={"service_name": service_name, "service_url": service_url})
+                service_url = await self.service_discovery.get_service_url(
+                    full_service_name
+                )
+                logger.debug(
+                    "Get service address",
+                    extra={"service_name": service_name, "service_url": service_url},
+                )
                 return service_url
             except Exception as e:
                 logger.error(
@@ -204,7 +248,9 @@ class ProxyService:
 
         return {k: v for k, v in headers.items() if k.lower() not in EXCLUDED_HEADERS}
 
-    def _build_service_url(self, service_url: str, path: str, service_name: str = "") -> str:
+    def _build_service_url(
+        self, service_url: str, path: str, service_name: str = ""
+    ) -> str:
         """Build complete service URL
 
         Args:
@@ -335,14 +381,20 @@ class ProxyService:
                         "full_url": full_url,
                         "status_code": status_code,
                         "has_body": response.get("body") is not None,
-                        "body_type": type(response.get("body")).__name__ if response.get("body") else None,
-                        "body_preview": str(response.get("body"))[:200] if response.get("body") else None,
+                        "body_type": type(response.get("body")).__name__
+                        if response.get("body")
+                        else None,
+                        "body_preview": str(response.get("body"))[:200]
+                        if response.get("body")
+                        else None,
                     },
                 )
 
                 if 400 <= status_code < 600:
                     # Use new method to handle errors in response dict
-                    await self._handle_backend_http_error_from_response(service_name, method, path, response)
+                    await self._handle_backend_http_error_from_response(
+                        service_name, method, path, response
+                    )
 
                     # If execution reaches here, error handling function did not raise exception as expected
                     logger.error(
@@ -481,7 +533,9 @@ class ProxyService:
                     )
                     locale = parse_accept_language(accept_language)
                     raise BusinessError(
-                        message=t("error.websocket.connection_limit_reached", locale=locale),
+                        message=t(
+                            "error.websocket.connection_limit_reached", locale=locale
+                        ),
                         message_key="error.websocket.connection_limit_reached",
                         error_code="WEBSOCKET_CONNECTION_LIMIT_REACHED",
                         code=ServiceErrorCodes.GATEWAY_SERVICE_UNAVAILABLE,
@@ -500,8 +554,10 @@ class ProxyService:
             # ✅ If session key is provided, use session stickiness to select instance
             if session_key and self.service_discovery:
                 try:
-                    resolved_service_url = await self.service_discovery.get_websocket_service_url(
-                        service_name, session_key
+                    resolved_service_url = (
+                        await self.service_discovery.get_websocket_service_url(
+                            service_name, session_key
+                        )
                     )
                     logger.info(
                         "Using session stickiness to select WebSocket instance",
@@ -532,7 +588,9 @@ class ProxyService:
                 resolved_service_url = service_url
 
             # Build WebSocket URL (convert http -> ws, add service identifier prefix)
-            ws_url = resolved_service_url.replace("http://", "ws://").replace("https://", "wss://")
+            ws_url = resolved_service_url.replace("http://", "ws://").replace(
+                "https://", "wss://"
+            )
 
             # ✅ Add service identifier prefix (consistent with HTTP forwarding)
             # Example: service_name="host", path="/ws/host?token=xxx"
@@ -620,26 +678,35 @@ class ProxyService:
                     except asyncio.CancelledError:
                         ***REMOVED***
                     except Exception as e:
-                        logger.warning("Exception occurred while canceling task", extra={"error": str(e)})
+                        logger.warning(
+                            "Exception occurred while canceling task",
+                            extra={"error": str(e)},
+                        )
 
                 # ✅ Ensure WebSocket connection is properly closed
                 try:
                     # Check client WebSocket state
                     if hasattr(client_websocket, "client_state"):
                         if client_websocket.client_state != WebSocketState.DISCONNECTED:
-                            await client_websocket.close(code=1000, reason="Connection closed")
+                            await client_websocket.close(
+                                code=1000, reason="Connection closed"
+                            )
                     elif not getattr(client_websocket, "closed", True):
                         # websockets.WebSocketClientProtocol
                         await client_websocket.close()
                 except Exception as e:
-                    logger.debug("Error closing client WebSocket", extra={"error": str(e)})
+                    logger.debug(
+                        "Error closing client WebSocket", extra={"error": str(e)}
+                    )
 
                 try:
                     # Check server WebSocket state
                     if not server_websocket.closed:
                         await server_websocket.close()
                 except Exception as e:
-                    logger.debug("Error closing server WebSocket", extra={"error": str(e)})
+                    logger.debug(
+                        "Error closing server WebSocket", extra={"error": str(e)}
+                    )
 
                 logger.info(
                     "WebSocket connection closed",
@@ -655,7 +722,9 @@ class ProxyService:
             try:
                 if hasattr(client_websocket, "client_state"):
                     if client_websocket.client_state != WebSocketState.DISCONNECTED:
-                        await client_websocket.close(code=1011, reason="Service not found")
+                        await client_websocket.close(
+                            code=1011, reason="Service not found"
+                        )
                 elif not getattr(client_websocket, "closed", True):
                     await client_websocket.close()
             except Exception:
@@ -678,7 +747,9 @@ class ProxyService:
 
             # Get language preference
             accept_language = (
-                client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
+                client_websocket.headers.get("Accept-Language")
+                if hasattr(client_websocket, "headers")
+                else None
             )
             locale = parse_accept_language(accept_language)
             raise BusinessError(
@@ -697,13 +768,19 @@ class ProxyService:
             if "HTTP 403" in error_msg or "403 Forbidden" in error_msg:
                 logger.warning(
                     "WebSocket authentication failed",
-                    extra={"service_name": service_name, "path": path, "error_msg": error_msg},
+                    extra={
+                        "service_name": service_name,
+                        "path": path,
+                        "error_msg": error_msg,
+                    },
                 )
                 # ✅ Ensure client WebSocket is closed even in exception cases
                 try:
                     if hasattr(client_websocket, "client_state"):
                         if client_websocket.client_state != WebSocketState.DISCONNECTED:
-                            await client_websocket.close(code=1008, reason="Authentication failed")
+                            await client_websocket.close(
+                                code=1008, reason="Authentication failed"
+                            )
                     elif not getattr(client_websocket, "closed", True):
                         await client_websocket.close()
                 except Exception:
@@ -711,7 +788,9 @@ class ProxyService:
 
                 # Get language preference
                 accept_language = (
-                    client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
+                    client_websocket.headers.get("Accept-Language")
+                    if hasattr(client_websocket, "headers")
+                    else None
                 )
                 locale = parse_accept_language(accept_language)
                 raise BusinessError(
@@ -727,13 +806,19 @@ class ProxyService:
             if "HTTP 401" in error_msg or "401 Unauthorized" in error_msg:
                 logger.warning(
                     "WebSocket unauthorized",
-                    extra={"service_name": service_name, "path": path, "error_msg": error_msg},
+                    extra={
+                        "service_name": service_name,
+                        "path": path,
+                        "error_msg": error_msg,
+                    },
                 )
                 # ✅ Ensure client WebSocket is closed even in exception cases
                 try:
                     if hasattr(client_websocket, "client_state"):
                         if client_websocket.client_state != WebSocketState.DISCONNECTED:
-                            await client_websocket.close(code=1008, reason="Unauthorized")
+                            await client_websocket.close(
+                                code=1008, reason="Unauthorized"
+                            )
                     elif not getattr(client_websocket, "closed", True):
                         await client_websocket.close()
                 except Exception:
@@ -741,7 +826,9 @@ class ProxyService:
 
                 # Get language preference
                 accept_language = (
-                    client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
+                    client_websocket.headers.get("Accept-Language")
+                    if hasattr(client_websocket, "headers")
+                    else None
                 )
                 locale = parse_accept_language(accept_language)
                 raise BusinessError(
@@ -756,13 +843,19 @@ class ProxyService:
             # ✅ Other WebSocket connection errors
             logger.error(
                 "WebSocket connection exception",
-                extra={"service_name": service_name, "path": path, "error_msg": error_msg},
+                extra={
+                    "service_name": service_name,
+                    "path": path,
+                    "error_msg": error_msg,
+                },
             )
             # ✅ Ensure client WebSocket is closed even in exception cases
             try:
                 if hasattr(client_websocket, "client_state"):
                     if client_websocket.client_state != WebSocketState.DISCONNECTED:
-                        await client_websocket.close(code=1011, reason="Connection failed")
+                        await client_websocket.close(
+                            code=1011, reason="Connection failed"
+                        )
                 elif not getattr(client_websocket, "closed", True):
                     await client_websocket.close()
             except Exception:
@@ -770,7 +863,9 @@ class ProxyService:
 
             # Get language preference
             accept_language = (
-                client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
+                client_websocket.headers.get("Accept-Language")
+                if hasattr(client_websocket, "headers")
+                else None
             )
             locale = parse_accept_language(accept_language)
             raise BusinessError(
@@ -785,7 +880,12 @@ class ProxyService:
         except Exception as e:
             logger.error(
                 "WebSocket forwarding exception",
-                extra={"service_name": service_name, "path": path, "error_type": type(e).__name__, "error": str(e)},
+                extra={
+                    "service_name": service_name,
+                    "path": path,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
                 exc_info=True,
             )
             # ✅ Ensure client WebSocket is closed even in exception cases
@@ -800,7 +900,9 @@ class ProxyService:
 
             # Get language preference
             accept_language = (
-                client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
+                client_websocket.headers.get("Accept-Language")
+                if hasattr(client_websocket, "headers")
+                else None
             )
             locale = parse_accept_language(accept_language)
             raise BusinessError(
@@ -824,7 +926,9 @@ class ProxyService:
                         "WebSocket connection record cleaned up",
                         extra={
                             "connection_id": connection_id,
-                            "remaining_connections": len(self.active_websocket_connections),
+                            "remaining_connections": len(
+                                self.active_websocket_connections
+                            ),
                         },
                     )
 
@@ -881,23 +985,37 @@ class ProxyService:
                 except websockets.exceptions.ConnectionClosed as e:
                     # Normal close: 1000-1001, 1005 (no status code)
                     if e.code in (1000, 1001, 1005, None):
-                        logger.info("Connection closed normally", extra={"direction": direction, "code": e.code})
+                        logger.info(
+                            "Connection closed normally",
+                            extra={"direction": direction, "code": e.code},
+                        )
                     else:
                         logger.warning(
                             "Connection closed abnormally",
-                            extra={"direction": direction, "code": e.code, "reason": e.reason},
+                            extra={
+                                "direction": direction,
+                                "code": e.code,
+                                "reason": e.reason,
+                            },
                         )
                     break
                 except WebSocketDisconnect as e:
                     # FastAPI WebSocketDisconnect - client disconnected normally
                     if e.code in (1000, 1001, 1005, None):
-                        logger.info("Client disconnected normally", extra={"direction": direction, "code": e.code})
+                        logger.info(
+                            "Client disconnected normally",
+                            extra={"direction": direction, "code": e.code},
+                        )
                     else:
                         # Get close reason
                         reason = e.reason if hasattr(e, "reason") else "No reason"
                         logger.warning(
                             "Client disconnected abnormally",
-                            extra={"direction": direction, "code": e.code, "reason": reason},
+                            extra={
+                                "direction": direction,
+                                "code": e.code,
+                                "reason": reason,
+                            },
                         )
                     break
                 except Exception as e:
@@ -905,18 +1023,30 @@ class ProxyService:
                     error_type = type(e).__name__
                     logger.error(
                         "Message forwarding failed",
-                        extra={"direction": direction, "error_type": error_type, "error": str(e)},
+                        extra={
+                            "direction": direction,
+                            "error_type": error_type,
+                            "error": str(e),
+                        },
                     )
                     break
 
         except websockets.exceptions.ConnectionClosed as e:
             # Outer catch: connection closed normally
-            logger.debug("Source connection closed", extra={"direction": direction, "code": e.code})
+            logger.debug(
+                "Source connection closed",
+                extra={"direction": direction, "code": e.code},
+            )
         except Exception as e:
             # Outer catch: forwarding exception
             error_type = type(e).__name__
             logger.error(
-                "Forwarding exception", extra={"direction": direction, "error_type": error_type, "error": str(e)}
+                "Forwarding exception",
+                extra={
+                    "direction": direction,
+                    "error_type": error_type,
+                    "error": str(e),
+                },
             )
         finally:
             # ✅ Ensure destination WebSocket connection is closed
@@ -932,7 +1062,10 @@ class ProxyService:
                     # websockets.WebSocketClientProtocol
                     await destination.close()
             except Exception as e:
-                logger.debug("Error closing destination WebSocket", extra={"direction": direction, "error": str(e)})
+                logger.debug(
+                    "Error closing destination WebSocket",
+                    extra={"direction": direction, "error": str(e)},
+                )
 
             # ✅ Ensure source WebSocket connection is also closed (if possible)
             try:
@@ -942,7 +1075,10 @@ class ProxyService:
                     if hasattr(source, "closed") and not source.closed:
                         await source.close()
             except Exception as e:
-                logger.debug("Error closing source WebSocket", extra={"direction": direction, "error": str(e)})
+                logger.debug(
+                    "Error closing source WebSocket",
+                    extra={"direction": direction, "error": str(e)},
+                )
 
     async def _handle_backend_http_error_from_response(
         self,
@@ -973,9 +1109,12 @@ class ProxyService:
                 "status_code": status_code,
                 "response_body_type": type(response_body).__name__,
                 "response_body_is_empty": (
-                    not response_body or (isinstance(response_body, str) and not response_body.strip())
+                    not response_body
+                    or (isinstance(response_body, str) and not response_body.strip())
                 ),
-                "response_body_preview": str(response_body)[:200] if response_body else None,
+                "response_body_preview": str(response_body)[:200]
+                if response_body
+                else None,
             },
         )
 
@@ -983,14 +1122,22 @@ class ProxyService:
         # 502 usually indicates gateway cannot connect to backend service, response body may be empty or invalid
         if status_code == 502:
             # Check if response body is empty or invalid
-            if not response_body or (isinstance(response_body, str) and not response_body.strip()):
+            if not response_body or (
+                isinstance(response_body, str) and not response_body.strip()
+            ):
                 # 502 and response body is empty, indicates cannot connect to backend service
                 # Try to get locale from response headers, use default if not available
                 response_headers = response.get("headers", {})
                 accept_language = (
-                    response_headers.get("Accept-Language") if isinstance(response_headers, dict) else None
+                    response_headers.get("Accept-Language")
+                    if isinstance(response_headers, dict)
+                    else None
                 )
-                locale = parse_accept_language(accept_language) if accept_language else "zh_CN"
+                locale = (
+                    parse_accept_language(accept_language)
+                    if accept_language
+                    else "zh_CN"
+                )
                 error_message = t("error.service.unavailable", locale=locale)
                 message_key = "error.service.unavailable"
                 error_code = "SERVICE_UNAVAILABLE"
@@ -1007,7 +1154,9 @@ class ProxyService:
 
                 # Analyze error response format (supports FastAPI's detail format)
                 if isinstance(response_data_502, dict):
-                    if "detail" in response_data_502 and isinstance(response_data_502["detail"], dict):
+                    if "detail" in response_data_502 and isinstance(
+                        response_data_502["detail"], dict
+                    ):
                         error_detail_502 = response_data_502["detail"]
                     else:
                         error_detail_502 = response_data_502
@@ -1017,14 +1166,18 @@ class ProxyService:
                 # Try to get locale from response
                 response_headers = response.get("headers", {})
                 accept_language = (
-                    response_headers.get("Accept-Language") if isinstance(response_headers, dict) else None
+                    response_headers.get("Accept-Language")
+                    if isinstance(response_headers, dict)
+                    else None
                 )
                 locale_502 = (
                     parse_accept_language(accept_language)
                     if accept_language
                     else error_detail_502.get("locale", "zh_CN")
                 )
-                error_message = error_detail_502.get("message", t("error.service.unavailable", locale=locale_502))
+                error_message = error_detail_502.get(
+                    "message", t("error.service.unavailable", locale=locale_502)
+                )
                 error_code = error_detail_502.get("error_code", "SERVICE_UNAVAILABLE")
                 error_details_raw_502 = error_detail_502.get("details", {})
                 # ✅ Extract message_key and locale (for i18n support)
@@ -1042,7 +1195,11 @@ class ProxyService:
                 error_details = error_details_502
                 # Preserve backend service's custom error code (code), don't override with HTTP status code
                 backend_error_code_raw = error_detail_502.get("code")
-                backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
+                backend_error_code = (
+                    backend_error_code_raw
+                    if isinstance(backend_error_code_raw, int)
+                    else status_code
+                )
         else:
             # Other error status codes (4xx, 5xx)
             # Parse response body
@@ -1072,15 +1229,23 @@ class ProxyService:
                         field_errors: Dict[str, str] = {}
                         for error in detail_value:
                             if isinstance(error, dict):
-                                field_path = ".".join(str(loc) for loc in error.get("loc", []))
-                                field_errors[field_path] = error.get("msg", "Unknown error")
+                                field_path = ".".join(
+                                    str(loc) for loc in error.get("loc", [])
+                                )
+                                field_errors[field_path] = error.get(
+                                    "msg", "Unknown error"
+                                )
 
                         # Get language preference (from response or use default)
                         locale_for_validation = (
-                            response_data.get("locale", "zh_CN") if isinstance(response_data, dict) else "zh_CN"
+                            response_data.get("locale", "zh_CN")
+                            if isinstance(response_data, dict)
+                            else "zh_CN"
                         )
                         error_detail = {
-                            "message": t("error.validation", locale=locale_for_validation),
+                            "message": t(
+                                "error.validation", locale=locale_for_validation
+                            ),
                             "message_key": "error.validation",
                             "error_code": "VALIDATION_ERROR",
                             "code": 422,
@@ -1120,11 +1285,15 @@ class ProxyService:
                 if "message_key" not in error_detail:
                     # Try to extract allowed methods
                     detail_str = str(error_detail.get("message", ""))
-                    allowed_match = re.search(r"allowed.*?\[(.*?)\]", detail_str, re.IGNORECASE)
+                    allowed_match = re.search(
+                        r"allowed.*?\[(.*?)\]", detail_str, re.IGNORECASE
+                    )
                     if allowed_match:
                         allowed_methods = allowed_match.group(1)
                         message_key = "error.http.method_not_allowed_with_methods"
-                        default_message = t(message_key, locale=locale, allowed_methods=allowed_methods)
+                        default_message = t(
+                            message_key, locale=locale, allowed_methods=allowed_methods
+                        )
                     else:
                         message_key = "error.http.method_not_allowed"
                         default_message = t(message_key, locale=locale)
@@ -1146,12 +1315,20 @@ class ProxyService:
             # If 405 error doesn't have message_key, use the message_key set above
             if status_code != 405 or "message_key" not in error_detail:
                 # For non-405 errors, or 405 error but backend didn't provide message_key, use backend-provided
-                message_key = error_detail.get("message_key", message_key if status_code == 405 else None)
-                locale = error_detail.get("locale", locale if status_code == 405 else "zh_CN")
+                message_key = error_detail.get(
+                    "message_key", message_key if status_code == 405 else None
+                )
+                locale = error_detail.get(
+                    "locale", locale if status_code == 405 else "zh_CN"
+                )
 
             # ✅ Preserve backend service's custom error code (code), don't override with HTTP status code
             backend_error_code_raw = error_detail.get("code")
-            backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
+            backend_error_code = (
+                backend_error_code_raw
+                if isinstance(backend_error_code_raw, int)
+                else status_code
+            )
 
             # Ensure error_details is dict type
             if isinstance(error_details_raw, dict):
@@ -1184,7 +1361,9 @@ class ProxyService:
             code=backend_error_code,  # Use backend's custom error code
             error_code=error_code,
             http_status_code=status_code,  # ✅ Use backend service's HTTP status code (e.g., 401)
-            message_key=message_key if message_key else None,  # ✅ Pass through message_key for i18n support
+            message_key=message_key
+            if message_key
+            else None,  # ✅ Pass through message_key for i18n support
             locale=locale,  # ✅ Pass through locale for i18n support
             details=error_details,
         )
@@ -1227,7 +1406,9 @@ class ProxyService:
                         "error_code": "SERVICE_UNAVAILABLE",
                     }
                 else:
-                    response_data = {"message": f"Backend service returned empty response (status code: {status_code})"}
+                    response_data = {
+                        "message": f"Backend service returned empty response (status code: {status_code})"
+                    }
             else:
                 # Try to parse as JSON
                 try:
@@ -1239,13 +1420,17 @@ class ProxyService:
                         extra={
                             "service_name": service_name,
                             "status_code": status_code,
-                            "response_keys": list(response_data.keys()) if isinstance(response_data, dict) else None,
+                            "response_keys": list(response_data.keys())
+                            if isinstance(response_data, dict)
+                            else None,
                         },
                     )
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     # If not JSON, use text content
                     try:
-                        response_text = response_content.decode("utf-8", errors="ignore")
+                        response_text = response_content.decode(
+                            "utf-8", errors="ignore"
+                        )
                         response_data = {"message": response_text}
 
                         logger.warning(
@@ -1253,7 +1438,9 @@ class ProxyService:
                             extra={
                                 "service_name": service_name,
                                 "status_code": status_code,
-                                "response_preview": response_text[:200] if len(response_text) > 200 else response_text,
+                                "response_preview": response_text[:200]
+                                if len(response_text) > 200
+                                else response_text,
                             },
                         )
                     except Exception as decode_error:
@@ -1281,7 +1468,9 @@ class ProxyService:
                 },
                 exc_info=True,
             )
-            response_data = {"message": f"Backend service returned invalid response (status code: {status_code})"}
+            response_data = {
+                "message": f"Backend service returned invalid response (status code: {status_code})"
+            }
 
         # Analyze error response format
         if isinstance(response_data, dict):
@@ -1299,12 +1488,16 @@ class ProxyService:
                     field_errors: Dict[str, str] = {}
                     for error in detail_value:
                         if isinstance(error, dict):
-                            field_path = ".".join(str(loc) for loc in error.get("loc", []))
+                            field_path = ".".join(
+                                str(loc) for loc in error.get("loc", [])
+                            )
                             field_errors[field_path] = error.get("msg", "Unknown error")
 
                     # Get language preference (from response or use default)
                     locale_for_validation = (
-                        response_data.get("locale", "zh_CN") if isinstance(response_data, dict) else "zh_CN"
+                        response_data.get("locale", "zh_CN")
+                        if isinstance(response_data, dict)
+                        else "zh_CN"
                     )
                     error_detail = {
                         "message": t("error.validation", locale=locale_for_validation),
@@ -1328,7 +1521,9 @@ class ProxyService:
 
         # Extract key error information
         locale_for_error = error_detail.get("locale", "zh_CN")
-        error_message = error_detail.get("message", t("error.service.error", locale=locale_for_error))
+        error_message = error_detail.get(
+            "message", t("error.service.error", locale=locale_for_error)
+        )
         error_code = error_detail.get("error_code", f"BACKEND_{status_code}")
         error_details_raw = error_detail.get("details", {})
         # ✅ Extract message_key and locale (for i18n support)
@@ -1336,7 +1531,11 @@ class ProxyService:
         locale = error_detail.get("locale")
         # Preserve backend service's custom error code (code), don't override with HTTP status code
         backend_error_code_raw = error_detail.get("code")
-        backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
+        backend_error_code = (
+            backend_error_code_raw
+            if isinstance(backend_error_code_raw, int)
+            else status_code
+        )
 
         # Ensure error_details is dict type
         if isinstance(error_details_raw, dict):
@@ -1406,7 +1605,10 @@ class ProxyService:
             return is_healthy
 
         except ServiceNotFoundError:
-            logger.warning("Health check failed: Service not found", extra={"service_name": service_name})
+            logger.warning(
+                "Health check failed: Service not found",
+                extra={"service_name": service_name},
+            )
             return False
 
         except Exception as e:
@@ -1454,7 +1656,10 @@ async def get_proxy_service(request: Request) -> ProxyService:
         if hasattr(request.app.state, "service_discovery"):
             service_discovery = request.app.state.service_discovery
             # ✅ Fix: Only consider Nacos is used when service_discovery is not None and Nacos is connected
-            if service_discovery is not None and service_discovery.nacos_manager is not None:
+            if (
+                service_discovery is not None
+                and service_discovery.nacos_manager is not None
+            ):
                 logger.info("✅ Proxy service using Nacos service discovery")
             # else:
             #     logger.info("⚠️ Proxy service using fallback address (Nacos not enabled or not connected)")
@@ -1462,8 +1667,12 @@ async def get_proxy_service(request: Request) -> ProxyService:
         #     logger.info("⚠️ Proxy service using fallback address (service discovery not configured)")
 
         http_client_config = getattr(request.app.state, "http_client_config", None)
-        health_check_config = getattr(request.app.state, "health_check_http_client_config", None)
-        max_websocket_connections = getattr(request.app.state, "max_websocket_connections", 1000)
+        health_check_config = getattr(
+            request.app.state, "health_check_http_client_config", None
+        )
+        max_websocket_connections = getattr(
+            request.app.state, "max_websocket_connections", 1000
+        )
 
         _proxy_service_instance = ProxyService(
             service_discovery=service_discovery,
@@ -1494,16 +1703,29 @@ async def get_proxy_service_ws(websocket: WebSocket) -> ProxyService:
         if hasattr(websocket.app.state, "service_discovery"):
             service_discovery = websocket.app.state.service_discovery
             # ✅ Fix: Only consider Nacos is used when service_discovery is not None and Nacos is connected
-            if service_discovery is not None and service_discovery.nacos_manager is not None:
-                logger.info("✅ Proxy service (WebSocket) using Nacos service discovery")
+            if (
+                service_discovery is not None
+                and service_discovery.nacos_manager is not None
+            ):
+                logger.info(
+                    "✅ Proxy service (WebSocket) using Nacos service discovery"
+                )
             else:
-                logger.info("⚠️ Proxy service (WebSocket) using fallback address (Nacos not enabled or not connected)")
+                logger.info(
+                    "⚠️ Proxy service (WebSocket) using fallback address (Nacos not enabled or not connected)"
+                )
         else:
-            logger.info("⚠️ Proxy service (WebSocket) using fallback address (service discovery not configured)")
+            logger.info(
+                "⚠️ Proxy service (WebSocket) using fallback address (service discovery not configured)"
+            )
 
         http_client_config = getattr(websocket.app.state, "http_client_config", None)
-        health_check_config = getattr(websocket.app.state, "health_check_http_client_config", None)
-        max_websocket_connections = getattr(websocket.app.state, "max_websocket_connections", 1000)
+        health_check_config = getattr(
+            websocket.app.state, "health_check_http_client_config", None
+        )
+        max_websocket_connections = getattr(
+            websocket.app.state, "max_websocket_connections", 1000
+        )
 
         _proxy_service_instance = ProxyService(
             service_discovery=service_discovery,

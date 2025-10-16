@@ -15,21 +15,39 @@ try:
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
-    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
+    from app.services.proxy_service import (
+        ProxyService,
+        get_proxy_service,
+        get_proxy_service_ws,
+    )
+    from shared.common.exceptions import (
+        BusinessError,
+        ServiceNotFoundError,
+        ValidationError,
+    )
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
     from shared.common.websocket_auth import verify_token_string
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+    )
     from fastapi import APIRouter, Depends, Path, Request, Response, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
-    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
+    from app.services.proxy_service import (
+        ProxyService,
+        get_proxy_service,
+        get_proxy_service_ws,
+    )
+    from shared.common.exceptions import (
+        BusinessError,
+        ServiceNotFoundError,
+        ValidationError,
+    )
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
@@ -148,8 +166,12 @@ async def _send_websocket_error(
 @router.websocket("/ws/{hostname}/{apiurl:path}")
 async def websocket_proxy(
     websocket: WebSocket = ...,
-    hostname: str = Path(..., description="Hostname or service identifier (e.g., host-service)"),
-    apiurl: str = Path(..., description="WebSocket API path (full path forwarded to backend service)"),
+    hostname: str = Path(
+        ..., description="Hostname or service identifier (e.g., host-service)"
+    ),
+    apiurl: str = Path(
+        ..., description="WebSocket API path (full path forwarded to backend service)"
+    ),
     proxy_service: ProxyService = Depends(get_proxy_service_ws),
 ) -> None:
     """WebSocket forwarding endpoint
@@ -214,8 +236,12 @@ async def websocket_proxy(
                     extra={
                         "hostname": hostname,
                         "apiurl": apiurl,
-                        "client": websocket.client.host if websocket.client else "unknown",
-                        "token_preview": token[:20] + "..." if len(token) > 20 else token,
+                        "client": websocket.client.host
+                        if websocket.client
+                        else "unknown",
+                        "token_preview": token[:20] + "..."
+                        if len(token) > 20
+                        else token,
                     },
                 )
                 # ✅ Must accept before sending error message
@@ -392,7 +418,9 @@ async def websocket_proxy(
 
                 await websocket.close(code=close_code, reason=close_reason)
             except Exception as close_error:
-                logger.debug("Error closing WebSocket", extra={"error": str(close_error)})
+                logger.debug(
+                    "Error closing WebSocket", extra={"error": str(close_error)}
+                )
 
 
 # ✅ New: Support simplified format WebSocket proxy routes
@@ -415,7 +443,9 @@ SERVICE_SHORT_NAMES = {
 )
 async def proxy_request(
     service_name: str = Path(..., description="Service name (e.g., auth, host, admin)"),
-    subpath: str = Path(..., description="Subpath (full path forwarded to backend service)"),
+    subpath: str = Path(
+        ..., description="Subpath (full path forwarded to backend service)"
+    ),
     request: Request = ...,
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Any:
@@ -454,10 +484,14 @@ async def proxy_request(
                 if raw_body:
                     try:
                         body = json.loads(raw_body.decode("utf-8"))
-                        logger.debug("Request body parsed successfully", extra={"body_size_bytes": len(raw_body)})
+                        logger.debug(
+                            "Request body parsed successfully",
+                            extra={"body_size_bytes": len(raw_body)},
+                        )
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
                         logger.warning(
-                            "Request body is not valid JSON, will forward as raw data", extra={"error": str(e)}
+                            "Request body is not valid JSON, will forward as raw data",
+                            extra={"error": str(e)},
                         )
                         # If not JSON, keep as None, use raw data
                         body = None
@@ -465,7 +499,11 @@ async def proxy_request(
                     logger.debug("Request body is empty")
 
             except Exception as e:
-                logger.error("Failed to read request body", extra={"error": str(e)}, exc_info=True)
+                logger.error(
+                    "Failed to read request body",
+                    extra={"error": str(e)},
+                    exc_info=True,
+                )
                 # If read fails, raise appropriate error
                 raise ValidationError(f"Unable to read request body: {e!s}")
 
@@ -500,7 +538,9 @@ async def proxy_request(
             # If using raw request body, ensure Content-Type is application/json
             if "content-type" not in [k.lower() for k in headers]:
                 headers["Content-Type"] = "application/json"
-                logger.debug("Added Content-Type for raw request body: application/json")
+                logger.debug(
+                    "Added Content-Type for raw request body: application/json"
+                )
             # Remove Content-Length header
             content_length_keys = [k for k in headers if k.lower() == "content-length"]
             for key in content_length_keys:
@@ -518,7 +558,11 @@ async def proxy_request(
                 "user_info_type": type(user_info).__name__ if user_info else None,
                 "user_info_keys": list(user_info.keys()) if user_info else None,
                 "id": user_info.get("id") if user_info else None,
-                "id_type": (type(user_info.get("id")).__name__ if user_info and user_info.get("id") else None),
+                "id_type": (
+                    type(user_info.get("id")).__name__
+                    if user_info and user_info.get("id")
+                    else None
+                ),
                 "service_name": service_name,
                 "subpath": subpath,
                 "method": method,
@@ -534,7 +578,9 @@ async def proxy_request(
                     extra={
                         "user_info_keys": list(user_info.keys()),
                         "id_value": user_id,
-                        "id_type": type(user_id).__name__ if user_id is not None else None,
+                        "id_type": type(user_id).__name__
+                        if user_id is not None
+                        else None,
                         "service_name": service_name,
                         "subpath": subpath,
                         "method": method,
@@ -627,7 +673,9 @@ async def proxy_request(
         raw_body = response.get("raw_body")
 
         if is_json_response and isinstance(body, (dict, list)):
-            proxy_response: Response = JSONResponse(content=body, status_code=status_code)
+            proxy_response: Response = JSONResponse(
+                content=body, status_code=status_code
+            )
         else:
             if raw_body is not None:
                 content_bytes = raw_body
@@ -641,14 +689,19 @@ async def proxy_request(
                 content_bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")
 
             media_type = response_headers.get("content-type")
-            proxy_response = Response(content=content_bytes, status_code=status_code, media_type=media_type)
+            proxy_response = Response(
+                content=content_bytes, status_code=status_code, media_type=media_type
+            )
 
         for header_name, header_value in response_headers.items():
             if header_name.lower() in HOP_BY_HOP_RESPONSE_HEADERS:
                 continue
             proxy_response.headers[header_name] = header_value
 
-        logger.info("Forwarding successful, returning response", extra={"status_code": status_code})
+        logger.info(
+            "Forwarding successful, returning response",
+            extra={"status_code": status_code},
+        )
         return proxy_response
 
     except ServiceNotFoundError as e:
@@ -785,7 +838,9 @@ async def catch_all_handler(
     return _create_error_response(
         request=request,
         code=404,
-        message=t("error.gateway.resource_not_found", locale=_get_locale_from_request(request)),
+        message=t(
+            "error.gateway.resource_not_found", locale=_get_locale_from_request(request)
+        ),
         error_code="RESOURCE_NOT_FOUND",
         message_key="error.gateway.resource_not_found",
         details={

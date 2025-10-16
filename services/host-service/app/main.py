@@ -24,7 +24,9 @@ try:
     from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+    )
     from app.tasks.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
@@ -67,7 +69,12 @@ async def startup_case_timeout_task(app):
         app: FastAPI application instance (lifespan handler must accept this parameter)
     """
     # ✅ Check environment variable switch, disabled by default
-    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
+    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
 
     if not enable_task:
         logger.info(
@@ -92,7 +99,12 @@ async def shutdown_case_timeout_task(app):
         app: FastAPI application instance (lifespan handler must accept this parameter)
     """
     # ✅ Check environment variable switch, if disabled then no need to stop
-    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
+    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
 
     if not enable_task:
         return

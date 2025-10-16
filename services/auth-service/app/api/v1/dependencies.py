@@ -16,7 +16,9 @@ from app.services.auth_service import AuthService
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+    )
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -150,7 +152,9 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
                     "error": str(e),
                     "error_type": type(e).__name__,
                     "header_preview": (
-                        user_info_header[:100] + "..." if len(user_info_header) > 100 else user_info_header
+                        user_info_header[:100] + "..."
+                        if len(user_info_header) > 100
+                        else user_info_header
                     ),
                     "hint": "Format error in X-User-Info header ***REMOVED***ed by Gateway",
                 },

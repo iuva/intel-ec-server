@@ -43,22 +43,34 @@
     "scripts/",
     "monitoring/"
   ],
-  "extraPaths": [".", ".."],
+  "extraPaths": [
+    ".",
+    ".."
+  ],
   "executionEnvironments": [
     {
       "root": "services/gateway-service",
       "pythonVersion": "3.8",
-      "extraPaths": ["../../", "../../../"]
+      "extraPaths": [
+        "../../",
+        "../../../"
+      ]
     },
     {
       "root": "services/auth-service",
       "pythonVersion": "3.8",
-      "extraPaths": ["../../", "../../../"]
+      "extraPaths": [
+        "../../",
+        "../../../"
+      ]
     },
     {
       "root": "services/host-service",
       "pythonVersion": "3.8",
-      "extraPaths": ["../../", "../../../"]
+      "extraPaths": [
+        "../../",
+        "../../../"
+      ]
     }
   ],
   "reportMissingModuleSource": "warning",

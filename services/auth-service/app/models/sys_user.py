@@ -18,7 +18,9 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(
+        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+    )
     from shared.common.database import Base
 
 
@@ -34,18 +36,25 @@ class SysUser(Base):
     user_name: Mapped[str] = mapped_column(String(32), comment="User name")
     user_account: Mapped[str] = mapped_column(String(32), comment="Login account")
     user_pwd: Mapped[str] = mapped_column(String(128), comment="Login ***REMOVED***word")
-    user_avatar: Mapped[Optional[str]] = mapped_column(String(32), comment="User avatar")
+    user_avatar: Mapped[Optional[str]] = mapped_column(
+        String(32), comment="User avatar"
+    )
     email: Mapped[Optional[str]] = mapped_column(String(32), comment="Email")
 
     # Status field
     state_flag: Mapped[int] = mapped_column(
-        SmallInteger, default=0, comment="Account status;{enable_flag: 0, enabled. disable_flag: 1, disabled.}"
+        SmallInteger,
+        default=0,
+        comment="Account status;{enable_flag: 0, enabled. disable_flag: 1, disabled.}",
     )
 
     # Time fields
     created_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="Created by")
     created_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=func.now(), nullable=False, comment="Creation time"
+        DateTime(timezone=True),
+        default=func.now(),
+        nullable=False,
+        comment="Creation time",
     )
     updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="Updated by")
     updated_time: Mapped[datetime] = mapped_column(
@@ -56,7 +65,10 @@ class SysUser(Base):
         comment="Update time",
     )
     del_flag: Mapped[int] = mapped_column(
-        SmallInteger, default=0, nullable=False, comment="Deletion flag;{useing: 0, in use. del: 1, deleted.}"
+        SmallInteger,
+        default=0,
+        nullable=False,
+        comment="Deletion flag;{useing: 0, in use. del: 1, deleted.}",
     )
 
     def __repr__(self) -> str:
