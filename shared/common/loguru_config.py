@@ -1,0 +1,260 @@
+"""
+日志配置模块
+
+基于Loguru提供统一的日志配置和管理功能
+"""
+
+import logging
+import os
+import sys
+from typing import Any, Optional
+
+from loguru import logger
+
+
+def configure_logger(
+    service_name: str = "service",
+    log_level: str = "INFO",
+    log_dir: str = "/app/logs",
+    rotation: str = "10 MB",
+    retention: str = "1 week",
+    compression: str = "zip",
+    enable_console: bool = True,
+    enable_file: bool = True,
+    enable_error_file: bool = True,
+    json_format: bool = False,
+) -> None:
+    """配置Loguru日志系统
+
+    Args:
+        service_name: 服务名称
+        log_level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+        log_dir: 日志目录
+        rotation: 日志轮转策略（如 "10 MB", "1 day"）
+        retention: 日志保留时间（如 "1 week", "30 days"）
+        compression: 日志压缩格式（如 "zip", "gz"）
+        enable_console: 是否启用控制台输出
+        enable_file: 是否启用文件输出
+        enable_error_file: 是否启用错误日志文件
+        json_format: 是否使用JSON格式
+    """
+    # 移除默认的日志处理器
+    logger.remove()
+
+    # 创建日志目录
+    if enable_file or enable_error_file:
+        from pathlib import Path
+
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+
+    # 启用stdlib拦截，让所有logging.getLogger()调用都通过loguru
+    # 使用loguru的intercept_stdlib()方法
+    # 清除所有现有的logging处理器，避免冲突
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # 配置loguru拦截标准logging
+    from typing import Any
+
+    # 构建处理器配置，不使用 cast() 避免类型错误
+    handlers_config: Any = [
+        {
+            "sink": sys.stdout,
+            "format": (
+                "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+                "<level>{level: <8}</level> | "
+                f"<cyan>{service_name}</cyan> | "
+                "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+                "<level>{message}</level>"
+            ),
+            "level": log_level,
+            "colorize": True,
+        }
+    ]
+
+    # 添加文件处理器（如果启用）
+    if enable_file:
+        handlers_config.append(
+            {
+                "sink": os.path.join(log_dir, f"{service_name}.log"),
+                "format": (
+                    "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+                    "{level: <8} | "
+                    f"{service_name} | "
+                    "{name}:{function}:{line} | "
+                    "{message}"
+                ),
+                "level": log_level,
+                "rotation": rotation,
+                "retention": retention,
+                "compression": compression,
+                "encoding": "utf-8",
+            }
+        )
+
+    # 添加错误文件处理器（如果启用）
+    if enable_error_file:
+        handlers_config.append(
+            {
+                "sink": os.path.join(log_dir, f"{service_name}_error.log"),
+                "format": (
+                    "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
+                    "{level: <8} | "
+                    f"{service_name} | "
+                    "{name}:{function}:{line} | "
+                    "{message}"
+                ),
+                "level": "ERROR",
+                "rotation": rotation,
+                "retention": "1 month",
+                "compression": compression,
+                "encoding": "utf-8",
+            }
+        )
+
+    # 使用类型安全的配置调用
+    logger.configure(handlers=handlers_config)
+
+    # 配置常用库的日志级别（uvicorn日志由各服务单独处理）
+    logging.getLogger("fastapi").setLevel(getattr(logging, log_level.upper(), logging.INFO))
+
+    logger.info(f"日志系统初始化完成 - 服务: {service_name}, 级别: {log_level}")
+
+
+def get_logger(name: Optional[str] = None) -> Any:
+    """获取日志记录器
+
+    Args:
+        name: 日志记录器名称（通常使用 __name__）
+
+    Returns:
+        配置好的日志记录器
+    """
+    if name:
+        return logger.bind(name=name)
+    return logger
+
+
+def log_function_call(func_name: str, args: tuple, kwargs: dict) -> None:
+    """记录函数调用
+
+    Args:
+        func_name: 函数名
+        args: 位置参数
+        kwargs: 关键字参数
+    """
+    logger.debug(
+        f"函数调用: {func_name}",
+        extra={"function": func_name, "args": str(args), "kwargs": str(kwargs)},
+    )
+
+
+def log_exception(exception: Exception, context: Optional[dict] = None) -> None:
+    """记录异常信息
+
+    Args:
+        exception: 异常对象
+        context: 上下文信息
+    """
+    logger.exception(f"异常发生: {type(exception).__name__}: {exception!s}", extra=context or {})
+
+
+def log_request(
+    method: str,
+    path: str,
+    status_code: int,
+    duration_ms: float,
+    user_id: Optional[str] = None,
+) -> None:
+    """记录HTTP请求
+
+    Args:
+        method: HTTP方法
+        path: 请求路径
+        status_code: 响应状态码
+        duration_ms: 请求耗时（毫秒）
+        user_id: 用户ID
+    """
+    logger.info(
+        f"HTTP请求: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
+        extra={
+            "method": method,
+            "path": path,
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+            "user_id": user_id,
+        },
+    )
+
+
+def log_database_query(query: str, duration_ms: float, rows_affected: Optional[int] = None) -> None:
+    """记录数据库查询
+
+    Args:
+        query: SQL查询语句
+        duration_ms: 查询耗时（毫秒）
+        rows_affected: 影响的行数
+    """
+    logger.debug(
+        f"数据库查询: {query[:100]}... ({duration_ms:.2f}ms)",
+        extra={
+            "query": query,
+            "duration_ms": duration_ms,
+            "rows_affected": rows_affected,
+        },
+    )
+
+
+def log_cache_operation(
+    operation: str,
+    key: str,
+    hit: Optional[bool] = None,
+    duration_ms: Optional[float] = None,
+) -> None:
+    """记录缓存操作
+
+    Args:
+        operation: 操作类型（get, set, delete）
+        key: 缓存键
+        hit: 是否命中（仅用于get操作）
+        duration_ms: 操作耗时（毫秒）
+    """
+    if hit is not None:
+        status = "命中" if hit else "未命中"
+        logger.debug(
+            f"缓存{operation}: {key} - {status}",
+            extra={
+                "operation": operation,
+                "key": key,
+                "hit": hit,
+                "duration_ms": duration_ms,
+            },
+        )
+    else:
+        logger.debug(
+            f"缓存{operation}: {key}",
+            extra={"operation": operation, "key": key, "duration_ms": duration_ms},
+        )
+
+
+def log_service_call(service_name: str, endpoint: str, method: str, status_code: int, duration_ms: float) -> None:
+    """记录服务间调用
+
+    Args:
+        service_name: 服务名称
+        endpoint: 端点路径
+        method: HTTP方法
+        status_code: 响应状态码
+        duration_ms: 调用耗时（毫秒）
+    """
+    logger.info(
+        f"服务调用: {service_name} {method} {endpoint} - {status_code} ({duration_ms:.2f}ms)",
+        extra={
+            "service_name": service_name,
+            "endpoint": endpoint,
+            "method": method,
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+        },
+    )

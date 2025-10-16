@@ -1,0 +1,102 @@
+# Pre-commit 钩子配置
+# 安装: pip install pre-commit
+# 启用: pre-commit install
+# 运行: pre-commit run --all-files
+
+repos:
+  # Ruff - 快速Python代码检查器（替代 Black + isort + Flake8）
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # 运行 Ruff 检查
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      
+      # 运行 Ruff 格式化（替代 Black）
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # MyPy - 静态类型检查
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-redis
+          - types-requests
+        args: [--config-file=mypy.ini]
+        exclude: ^(tests/|migrations/)
+
+  # 通用检查
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # 检查文件末尾是否有空行
+      - id: end-of-file-fixer
+        exclude: ^(\.idea/|\.vscode/)
+      
+      # 检查行尾空白字符
+      - id: trailing-whitespace
+        exclude: ^(\.idea/|\.vscode/)
+      
+      # 检查YAML文件语法
+      - id: check-yaml
+        args: [--unsafe]
+      
+      # 检查JSON文件语法
+      - id: check-json
+      
+      # 检查TOML文件语法
+      - id: check-toml
+      
+      # 检查是否有合并冲突标记
+      - id: check-merge-conflict
+      
+      # 检查是否有调试语句
+      - id: debug-statements
+      
+      # 检查大文件
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      
+      # 检查Python文件语法
+      - id: check-ast
+      
+      # 检查文件名是否包含非ASCII字符
+      - id: check-case-conflict
+      
+      # 检查是否有私钥
+      - id: detect-private-key
+
+  # 安全检查 - Bandit
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+        exclude: ^tests/
+
+# 全局配置
+default_language_version:
+  python: python3.8
+
+# 排除的文件和目录
+exclude: |
+  (?x)^(
+      \.git/|
+      \.mypy_cache/|
+      \.pytest_cache/|
+      \.ruff_cache/|
+      __pycache__/|
+      build/|
+      dist/|
+      \.venv/|
+      venv/|
+      \.eggs/|
+      .*\.egg-info/
+  )$
+
+# 失败时不自动修复
+fail_fast: false

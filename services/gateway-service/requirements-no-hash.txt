@@ -1,0 +1,50 @@
+# Intel EC Gateway Service Dependencies
+# 无哈希版本，用于 Docker 构建
+
+fastapi==0.116.1
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# 数据库
+sqlalchemy==2.0.35
+aiomysql==0.2.0
+asyncmy==0.2.9
+
+# 缓存
+redis==5.0.8
+hiredis==2.3.2
+
+# 认证
+python-jose[cryptography]==3.3.0
+***REMOVED***lib[bcrypt]==1.7.4
+bcrypt==4.2.0
+
+# 数据验证
+pydantic==2.10.6
+pydantic-settings==2.6.1
+email-validator==2.2.0
+
+# HTTP 客户端
+httpx==0.27.2
+
+# 服务发现
+nacos-sdk-python==0.1.7
+
+# 链路追踪
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+opentelemetry-instrumentation-redis==0.48b0
+opentelemetry-instrumentation-sqlalchemy==0.48b0
+opentelemetry-instrumentation-httpx==0.48b0
+opentelemetry-exporter-jaeger==1.21.0
+opentelemetry-exporter-otlp==1.27.0
+
+# 监控
+prometheus-client==0.21.0
+
+# 日志
+loguru==0.7.2
+
+# 配置
+python-dotenv==1.0.1

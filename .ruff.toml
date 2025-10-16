@@ -1,0 +1,192 @@
+# Ruff configuration for Intel EC microservices project
+# This is the global configuration file for code quality checks
+# Target Python version
+target-version = "py38"
+
+# Line length
+line-length = 120
+
+# Exclude directories and files
+exclude = [
+    "venv/",
+    "__pycache__",
+    "*.pyc",
+    "build/",
+    "dist/",
+    "*.egg-info/",
+    "infrastructure/",
+    "k8s/",
+    ".coverage",
+    "htmlcov/",
+    ".vscode/",
+    ".idea/",
+    "*.log",
+    "docs/",
+    "scripts/",
+    "monitoring/",
+    "Dockerfile*",
+    "docker-compose*.yml",
+]
+
+# Lint configuration
+[lint]
+# Enabled rules - comprehensive code quality checks
+select = [
+    # Pyflakes
+    "F",
+    # pycodestyle
+    "E", "W",
+    # isort
+    "I",
+    # pep8-naming
+    "N",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-comprehensions
+    "C4",
+    # flake8-debugger
+    "T10",
+    # flake8-print
+    "T20",
+    # flake8-builtins
+    "A",
+    # flake8-simplify
+    "SIM",
+    # flake8-pie
+    "PIE",
+    # flake8-return
+    "RET",
+    # flake8-bandit
+    "S",
+    # flake8-blind-except
+    "BLE",
+    # flake8-boolean-trap
+    "FBT",
+    # flake8-errmsg
+    "EM",
+    # flake8-executable
+    "EXE",
+    # Perflint (performance)
+    "PERF",
+    # Ruff-specific rules
+    "RUF",
+    # Pylint
+    "PL",
+]
+
+# Ignored rules - only ignore truly necessary ones
+ignore = [
+    # Whitespace before ':' (conflicts with black)
+    "E203",
+    # Line too long (we set 120, compatible with black)
+    "E501",
+    # module imported but unused (allowed in __init__.py)
+    "F401",
+    # assert_used (allowed in tests)
+    "S101",
+    # paramiko_calls (may be used in production)
+    "S601",
+    # Within an except clause, raise exceptions with raise ... from err
+    "B904",
+    # First argument of a method should be named self (Pydantic validators use cls)
+    "N805",
+    # Exception must have message (too strict)
+    "EM101",
+    # Exception message must be string (too strict)
+    "EM102",
+    # Boolean positional arg in function call (sometimes necessary)
+    "FBT003",
+    # Boolean typed arguments in function definition (reasonable for query parameters)
+    "FBT001",
+    # Global statement (reasonable for singleton pattern)
+    "PLW0603",
+    # Global variable not assigned (reasonable for cleanup functions)
+    "PLW0602",
+    # Too many arguments (reasonable for service methods)
+    "PLR0913",
+    # Too many statements (reasonable for lifecycle management)
+    "PLR0915",
+    # Too many branches (reasonable for complex business logic)
+    "PLR0912",
+    # Boolean default positional argument (reasonable for service configuration)
+    "FBT002",
+    # Hardcoded ***REMOVED***word string (reasonable for error codes and constants)
+    "S105",
+    # Magic value comparison (reasonable for HTTP status codes)
+    "PLR2004",
+    # Insecure hash function (MD5 reasonable for cache keys, not ***REMOVED***words)
+    "S324",
+    # Non-cryptographic random (reasonable for load balancing)
+    "S311",
+    # Hardcoded bind all interfaces (reasonable in containerized environments)
+    "S104",
+    # Request without timeout (handled at infrastructure level)
+    "S113",
+    # Possible SQL injection vector (safe for information_schema queries)
+    "S608",
+    # Do not catch blind exception: Exception (reasonable for API endpoints)
+    "BLE001",
+]
+
+# Per-file ignores
+[lint.per-file-ignores]
+# Allow lazy imports and broad exception handling in main.py 
+"**/main.py" = ["E402", "PLC0415", "BLE001"]
+# Allow lazy imports in dependencies.py and FastAPI Depends calls
+"**/dependencies.py" = ["E402", "B008", "PLC0415"]
+# Allow lazy imports in create_tables.py
+"**/create_tables.py" = ["E402", "PLC0415"]
+# Allow lazy imports in service files
+"**/services/**/*.py" = ["PLC0415"]
+# Allow lazy imports in middleware files
+"**/middleware/**/*.py" = ["PLC0415"]
+# Allow performance optimizations and lazy imports in monitoring files
+"**/monitoring/**/*.py" = ["PLC0415"]
+# Allow performance optimizations and lazy imports in config files
+"**/loguru_config.py" = ["PLC0415"]
+# Allow broad exception handling in infrastructure components
+"**/application.py" = ["BLE001", "PERF203"]
+"**/cache.py" = ["BLE001", "PERF203", "PERF401"]
+"**/database.py" = ["BLE001", "PERF203"]
+"**/security.py" = ["BLE001"]
+"**/nacos_config.py" = ["BLE001"]
+"**/jaeger.py" = ["BLE001"]
+"**/metrics.py" = ["BLE001"]
+"**/websocket_manager.py" = ["BLE001"]
+"**/load_balancer.py" = ["BLE001"]
+"**/proxy_service.py" = ["BLE001", "PERF403"]
+"**/exception_middleware.py" = ["BLE001"]
+# Allow imports in __init__.py files
+"__init__.py" = ["F401"]
+# Allow Pydantic validator naming convention (cls is standard for validators)
+"**/schemas/*.py" = ["N805"]
+# Allow asserts in test files
+"test_*.py" = ["S101"]
+# Allow asserts in conftest.py
+"conftest.py" = ["S101"]
+
+# Allow Chinese punctuation in comments and docstrings (全角标点在中文注释中是合理的)
+"**/*.py" = ["RUF001", "RUF002", "RUF003"]
+
+# Allow Depends() calls in FastAPI endpoints and lazy imports
+"**/endpoints/**/*.py" = ["B008", "PLC0415"]
+"**/api/**/*.py" = ["B008", "PLC0415"]
+
+# Auth Service specific ignores (合并自 services/auth-service/ruff.toml)
+# These rules are relaxed for auth-service to maintain compatibility with existing code
+"**/auth-service/**/*.py" = ["B904", "N805"]  # raise from err, Pydantic validator cls naming
+
+# Formatter configuration (compatible with Black)
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+
+# isort configuration
+[lint.isort]
+known-first-party = ["shared", "app"]
+force-sort-within-sections = true
+split-on-trailing-comma = true

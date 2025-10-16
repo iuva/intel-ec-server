@@ -1,0 +1,428 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json
+
+# Docker Compose 配置文件
+# Intel CW 微服务架构
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # MariaDB 10.11 数据库
+  # ==========================================
+  mariadb:
+    image: mariadb:10.11
+    container_name: intel-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb123}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      MARIADB_USER: ${MARIADB_USER:-intel_user}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+      MARIADB_CHARSET: utf8mb4
+      MARIADB_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - intel-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "healthcheck.sh",
+          "--connect",
+          "--innodb_initialized",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================
+  # Nacos 服务发现（使用内置数据库）
+  # ==========================================
+  nacos:
+    image: nacos/nacos-server:v2.2.0
+    container_name: intel-nacos
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      # 使用内置数据库（不依赖外部MySQL）
+      EMBEDDED_STORAGE: embedded
+      NACOS_AUTH_ENABLE: "true"
+      # Base64编码的32字节密钥（必须符合Nacos要求）
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:-VGhpc0lzQVNlY3JldEtleUZvck5hY29zQXV0aEF0TGVhc3QzMkJ5dGVz}
+      NACOS_AUTH_IDENTITY_KEY: nacos
+      NACOS_AUTH_IDENTITY_VALUE: nacos
+      JVM_XMS: 512m
+      JVM_XMX: 512m
+      JVM_XMN: 256m
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos_data:/home/nacos/data
+      - nacos_logs:/home/nacos/logs
+    networks:
+      - intel-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:8848/nacos/v1/console/health/readiness",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ==========================================
+  # Jaeger 分布式追踪
+  # ==========================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: intel-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_OTLP_GRPC_ENABLED: "true"
+      # 使用内存存储（无需权限配置，适合开发环境）
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: 10000
+      # 日志级别
+      LOG_LEVEL: info
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "6831:6831/udp" # Jaeger agent (UDP)
+      - "14268:14268" # Jaeger collector HTTP
+    networks:
+      - intel-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # Prometheus 监控
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: intel-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - intel-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================
+  # Grafana 可视化
+  # ==========================================
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: intel-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-***REMOVED***}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - intel-network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test:
+        ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================
+  # Gateway Service (API网关)
+  # ==========================================
+  gateway-service:
+    build:
+      context: .
+      dockerfile: services/gateway-service/Dockerfile
+    image: intel-cw-ms/gateway-service:latest
+    container_name: gateway-service
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: gateway-service
+      SERVICE_PORT: 8000
+      SERVICE_IP: gateway-service
+      # MariaDB配置（外部服务）
+      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
+      MARIADB_PORT: ${MARIADB_PORT:-3306}
+      MARIADB_USER: ${MARIADB_USER:-intel_user}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      # Redis配置（外部服务）
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 0
+      # Nacos配置
+      NACOS_SERVER_ADDR: http://nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
+      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
+      # Jaeger配置
+      JAEGER_ENDPOINT: http://jaeger:4318/v1/traces
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      # 应用配置
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    networks:
+      - intel-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # Auth Service (认证服务)
+  # ==========================================
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    image: intel-cw-ms/auth-service:latest
+    container_name: auth-service
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: auth-service
+      SERVICE_PORT: 8001
+      SERVICE_IP: auth-service
+      # MariaDB配置（外部服务）
+      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
+      MARIADB_PORT: ${MARIADB_PORT:-3306}
+      MARIADB_USER: ${MARIADB_USER:-intel_user}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      # Redis配置（外部服务）
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 1
+      # Nacos配置
+      NACOS_SERVER_ADDR: http://nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
+      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
+      # Jaeger配置
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      # JWT配置
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # 应用配置
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8001:8001"
+    networks:
+      - intel-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # Admin Service (管理服务)
+  # ==========================================
+  admin-service:
+    build:
+      context: .
+      dockerfile: services/admin-service/Dockerfile
+    image: intel-cw-ms/admin-service:latest
+    container_name: admin-service
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: admin-service
+      SERVICE_PORT: 8002
+      SERVICE_IP: admin-service
+      # MariaDB配置（外部服务）
+      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
+      MARIADB_PORT: ${MARIADB_PORT:-3306}
+      MARIADB_USER: ${MARIADB_USER:-intel_user}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      # Redis配置（外部服务）
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 2
+      # Nacos配置
+      NACOS_SERVER_ADDR: http://nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
+      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
+      # Jaeger配置
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      # 应用配置
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8002:8002"
+    networks:
+      - intel-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # Host Service (主机服务)
+  # ==========================================
+  host-service:
+    build:
+      context: .
+      dockerfile: services/host-service/Dockerfile
+    image: intel-cw-ms/host-service:latest
+    container_name: host-service
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: host-service
+      SERVICE_PORT: 8003
+      SERVICE_IP: host-service
+      # MariaDB配置（外部服务）
+      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
+      MARIADB_PORT: ${MARIADB_PORT:-3306}
+      MARIADB_USER: ${MARIADB_USER:-intel_user}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      # Redis配置（外部服务）
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 3
+      # Nacos配置
+      NACOS_SERVER_ADDR: http://nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
+      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
+      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
+      # Jaeger配置
+      JAEGER_AGENT_HOST: jaeger
+      JAEGER_AGENT_PORT: 6831
+      # 应用配置
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8003:8003"
+    networks:
+      - intel-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# ==========================================
+# 网络配置
+# ==========================================
+networks:
+  intel-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ==========================================
+# 数据卷配置
+# ==========================================
+volumes:
+  # MariaDB 和 Redis 使用容器服务，需要数据卷
+  mariadb_data:
+    driver: local
+  nacos_data:
+    driver: local
+  nacos_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

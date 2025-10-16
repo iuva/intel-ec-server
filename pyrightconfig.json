@@ -1,0 +1,72 @@
+{
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownLambdaType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownParameterType": false,
+  "reportMissingParameterType": false,
+  "reportInvalidTypeVarUse": true,
+  "reportCallInDefaultInitializer": false,
+  "reportSelfClsParameterName": true,
+  "reportImplicitStringConcatenation": true,
+  "reportUndefinedVariable": true,
+  "reportUnboundVariable": true,
+  "reportInvalidStubStatement": true,
+  "reportIncompleteStub": true,
+  "reportUnsupportedDunderAll": true,
+  "reportUnusedImport": true,
+  "pythonVersion": "3.8",
+  "pythonPlatform": "All",
+  "include": [
+    "services",
+    "shared"
+  ],
+  "exclude": [
+    "venv/",
+    "__pycache__",
+    "*.pyc",
+    "build/",
+    "dist/",
+    "*.egg-info/",
+    "infrastructure/",
+    "k8s/",
+    ".coverage",
+    "htmlcov/",
+    ".vscode/",
+    ".idea/",
+    "*.log",
+    "docs/",
+    "scripts/",
+    "monitoring/"
+  ],
+  "extraPaths": [".", ".."],
+  "executionEnvironments": [
+    {
+      "root": "services/gateway-service",
+      "pythonVersion": "3.8",
+      "extraPaths": ["../../", "../../../"]
+    },
+    {
+      "root": "services/auth-service",
+      "pythonVersion": "3.8",
+      "extraPaths": ["../../", "../../../"]
+    },
+    {
+      "root": "services/admin-service",
+      "pythonVersion": "3.8",
+      "extraPaths": ["../../", "../../../"]
+    },
+    {
+      "root": "services/host-service",
+      "pythonVersion": "3.8",
+      "extraPaths": ["../../", "../../../"]
+    }
+  ],
+  "reportMissingModuleSource": "warning",
+  "reportPrivateUsage": false,
+  "reportAttributeAccessIssue": false
+}

@@ -1,0 +1,3 @@
+# Marker file indicating that this package supports type checking
+# This file tells type checkers like mypy and pyright that this package
+# provides type information for its modules.

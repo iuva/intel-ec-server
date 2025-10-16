@@ -1,0 +1,66 @@
+[project]
+name = "intel-cw-ms"
+version = "1.0.0"
+description = "Intel EC 微服务架构项目"
+requires-python = ">=3.8.10,<3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.4",           # 代码检查、格式化、导入排序（替代 Black + isort + Flake8）
+    "mypy>=1.13.0",          # 静态类型检查
+    # "black>=24.10.0",      # ❌ 已移除，使用 Ruff Format 替代
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "types-requests>=2.32.0",
+]
+
+# Ruff配置已移至 .ruff.toml 文件
+# Ruff 已完全替代 Black、isort、Flake8
+# 运行检查: ruff check services/ shared/
+# 自动修复: ruff check --fix services/ shared/
+# 代码格式化: ruff format services/ shared/
+
+# ❌ [tool.black] 已移除，使用 Ruff Format 替代
+# Ruff Format 是 Black 兼容的格式化工具，速度提升 10-100 倍
+# 配置: line-length = 88, target-version = "py38"
+
+# MyPy配置已移至 mypy.ini 文件
+# 运行: mypy services/ shared/
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers --cov=services --cov=shared --cov-report=term-missing"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["services", "shared"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.bandit]
+# Bandit 安全检查配置
+exclude_dirs = [
+    "tests",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+]
+skips = [
+    "B101",  # assert_used - 测试中使用assert是合理的
+    "B601",  # paramiko_calls - 如果使用paramiko
+]

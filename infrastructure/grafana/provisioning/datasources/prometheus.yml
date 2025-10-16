@@ -1,0 +1,23 @@
+# Grafana 数据源配置
+# 自动配置 Prometheus 数据源
+# 
+# 注意: 这是 Grafana Provisioning 配置文件，不是 Prometheus 配置
+# 文档: https://grafana.com/docs/grafana/latest/administration/provisioning/#data-sources
+# yaml-language-server: $schema=https://grafana.com/docs/grafana/latest/administration/provisioning/
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    url: http://intel-prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      queryTimeout: 60s
+      incrementalQuerying: true
+      incrementalQueryOverlapWindow: 10m
