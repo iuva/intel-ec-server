@@ -16,7 +16,7 @@ try:
     from shared.config.nacos_config import NacosManager
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import ServiceUnavailableError
     from shared.common.loguru_config import get_logger
     from shared.config.nacos_config import NacosManager

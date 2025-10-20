@@ -19,7 +19,7 @@ try:
     from shared.common.response import ErrorResponse
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     import httpx
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
@@ -207,7 +207,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-            elif error_type == "connection_error":
+            if error_type == "connection_error":
                 logger.error(
                     "无法连接到认证服务，返回 503 错误",
                     extra={
@@ -228,7 +228,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-            elif error_type == "request_error":
+            if error_type == "request_error":
                 logger.error(
                     "认证服务请求错误，返回 502 错误",
                     extra={
@@ -424,17 +424,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                 },
                             )
                             return user_info
-                        else:
-                            logger.warning(
-                                "令牌验证失败 - 令牌未激活",
-                                extra={
-                                    "token_preview": token_preview,
-                                    "active": data.get("active"),
-                                    "request_path": request_path,
-                                    "request_method": request_method,
-                                    "reason": "token_inactive",
-                                },
-                            )
+                        logger.warning(
+                            "令牌验证失败 - 令牌未激活",
+                            extra={
+                                "token_preview": token_preview,
+                                "active": data.get("active"),
+                                "request_path": request_path,
+                                "request_method": request_method,
+                                "reason": "token_inactive",
+                            },
+                        )
                     else:
                         logger.warning(
                             "令牌验证失败 - Auth Service 返回错误码",

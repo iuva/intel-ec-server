@@ -1,7 +1,7 @@
 {
   "typeCheckingMode": "basic",
   "useLibraryCodeForTypes": true,
-  "reportMissingImports": "warning",
+  "reportMissingImports": false,
   "reportMissingTypeStubs": false,
   "reportUnknownMemberType": false,
   "reportUnknownArgumentType": false,

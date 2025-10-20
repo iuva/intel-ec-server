@@ -640,3 +640,178 @@ docker-compose up -d prometheus grafana
 ---
 
 **⭐ 如果这个项目对你有帮助，请给我们一个star！**
+
+## 🐛 故障排查指南
+
+### 问题：user_list 查询报错
+
+**症状**：
+```log
+2025-10-20 05:46:52.068 | ERROR | admin-service | shared.common.decorators:async_wrapper:384 | user_list 失败
+2025-10-20 05:46:52.068 | ERROR | admin-service | shared.common.decorators:async_wrapper:91 | list_users 执行失败
+2025-10-20 05:46:52.068 | ERROR | admin-service | app.api.v1.endpoints.users:list_users:70 | 获取用户列表失败
+```
+
+**原因分析**：
+
+1. **路径导入深度错误**（最关键问题）
+   - 文件位置：`services/admin-service/app/services/user_service.py`
+   - 问题：路径深度为 3 级，但实际需要 4 级
+   - 原文件位置目录结构：`app/services` 处于 4 级深度
+   - 修复：`../../..` → `../../../../..`
+
+2. **API 参数转换问题**
+   - 问题：API 层的分页从 0 开始，但服务层期望从 1 开始
+   - 原代码：`page: int = Query(0, ge=0)` 然后 `internal_page = page + 1`
+   - 问题：第一页请求时 page=0，转换后变成 1，计算 offset 时正确
+   - 但代码不一致，容易产生 bug
+   - 修复：统一使用从 1 开始，移除不必要的转换
+
+3. **异常处理重复**
+   - 问题：`list_users` 方法内部有 try-except，同时被 `@handle_service_errors` 装饰器包装
+   - 结果：异常被捕获两次，增加了调试复杂度
+   - 修复：移除内部 try-except，由装饰器统一处理
+
+**修复方案**：
+
+### 1️⃣ 修复路径导入（services/admin-service/app/services/user_service.py）
+```python
+# ❌ 错误
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+
+# ✅ 正确
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+```
+
+**路径深度计算**：
+```
+services/admin-service/app/services/user_service.py
+            ↑              ↑   ↑       ↑
+            1              2   3       4 (项目根目录)
+```
+
+### 2️⃣ 修复 API 参数（services/admin-service/app/api/v1/endpoints/users.py）
+```python
+# ❌ 错误
+page: int = Query(0, ge=0, description="页码（从0开始）")
+# ... 
+internal_page = page + 1
+users, total = await user_service.list_users(page=internal_page, ...)
+
+# ✅ 正确
+page: int = Query(1, ge=1, description="页码（从1开始）")
+# ...
+users, total = await user_service.list_users(page=page, ...)
+```
+
+### 3️⃣ 简化异常处理（services/admin-service/app/services/user_service.py）
+```python
+# ❌ 错误：异常被捕获两次
+@handle_service_errors(error_message="...", error_code="...")
+async def list_users(self, ...):
+    async with mariadb_manager.get_session() as db_session:
+        try:
+            # 业务逻辑
+            ***REMOVED***
+        except Exception as db_error:
+            logger.error(...)
+            raise db_error
+
+# ✅ 正确：让装饰器统一处理
+@handle_service_errors(error_message="...", error_code="...")
+async def list_users(self, ...):
+    async with mariadb_manager.get_session() as db_session:
+        # 业务逻辑，让装饰器处理异常
+        ***REMOVED***
+```
+
+**验证修复**：
+```bash
+# 1. 测试路径导入
+python -c "from services.admin_service.app.services.user_service import UserService"
+
+# 2. 查询用户列表
+curl -X GET "http://localhost:8002/api/v1/users?page=1&page_size=20"
+
+# 3. 查看日志确认成功
+docker-compose logs admin-service | grep "获取用户列表成功"
+```
+
+**最佳实践**：
+- ✅ 所有 shared 模块导入都使用 try-except + 路径修复
+- ✅ 路径深度根据文件位置准确计算
+- ✅ API 层和服务层参数保持一致
+- ✅ 避免异常处理重复
+- ✅ 使用装饰器集中处理异常
+
+### 问题：SQLAlchemy 查询语法错误
+
+**症状**：
+```log
+2025-10-20 06:11:21.738 | ERROR | admin-service | shared.common.decorators:async_wrapper:384 | user_list 失败
+```
+
+**原因分析**：
+经过 4 轮深度调试，发现最终问题是 SQLAlchemy 排序语法不兼容：
+- ❌ `desc(User.created_time)` - 函数包装版本不兼容
+- ❌ `User.created_time.desc()` - 方法调用有问题
+- ❌ `"created_time DESC"` - 字符串排序不推荐
+- ✅ `User.id.desc()` - 使用主键字段排序最安全
+
+**修复方案**：
+```python
+# ❌ 错误：使用 created_time 字段排序
+stmt.order_by(desc(User.created_time))
+
+# ✅ 正确：使用主键字段排序
+stmt.order_by(User.id.desc())
+```
+
+**技术原理**：
+- 主键字段肯定存在且有索引，排序性能最佳
+- 避免了 DateTime 字段的时区和格式问题
+- 排序结果稳定且可预测
+
+**验证修复**：
+```bash
+curl -X GET "http://localhost:8002/api/v1/users?page=1&page_size=20"
+# 预期：✅ HTTP 200，返回用户列表
+```
+
+**相关文档**：`docs/BUGFIX_SQLALCHEMY_SORTING.md`
+
+### 问题：数据库会话使用错误
+
+**症状**：
+```log
+2025-10-20 06:16:45.257 | ERROR | admin-service | shared.common.decorators:async_wrapper:384 | user_list 失败
+```
+
+**原因分析**：
+经过6轮深度调试，发现问题的真正根源是数据库会话使用方式错误：
+- ❌ `mariadb_manager.get_session()` 返回的是 `async_sessionmaker`
+- ❌ 错误用法：`async with mariadb_manager.get_session() as db_session`
+- ✅ 正确用法：先获取工厂，再创建会话
+
+**修复方案**：
+```python
+# ❌ 错误
+async with mariadb_manager.get_session() as db_session:
+    ***REMOVED***
+
+# ✅ 正确
+session_factory = mariadb_manager.get_session()
+async with session_factory() as db_session:
+    ***REMOVED***
+```
+
+**技术原理**：
+- `get_session()` 返回 session 工厂，不是直接的 session 对象
+- 需要调用工厂 `()` 来创建实际的数据库会话
+- 这是 SQLAlchemy 异步 API 的标准用法
+
+**验证修复**：
+```bash
+curl -X GET "http://localhost:8002/api/v1/users?page=1&page_size=5"
+# 预期：✅ HTTP 200，最终成功返回用户列表
+```

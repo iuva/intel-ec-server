@@ -20,7 +20,7 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
     from shared.common.security import verify_token

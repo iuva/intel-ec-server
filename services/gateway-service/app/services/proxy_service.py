@@ -15,14 +15,14 @@ try:
     from shared.common.loguru_config import get_logger
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
     from shared.common.http_client import AsyncHTTPClient
     from shared.common.loguru_config import get_logger
 
 # 导入 httpx 异常类
 try:
-    from httpx import HTTPStatusError, ConnectError, TimeoutException, NetworkError
+    from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
 except ImportError:
     # 兼容不同版本的 httpx
     from httpx import ConnectError, TimeoutException
@@ -287,7 +287,7 @@ class ProxyService:
                 error_code=error_code,
                 details=error_details,
             )
-        elif 500 <= status_code < 600:
+        if 500 <= status_code < 600:
             # 服务器错误（5xx）- 后端服务内部错误，转换为网关错误
             raise ServiceUnavailableError(
                 f"后端服务内部错误: {service_name}",
@@ -297,14 +297,13 @@ class ProxyService:
                     "backend_error_code": error_code,
                 },
             )
-        else:
-            # 其他状态码，透传给客户端
-            raise BusinessError(
-                message=error_message,
-                code=status_code,
-                error_code=error_code,
-                details=error_details,
-            )
+        # 其他状态码，透传给客户端
+        raise BusinessError(
+            message=error_message,
+            code=status_code,
+            error_code=error_code,
+            details=error_details,
+        )
 
     async def health_check_service(self, service_name: str) -> bool:
         """检查服务健康状态
