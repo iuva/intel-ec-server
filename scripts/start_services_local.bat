@@ -29,8 +29,22 @@ if exist "%ENV_FILE%" (
         set "%%a"
     )
     echo [OK] 环境变量加载成功
+    
+    REM 本地开发特定配置：设置服务主机地址为 localhost
+    echo [INFO] 配置本地服务连接...
+    set "SERVICE_HOST_AUTH=127.0.0.1"
+    set "SERVICE_HOST_ADMIN=127.0.0.1"
+    set "SERVICE_HOST_HOST=127.0.0.1"
+    echo [OK] 本地服务地址已配置
+    echo   - SERVICE_HOST_AUTH: !SERVICE_HOST_AUTH!
+    echo   - SERVICE_HOST_ADMIN: !SERVICE_HOST_ADMIN!
+    echo   - SERVICE_HOST_HOST: !SERVICE_HOST_HOST!
 ) else (
     echo [WARNING] .env 文件不存在，使用默认环境变量
+    REM 即使没有 .env，也要设置本地开发配置
+    set "SERVICE_HOST_AUTH=127.0.0.1"
+    set "SERVICE_HOST_ADMIN=127.0.0.1"
+    set "SERVICE_HOST_HOST=127.0.0.1"
 )
 goto :EOF
 

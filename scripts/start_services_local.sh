@@ -43,7 +43,17 @@ load_env_file() {
             export "$key"="$value"
         done < "$ENV_FILE"
         
+        # 本地开发特定配置：设置服务主机地址为 localhost
+        # Docker 启动时使用默认值（auth-service, admin-service, host-service）
+        echo -e "${BLUE}🔧 配置本地服务连接...${NC}"
+        export SERVICE_HOST_AUTH="127.0.0.1"
+        export SERVICE_HOST_ADMIN="127.0.0.1"
+        export SERVICE_HOST_HOST="127.0.0.1"
+        
         echo -e "${GREEN}✓ 环境变量加载成功${NC}"
+        echo -e "${GREEN}  • SERVICE_HOST_AUTH: $SERVICE_HOST_AUTH${NC}"
+        echo -e "${GREEN}  • SERVICE_HOST_ADMIN: $SERVICE_HOST_ADMIN${NC}"
+        echo -e "${GREEN}  • SERVICE_HOST_HOST: $SERVICE_HOST_HOST${NC}"
     else
         echo -e "${YELLOW}⚠️  警告：.env 文件不存在，使用默认环境变量${NC}"
     fi

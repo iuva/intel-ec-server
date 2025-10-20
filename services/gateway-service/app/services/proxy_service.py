@@ -45,13 +45,29 @@ class ProxyService:
     """
 
     def __init__(self):
-        """初始化代理服务"""
+        """初始化代理服务
+        
+        支持两种启动方式：
+        1. Docker: 使用服务名（auth-service, admin-service, host-service）
+        2. 本地开发: 使用 localhost + 端口
+        """
+        import os
+        
+        # 检测运行环境
+        service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
+        service_host_admin = os.getenv("SERVICE_HOST_ADMIN", "admin-service")
+        service_host_host = os.getenv("SERVICE_HOST_HOST", "host-service")
+        
         # 服务路由映射表 - 基础URL
+        # Docker 环境：使用服务名 (auth-service, admin-service, host-service)
+        # 本地开发：使用 localhost:port (127.0.0.1:8001, 127.0.0.1:8002, 127.0.0.1:8003)
         self.service_routes = {
-            "auth": "http://auth-service:8001",
-            "admin": "http://admin-service:8002",
-            "host": "http://host-service:8003",
+            "auth": f"http://{service_host_auth}:8001",
+            "admin": f"http://{service_host_admin}:8002",
+            "host": f"http://{service_host_host}:8003",
         }
+
+        logger.info(f"服务路由配置: {self.service_routes}")
 
         # 使用共享的 HTTP 客户端
         self.http_client = AsyncHTTPClient(
