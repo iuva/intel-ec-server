@@ -201,8 +201,9 @@ services:
       # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
       # gRPC 避免了 protobuf over HTTP 的兼容性问题
       JAEGER_ENDPOINT: jaeger:4317
-      JAEGER_AGENT_HOST: jaeger
-      JAEGER_AGENT_PORT: 6831
+      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
+      # 原因：这些环境变量会被 OpenTelemetry 自动检测
+      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
       # 应用配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
@@ -263,8 +264,12 @@ services:
       NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
       NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
       # Jaeger配置
-      JAEGER_AGENT_HOST: jaeger
-      JAEGER_AGENT_PORT: 6831
+      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+      # gRPC 避免了 protobuf over HTTP 的兼容性问题
+      JAEGER_ENDPOINT: jaeger:4317
+      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
+      # 原因：这些环境变量会被 OpenTelemetry 自动检测
+      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
       # JWT配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       JWT_ALGORITHM: HS256
@@ -323,8 +328,12 @@ services:
       NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
       NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
       # Jaeger配置
-      JAEGER_AGENT_HOST: jaeger
-      JAEGER_AGENT_PORT: 6831
+      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+      # gRPC 避免了 protobuf over HTTP 的兼容性问题
+      JAEGER_ENDPOINT: jaeger:4317
+      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
+      # 原因：这些环境变量会被 OpenTelemetry 自动检测
+      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
       # 应用配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
@@ -379,8 +388,12 @@ services:
       NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
       NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
       # Jaeger配置
-      JAEGER_AGENT_HOST: jaeger
-      JAEGER_AGENT_PORT: 6831
+      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+      # gRPC 避免了 protobuf over HTTP 的兼容性问题
+      JAEGER_ENDPOINT: jaeger:4317
+      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
+      # 原因：这些环境变量会被 OpenTelemetry 自动检测
+      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
       # 应用配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
