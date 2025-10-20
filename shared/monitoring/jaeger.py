@@ -63,10 +63,20 @@ class JaegerManager:
             self.tracer_provider = TracerProvider(resource=resource)
 
             # 创建OTLP导出器
-            otlp_exporter = OTLPSpanExporter(endpoint=jaeger_endpoint, timeout=10)
+            # ✅ 使用 HTTP 格式而不是 protobuf（兼容性更好）
+            otlp_exporter = OTLPSpanExporter(
+                endpoint=jaeger_endpoint,
+                timeout=10,
+                headers=(("Content-Type", "application/json"),),  # 强制使用 JSON 格式
+            )
 
             # 创建批处理span处理器
-            span_processor = BatchSpanProcessor(otlp_exporter)
+            span_processor = BatchSpanProcessor(
+                otlp_exporter,
+                max_queue_size=2048,
+                max_export_batch_size=512,
+                schedule_delay_millis=5000,  # 5秒批量导出
+            )
             self.tracer_provider.add_span_processor(span_processor)
 
             # 设置全局追踪器提供者
