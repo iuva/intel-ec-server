@@ -66,7 +66,7 @@ except ImportError:
     from shared.common.i18n import parse_accept_language, t
 =======
     # 如果导入失败，添加项目根目录到 Python 路径
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
     from shared.common.http_client import AsyncHTTPClient
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
@@ -84,7 +84,7 @@ except ImportError:
 =======
 # 导入 httpx 异常类
 try:
-    from httpx import HTTPStatusError, ConnectError, TimeoutException, NetworkError
+    from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
 except ImportError:
     # 兼容不同版本的 httpx
     from httpx import ConnectError, TimeoutException
@@ -1110,7 +1110,7 @@ class ProxyService:
                 error_code=error_code,
                 details=error_details,
             )
-        elif 500 <= status_code < 600:
+        if 500 <= status_code < 600:
             # 服务器错误（5xx）- 后端服务内部错误，转换为网关错误
             raise ServiceUnavailableError(
                 f"后端服务内部错误: {service_name}",

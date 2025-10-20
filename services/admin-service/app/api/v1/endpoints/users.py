@@ -33,7 +33,7 @@ router = APIRouter()
 @router.get("", response_model=SuccessResponse, status_code=HTTP_200_OK)
 async def list_users(
     request: Request,
-    page: int = Query(0, ge=0, description="页码（从0开始）"),
+    page: int = Query(1, ge=1, description="页码（从1开始）"),
     page_size: int = Query(20, ge=1, le=100, description="每页大小"),
     search: Optional[str] = Query(None, description="搜索关键词（用户账号、用户名称或邮箱）"),
     is_active: Optional[bool] = Query(None, description="是否激活状态过滤"),
@@ -43,7 +43,7 @@ async def list_users(
 
     Args:
         request: 请求对象
-        page: 页码（从0开始）
+        page: 页码（从1开始）
         page_size: 每页大小（1-100）
         search: 搜索关键词（用户账号、用户名称或邮箱）
         is_active: 是否激活状态过滤
@@ -53,10 +53,8 @@ async def list_users(
         用户列表和分页信息
     """
     try:
-        # 转换为从1开始的页码（内部使用）
-        internal_page = page + 1
         users, total = await user_service.list_users(
-            page=internal_page, page_size=page_size, search=search, is_active=is_active
+            page=page, page_size=page_size, search=search, is_active=is_active
         )
 
         # 构建响应数据

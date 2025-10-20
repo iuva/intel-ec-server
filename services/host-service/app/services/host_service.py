@@ -19,7 +19,7 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
@@ -45,7 +45,8 @@ class HostService:
         Raises:
             BusinessError: 主机已存在
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             # 检查主机是否已存在
             stmt = select(Host).where(Host.host_id == host_data.host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
@@ -101,7 +102,8 @@ class HostService:
         Returns:
             主机对象，如果不存在则返回 None
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
@@ -144,7 +146,8 @@ class HostService:
         Returns:
             (主机列表, 总数)
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             # 构建查询条件
             conditions = [Host.is_deleted.is_(False)]
             if status:
@@ -189,7 +192,8 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
@@ -241,7 +245,8 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
@@ -292,7 +297,8 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
@@ -338,7 +344,8 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        async with mariadb_manager.get_session() as session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)

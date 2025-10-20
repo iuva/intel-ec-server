@@ -6,7 +6,7 @@
 
 from typing import List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
@@ -23,7 +23,7 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
@@ -270,87 +270,39 @@ class UserService:
         Returns:
             (用户列表, 总数)
         """
-        async with mariadb_manager.get_session() as db_session:
-            try:
-                # 构建查询
-                stmt = select(User).where(User.del_flag == 0)
+        logger.info("开始执行用户列表查询", extra={"page": page, "page_size": page_size})
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as db_session:
 
-                # 搜索过滤（处理可能为 NULL 的字段）
-                if search:
-                    stmt = stmt.where(
-                        or_(
-                            and_(User.user_account.isnot(None), User.user_account.like(f"%{search}%")),
-                            and_(User.user_name.isnot(None), User.user_name.like(f"%{search}%")),
-                            and_(User.email.isnot(None), User.email.like(f"%{search}%")),
-                        )
-                    )
+            # 获取总数
+            count_stmt = select(func.count(User.id)).where(User.del_flag == 0)
+            count_result = await db_session.execute(count_stmt)
+            total = count_result.scalar() or 0
+            logger.info(f"总数查询成功: {total}")
 
-                # 状态过滤
-                if is_active is not None:
-                    state_flag = 0 if is_active else 1  # 0=启用, 1=停用
-                    stmt = stmt.where(User.state_flag == state_flag)
+            # 主查询 - 只做最基本的查询
+            offset_val = (page - 1) * page_size
+            stmt = select(User).where(User.del_flag == 0).order_by(User.id.desc()).offset(offset_val).limit(page_size)
 
-                # 获取总数
-                count_stmt = select(func.count(User.id)).where(User.del_flag == 0)
+            logger.info(f"主查询SQL: {stmt}")
 
-                # 如果有搜索条件，也要应用到count查询
-                if search:
-                    count_stmt = count_stmt.where(
-                        or_(
-                            and_(User.user_account.isnot(None), User.user_account.like(f"%{search}%")),
-                            and_(User.user_name.isnot(None), User.user_name.like(f"%{search}%")),
-                            and_(User.email.isnot(None), User.email.like(f"%{search}%")),
-                        )
-                    )
+            # 执行查询
+            result = await db_session.execute(stmt)
+            users = result.scalars().all()
 
-                # 如果有状态过滤，也要应用到count查询
-                if is_active is not None:
-                    state_flag = 0 if is_active else 1  # 0=启用, 1=停用
-                    count_stmt = count_stmt.where(User.state_flag == state_flag)
-
-                result = await db_session.execute(count_stmt)
-                total = result.scalar() or 0  # 如果没有记录返回0
-
-                # 分页
-                offset = (page - 1) * page_size
-                stmt = stmt.order_by(User.created_time.desc()).offset(offset).limit(page_size)
-
-                # 执行查询
-                result = await db_session.execute(stmt)
-                users = result.scalars().all()
-
-                logger.info(
-                    "获取用户列表成功",
-                    extra={
-                        "operation": "list_users",
-                        "page": page,
-                        "page_size": page_size,
-                        "total": total,
-                        "search": search,
-                        "is_active": is_active,
-                    },
-                )
-                return list(users), total
-
-            except Exception as db_error:
-                # 记录详细的数据库错误信息
-                logger.error(
-                    "数据库查询失败",
-                    extra={
-                        "operation": "list_users",
-                        "page": page,
-                        "page_size": page_size,
-                        "search": search,
-                        "is_active": is_active,
-                        "error_type": type(db_error).__name__,
-                        "error_message": str(db_error),
-                        "db_error_details": repr(db_error),
-                    },
-                    exc_info=True,  # 打印完整的堆栈跟踪
-                )
-
-                # 重新抛出异常，让装饰器处理
-                raise db_error
+            logger.info(
+                "获取用户列表成功",
+                extra={
+                    "operation": "list_users",
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "user_count": len(users),
+                    "search": search,
+                    "is_active": is_active,
+                },
+            )
+            return list(users), total
 
 
 # 全局服务实例

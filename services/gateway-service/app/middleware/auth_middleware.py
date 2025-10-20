@@ -435,7 +435,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-            elif error_type == "connection_error":
+            if error_type == "connection_error":
                 logger.error(
                     "无法连接到认证服务，返回 503 错误",
                     extra={
@@ -456,7 +456,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-            elif error_type == "request_error":
+            if error_type == "request_error":
                 logger.error(
                     "认证服务请求错误，返回 502 错误",
                     extra={
