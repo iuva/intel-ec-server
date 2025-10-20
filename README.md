@@ -153,6 +153,204 @@ uvicorn services.admin-service.app.main:app --host 0.0.0.0 --port 8002 --reload
 uvicorn services.host-service.app.main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
+### ✨ 本地启动优化方案 B（推荐）
+
+如果你频繁进行本地开发，建议配置 Shell 环境变量，使启动命令更简洁：
+
+#### 第1步：配置环境变量
+
+```bash
+# 编辑你的 Shell 配置文件
+nano ~/.zshrc  # 如果使用 zsh（macOS 默认）
+# 或
+nano ~/.bashrc # 如果使用 bash
+
+# 在文件末尾添加以下行：
+export PYTHONPATH="/Users/chiyeming/KiroProjects/intel_ec_ms:$PYTHONPATH"
+
+# 注意：请将路径替换为你的实际项目路径
+```
+
+#### 第2步：重载配置
+
+```bash
+source ~/.zshrc  # 如果使用 zsh
+# 或
+source ~/.bashrc # 如果使用 bash
+```
+
+#### 第3步：验证配置
+
+```bash
+echo $PYTHONPATH
+# 应该看到你的项目路径
+```
+
+#### 第4步：简化启动命令
+
+配置完成后，现在可以用更简洁的方式启动服务：
+
+```bash
+# 在项目根目录
+cd /Users/chiyeming/KiroProjects/intel_ec_ms
+
+# 创建独立的终端窗口或标签页并激活虚拟环境
+source venv/bin/activate
+
+# 终端1：启动 Auth Service
+cd services/auth-service && uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+# 终端2：启动 Admin Service
+cd services/admin-service && uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
+
+# 终端3：启动 Host Service
+cd services/host-service && uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+
+# 终端4：启动 Gateway Service
+cd services/gateway-service && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**✅ 优点**：
+- 设置一次，永久有效
+- 启动命令简洁清晰
+- 符合开发者习惯
+- 不影响 Docker（Docker 有自己的 PYTHONPATH）
+
+**⚠️ 注意事项**：
+- 每个新终端都需要 `source venv/bin/activate` 激活虚拟环境
+- PYTHONPATH 配置不会对 Docker 容器产生影响
+- 如果修改了 Shell 配置文件，需要重新打开终端或运行 `source` 命令使其生效
+
+### ✨ 本地启动优化方案 C（最推荐 - 使用启动脚本）
+
+推荐使用改进的启动脚本，自动加载 `.env` 文件，支持 Windows/Mac/Linux 跨平台：
+
+#### Mac/Linux 用户
+
+**第1步：赋予脚本执行权限**
+
+```bash
+chmod +x scripts/start_services_local.sh
+```
+
+**第2步：检查环境配置**
+
+```bash
+./scripts/start_services_local.sh check
+```
+
+这会自动检查：
+- ✅ Python 版本
+- ✅ 虚拟环境
+- ✅ .env 文件
+- ✅ Docker 容器状态
+- ✅ MariaDB 连接
+
+**第3步：查看所有启动命令**
+
+```bash
+./scripts/start_services_local.sh all
+```
+
+**第4步：启动微服务**
+
+在不同的终端中分别运行（按顺序）：
+
+```bash
+# 终端1
+./scripts/start_services_local.sh auth
+
+# 终端2
+./scripts/start_services_local.sh admin
+
+# 终端3
+./scripts/start_services_local.sh host
+
+# 终端4（最后启动）
+./scripts/start_services_local.sh gateway
+```
+
+#### Windows 用户
+
+**第1步：检查环境配置**
+
+在命令行中运行：
+
+```cmd
+scripts\start_services_local.bat check
+```
+
+**第2步：查看所有启动命令**
+
+```cmd
+scripts\start_services_local.bat all
+```
+
+**第3步：启动微服务**
+
+在不同的命令行窗口中分别运行（按顺序）：
+
+```cmd
+REM 窗口1
+scripts\start_services_local.bat auth
+
+REM 窗口2
+scripts\start_services_local.bat admin
+
+REM 窗口3
+scripts\start_services_local.bat host
+
+REM 窗口4（最后启动）
+scripts\start_services_local.bat gateway
+```
+
+#### .env 文件配置
+
+如果需要自定义环境变量，创建 `.env` 文件：
+
+```bash
+# 复制示例文件（如果存在）
+cp .env.example .env
+
+# 编辑 .env 文件
+nano .env
+```
+
+示例 `.env` 文件内容：
+
+```bash
+# Python 环境
+PYTHONPATH=/Users/chiyeming/KiroProjects/intel_ec_ms
+
+# MariaDB 配置
+MARIADB_HOST=127.0.0.1
+MARIADB_PORT=3306
+MARIADB_USER=intel_user
+MARIADB_PASSWORD=intel_***REMOVED***
+
+# 应用配置
+ENVIRONMENT=development
+LOG_LEVEL=INFO
+```
+
+**✅ 优点**：
+- 自动加载 `.env` 环境变量
+- 自动检查环境（Python、虚拟环境、Docker）
+- 支持 Windows、Mac、Linux 跨平台
+- 清晰的启动指引和诊断功能
+- 一键检查环境配置
+
+**⚠️ 注意事项**：
+- 脚本会自动加载 `.env` 文件中的环境变量
+- `.env` 文件是可选的，不存在时使用默认值
+- 每个新终端/命令行窗口都需要单独运行脚本
+- 脚本会自动激活虚拟环境和设置 PYTHONPATH
+
+**✅ 已修复的问题**：
+- ✅ **工作目录问题**：脚本会自动进入服务目录后启动，解决相对导入 `from app.xxx import xxx` 的模块路径问题
+- ✅ **环境变量问题**：自动从 `.env` 文件加载环境变量，支持数据库、缓存、Nacos 等配置
+- ✅ **跨平台支持**：同时提供 Bash 和 Batch 脚本，支持 Mac/Linux/Windows
+
 ## 📊 服务端口
 
 ### 微服务
@@ -815,3 +1013,169 @@ async with session_factory() as db_session:
 curl -X GET "http://localhost:8002/api/v1/users?page=1&page_size=5"
 # 预期：✅ HTTP 200，最终成功返回用户列表
 ```
+
+## 🚀 本地启动脚本常见问题
+
+### 问题：ModuleNotFoundError: No module named 'app'
+
+**症状**：
+```
+ModuleNotFoundError: No module named 'app'
+```
+
+**原因**：
+服务代码中使用了相对导入 `from app.api.v1 import api_router`，但工作目录不在服务目录中。
+
+**解决方案**：
+✅ **已自动修复**！启动脚本已经更新，会自动进入服务目录后启动：
+```bash
+# 脚本会自动执行以下操作：
+cd services/auth-service
+python -m uvicorn app.main:app --port 8001 --reload
+```
+
+如果仍然遇到此错误，请确认：
+1. 脚本已赋予执行权限：`chmod +x scripts/start_services_local.sh`
+2. 虚拟环境已激活
+3. PYTHONPATH 已正确设置
+
+### 问题：无法连接到 MariaDB
+
+**症状**：
+```
+pymysql.err.OperationalError: (2013, 'Lost connection to MySQL server during query')
+```
+
+**原因**：
+- MariaDB 容器未启动或不健康
+- 连接参数配置错误
+
+**解决方案**：
+```bash
+# 1. 检查 MariaDB 容器状态
+docker-compose ps | grep mariadb
+
+# 2. 如果未运行，启动基础设施
+docker-compose up -d mariadb redis nacos
+
+# 3. 等待 MariaDB 完全启动（约 30 秒）
+sleep 30
+
+# 4. 使用脚本检查连接
+./scripts/start_services_local.sh check
+
+# 5. 重新启动微服务
+./scripts/start_services_local.sh auth
+```
+
+### 问题：权限拒绝错误
+
+**症状**：
+```bash
+bash: ./scripts/start_services_local.sh: Permission denied
+```
+
+**原因**：
+脚本没有执行权限。
+
+**解决方案**：
+```bash
+# 赋予执行权限
+chmod +x scripts/start_services_local.sh
+
+# 对 Windows 脚本无需此操作，直接运行即可
+scripts\start_services_local.bat auth
+```
+
+### 问题：环境变量未加载
+
+**症状**：
+```
+MariaDB 连接失败：使用的是错误的主机/端口
+```
+
+**原因**：
+`.env` 文件不存在或配置错误。
+
+**解决方案**：
+```bash
+# 1. 复制示例文件
+cp .env.example .env
+
+# 2. 编辑 .env，设置正确的配置
+nano .env
+
+# 3. 检查关键变量
+MARIADB_HOST=127.0.0.1  # 本地开发
+MARIADB_PORT=3306
+MARIADB_USER=intel_user
+MARIADB_PASSWORD=intel_***REMOVED***
+
+# 4. 使用脚本检查是否加载成功
+./scripts/start_services_local.sh check
+```
+
+### 问题：Nacos 连接失败
+
+**症状**：
+```
+gateway 启动时提示 "All servers are not available"
+```
+
+**原因**：
+Nacos 服务未启动，或其他微服务未先启动。
+
+**解决方案**：
+```bash
+# 1. 确保所有基础设施已启动
+docker-compose up -d
+
+# 2. 按正确顺序启动微服务
+# 第一步：启动 Auth Service
+./scripts/start_services_local.sh auth
+
+# 第二步：启动 Admin Service（新终端）
+./scripts/start_services_local.sh admin
+
+# 第三步：启动 Host Service（新终端）
+./scripts/start_services_local.sh host
+
+# 第四步：启动 Gateway Service（新终端）
+./scripts/start_services_local.sh gateway
+
+# ⚠️ 重要：必须按此顺序启动，Gateway 必须最后启动
+```
+
+### 问题：虚拟环境激活失败
+
+**症状**：
+```
+❌ 错误：虚拟环境不存在
+```
+
+**原因**：
+虚拟环境还未创建。
+
+**解决方案**：
+```bash
+# 1. 创建虚拟环境
+python3.8 -m venv venv
+
+# 2. 激活虚拟环境（Mac/Linux）
+source venv/bin/activate
+
+# 3. 或激活虚拟环境（Windows）
+venv\Scripts\activate.bat
+
+# 4. 安装依赖
+pip install -r requirements.txt
+
+# 5. 现在可以使用启动脚本了
+./scripts/start_services_local.sh auth
+```
+
+## 📞 获取帮助
+
+- 📖 查看完整文档：`docs/` 目录
+- 🐛 提交 Issue：GitHub Issues
+- 💬 讨论问题：GitHub Discussions

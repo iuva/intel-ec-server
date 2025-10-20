@@ -340,6 +340,22 @@ class AuthService:
                 host_rec = result.scalar_one_or_none()
 
                 if host_rec:
+                    # 检查设备是否被停用
+                    if host_rec.appr_state == 0:
+                        logger.warning(
+                            "设备已停用",
+                            extra={
+                                "operation": "device_login",
+                                "mg_id": login_data.mg_id,
+                                "host_rec_id": host_rec.id,
+                            },
+                        )
+                        raise BusinessError(
+                            message="设备已停用，无法登录",
+                            error_code="DEVICE_DISABLED",
+                            code=403,
+                        )
+
                     # mg_id 存在，更新 host_ip、username 和 updated_by
                     host_rec.host_ip = login_data.host_ip
                     host_rec.host_acct = login_data.username
@@ -363,7 +379,7 @@ class AuthService:
                         mg_id=login_data.mg_id,
                         host_ip=login_data.host_ip,
                         host_acct=login_data.username,
-                        appr_state=1,  # 启用
+                        appr_state=2,  # 新增
                         host_state=5,  # 待激活
                         subm_time=datetime.now(timezone.utc),
                         created_by=current_user_id,  # 设置创建人
