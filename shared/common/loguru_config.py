@@ -158,8 +158,15 @@ def configure_logger(
 
         try:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
+<<<<<<< HEAD
         except (PermissionError, OSError):
             # If no permission to create log directory, use console output and log warning
+=======
+        except (PermissionError, OSError) as e:
+            # 如果没有权限创建日志目录，使用控制台输出并记录警告
+            print(f"警告: 无法创建日志目录 {log_dir}: {e}")
+            print("将仅使用控制台日志输出")
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             enable_file = False
             enable_error_file = False
 

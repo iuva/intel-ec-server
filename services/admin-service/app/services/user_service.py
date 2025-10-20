@@ -6,7 +6,7 @@
 
 from typing import List, Optional, Tuple
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
@@ -14,6 +14,7 @@ from app.schemas.user import UserCreate, UserUpdate
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.database import mariadb_manager
+    from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.common.security import get_***REMOVED***word_hash
@@ -24,6 +25,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from shared.common.database import mariadb_manager
+    from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.common.security import get_***REMOVED***word_hash
@@ -34,6 +36,8 @@ logger = get_logger(__name__)
 class UserService:
     """用户管理服务类"""
 
+    @handle_service_errors(error_message="创建用户失败", error_code="USER_CREATE_FAILED")
+    @monitor_operation(operation_name="user_create", record_duration=True)
     async def create_user(self, user_data: UserCreate) -> User:
         """创建用户
 
@@ -44,24 +48,23 @@ class UserService:
             创建的用户对象
 
         Raises:
-            BusinessError: 用户名或邮箱已存在
+            BusinessError: 用户账号或邮箱已存在
         """
-        try:
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as db_session:
-                # 检查用户名是否已存在
-                stmt = select(User).where(User.username == user_data.username, User.is_deleted.is_(False))
-                result = await db_session.execute(stmt)
-                existing_user = result.scalar_one_or_none()
+        async with mariadb_manager.get_session() as db_session:
+            # 检查用户账号是否已存在
+            stmt = select(User).where(User.user_account == user_data.username, User.del_flag == 0)
+            result = await db_session.execute(stmt)
+            existing_user = result.scalar_one_or_none()
 
-                if existing_user:
-                    raise BusinessError(
-                        message=f"用户名已存在: {user_data.username}",
-                        error_code="USER_ALREADY_EXISTS",
-                    )
+            if existing_user:
+                raise BusinessError(
+                    message=f"用户账号已存在: {user_data.username}",
+                    error_code="USER_ALREADY_EXISTS",
+                )
 
-                # 检查邮箱是否已存在
-                stmt = select(User).where(User.email == user_data.email, User.is_deleted.is_(False))
+            # 检查邮箱是否已存在
+            if user_data.email:
+                stmt = select(User).where(User.email == user_data.email, User.del_flag == 0)
                 result = await db_session.execute(stmt)
                 existing_user = result.scalar_one_or_none()
 
@@ -71,29 +74,39 @@ class UserService:
                         error_code="EMAIL_ALREADY_EXISTS",
                     )
 
-                # 创建新用户
-                ***REMOVED***word_hash = get_***REMOVED***word_hash(user_data.***REMOVED***word)
-                new_user = User(
-                    username=user_data.username,
-                    email=user_data.email,
-                    ***REMOVED***word_hash=***REMOVED***word_hash,
-                    is_active=user_data.is_active,
-                    is_superuser=user_data.is_superuser,
-                )
+            # 创建新用户
+            ***REMOVED***word_hash = get_***REMOVED***word_hash(user_data.***REMOVED***word)
 
-                db_session.add(new_user)
-                await db_session.commit()
-                await db_session.refresh(new_user)
+            # 生成新的用户ID（使用雪花算法或其他ID生成策略）
+            import time
 
-                logger.info(f"用户创建成功: {new_user.username} (ID: {new_user.id})")
-                return new_user
+            new_user_id = int(time.time() * 1000)  # 简单的时间戳ID，生产环境应使用雪花算法
 
-        except BusinessError:
-            raise
-        except (ValueError, TypeError, OSError) as e:
-            logger.error(f"创建用户失败: {e!s}")
-            raise BusinessError(message="创建用户失败", error_code="USER_CREATE_FAILED")
+            new_user = User(
+                id=new_user_id,
+                user_account=user_data.username,
+                user_name=user_data.username,  # 默认用户名称与账号相同
+                email=user_data.email,
+                user_pwd=***REMOVED***word_hash,
+                state_flag=0 if user_data.is_active else 1,  # 0=启用, 1=停用
+                del_flag=0,  # 0=使用中
+            )
 
+            db_session.add(new_user)
+            await db_session.commit()
+            await db_session.refresh(new_user)
+
+            logger.info(
+                "用户创建成功",
+                extra={
+                    "operation": "create_user",
+                    "user_id": new_user.id,
+                    "user_account": new_user.user_account,
+                },
+            )
+            return new_user
+
+    @handle_service_errors(error_message="获取用户失败", error_code="USER_GET_FAILED")
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
         """根据ID获取用户
 
@@ -103,23 +116,33 @@ class UserService:
         Returns:
             用户对象，如果不存在则返回None
         """
-        try:
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as db_session:
-                stmt = select(User).where(User.id == user_id, User.is_deleted.is_(False))
-                result = await db_session.execute(stmt)
-                user = result.scalar_one_or_none()
+        async with mariadb_manager.get_session() as db_session:
+            stmt = select(User).where(User.id == user_id, User.del_flag == 0)
+            result = await db_session.execute(stmt)
+            user = result.scalar_one_or_none()
 
-                if not user:
-                    logger.warning(f"用户不存在: ID={user_id}")
-                    return None
+            if not user:
+                logger.warning(
+                    "用户不存在",
+                    extra={
+                        "operation": "get_user_by_id",
+                        "user_id": user_id,
+                    },
+                )
+                return None
 
-                return user
+            logger.info(
+                "获取用户成功",
+                extra={
+                    "operation": "get_user_by_id",
+                    "user_id": user_id,
+                    "user_account": user.user_account,
+                },
+            )
+            return user
 
-        except (ValueError, TypeError, OSError) as e:
-            logger.error(f"获取用户失败: {e!s}")
-            raise BusinessError(message="获取用户失败", error_code="USER_GET_FAILED")
-
+    @handle_service_errors(error_message="更新用户失败", error_code="USER_UPDATE_FAILED")
+    @monitor_operation(operation_name="user_update", record_duration=True)
     async def update_user(self, user_id: int, user_data: UserUpdate) -> Optional[User]:
         """更新用户信息
 
@@ -133,56 +156,61 @@ class UserService:
         Raises:
             BusinessError: 邮箱已被其他用户使用
         """
-        try:
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as db_session:
-                # 获取用户
-                stmt = select(User).where(User.id == user_id, User.is_deleted.is_(False))
+        async with mariadb_manager.get_session() as db_session:
+            # 获取用户
+            stmt = select(User).where(User.id == user_id, User.del_flag == 0)
+            result = await db_session.execute(stmt)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                logger.warning(
+                    "用户不存在",
+                    extra={
+                        "operation": "update_user",
+                        "user_id": user_id,
+                    },
+                )
+                return None
+
+            # 检查邮箱是否被其他用户使用
+            if user_data.email and user_data.email != user.email:
+                stmt = select(User).where(
+                    User.email == user_data.email,
+                    User.id != user_id,
+                    User.del_flag == 0,
+                )
                 result = await db_session.execute(stmt)
-                user = result.scalar_one_or_none()
+                existing_user = result.scalar_one_or_none()
 
-                if not user:
-                    logger.warning(f"用户不存在: ID={user_id}")
-                    return None
-
-                # 检查邮箱是否被其他用户使用
-                if user_data.email and user_data.email != user.email:
-                    stmt = select(User).where(
-                        User.email == user_data.email,
-                        User.id != user_id,
-                        User.is_deleted.is_(False),
+                if existing_user:
+                    raise BusinessError(
+                        message=f"邮箱已被使用: {user_data.email}",
+                        error_code="EMAIL_ALREADY_EXISTS",
                     )
-                    result = await db_session.execute(stmt)
-                    existing_user = result.scalar_one_or_none()
 
-                    if existing_user:
-                        raise BusinessError(
-                            message=f"邮箱已被使用: {user_data.email}",
-                            error_code="EMAIL_ALREADY_EXISTS",
-                        )
+            # 更新用户信息
+            if user_data.email is not None:
+                user.email = user_data.email
+            if user_data.***REMOVED***word is not None:
+                user.user_pwd = get_***REMOVED***word_hash(user_data.***REMOVED***word)
+            if user_data.is_active is not None:
+                user.state_flag = 0 if user_data.is_active else 1  # 0=启用, 1=停用
 
-                # 更新用户信息
-                if user_data.email is not None:
-                    user.email = user_data.email
-                if user_data.***REMOVED***word is not None:
-                    user.***REMOVED***word_hash = get_***REMOVED***word_hash(user_data.***REMOVED***word)
-                if user_data.is_active is not None:
-                    user.is_active = user_data.is_active
-                if user_data.is_superuser is not None:
-                    user.is_superuser = user_data.is_superuser
+            await db_session.commit()
+            await db_session.refresh(user)
 
-                await db_session.commit()
-                await db_session.refresh(user)
+            logger.info(
+                "用户更新成功",
+                extra={
+                    "operation": "update_user",
+                    "user_id": user.id,
+                    "user_account": user.user_account,
+                },
+            )
+            return user
 
-                logger.info(f"用户更新成功: {user.username} (ID: {user.id})")
-                return user
-
-        except BusinessError:
-            raise
-        except (ValueError, TypeError, OSError) as e:
-            logger.error(f"更新用户失败: {e!s}")
-            raise BusinessError(message="更新用户失败", error_code="USER_UPDATE_FAILED")
-
+    @handle_service_errors(error_message="删除用户失败", error_code="USER_DELETE_FAILED")
+    @monitor_operation(operation_name="user_delete", record_duration=True)
     async def delete_user(self, user_id: int) -> bool:
         """删除用户（软删除）
 
@@ -192,29 +220,38 @@ class UserService:
         Returns:
             是否删除成功
         """
-        try:
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as db_session:
-                # 获取用户
-                stmt = select(User).where(User.id == user_id, User.is_deleted.is_(False))
-                result = await db_session.execute(stmt)
-                user = result.scalar_one_or_none()
+        async with mariadb_manager.get_session() as db_session:
+            # 获取用户
+            stmt = select(User).where(User.id == user_id, User.del_flag == 0)
+            result = await db_session.execute(stmt)
+            user = result.scalar_one_or_none()
 
-                if not user:
-                    logger.warning(f"用户不存在: ID={user_id}")
-                    return False
+            if not user:
+                logger.warning(
+                    "用户不存在",
+                    extra={
+                        "operation": "delete_user",
+                        "user_id": user_id,
+                    },
+                )
+                return False
 
-                # 软删除
-                user.is_deleted = True
-                await db_session.commit()
+            # 软删除
+            user.del_flag = 1  # 1=删除
+            await db_session.commit()
 
-                logger.info(f"用户删除成功: {user.username} (ID: {user.id})")
-                return True
+            logger.info(
+                "用户删除成功",
+                extra={
+                    "operation": "delete_user",
+                    "user_id": user.id,
+                    "user_account": user.user_account,
+                },
+            )
+            return True
 
-        except (ValueError, TypeError, OSError) as e:
-            logger.error(f"删除用户失败: {e!s}")
-            raise BusinessError(message="删除用户失败", error_code="USER_DELETE_FAILED")
-
+    @handle_service_errors(error_message="获取用户列表失败", error_code="USER_LIST_FAILED")
+    @monitor_operation(operation_name="user_list", record_duration=True)
     async def list_users(
         self,
         page: int = 1,
@@ -227,50 +264,93 @@ class UserService:
         Args:
             page: 页码（从1开始）
             page_size: 每页大小
-            search: 搜索关键词（用户名或邮箱）
+            search: 搜索关键词（用户账号、用户名称或邮箱）
             is_active: 是否激活状态过滤
 
         Returns:
             (用户列表, 总数)
         """
-        try:
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as db_session:
+        async with mariadb_manager.get_session() as db_session:
+            try:
                 # 构建查询
-                stmt = select(User).where(User.is_deleted.is_(False))
+                stmt = select(User).where(User.del_flag == 0)
 
-                # 搜索过滤
+                # 搜索过滤（处理可能为 NULL 的字段）
                 if search:
                     stmt = stmt.where(
                         or_(
-                            User.username.like(f"%{search}%"),
-                            User.email.like(f"%{search}%"),
+                            and_(User.user_account.isnot(None), User.user_account.like(f"%{search}%")),
+                            and_(User.user_name.isnot(None), User.user_name.like(f"%{search}%")),
+                            and_(User.email.isnot(None), User.email.like(f"%{search}%")),
                         )
                     )
 
                 # 状态过滤
                 if is_active is not None:
-                    stmt = stmt.where(User.is_active == is_active)
+                    state_flag = 0 if is_active else 1  # 0=启用, 1=停用
+                    stmt = stmt.where(User.state_flag == state_flag)
 
                 # 获取总数
-                count_stmt = select(func.count()).select_from(stmt.subquery())
+                count_stmt = select(func.count(User.id)).where(User.del_flag == 0)
+
+                # 如果有搜索条件，也要应用到count查询
+                if search:
+                    count_stmt = count_stmt.where(
+                        or_(
+                            and_(User.user_account.isnot(None), User.user_account.like(f"%{search}%")),
+                            and_(User.user_name.isnot(None), User.user_name.like(f"%{search}%")),
+                            and_(User.email.isnot(None), User.email.like(f"%{search}%")),
+                        )
+                    )
+
+                # 如果有状态过滤，也要应用到count查询
+                if is_active is not None:
+                    state_flag = 0 if is_active else 1  # 0=启用, 1=停用
+                    count_stmt = count_stmt.where(User.state_flag == state_flag)
+
                 result = await db_session.execute(count_stmt)
-                total = result.scalar_one()
+                total = result.scalar() or 0  # 如果没有记录返回0
 
                 # 分页
                 offset = (page - 1) * page_size
-                stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(page_size)
+                stmt = stmt.order_by(User.created_time.desc()).offset(offset).limit(page_size)
 
                 # 执行查询
                 result = await db_session.execute(stmt)
                 users = result.scalars().all()
 
-                logger.info(f"获取用户列表成功: page={page}, page_size={page_size}, total={total}")
+                logger.info(
+                    "获取用户列表成功",
+                    extra={
+                        "operation": "list_users",
+                        "page": page,
+                        "page_size": page_size,
+                        "total": total,
+                        "search": search,
+                        "is_active": is_active,
+                    },
+                )
                 return list(users), total
 
-        except (ValueError, TypeError, OSError) as e:
-            logger.error(f"获取用户列表失败: {e!s}")
-            raise BusinessError(message="获取用户列表失败", error_code="USER_LIST_FAILED")
+            except Exception as db_error:
+                # 记录详细的数据库错误信息
+                logger.error(
+                    "数据库查询失败",
+                    extra={
+                        "operation": "list_users",
+                        "page": page,
+                        "page_size": page_size,
+                        "search": search,
+                        "is_active": is_active,
+                        "error_type": type(db_error).__name__,
+                        "error_message": str(db_error),
+                        "db_error_details": repr(db_error),
+                    },
+                    exc_info=True,  # 打印完整的堆栈跟踪
+                )
+
+                # 重新抛出异常，让装饰器处理
+                raise db_error
 
 
 # 全局服务实例

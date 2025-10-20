@@ -2,10 +2,15 @@
 
 ## Overview
 
+<<<<<<< HEAD
 Auth Service is the authentication service in Intel EC microservice architecture, providing user authentication, device authentication, JWT token management, and other functions.
+=======
+Auth Service 是 Intel EC 微服务架构中的认证服务，提供用户认证、设备认证、JWT令牌管理等功能。
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ## Features
 
+<<<<<<< HEAD
 - ✅ Administrator login authentication (traditional way)
 - ✅ Device login authentication (traditional way)
 - ✅ JWT token generation and validation
@@ -14,6 +19,16 @@ Auth Service is the authentication service in Intel EC microservice architecture
 - ✅ Health checks
 - ✅ Prometheus monitoring metrics
 - ✅ Jaeger distributed tracing
+=======
+- ✅ 管理员登录认证（传统方式）
+- ✅ 设备登录认证（传统方式）
+- ✅ JWT 令牌生成和验证
+- ✅ 令牌刷新机制
+- ✅ 用户注销（令牌黑名单）
+- ✅ 健康检查
+- ✅ Prometheus 监控指标
+- ✅ Jaeger 分布式追踪
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ## Tech Stack
 
@@ -55,11 +70,19 @@ auth-service/
 
 ### Authentication Related
 
+<<<<<<< HEAD
 - `POST /api/v1/auth/admin/login` - Admin login
 - `POST /api/v1/auth/device/login` - Device login
 - `POST /api/v1/auth/refresh` - Refresh access token
 - `POST /api/v1/auth/introspect` - Validate token
 - `POST /api/v1/auth/logout` - User logout
+=======
+- `POST /api/v1/auth/admin/login` - 管理员登录
+- `POST /api/v1/auth/device/login` - 设备登录
+- `POST /api/v1/auth/refresh` - 刷新访问令牌
+- `POST /api/v1/auth/introspect` - 验证令牌
+- `POST /api/v1/auth/logout` - 用户注销
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ### System Endpoints
 
@@ -70,10 +93,45 @@ auth-service/
 
 ## Database Tables
 
+<<<<<<< HEAD
 ### sys_user Table (Administrators)
+=======
+### sys_user 表（管理员）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键ID |
+| user_name | VARCHAR(32) | 用户名称 |
+| user_account | VARCHAR(32) | 登录账号 |
+| user_pwd | VARCHAR(128) | 登录密码（bcrypt加密） |
+| user_avatar | VARCHAR(32) | 用户头像 |
+| email | VARCHAR(32) | 邮箱 |
+| state_flag | SMALLINT | 账号状态（0:启用, 1:停用） |
+| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+### host_rec 表（设备）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键ID |
+| mg_id | VARCHAR(128) | 唯一引导ID |
+| host_ip | VARCHAR(32) | IP地址 |
+| host_acct | VARCHAR(32) | 主机账号 |
+| appr_state | SMALLINT | 审批状态 |
+| host_state | SMALLINT | 主机状态 |
+| subm_time | DATETIME | 申报时间 |
+| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+### user_sessions 表（会话管理）
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 | Field | Type | Description |
 |------|------|------|
+<<<<<<< HEAD
 | id | BIGINT | Primary key ID |
 | user_name | VARCHAR(32) | User name |
 | user_account | VARCHAR(32) | Login account |
@@ -101,6 +159,18 @@ auth-service/
 | updated_by | BIGINT | Updated by (current logged-in user ID, automatically obtained from token) |
 | updated_time | DATETIME | Update time |
 | del_flag | SMALLINT | Deletion flag (0: in use, 1: deleted) |
+=======
+| id | INT | 主键ID |
+| entity_id | INT | 实体ID（用户或设备ID） |
+| entity_type | VARCHAR(50) | 实体类型（admin_user/device） |
+| session_id | VARCHAR(255) | 会话ID（唯一） |
+| access_token | TEXT | 访问令牌 |
+| refresh_token | TEXT | 刷新令牌 |
+| client_ip | VARCHAR(45) | 客户端IP |
+| expires_at | DATETIME | 过期时间 |
+| created_at | DATETIME | 创建时间 |
+| is_deleted | BOOLEAN | 是否已删除 |
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ### user_sessions Table (Session Management)
 
@@ -267,7 +337,11 @@ docker run -d \
 
 ## API Usage Examples
 
+<<<<<<< HEAD
 ### Administrator Login
+=======
+### 管理员登录
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ```bash
 curl -X POST http://localhost:8001/api/v1/auth/admin/login \
@@ -286,6 +360,35 @@ Response:
   "message": "Login successful",
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+<<<<<<< HEAD
+=======
+    "token_type": "bearer",
+    "expires_in": 1800
+  }
+}
+```
+
+### 设备登录
+
+```bash
+curl -X POST http://localhost:8001/api/v1/auth/device/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mg_id": "device-12345",
+    "host_ip": "192.168.1.100",
+    "username": "root"
+  }'
+```
+
+响应：
+
+```json
+{
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
     "token_type": "bearer",
     "expires_in": 86400
   }
@@ -317,3 +420,95 @@ Response:
   }
 }
 ```
+<<<<<<< HEAD
+=======
+
+### 用户注销
+
+```bash
+curl -X POST http://localhost:8001/api/v1/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
+```
+
+## 监控和健康检查
+
+### 健康检查
+
+```bash
+curl http://localhost:8001/health
+```
+
+### Prometheus 指标
+
+```bash
+curl http://localhost:8001/metrics
+```
+
+## 开发指南
+
+### 添加新的认证方式
+
+1. 在 `app/schemas/auth.py` 中定义新的请求/响应模式
+2. 在 `app/services/auth_service.py` 中实现业务逻辑
+3. 在 `app/api/v1/endpoints/auth.py` 中添加新的端点
+4. 更新 API 文档
+
+### 代码质量检查
+
+```bash
+# Ruff 检查
+ruff check services/auth-service/
+
+# MyPy 类型检查
+mypy services/auth-service/
+
+# Black 格式化
+black services/auth-service/
+```
+
+## 故障排查
+
+### 数据库连接失败
+
+1. 检查 MariaDB 服务是否运行
+2. 验证 `MARIADB_URL` 环境变量配置
+3. 检查数据库用户权限
+
+### Redis 连接失败
+
+1. 检查 Redis 服务是否运行
+2. 验证 `REDIS_URL` 环境变量配置
+3. 检查 Redis 网络连接
+
+### Nacos 注册失败
+
+1. 检查 Nacos 服务是否运行
+2. 验证 `NACOS_SERVER_ADDR` 配置
+3. 检查服务 IP 和端口配置
+
+## 相关文档
+
+- [项目总体规范](../../.cursor/rules/project-overview.mdc)
+- [微服务架构规范](../../.cursor/rules/microservice-architecture.mdc)
+- [API 设计规范](../../.cursor/rules/api-design-standards.mdc)
+- [认证安全规范](../../.cursor/rules/auth-security.mdc)
+
+## 更新历史
+
+- **2025-10-17**: 重构认证方式，移除 OAuth 2.0
+  - 实现传统登录方式
+  - 添加管理员登录接口（使用 sys_user 表）
+  - 添加设备登录接口（使用 host_rec 表）
+  - 移除 OAuth 2.0 相关代码
+  - 简化认证流程
+
+- **2025-01-29**: 初始版本，实现基础认证功能
+  - 用户登录认证
+  - JWT 令牌管理
+  - 令牌刷新和验证
+  - 用户注销
+  - 健康检查和监控
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)

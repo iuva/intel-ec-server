@@ -1,12 +1,13 @@
 """
 用户数据模型
 
-定义用户表结构和字段
+定义用户表结构和字段（对应 sys_user 表）
 """
 
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import BigInteger, DateTime, SmallInteger, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入
@@ -22,35 +23,44 @@ except ImportError:
 
 
 class User(Base):
-    """用户模型"""
+    """用户模型（对应 sys_user 表）"""
 
-    __tablename__ = "users"
+    __tablename__ = "sys_user"
 
     # 主键
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="主键ID")
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False, comment="主键")
 
     # 基础字段
-    username: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True, comment="用户名")
-    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True, comment="邮箱")
-    ***REMOVED***word_hash: Mapped[str] = mapped_column(String(255), nullable=False, comment="密码哈希")
+    user_name: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="用户名称")
+    user_account: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="登录账号")
+    user_pwd: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, comment="登录密码")
+    user_avatar: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="用户头像")
+    email: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="邮箱")
 
     # 状态字段
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, comment="是否激活")
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否超级用户")
-
-    # 时间字段
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
+    state_flag: Mapped[int] = mapped_column(
+        SmallInteger, default=0, nullable=False, comment="账号状态;{enable_flag: 0, 启用. disable_flag: 1, 停用.}"
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=func.now(),
-        onupdate=func.now(),
+
+    # 审计字段
+    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="创建人")
+    created_time: Mapped[datetime] = mapped_column(
+        DateTime, default=func.current_timestamp(), nullable=False, comment="创建时间"
+    )
+    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="更新人")
+    updated_time: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
         nullable=False,
         comment="更新时间",
     )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否已删除")
+
+    # 删除标识
+    del_flag: Mapped[int] = mapped_column(
+        SmallInteger, default=0, nullable=False, comment="删除标识;{useing: 0, 使用中. del: 1, 删除.}"
+    )
 
     def __repr__(self) -> str:
         """字符串表示"""
-        return f"<User(id={self.id}, username={self.username}, email={self.email})>"
+        return f"<User(id={self.id}, user_account={self.user_account}, user_name={self.user_name})>"

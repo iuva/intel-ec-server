@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Union
 
 # Use try-except to handle path imports
 try:
+<<<<<<< HEAD
     from fastapi import APIRouter, Depends, Path, Request, Response, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
@@ -26,10 +27,19 @@ try:
         ValidationError,
     )
     from shared.common.i18n import parse_accept_language, t
+=======
+    from fastapi import APIRouter, Depends, HTTPException, Request
+    from fastapi.responses import JSONResponse
+    from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
+
+    from app.services.proxy_service import ProxyService, get_proxy_service
+    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
     from shared.common.websocket_auth import verify_token_string
 except ImportError:
+<<<<<<< HEAD
     # If import fails, add project root directory to Python path
     sys.path.insert(
         0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
@@ -49,6 +59,16 @@ except ImportError:
         ValidationError,
     )
     from shared.common.i18n import parse_accept_language, t
+=======
+    # 如果导入失败，添加项目根目录到 Python 路径
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from fastapi import APIRouter, Depends, HTTPException, Request
+    from fastapi.responses import JSONResponse
+    from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
+
+    from app.services.proxy_service import ProxyService, get_proxy_service
+    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
     from shared.common.websocket_auth import verify_token_string
@@ -442,11 +462,17 @@ SERVICE_SHORT_NAMES = {
     operation_id="proxy_service_request",
 )
 async def proxy_request(
+<<<<<<< HEAD
     service_name: str = Path(..., description="Service name (e.g., auth, host, admin)"),
     subpath: str = Path(
         ..., description="Subpath (full path forwarded to backend service)"
     ),
     request: Request = ...,
+=======
+    service_name: str,
+    subpath: str,
+    request: Request,
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Any:
     """Generic proxy endpoint
@@ -454,10 +480,17 @@ async def proxy_request(
     Forwards request to specified backend microservice
 
     Args:
+<<<<<<< HEAD
         service_name: Service name (e.g., auth-service, host-service)
         subpath: Subpath
         request: Request object
         proxy_service: Proxy service instance
+=======
+        service_name: 服务名称（如 auth-service, admin-service）
+        subpath: 子路径
+        request: 请求对象
+        proxy_service: 代理服务实例
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
     Returns:
         Backend service response
@@ -533,6 +566,7 @@ async def proxy_request(
         # Remove headers that may cause conflicts
         headers.pop("host", None)
 
+<<<<<<< HEAD
         # Handle Content-Type header
         if raw_body is not None:
             # If using raw request body, ensure Content-Type is application/json
@@ -542,17 +576,32 @@ async def proxy_request(
                     "Added Content-Type for raw request body: application/json"
                 )
             # Remove Content-Length header
+=======
+        # 处理Content-Type头
+        if raw_body is not None:
+            # 如果使用原始请求体，确保Content-Type为application/json
+            if "content-type" not in [k.lower() for k in headers]:
+                headers["Content-Type"] = "application/json"
+                logger.debug("为原始请求体添加Content-Type: application/json")
+            # 移除Content-Length头部
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             content_length_keys = [k for k in headers if k.lower() == "content-length"]
             for key in content_length_keys:
                 del headers[key]
                 logger.debug("Removed Content-Length header", extra={"header_key": key})
 
+<<<<<<< HEAD
         # ✅ Add user information to request headers (get from request.state.user)
         user_info = getattr(request.state, "user", None)
 
         # ✅ Enhanced logging: record user information status (for diagnosis)
         logger.debug(
             "Checking user information status",
+=======
+        # 记录请求日志
+        logger.info(
+            f"代理请求: {method} /{service_name}/{subpath}",
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             extra={
                 "has_user_info": user_info is not None,
                 "user_info_type": type(user_info).__name__ if user_info else None,
@@ -566,6 +615,7 @@ async def proxy_request(
                 "service_name": service_name,
                 "subpath": subpath,
                 "method": method,
+<<<<<<< HEAD
             },
         )
 
@@ -590,6 +640,15 @@ async def proxy_request(
                         ),
                     },
                 )
+=======
+                "path": subpath,
+                "user": getattr(request.state, "user", None),
+            },
+        )
+
+        # 准备调用forward_request
+        logger.info(f"准备转发请求: service_name={service_name}, subpath={subpath}, has_raw_body={raw_body is not None}")
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
                 # ✅ Return 401 error instead of skipping header setting
                 locale = _get_locale_from_request(request)
@@ -712,9 +771,15 @@ async def proxy_request(
         raise e
 
     except BusinessError as e:
+<<<<<<< HEAD
         # Pass through backend service business errors (4xx status codes)
         logger.warning(
             "Passing through backend service business error",
+=======
+        # 透传后端服务的业务错误（4xx状态码）
+        logger.warning(
+            f"透传后端服务业务错误: {service_name}",
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             extra={
                 "service_name": service_name,
                 "error_message": e.message,
@@ -722,6 +787,21 @@ async def proxy_request(
                 "status_code": e.code,
                 "error_details": e.details,
             },
+<<<<<<< HEAD
+=======
+        )
+        raise e
+
+    except ServiceUnavailableError as e:
+        # 后端服务不可用错误（503状态码）
+        logger.error(
+            f"后端服务不可用: {service_name}",
+            extra={
+                "service_name": service_name,
+                "error_message": e.message,
+                "error_details": e.details,
+            },
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
         )
         raise e
 
@@ -736,6 +816,7 @@ async def proxy_request(
             exc_info=True,
         )
 
+<<<<<<< HEAD
         locale = _get_locale_from_request(request)
         return _create_error_response(
             request=request,
@@ -743,6 +824,18 @@ async def proxy_request(
             message=t("error.gateway.internal_error", locale=locale),
             error_code="GATEWAY_ERROR",
             message_key="error.gateway.internal_error",
+=======
+        # 直接返回JSONResponse，避免HTTPException的detail包装
+        error_response = ErrorResponse(
+            code=HTTP_500_INTERNAL_SERVER_ERROR,
+            message="网关内部错误",
+            error_code="GATEWAY_ERROR",
+        )
+
+        return JSONResponse(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            content=error_response.model_dump(),
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
         )
 
 
@@ -796,6 +889,7 @@ async def check_service_health(
         )
 
     except ServiceNotFoundError as e:
+<<<<<<< HEAD
         # Return JSONResponse directly to avoid HTTPException's detail wrapping
         error_response = ErrorResponse(
             code=e.code,  # Use business error code
@@ -806,6 +900,17 @@ async def check_service_health(
 
         return JSONResponse(
             status_code=e.http_status_code,  # Use exception-defined HTTP status code (400)
+=======
+        # 直接返回JSONResponse，避免HTTPException的detail包装
+        error_response = ErrorResponse(
+            code=HTTP_404_NOT_FOUND,
+            message=e.message,
+            error_code=e.error_code,
+        )
+
+        return JSONResponse(
+            status_code=HTTP_404_NOT_FOUND,
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             content=error_response.model_dump(),
         )
 
@@ -824,6 +929,10 @@ async def catch_all_handler(
     This route handler catches all requests that are not matched by other routes,
     and returns a unified 404 error response format that conforms to project specifications.
     """
+<<<<<<< HEAD
+=======
+    from shared.common.response import ErrorResponse
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
     logger.warning(
         "Route not found",

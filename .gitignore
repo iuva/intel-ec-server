@@ -31,7 +31,10 @@ ENV/
 .idea/
 .cursor/
 .kiro/
+<<<<<<< HEAD
 .agent/
+=======
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 *.swp
 *.swo
 *~

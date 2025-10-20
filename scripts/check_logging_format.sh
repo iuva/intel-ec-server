@@ -104,11 +104,19 @@ echo ""
 echo -e "${YELLOW}检查 5: 查找可能包含敏感信息的日志${NC}"
 echo "----------------------------------------"
 
+<<<<<<< HEAD
 SENSITIVE_LOGS=$(grep -rn 'logger\.\(info\|debug\|warning\|error\).*\(***REMOVED***word\|secret\|token\|key\)' services/ shared/ 2>/dev/null | \
     grep -v "\.pyc" | \
     grep -v "__pycache__" | \
     grep -v "\.git" | \
     grep -v "***REMOVED***word_hash" | \
+=======
+SENSITIVE_LOGS=$(grep -rn 'logger\.\(info\|debug\|warning\|error\).*\(***REMOVED***word\|secret\|token\|key\)' services/ shared/ 2>/dev/null | \
+    grep -v "\.pyc" | \
+    grep -v "__pycache__" | \
+    grep -v "\.git" | \
+    grep -v "***REMOVED***word_hash" | \
+>>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
     grep -v "secret_key" | \
     grep -v "JWT_SECRET_KEY" | \
     grep -v "# " || true)
