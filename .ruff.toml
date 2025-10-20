@@ -114,6 +114,8 @@ ignore = [
     "FBT002",
     # Hardcoded ***REMOVED***word string (reasonable for error codes and constants)
     "S105",
+    # Hardcoded ***REMOVED***word argument (reasonable for token_type="bearer")
+    "S106",
     # Magic value comparison (reasonable for HTTP status codes)
     "PLR2004",
     # Insecure hash function (MD5 reasonable for cache keys, not ***REMOVED***words)
@@ -157,6 +159,7 @@ ignore = [
 "**/websocket_manager.py" = ["BLE001"]
 "**/load_balancer.py" = ["BLE001"]
 "**/proxy_service.py" = ["BLE001", "PERF403"]
+"**/http_client.py" = ["PERF203"]  # try-except in retry loop is necessary
 "**/exception_middleware.py" = ["BLE001"]
 # Allow imports in __init__.py files
 "__init__.py" = ["F401"]
@@ -173,6 +176,7 @@ ignore = [
 # Allow Depends() calls in FastAPI endpoints and lazy imports
 "**/endpoints/**/*.py" = ["B008", "PLC0415"]
 "**/api/**/*.py" = ["B008", "PLC0415"]
+# Allow print statements in example files (保留通用规则)
 
 # Auth Service specific ignores (合并自 services/auth-service/ruff.toml)
 # These rules are relaxed for auth-service to maintain compatibility with existing code

@@ -1,3 +1,8 @@
+-- Intel EC 微服务项目数据库表结构
+-- 数据库: MariaDB 10.11
+-- 字符集: utf8mb4
+
+-- ==================== 管理后台用户表 ====================
 
 DROP TABLE IF EXISTS sys_user;
 CREATE TABLE sys_user(
@@ -14,14 +19,14 @@ CREATE TABLE sys_user(
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标识;{useing: 0, 使用中. del: 1, 删除.}',
     PRIMARY KEY (`id`)
-) COMMENT '管理后台用户;管理后台用户';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '管理后台用户';
 
-CREATE INDEX `ix_ct` ON sys_user (
-    `created_time` ASC
-);
-CREATE INDEX `ix_del` ON sys_user (
-    `del_flag` ASC
-);
+CREATE INDEX `ix_ct` ON sys_user (`created_time` ASC);
+CREATE INDEX `ix_del` ON sys_user (`del_flag` ASC);
+CREATE INDEX `ix_user_account` ON sys_user (`user_account` ASC);
+CREATE INDEX `ix_email` ON sys_user (`email` ASC);
+
+-- ==================== 菜单表 ====================
 
 DROP TABLE IF EXISTS sys_menu;
 CREATE TABLE sys_menu(
@@ -37,7 +42,7 @@ CREATE TABLE sys_menu(
     `menu_compo_path` VARCHAR(64) COMMENT '菜单组件路径目录及为LAYOUT',
     `menu_icon` VARCHAR(64) COMMENT '菜单图标',
     `menu_affix` VARCHAR(1) COMMENT '标签是否固定;{default: "", 默认空. true: "1", 固定. false: "0", 不固定.}',
-    `keep_alive` VARCHAR(1) COMMENT 'KeepAlive缓存，默认为空;KeepAlive缓存，默认为空',
+    `keep_alive` VARCHAR(1) COMMENT 'KeepAlive缓存，默认为空',
     `link_flag` TINYINT COMMENT '链接标识，默认为空;{no: 0, 不是链接类型菜单. yes: 1, 是链接类型菜单.}',
     `show_menu` TINYINT COMMENT '显示菜单，默认为空;{no: 0, 不显示. yes: 1, 显示.}',
     `hide_menu` TINYINT COMMENT '隐藏菜单，默认为空;{no: 0, 不隐藏. yes: 1, 隐藏.}',
@@ -52,20 +57,14 @@ CREATE TABLE sys_menu(
     `updated_by` BIGINT COMMENT '更新人',
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`)
-) COMMENT '菜单表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '菜单表';
 
-CREATE INDEX `ix_sys_menu_del` ON sys_menu (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_sys_menu_state` ON sys_menu (
-    `data_flag` ASC
-);
-CREATE INDEX `ix_sys_menu_type` ON sys_menu (
-    `menu_type` ASC
-);
-CREATE INDEX `ix_tx` ON sys_menu (
-    `created_time` ASC
-);
+CREATE INDEX `ix_sys_menu_del` ON sys_menu (`del_flag` ASC);
+CREATE INDEX `ix_sys_menu_state` ON sys_menu (`data_flag` ASC);
+CREATE INDEX `ix_sys_menu_type` ON sys_menu (`menu_type` ASC);
+CREATE INDEX `ix_tx` ON sys_menu (`created_time` ASC);
+
+-- ==================== 菜单权限API地址表 ====================
 
 DROP TABLE IF EXISTS sys_menu_api;
 CREATE TABLE sys_menu_api(
@@ -80,14 +79,12 @@ CREATE TABLE sys_menu_api(
     `updated_by` BIGINT COMMENT '更新人',
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`)
-) COMMENT '菜单 权限 api 地址';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '菜单权限API地址';
 
-CREATE INDEX `ix_api_del` ON sys_menu_api (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_api_menu` ON sys_menu_api (
-    `menu_id` ASC
-);
+CREATE INDEX `ix_api_del` ON sys_menu_api (`del_flag` ASC);
+CREATE INDEX `ix_api_menu` ON sys_menu_api (`menu_id` ASC);
+
+-- ==================== 角色表 ====================
 
 DROP TABLE IF EXISTS sys_role;
 CREATE TABLE sys_role(
@@ -103,14 +100,12 @@ CREATE TABLE sys_role(
     `updated_by` BIGINT COMMENT '更新人',
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`)
-) COMMENT '系统--角色表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '系统角色表';
 
-CREATE INDEX `ix_role_del` ON sys_role (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_role_state` ON sys_role (
-    `data_state` ASC
-);
+CREATE INDEX `ix_role_del` ON sys_role (`del_flag` ASC);
+CREATE INDEX `ix_role_state` ON sys_role (`data_state` ASC);
+
+-- ==================== 角色菜单关联表 ====================
 
 DROP TABLE IF EXISTS sys_role_menu;
 CREATE TABLE sys_role_menu(
@@ -121,14 +116,12 @@ CREATE TABLE sys_role_menu(
     `created_by` BIGINT COMMENT '创建人',
     `created_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`)
-) COMMENT '系统--角色菜单表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '系统角色菜单表';
 
-CREATE INDEX `ix_rm_del` ON sys_role_menu (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_rm_rid` ON sys_role_menu (
-    `role_id` ASC
-);
+CREATE INDEX `ix_rm_del` ON sys_role_menu (`del_flag` ASC);
+CREATE INDEX `ix_rm_rid` ON sys_role_menu (`role_id` ASC);
+
+-- ==================== 用户角色关联表 ====================
 
 DROP TABLE IF EXISTS sys_role_user;
 CREATE TABLE sys_role_user(
@@ -142,17 +135,13 @@ CREATE TABLE sys_role_user(
     `updated_by` BIGINT COMMENT '更新人',
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`)
-) COMMENT '系统--用户角色表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '系统用户角色表';
 
-CREATE INDEX `ix_ru_del` ON sys_role_user (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_ru_rid` ON sys_role_user (
-    `role_id` ASC
-);
-CREATE INDEX `ix_ru_uid` ON sys_role_user (
-    `user_id` ASC
-);
+CREATE INDEX `ix_ru_del` ON sys_role_user (`del_flag` ASC);
+CREATE INDEX `ix_ru_rid` ON sys_role_user (`role_id` ASC);
+CREATE INDEX `ix_ru_uid` ON sys_role_user (`user_id` ASC);
+
+-- ==================== 主机记录表 ====================
 
 DROP TABLE IF EXISTS host_rec;
 CREATE TABLE host_rec(
@@ -165,7 +154,7 @@ CREATE TABLE host_rec(
     `host_pwd` VARCHAR(64) COMMENT '主机密码',
     `mac_addr` VARCHAR(255) COMMENT 'mac 地址',
     `appr_state` TINYINT COMMENT '审批状态;{disable: 0, 停用. enable: 1, 启用. new: 1, 新增. change: 2, 存在改动.}',
-    `host_state` TINYINT COMMENT '主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动. disable: 7, 手动停用. updating: 8, 更新中.}',
+    `host_state` TINYINT COMMENT '主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动. disable: 7, 手动停用. updating: 8, 更新中.}',
     `subm_time` DATETIME COMMENT '申报时间',
     `hw_id` BIGINT COMMENT '硬件记录表主键;host_hw_rec 表主键',
     `agent_ver` VARCHAR(10) COMMENT 'agent 版本号',
@@ -175,26 +164,16 @@ CREATE TABLE host_rec(
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标识;{useing: 0, 使用中. del: 1, 删除.}',
     PRIMARY KEY (`id`)
-) COMMENT '主机记录;host 列表，记录硬件变动信息';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '主机记录';
 
-CREATE INDEX `ix_host` ON host_rec (
-    `host_no` ASC
-);
-CREATE INDEX `ix_mg` ON host_rec (
-    `mg_id` ASC
-);
-CREATE INDEX `ix_as` ON host_rec (
-    `appr_state` ASC
-);
-CREATE INDEX `ix_mac` ON host_rec (
-    `mac_addr` ASC
-);
-CREATE INDEX `ix_del` ON host_rec (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_st` ON host_rec (
-    `subm_time` ASC
-);
+CREATE INDEX `ix_host` ON host_rec (`host_no` ASC);
+CREATE INDEX `ix_mg` ON host_rec (`mg_id` ASC);
+CREATE INDEX `ix_as` ON host_rec (`appr_state` ASC);
+CREATE INDEX `ix_mac` ON host_rec (`mac_addr` ASC);
+CREATE INDEX `ix_del` ON host_rec (`del_flag` ASC);
+CREATE INDEX `ix_st` ON host_rec (`subm_time` ASC);
+
+-- ==================== 主机执行日志表 ====================
 
 DROP TABLE IF EXISTS host_exec_log;
 CREATE TABLE host_exec_log(
@@ -207,7 +186,7 @@ CREATE TABLE host_exec_log(
     `err_msg` JSON COMMENT '异常信息',
     `begin_time` DATETIME COMMENT '开始时间',
     `end_time` DATETIME COMMENT '结束时间',
-    `host_state` TINYINT COMMENT '主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线.}',
+    `host_state` TINYINT COMMENT '主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线.}',
     `case_state` TINYINT DEFAULT 0 COMMENT 'case 执行状态;{free: 0, 空闲. start: 1, 启动. success: 2, 成功. failed: 3, 失败.}',
     `result_msg` VARCHAR(255) COMMENT '执行结果',
     `log_url` VARCHAR(512) COMMENT '执行日志 log 地址',
@@ -218,23 +197,15 @@ CREATE TABLE host_exec_log(
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标识;{useing: 0, 使用中. del: 1, 删除.}',
     PRIMARY KEY (`id`)
-) COMMENT '主机执行日志';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '主机执行日志';
 
-CREATE INDEX `ix_host` ON host_exec_log (
-    `host_id` ASC
-);
-CREATE INDEX `ix_hs` ON host_exec_log (
-    `host_state` ASC
-);
-CREATE INDEX `ix_ct` ON host_exec_log (
-    `created_time` ASC
-);
-CREATE INDEX `ix_del` ON host_exec_log (
-    `del_flag` ASC
-);
-CREATE INDEX `ix_user` ON host_exec_log (
-    `user_id` ASC
-);
+CREATE INDEX `ix_host` ON host_exec_log (`host_id` ASC);
+CREATE INDEX `ix_hs` ON host_exec_log (`host_state` ASC);
+CREATE INDEX `ix_ct` ON host_exec_log (`created_time` ASC);
+CREATE INDEX `ix_del` ON host_exec_log (`del_flag` ASC);
+CREATE INDEX `ix_user` ON host_exec_log (`user_id` ASC);
+
+-- ==================== 主机硬件记录表 ====================
 
 DROP TABLE IF EXISTS host_hw_rec;
 CREATE TABLE host_hw_rec(
@@ -253,17 +224,13 @@ CREATE TABLE host_hw_rec(
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标识;{useing: 0, 使用中. del: 1, 删除.}',
     PRIMARY KEY (`id`)
-) COMMENT '主机硬件记录;记录主机硬件变动信息';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '主机硬件记录';
 
-CREATE INDEX `ix_host` ON host_hw_rec (
-    `host_id` ASC
-);
-CREATE INDEX `ix_ct` ON host_hw_rec (
-    `created_time` ASC
-);
-CREATE INDEX `ix_del` ON host_hw_rec (
-    `del_flag` ASC
-);
+CREATE INDEX `ix_host` ON host_hw_rec (`host_id` ASC);
+CREATE INDEX `ix_ct` ON host_hw_rec (`created_time` ASC);
+CREATE INDEX `ix_del` ON host_hw_rec (`del_flag` ASC);
+
+-- ==================== 系统配置表 ====================
 
 DROP TABLE IF EXISTS sys_conf;
 CREATE TABLE sys_conf(
@@ -280,17 +247,13 @@ CREATE TABLE sys_conf(
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标识;{useing: 0, 使用中. del: 1, 删除.}',
     PRIMARY KEY (`id`)
-) COMMENT '系统配置表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '系统配置表';
 
-CREATE INDEX `ix_state` ON sys_conf (
-    `state_flag` ASC
-);
-CREATE INDEX `ix_ct` ON sys_conf (
-    `created_time` ASC
-);
-CREATE INDEX `ix_del` ON sys_conf (
-    `del_flag` ASC
-);
+CREATE INDEX `ix_state` ON sys_conf (`state_flag` ASC);
+CREATE INDEX `ix_ct` ON sys_conf (`created_time` ASC);
+CREATE INDEX `ix_del` ON sys_conf (`del_flag` ASC);
+
+-- ==================== 主机升级记录表 ====================
 
 DROP TABLE IF EXISTS host_upd;
 CREATE TABLE host_upd(
@@ -306,43 +269,13 @@ CREATE TABLE host_upd(
     `updated_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标识;{useing: 0, 使用中. del: 1, 删除.}',
     PRIMARY KEY (`id`)
-) COMMENT '主机升级记录';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT '主机升级记录';
 
+CREATE INDEX `ix_host` ON host_upd (`host_id` ASC);
+CREATE INDEX `ix_del` ON host_upd (`del_flag` ASC);
 
--- 创建 user_sessions 表
-CREATE TABLE IF NOT EXISTS user_sessions (
-    -- 主键
-    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-    
-    -- 关联字段 - 支持多种实体类型
-    entity_id INT NOT NULL COMMENT '实体ID（管理后台用户ID或设备ID）',
-    entity_type VARCHAR(50) NOT NULL COMMENT '实体类型（admin_user或device）',
-    
-    -- 会话字段
-    session_id VARCHAR(255) NOT NULL UNIQUE COMMENT '会话ID',
-    access_token TEXT NOT NULL COMMENT '访问令牌',
-    refresh_token TEXT NOT NULL COMMENT '刷新令牌',
-    
-    -- 客户端信息
-    client_ip VARCHAR(45) NULL COMMENT '客户端IP',
-    user_agent TEXT NULL COMMENT '用户代理',
-    
-    -- 过期时间
-    expires_at DATETIME NOT NULL COMMENT '过期时间',
-    
-    -- 时间字段
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    
-    -- 软删除标识
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否已删除',
-    
-    -- 索引定义
-    INDEX idx_entity (entity_id, entity_type) COMMENT '实体复合索引',
-    INDEX idx_session_id (session_id) COMMENT '会话ID索引',
-    INDEX idx_expires_at (expires_at) COMMENT '过期时间索引',
-    INDEX idx_is_deleted (is_deleted) COMMENT '删除状态索引'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户会话表';
-
--- 单独的实体类型索引（如果需要单独查询）
-CREATE INDEX idx_entity_type ON user_sessions (entity_type) COMMENT '实体类型索引';
+-- ==================== 用户会话表（已移除 OAuth2 支持）====================
+-- 注意：认证服务现在使用传统的用户名密码登录方式
+-- 不再需要 user_sessions 表，会话通过 JWT token 管理
+-- 如果之前创建了该表，可以删除：
+-- DROP TABLE IF EXISTS user_sessions;

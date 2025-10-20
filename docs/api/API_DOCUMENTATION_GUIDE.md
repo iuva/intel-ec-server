@@ -6,21 +6,29 @@
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI JSON**: http://localhost:8000/openapi.json
+- **健康检查**: http://localhost:8000/health
+- **监控指标**: http://localhost:8000/metrics
 
 ### Auth Service (端口 8001)
 - **Swagger UI**: http://localhost:8001/docs
 - **ReDoc**: http://localhost:8001/redoc
 - **OpenAPI JSON**: http://localhost:8001/openapi.json
+- **健康检查**: http://localhost:8001/health
+- **监控指标**: http://localhost:8001/metrics
 
 ### Admin Service (端口 8002)
 - **Swagger UI**: http://localhost:8002/docs
 - **ReDoc**: http://localhost:8002/redoc
 - **OpenAPI JSON**: http://localhost:8002/openapi.json
+- **健康检查**: http://localhost:8002/health
+- **监控指标**: http://localhost:8002/metrics
 
 ### Host Service (端口 8003)
 - **Swagger UI**: http://localhost:8003/docs
 - **ReDoc**: http://localhost:8003/redoc
 - **OpenAPI JSON**: http://localhost:8003/openapi.json
+- **健康检查**: http://localhost:8003/health
+- **监控指标**: http://localhost:8003/metrics
 
 ## 🚀 启动服务并访问文档
 
@@ -110,6 +118,26 @@ swagger-codegen generate -i auth-service-api.json -l typescript-angular -o clien
 2. 更新响应模型的 Field 描述
 3. 重启服务验证文档
 4. 提交代码时包含文档更新
+
+## 🎨 代码优化文档
+
+项目已完成全面的代码优化，相关文档位于 `.kiro/specs/code-optimization/` 目录：
+
+### 优化文档
+- **[需求文档](../.kiro/specs/code-optimization/requirements.md)** - 优化需求和目标
+- **[设计文档](../.kiro/specs/code-optimization/design.md)** - 技术设计方案
+- **[任务列表](../.kiro/specs/code-optimization/tasks.md)** - 实施任务清单
+- **[最佳实践](../.kiro/specs/code-optimization/BEST_PRACTICES.md)** - 开发最佳实践
+- **[架构文档](../.kiro/specs/code-optimization/ARCHITECTURE.md)** - 系统架构说明
+
+### 优化成果
+- ✅ 统一依赖注入模式
+- ✅ 优化数据库会话管理
+- ✅ 统一错误处理机制
+- ✅ 统一 HTTP 客户端使用
+- ✅ 增强监控指标收集
+- ✅ 改进日志记录
+- ✅ 提供装饰器工具
 
 ## 🔍 故障排查
 

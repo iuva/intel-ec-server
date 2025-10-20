@@ -30,6 +30,7 @@ ENV/
 .vscode/
 .idea/
 .cursor/
+.kiro/
 *.swp
 *.swo
 *~

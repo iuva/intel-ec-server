@@ -12,7 +12,9 @@ shared/
 ├── common/                 # 通用模块
 │   ├── cache.py           # Redis缓存管理
 │   ├── database.py        # MySQL数据库连接管理
+│   ├── decorators.py      # 装饰器工具
 │   ├── exceptions.py      # 异常处理
+│   ├── http_client.py     # 异步HTTP客户端
 │   ├── loguru_config.py   # 日志配置
 │   ├── response.py        # 统一响应格式
 │   ├── security.py        # 认证和安全工具
@@ -89,6 +91,29 @@ shared/
   - `ValidationError`: 验证异常
   - `ResourceNotFoundError`: 资源不存在异常
   - `DatabaseError`: 数据库异常
+
+#### decorators.py
+- **功能**: 提供常用装饰器
+- **主要装饰器**:
+  - `@handle_service_errors`: 服务层错误处理
+  - `@handle_api_errors`: API 层错误处理
+  - `@monitor_operation`: 业务操作监控
+- **使用场景**:
+  - 统一错误处理
+  - 自动日志记录
+  - 监控指标收集
+
+#### http_client.py
+- **功能**: 异步 HTTP 客户端管理
+- **主要类**:
+  - `AsyncHTTPClient`: 异步 HTTP 客户端
+- **主要方法**:
+  - `request()`: 发送 HTTP 请求
+  - `close()`: 关闭客户端连接
+- **特性**:
+  - 连接池管理
+  - 超时配置
+  - 自动重试
 
 #### loguru_config.py
 - **功能**: 基于Loguru的日志配置
@@ -252,6 +277,54 @@ await nacos_manager.start_heartbeat(
 instances = await nacos_manager.discover_service("other-service")
 ```
 
+### 使用装饰器
+
+```python
+from shared.common.decorators import (
+    handle_service_errors,
+    handle_api_errors,
+    monitor_operation,
+)
+
+# 服务层使用
+@monitor_operation("user_create", record_duration=True)
+@handle_service_errors(
+    error_message="创建用户失败",
+    error_code="USER_CREATE_FAILED",
+)
+async def create_user(user_data: dict):
+    """创建用户"""
+    # 业务逻辑
+    ***REMOVED***
+
+# API 层使用
+@router.post("/users")
+@handle_api_errors
+async def create_user_endpoint(user_data: dict):
+    """创建用户 API 端点"""
+    user = await user_service.create_user(user_data)
+    return SuccessResponse(data=user, message="用户创建成功")
+```
+
+### 使用 HTTP 客户端
+
+```python
+from shared.common.http_client import AsyncHTTPClient
+
+# 创建客户端
+http_client = AsyncHTTPClient()
+
+# 发送请求
+response = await http_client.request(
+    method="GET",
+    url="http://example.com/api/users",
+    headers={"Authorization": "Bearer token"},
+)
+
+# 关闭客户端
+await http_client.close()
+```
+
 ### 使用监控指标
 
 ```python
@@ -294,4 +367,8 @@ metrics_collector.record_cache_operation(
 
 ## 更新日志
 
+- **2025-10-16**: 添加装饰器模块和 HTTP 客户端模块
+  - 新增 `decorators.py`：提供错误处理和监控装饰器
+  - 新增 `http_client.py`：提供异步 HTTP 客户端
+  - 更新文档和使用示例
 - **2025-01-29**: 初始版本，实现所有核心共享模块

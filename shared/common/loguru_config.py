@@ -45,7 +45,14 @@ def configure_logger(
     if enable_file or enable_error_file:
         from pathlib import Path
 
-        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        try:
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError) as e:
+            # 如果没有权限创建日志目录，使用控制台输出并记录警告
+            print(f"警告: 无法创建日志目录 {log_dir}: {e}")
+            print("将仅使用控制台日志输出")
+            enable_file = False
+            enable_error_file = False
 
     # 启用stdlib拦截，让所有logging.getLogger()调用都通过loguru
     # 使用loguru的intercept_stdlib()方法

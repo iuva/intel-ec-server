@@ -12,7 +12,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import os
 import sys
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List, Tuple, Union
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -143,7 +143,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 添加 CORS 中间件
+# ============================================================================
+# 中间件注册（按照注册顺序）
+# ============================================================================
+# 注意：FastAPI 中间件的执行顺序与注册顺序相反
+# 注册顺序：CORS → Metrics → Auth
+# 实际执行顺序（请求处理）：Auth → Metrics → CORS → 路由处理
+# 实际执行顺序（响应处理）：路由处理 → CORS → Metrics → Auth
+# ============================================================================
+
+logger.info("=" * 80)
+logger.info("开始注册中间件...")
+logger.info("=" * 80)
+
+# 1. 添加 CORS 中间件（最后执行）
+logger.info("注册 CORS 中间件...")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -151,18 +165,48 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+logger.info("✓ CORS 中间件注册成功")
 
-# 添加指标收集中间件
+# 2. 添加指标收集中间件（倒数第二执行）
+logger.info("注册 Prometheus 指标收集中间件...")
 try:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
 
     app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
-    logger.info("Prometheus指标收集中间件已启用")
+    logger.info("✓ Prometheus 指标收集中间件注册成功")
 except Exception as e:
-    logger.warning(f"添加指标收集中间件失败: {e!s}")
+    logger.warning(f"✗ 添加指标收集中间件失败: {e!s}")
 
-# 添加认证中间件
+# 3. 添加认证中间件（最先执行 - 在所有路由处理之前）
+logger.info("注册认证中间件...")
+logger.info("认证中间件配置:")
+
+# 定义公开路径（与 AuthMiddleware 中的配置保持一致）
+public_paths = {
+    "/",
+    "/health",
+    "/health/detailed",
+    "/metrics",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/api/v1/auth/admin/login",
+    "/api/v1/auth/device/login",
+    "/api/v1/auth/logout",
+}
+
+logger.info(f"  - 公开路径数量: {len(public_paths)}")
+logger.info("  - 公开路径列表:")
+for path in sorted(public_paths):
+    logger.info(f"    • {path}")
+
 app.add_middleware(AuthMiddleware)
+logger.info("✓ 认证中间件注册成功")
+
+logger.info("=" * 80)
+logger.info("中间件注册完成")
+logger.info("中间件执行顺序（请求处理）：Auth → Metrics → CORS → 路由")
+logger.info("=" * 80)
 
 # 初始化 Jaeger 追踪器（在应用创建时）
 jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "http://jaeger:4318/v1/traces")
@@ -227,7 +271,7 @@ async def health_check():
 
 @app.get("/health/detailed", response_model=SuccessResponse)
 async def detailed_health_check():
-    """详细健康检查端点"""
+    """详细健康检查端点（使用并发检查提高性能）"""
     health_status = {
         "service": "gateway-service",
         "status": "healthy",
@@ -240,26 +284,48 @@ async def detailed_health_check():
     from app.services.proxy_service import get_proxy_service
 
     proxy_service = get_proxy_service()
-    backend_services = {}
 
-    # 将 try-except 移到循环外以提高性能
-    async def check_service_health(service_name: str) -> str:
-        """检查单个服务健康状态"""
+    async def check_service_health(service_name: str) -> Tuple[str, str]:
+        """检查单个服务健康状态
+
+        Args:
+            service_name: 服务名称
+
+        Returns:
+            (服务名称, 健康状态) 元组
+        """
         try:
             is_healthy = await proxy_service.health_check_service(service_name)
-            return "healthy" if is_healthy else "unhealthy"
+            return (service_name, "healthy" if is_healthy else "unhealthy")
         except Exception:
-            return "unknown"
+            return (service_name, "unknown")
 
-    for service_name in proxy_service.service_routes:
-        backend_services[service_name] = await check_service_health(service_name)
+    # 使用并发检查所有后端服务
+    service_names = list(proxy_service.service_routes.keys())
+    if service_names:
+        # 并发执行所有健康检查
+        health_check_tasks = [check_service_health(name) for name in service_names]
+        results: List[Union[Tuple[str, str], BaseException]] = await asyncio.gather(
+            *health_check_tasks, return_exceptions=True
+        )
 
-    health_status["checks"]["backend_services"] = backend_services
+        # 处理结果
+        backend_services = {}
+        for result in results:
+            if isinstance(result, BaseException):
+                logger.error(f"健康检查异常: {result!s}")
+                continue
+            # result 是 Tuple[str, str]
+            service_name, status = result
+            backend_services[service_name] = status
 
-    # 判断整体健康状态
-    all_healthy = all(status == "healthy" for status in backend_services.values()) and (nacos_manager is not None)
+        health_status["checks"]["backend_services"] = backend_services
 
-    health_status["status"] = "healthy" if all_healthy else "degraded"
+        # 判断整体健康状态
+        all_healthy = all(status == "healthy" for status in backend_services.values()) and (nacos_manager is not None)
+        health_status["status"] = "healthy" if all_healthy else "degraded"
+    else:
+        health_status["checks"]["backend_services"] = {}
 
     return SuccessResponse(
         data=health_status,
@@ -274,42 +340,35 @@ async def metrics():
     return get_metrics_response()
 
 
-if __name__ == "__main__":
+def setup_uvicorn_logging():
+    """配置 uvicorn 日志处理器"""
     import logging
-
-    import uvicorn
-
-    # 禁用uvicorn的默认日志处理器
-    uvicorn_logger = logging.getLogger("uvicorn")
-    uvicorn_logger.handlers.clear()
-    uvicorn_access_logger = logging.getLogger("uvicorn.access")
-    uvicorn_access_logger.handlers.clear()
-
-    # 禁用uvicorn的默认日志处理器
-    uvicorn_logger = logging.getLogger("uvicorn")
-    uvicorn_logger.handlers.clear()
-    uvicorn_access_logger = logging.getLogger("uvicorn.access")
-    uvicorn_access_logger.handlers.clear()
-
-    # 运行uvicorn
     import threading
     import time
 
-    from loguru import logger
+    from loguru import logger as loguru_logger
+
+    # 禁用uvicorn的默认日志处理器
+    uvicorn_logger = logging.getLogger("uvicorn")
+    uvicorn_logger.handlers.clear()
+    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_access_logger.handlers.clear()
 
     def replace_uvicorn_handlers():
         """在uvicorn启动后替换其处理器"""
         time.sleep(1)  # 等待uvicorn启动
 
         class UvicornLoguruHandler(logging.Handler):
+            """将 uvicorn 日志转发到 loguru"""
+
             def emit(self, record):
                 if record.name.startswith("uvicorn"):
-                    loguru_logger = logger.bind(
+                    bound_logger = loguru_logger.bind(
                         name=record.name,
                         function=record.funcName or "unknown",
                         line=record.lineno or 0,
                     )
-                    loguru_logger.log(record.levelname, record.getMessage())
+                    bound_logger.log(record.levelname, record.getMessage())
 
         handler = UvicornLoguruHandler()
 
@@ -323,6 +382,14 @@ if __name__ == "__main__":
     # 启动处理器替换线程
     threading.Thread(target=replace_uvicorn_handlers, daemon=True).start()
 
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # 配置 uvicorn 日志
+    setup_uvicorn_logging()
+
+    # 运行 uvicorn
     uvicorn.run(
         app,
         host="0.0.0.0",
@@ -359,26 +426,9 @@ async def catch_all_root_handler(request: Request, path: str):
     )
 
     # 检查是否是API路径但版本不正确
-    if path.startswith("api/"):
-        error_message = "API版本不存在"
-        available_endpoints = [
-            "/api/v1/{service_name}/{path:path}",
-            "/api/v1/services",
-            "/api/v1/services/{service_name}/health",
-        ]
-    else:
-        error_message = "请求的资源不存在"
-        available_endpoints = [
-            "/",
-            "/health",
-            "/health/detailed",
-            "/metrics",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-        ]
+    error_message = "API版本不存在" if path.startswith("api/") else "请求的资源不存在"
 
-    # 返回统一格式的404错误响应
+    # 返回统一格式的404错误响应（移除 available_endpoints）
     error_response = ErrorResponse(
         code=404,
         message=error_message,
@@ -386,7 +436,6 @@ async def catch_all_root_handler(request: Request, path: str):
         details={
             "method": request.method,
             "path": f"/{path}",
-            "available_endpoints": available_endpoints,
         },
     )
 

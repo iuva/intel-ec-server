@@ -1,179 +1,111 @@
-# Intel EC 微服务管理系统 - 文档中心
+# Intel EC 微服务项目文档
 
-欢迎来到 Intel EC 微服务管理系统的文档中心！本目录包含了项目的所有详细文档。
-
-## 📚 文档索引
-
-### 🚀 快速开始 (0x 系列)
-
-#### [00-quick-start.md](./00-quick-start.md)
-**5分钟快速上手指南**
-- 环境准备
-- 快速安装
-- 服务启动
-- 基本验证
-
-#### [04-project-setup.md](./04-project-setup.md)
-**项目完整设置指南**
-- 详细安装步骤
-- 开发环境配置
-- IDE 配置推荐
-- 常见问题解决
+**项目**: Intel EC 微服务系统  
+**最后更新**: 2025-10-16
 
 ---
 
-### 🛠️ 基础设施配置 (01-02 系列)
+## 📋 文档概述
 
-#### [01-external-database-setup.md](./01-external-database-setup.md)
-**外部数据库配置指南**
-- MariaDB 10.11 配置
-- Redis 6.0+ 配置
-- 数据库连接管理
-- 连接池优化
-- 故障排除
-
-#### [02-external-services-config.md](./02-external-services-config.md)
-**外部服务配置指南**
-- Nacos 服务注册与发现
-- Jaeger 分布式追踪
-- 服务配置管理
-- 环境变量设置
+本目录包含 Intel EC 微服务项目的完整技术文档，涵盖快速开始、基础设施配置、监控系统、代码质量、API 参考等各个方面。
 
 ---
 
-### 📊 监控和追踪 (05-07, 11 系列)
+## 📚 文档目录
 
-#### [05-monitoring-setup-complete.md](./05-monitoring-setup-complete.md)
-**Prometheus + Grafana 监控系统完整配置**
-- Prometheus 指标采集配置
-- Grafana 仪表盘设置
-- 自定义监控指标
-- 告警规则配置
-- 完整监控解决方案
+### 🚀 快速开始 (00 系列)
 
-#### [06-grafana-dashboard-guide.md](./06-grafana-dashboard-guide.md)
-**Grafana 仪表盘使用指南**
-- 仪表盘导入和配置
-- 常用监控面板介绍
-- 自定义面板创建
-- 监控数据分析
-
-#### [07-monitoring-quick-reference.md](./07-monitoring-quick-reference.md)
-**监控系统快速参考**
-- 常用命令速查
-- 故障排除流程
-- 性能优化建议
-- 监控最佳实践
-
-#### [11-jaeger-storage-config.md](./11-jaeger-storage-config.md)
-**Jaeger 分布式追踪配置**
-- Jaeger 存储后端配置
-- 追踪数据持久化
-- 性能调优
-- 数据保留策略
+| 文档 | 说明 |
+|------|------|
+| [00-quick-start.md](./00-quick-start.md) | 快速开始指南 - 环境要求、快速启动、基础配置 |
+| [04-project-setup.md](./04-project-setup.md) | 完整项目设置 - 详细环境配置、依赖安装、数据库初始化 |
 
 ---
 
-### ✅ 代码质量 (08-09, 13 系列)
+### 🏗️ 基础设施 (01-02 系列)
 
-#### [08-code-quality-setup.md](./08-code-quality-setup.md)
-**代码质量工具配置**
-- Ruff 代码检查和格式化
-- MyPy 静态类型检查
-- Black 代码格式化
-- Pre-commit hooks 配置
-- CI/CD 集成
-
-#### [09-python38-compatibility.md](./09-python38-compatibility.md)
-**Python 3.8 兼容性说明**
-- Python 3.8.10 特性说明
-- 类型注解兼容性
-- 依赖包版本限制
-- 常见兼容性问题
-
-#### [13-code-quality-tools-analysis.md](./13-code-quality-tools-analysis.md)
-**代码质量工具分析**
-- Ruff vs Black vs Flake8 对比
-- 工具选型决策
-- 性能对比分析
-- 最佳实践推荐
+| 文档 | 说明 |
+|------|------|
+| [01-external-database-setup.md](./01-external-database-setup.md) | 外部数据库配置 - MariaDB 10.11 安装配置、用户权限 |
+| [02-external-services-config.md](./02-external-services-config.md) | 外部服务配置 - Redis、Nacos 服务注册与发现 |
 
 ---
 
-### 🔍 类型检查 - Pyright (14-17 系列)
+### 📊 监控系统 (05-07, 11 系列)
 
-#### [14-pyright-quick-guide.md](./14-pyright-quick-guide.md)
-**Pyright 快速开始指南**
-- 5分钟快速上手
-- 常用命令和用法
-- IDE 集成配置
-- 快速参考
-
-#### [15-pyright-fixes-summary.md](./15-pyright-fixes-summary.md)
-**Pyright 类型检查修复总结**
-- 完整修复记录（983 → 56 个错误）
-- 详细修复步骤
-- 配置优化说明
-- 最佳实践总结
-
-#### [16-pyright-troubleshooting.md](./16-pyright-troubleshooting.md)
-**Pyright 故障排除指南**
-- 常见问题解决（207 个错误）
-- PYTHONPATH 配置说明
-- 诊断步骤和方法
-- FAQ 常见问题解答
-
-#### [17-pyright-overview.md](./17-pyright-overview.md)
-**Pyright 文档总览**
-- Pyright 文档索引
-- 学习路径推荐
-- 团队协作指南
-- 资源和工具链接
+| 文档 | 说明 |
+|------|------|
+| [05-monitoring-setup-complete.md](./05-monitoring-setup-complete.md) | 完整监控系统配置 - Prometheus、Grafana、Jaeger |
+| [06-grafana-dashboard-guide.md](./06-grafana-dashboard-guide.md) | Grafana 仪表板配置指南 - 仪表板创建、面板设计 |
+| [07-monitoring-quick-reference.md](./07-monitoring-quick-reference.md) | 监控快速参考 - 常用命令、指标查询 |
+| [11-jaeger-storage-config.md](./11-jaeger-storage-config.md) | Jaeger 存储配置 - 存储后端配置、性能优化 |
 
 ---
 
-### 🔧 API 响应格式修复 (18 系列)
+### 🔍 代码质量 (08-09, 13 系列)
 
-#### [18-api-response-format-fixes.md](./18-api-response-format-fixes.md)
-**API响应格式修复记录**
-- OAuth2端点响应格式统一
-- 网关404响应安全优化
-- 异常处理中间件修复
-- 响应格式验证指南
+| 文档 | 说明 |
+|------|------|
+| [08-code-quality-setup.md](./08-code-quality-setup.md) | 代码质量工具配置 - Ruff、MyPy、Pre-commit |
+| [09-python38-compatibility.md](./09-python38-compatibility.md) | Python 3.8 兼容性指南 - 特性限制、类型注解 |
+| [13-code-quality-tools-analysis.md](./13-code-quality-tools-analysis.md) | 代码质量工具分析 - 工具栈优化、性能对比 |
+
+---
+
+### 🔬 类型检查 (14-17 系列)
+
+| 文档 | 说明 |
+|------|------|
+| [14-pyright-quick-guide.md](./14-pyright-quick-guide.md) | Pyright 快速指南 - 基本使用、常用命令 |
+| [15-pyright-fixes-summary.md](./15-pyright-fixes-summary.md) | Pyright 修复总结 - 修复的错误类型、最佳实践 |
+| [16-pyright-troubleshooting.md](./16-pyright-troubleshooting.md) | Pyright 故障排除 - 常见错误解决、配置问题 |
+| [17-pyright-overview.md](./17-pyright-overview.md) | Pyright 概览 - 完整功能介绍、架构设计 |
+
+---
+
+### 📡 API 文档 (18 系列 + api/ 目录)
+
+| 文档 | 说明 |
+|------|------|
+| [18-api-response-format-fixes.md](./18-api-response-format-fixes.md) | API 响应格式修复记录 - OAuth2 端点、网关优化 |
+| [api/](./api/) | **API 参考文档目录** |
+| └─ [API_REFERENCE.md](./api/API_REFERENCE.md) | 完整 API 参考文档 |
+| └─ [API_DOCUMENTATION_GUIDE.md](./api/API_DOCUMENTATION_GUIDE.md) | 文档访问指南 |
+| └─ [README.md](./api/README.md) | API 文档索引 |
 
 ---
 
 ### 🔐 安全和认证 (12 系列)
 
-#### [12-authentication-architecture.md](./12-authentication-architecture.md)
-**认证架构设计**
-- JWT Token 认证机制
-- 用户认证流程
-- Session 管理
-- 安全最佳实践
+| 文档 | 说明 |
+|------|------|
+| [12-authentication-architecture.md](./12-authentication-architecture.md) | 认证架构设计 - JWT Token、用户认证流程 |
 
 ---
 
 ### 🔧 故障排除 (10 系列)
 
-#### [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md)
-**Nacos 服务注册与发现故障排除**
-- Nacos 服务注册失败
-- 服务发现问题
-- 配置管理问题
-- 常见错误解决
+| 文档 | 说明 |
+|------|------|
+| [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md) | Nacos 故障排除 - 服务注册失败、服务发现问题 |
 
 ---
 
 ### 🚀 部署指南 (03 系列)
 
-#### [03-deployment-guide.md](./03-deployment-guide.md)
-**生产环境部署指南**
-- Docker 容器化部署
-- Kubernetes 部署配置
-- CI/CD 流程设计
-- 环境变量管理
-- 监控和日志
+| 文档 | 说明 |
+|------|------|
+| [03-deployment-guide.md](./03-deployment-guide.md) | 生产环境部署指南 - Docker、Kubernetes、CI/CD |
+
+---
+
+### 📝 其他文档
+
+| 文档 | 说明 |
+|------|------|
+| [CHANGELOG.md](./CHANGELOG.md) | 项目变更日志 |
+| [Execution Copilot - 后端开发计划.md](./Execution%20Copilot%20-%20后端开发计划.md) | 后端开发计划 |
+| [database/](./database/) | 数据库脚本目录 |
 
 ---
 
@@ -190,6 +122,7 @@
 1. 阅读 **[代码质量配置](./08-code-quality-setup.md)** 了解代码规范
 2. 查看 **[Pyright 快速指南](./14-pyright-quick-guide.md)** 学习类型检查
 3. 参考 **[Python 3.8 兼容性](./09-python38-compatibility.md)** 避免兼容性问题
+4. 查看 **[API 参考文档](./api/API_REFERENCE.md)** 了解 API 接口
 
 ### 🔧 对于运维人员
 
@@ -205,17 +138,15 @@
 
 | 主题 | 相关文档 |
 |------|----------|
-| **快速开始** | [00](./00-quick-start.md), [04](./04-project-setup.md) |
-| **数据库** | [01](./01-external-database-setup.md) |
-| **服务发现** | [02](./02-external-services-config.md), [10](./10-nacos-troubleshooting.md) |
-| **监控** | [05](./05-monitoring-setup-complete.md), [06](./06-grafana-dashboard-guide.md), [07](./07-monitoring-quick-reference.md) |
-| **追踪** | [11](./11-jaeger-storage-config.md) |
-| **代码质量** | [08](./08-code-quality-setup.md), [13](./13-code-quality-tools-analysis.md) |
-| **类型检查** | [14](./14-pyright-quick-guide.md), [15](./15-pyright-fixes-summary.md), [16](./16-pyright-troubleshooting.md), [17](./17-pyright-overview.md) |
-| **Python 3.8** | [09](./09-python38-compatibility.md) |
-| **认证** | [12](./12-authentication-architecture.md) |
-| **API响应格式** | [18](./18-api-response-format-fixes.md) |
-| **部署** | [03](./03-deployment-guide.md) |
+| **快速开始** | 00, 04 |
+| **基础设施** | 01, 02 |
+| **监控追踪** | 05, 06, 07, 11 |
+| **代码质量** | 08, 09, 13 |
+| **类型检查** | 14, 15, 16, 17 |
+| **API 文档** | 18, api/ |
+| **认证安全** | 12 |
+| **故障排除** | 10 |
+| **部署运维** | 03 |
 
 ### 按难度级别
 
@@ -238,27 +169,44 @@ XX-topic-name.md
 
 ### 文档类别
 
-- **0x**: 快速开始和基础配置
+- **00-04**: 快速开始和基础配置
 - **01-02**: 基础设施配置
 - **03**: 部署指南
-- **05-07**: 监控和追踪
-- **08-09**: 代码质量
-- **10-13**: 故障排除和工具
+- **05-07, 11**: 监控和追踪
+- **08-09, 13**: 代码质量
+- **10**: 故障排除
+- **12**: 安全和认证
 - **14-17**: 类型检查 (Pyright)
-- **18**: API响应格式修复
+- **18**: API 响应格式
 
 ---
 
 ## ✨ 最近更新
 
-- **2025-10-15**: 添加 [API响应格式修复记录](./18-api-response-format-fixes.md) - OAuth2端点和网关404响应格式统一
-- **2025-10-15**: 重新生成所有微服务API文档 (OpenAPI JSON + 端点列表)
-- **2025-10-15**: 更新API文档验证指南，包含响应格式测试命令
-- **2025-10-13**: 添加 Pyright 类型检查完整文档 (14-17)
+- **2025-10-16**: 文档结构整理，移动模块相关文档到 shared/ 目录
+- **2025-10-15**: 添加 API 响应格式修复记录
+- **2025-10-15**: 重新生成所有微服务 API 文档
+- **2025-10-13**: 添加 Pyright 类型检查完整文档
 - **2025-10-13**: 整理文档结构，删除重复文档
-- **2025-10-12**: 删除临时和过时文档
 - **2025-10-11**: 添加代码质量工具分析文档
-- **2025-10-10**: 更新监控系统配置文档
+
+---
+
+## 📂 相关目录
+
+### shared/ 目录中的文档
+
+以下文档已移至 `shared/` 目录，与对应的代码模块放在一起：
+
+| 文档 | 位置 | 说明 |
+|------|------|------|
+| DECORATORS_README.md | shared/common/ | 装饰器使用指南 |
+| LOGGING_STANDARDS.md | shared/common/ | 日志规范 |
+| LOGGING_MIGRATION_GUIDE.md | shared/common/ | 日志迁移指南 |
+| METRICS_ENHANCEMENT.md | shared/monitoring/ | 监控指标增强说明 |
+| decorators_examples.py | shared/common/ | 装饰器示例代码 |
+| http_client_example.py | shared/common/ | HTTP 客户端示例 |
+| metrics_examples.py | shared/monitoring/ | 监控指标示例 |
 
 ---
 
@@ -272,4 +220,4 @@ XX-topic-name.md
 
 ---
 
-**📚 持续更新中... | 最后更新: 2025-10-15**
+**📚 持续更新中... | 最后更新: 2025-10-16**

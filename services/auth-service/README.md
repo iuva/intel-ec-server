@@ -2,15 +2,15 @@
 
 ## 概述
 
-Auth Service 是 Intel EC 微服务架构中的认证服务，提供用户认证、JWT令牌管理、OAuth 2.0等功能。
+Auth Service 是 Intel EC 微服务架构中的认证服务，提供用户认证、设备认证、JWT令牌管理等功能。
 
 ## 功能特性
 
-- ✅ 用户登录认证
+- ✅ 管理员登录认证（传统方式）
+- ✅ 设备登录认证（传统方式）
 - ✅ JWT 令牌生成和验证
 - ✅ 令牌刷新机制
 - ✅ 用户注销（令牌黑名单）
-- ✅ 会话管理
 - ✅ 健康检查
 - ✅ Prometheus 监控指标
 - ✅ Jaeger 分布式追踪
@@ -55,7 +55,8 @@ auth-service/
 
 ### 认证相关
 
-- `POST /api/v1/auth/login` - 用户登录
+- `POST /api/v1/auth/admin/login` - 管理员登录
+- `POST /api/v1/auth/device/login` - 设备登录
 - `POST /api/v1/auth/refresh` - 刷新访问令牌
 - `POST /api/v1/auth/introspect` - 验证令牌
 - `POST /api/v1/auth/logout` - 用户注销
@@ -69,34 +70,49 @@ auth-service/
 
 ## 数据库表
 
-### users 表
+### sys_user 表（管理员）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键ID |
+| user_name | VARCHAR(32) | 用户名称 |
+| user_account | VARCHAR(32) | 登录账号 |
+| user_pwd | VARCHAR(128) | 登录密码（bcrypt加密） |
+| user_avatar | VARCHAR(32) | 用户头像 |
+| email | VARCHAR(32) | 邮箱 |
+| state_flag | SMALLINT | 账号状态（0:启用, 1:停用） |
+| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+### host_rec 表（设备）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT | 主键ID |
+| mg_id | VARCHAR(128) | 唯一引导ID |
+| host_ip | VARCHAR(32) | IP地址 |
+| host_acct | VARCHAR(32) | 主机账号 |
+| appr_state | SMALLINT | 审批状态 |
+| host_state | SMALLINT | 主机状态 |
+| subm_time | DATETIME | 申报时间 |
+| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
+| created_time | DATETIME | 创建时间 |
+| updated_time | DATETIME | 更新时间 |
+
+### user_sessions 表（会话管理）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | INT | 主键ID |
-| username | VARCHAR(50) | 用户名（唯一） |
-| email | VARCHAR(255) | 邮箱（唯一） |
-| ***REMOVED***word_hash | VARCHAR(255) | 密码哈希 |
-| is_active | BOOLEAN | 是否激活 |
-| is_superuser | BOOLEAN | 是否超级用户 |
-| created_at | DATETIME | 创建时间 |
-| updated_at | DATETIME | 更新时间 |
-| is_deleted | BOOLEAN | 是否已删除 |
-
-### user_sessions 表
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | INT | 主键ID |
-| user_id | INT | 用户ID（外键） |
+| entity_id | INT | 实体ID（用户或设备ID） |
+| entity_type | VARCHAR(50) | 实体类型（admin_user/device） |
 | session_id | VARCHAR(255) | 会话ID（唯一） |
 | access_token | TEXT | 访问令牌 |
 | refresh_token | TEXT | 刷新令牌 |
 | client_ip | VARCHAR(45) | 客户端IP |
-| user_agent | TEXT | 用户代理 |
 | expires_at | DATETIME | 过期时间 |
 | created_at | DATETIME | 创建时间 |
-| updated_at | DATETIME | 更新时间 |
 | is_deleted | BOOLEAN | 是否已删除 |
 
 ## 环境变量
@@ -156,10 +172,10 @@ docker run -d \
 
 ## API 使用示例
 
-### 用户登录
+### 管理员登录
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/auth/login \
+curl -X POST http://localhost:8001/api/v1/auth/admin/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -174,8 +190,33 @@ curl -X POST http://localhost:8001/api/v1/auth/login \
   "code": 200,
   "message": "登录成功",
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "expires_in": 1800
+  }
+}
+```
+
+### 设备登录
+
+```bash
+curl -X POST http://localhost:8001/api/v1/auth/device/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mg_id": "device-12345",
+    "host_ip": "192.168.1.100",
+    "username": "root"
+  }'
+```
+
+响应：
+
+```json
+{
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",
     "expires_in": 1800
   }
@@ -276,6 +317,13 @@ black services/auth-service/
 - [认证安全规范](../../.cursor/rules/auth-security.mdc)
 
 ## 更新历史
+
+- **2025-10-17**: 重构认证方式，移除 OAuth 2.0
+  - 实现传统登录方式
+  - 添加管理员登录接口（使用 sys_user 表）
+  - 添加设备登录接口（使用 host_rec 表）
+  - 移除 OAuth 2.0 相关代码
+  - 简化认证流程
 
 - **2025-01-29**: 初始版本，实现基础认证功能
   - 用户登录认证

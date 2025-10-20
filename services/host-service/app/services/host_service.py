@@ -11,6 +11,7 @@ from app.schemas.host import HostCreate, HostStatusUpdate, HostUpdate
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.database import mariadb_manager
+    from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
 except ImportError:
@@ -20,6 +21,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from shared.common.database import mariadb_manager
+    from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
 
@@ -29,6 +31,8 @@ logger = get_logger(__name__)
 class HostService:
     """主机管理服务类"""
 
+    @monitor_operation("host_create", record_duration=True)
+    @handle_service_errors(error_message="创建主机失败", error_code="HOST_CREATE_FAILED")
     async def create_host(self, host_data: HostCreate) -> Host:
         """创建主机
 
@@ -41,14 +45,21 @@ class HostService:
         Raises:
             BusinessError: 主机已存在
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             # 检查主机是否已存在
             stmt = select(Host).where(Host.host_id == host_data.host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             existing_host = result.scalar_one_or_none()
 
             if existing_host:
+                logger.warning(
+                    "主机已存在",
+                    extra={
+                        "operation": "create_host",
+                        "host_id": host_data.host_id,
+                        "error_code": "HOST_ALREADY_EXISTS",
+                    },
+                )
                 raise BusinessError(
                     message=f"主机已存在: {host_data.host_id}",
                     error_code="HOST_ALREADY_EXISTS",
@@ -69,9 +80,18 @@ class HostService:
             await session.commit()
             await session.refresh(new_host)
 
-            logger.info(f"主机创建成功: {new_host.host_id}")
+            logger.info(
+                "主机创建成功",
+                extra={
+                    "operation": "create_host",
+                    "host_id": new_host.host_id,
+                    "hostname": new_host.hostname,
+                    "ip_address": new_host.ip_address,
+                },
+            )
             return new_host
 
+    @handle_service_errors(error_message="获取主机失败", error_code="HOST_GET_FAILED")
     async def get_host_by_id(self, host_id: str) -> Optional[Host]:
         """根据 host_id 获取主机
 
@@ -81,19 +101,33 @@ class HostService:
         Returns:
             主机对象，如果不存在则返回 None
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if host:
-                logger.debug(f"查询主机成功: {host_id}")
+                logger.debug(
+                    "查询主机成功",
+                    extra={
+                        "operation": "get_host_by_id",
+                        "host_id": host_id,
+                        "status": host.status,
+                    },
+                )
             else:
-                logger.warning(f"主机不存在: {host_id}")
+                logger.warning(
+                    "主机不存在",
+                    extra={
+                        "operation": "get_host_by_id",
+                        "host_id": host_id,
+                    },
+                )
 
             return host
 
+    @monitor_operation("host_list", record_duration=True)
+    @handle_service_errors(error_message="获取主机列表失败", error_code="HOST_LIST_FAILED")
     async def list_hosts(
         self,
         page: int = 1,
@@ -110,8 +144,7 @@ class HostService:
         Returns:
             (主机列表, 总数)
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             # 构建查询条件
             conditions = [Host.is_deleted.is_(False)]
             if status:
@@ -128,9 +161,21 @@ class HostService:
             result = await session.execute(stmt)
             hosts = result.scalars().all()
 
-            logger.info(f"查询主机列表: page={page}, size={page_size}, total={total}")
+            logger.info(
+                "查询主机列表成功",
+                extra={
+                    "operation": "list_hosts",
+                    "page": page,
+                    "page_size": page_size,
+                    "status_filter": status,
+                    "total": total,
+                    "returned": len(hosts),
+                },
+            )
             return list(hosts), total
 
+    @monitor_operation("host_update", record_duration=True)
+    @handle_service_errors(error_message="更新主机失败", error_code="HOST_UPDATE_FAILED")
     async def update_host(self, host_id: str, host_data: HostUpdate) -> Host:
         """更新主机信息
 
@@ -144,14 +189,21 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if not host:
+                logger.warning(
+                    "主机不存在",
+                    extra={
+                        "operation": "update_host",
+                        "host_id": host_id,
+                        "error_code": "HOST_NOT_FOUND",
+                    },
+                )
                 raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
 
             # 更新字段
@@ -164,9 +216,18 @@ class HostService:
             await session.commit()
             await session.refresh(host)
 
-            logger.info(f"主机更新成功: {host_id}")
+            logger.info(
+                "主机更新成功",
+                extra={
+                    "operation": "update_host",
+                    "host_id": host_id,
+                    "updated_fields": list(update_data.keys()),
+                },
+            )
             return host
 
+    @monitor_operation("host_status_update", record_duration=True)
+    @handle_service_errors(error_message="更新主机状态失败", error_code="HOST_STATUS_UPDATE_FAILED")
     async def update_host_status(self, host_id: str, status_data: HostStatusUpdate) -> Host:
         """更新主机状态
 
@@ -180,17 +241,25 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if not host:
+                logger.warning(
+                    "主机不存在",
+                    extra={
+                        "operation": "update_host_status",
+                        "host_id": host_id,
+                        "error_code": "HOST_NOT_FOUND",
+                    },
+                )
                 raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
 
             # 更新状态和心跳时间
+            old_status = host.status
             host.status = status_data.status
             host.last_heartbeat = datetime.utcnow()
             host.updated_at = datetime.utcnow()
@@ -198,9 +267,19 @@ class HostService:
             await session.commit()
             await session.refresh(host)
 
-            logger.info(f"主机状态更新成功: {host_id} -> {status_data.status}")
+            logger.info(
+                "主机状态更新成功",
+                extra={
+                    "operation": "update_host_status",
+                    "host_id": host_id,
+                    "old_status": old_status,
+                    "new_status": status_data.status,
+                },
+            )
             return host
 
+    @monitor_operation("host_delete", record_duration=True)
+    @handle_service_errors(error_message="删除主机失败", error_code="HOST_DELETE_FAILED")
     async def delete_host(self, host_id: str) -> bool:
         """删除主机（软删除）
 
@@ -213,14 +292,21 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if not host:
+                logger.warning(
+                    "主机不存在",
+                    extra={
+                        "operation": "delete_host",
+                        "host_id": host_id,
+                        "error_code": "HOST_NOT_FOUND",
+                    },
+                )
                 raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
 
             # 软删除
@@ -229,9 +315,17 @@ class HostService:
 
             await session.commit()
 
-            logger.info(f"主机删除成功: {host_id}")
+            logger.info(
+                "主机删除成功",
+                extra={
+                    "operation": "delete_host",
+                    "host_id": host_id,
+                    "hostname": host.hostname,
+                },
+            )
             return True
 
+    @handle_service_errors(error_message="更新主机心跳失败", error_code="HOST_HEARTBEAT_UPDATE_FAILED")
     async def update_heartbeat(self, host_id: str) -> Host:
         """更新主机心跳时间
 
@@ -244,17 +338,25 @@ class HostService:
         Raises:
             BusinessError: 主机不存在
         """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
+        async with mariadb_manager.get_session() as session:
             # 查询主机
             stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if not host:
+                logger.warning(
+                    "主机不存在",
+                    extra={
+                        "operation": "update_heartbeat",
+                        "host_id": host_id,
+                        "error_code": "HOST_NOT_FOUND",
+                    },
+                )
                 raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
 
             # 更新心跳时间和状态
+            old_status = host.status
             host.last_heartbeat = datetime.utcnow()
             if host.status != "online":
                 host.status = "online"
@@ -263,5 +365,13 @@ class HostService:
             await session.commit()
             await session.refresh(host)
 
-            logger.debug(f"主机心跳更新: {host_id}")
+            logger.debug(
+                "主机心跳更新",
+                extra={
+                    "operation": "update_heartbeat",
+                    "host_id": host_id,
+                    "old_status": old_status,
+                    "new_status": host.status,
+                },
+            )
             return host

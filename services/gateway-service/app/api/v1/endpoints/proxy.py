@@ -11,20 +11,22 @@ from typing import Any
 # 使用 try-except 方式处理路径导入
 try:
     from fastapi import APIRouter, Depends, HTTPException, Request
+    from fastapi.responses import JSONResponse
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
     from app.services.proxy_service import ProxyService, get_proxy_service
-    from shared.common.exceptions import ServiceNotFoundError, ServiceUnavailableError
+    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from fastapi import APIRouter, Depends, HTTPException, Request
+    from fastapi.responses import JSONResponse
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
     from app.services.proxy_service import ProxyService, get_proxy_service
-    from shared.common.exceptions import ServiceNotFoundError, ServiceUnavailableError
+    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
 
@@ -35,13 +37,13 @@ router = APIRouter()
 
 
 @router.api_route(
-    "/{service_name}/{path:path}",
+    "/{service_name}/{subpath:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     operation_id="proxy_service_request",
 )
 async def proxy_request(
     service_name: str,
-    path: str,
+    subpath: str,
     request: Request,
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Any:
@@ -51,7 +53,7 @@ async def proxy_request(
 
     Args:
         service_name: 服务名称（如 auth-service, admin-service）
-        path: 请求路径
+        subpath: 子路径
         request: 请求对象
         proxy_service: 代理服务实例
 
@@ -102,9 +104,14 @@ async def proxy_request(
 
         # 移除可能导致冲突的头部
         headers.pop("host", None)
-        # 如果使用原始请求体，也移除Content-Length头部
+
+        # 处理Content-Type头
         if raw_body is not None:
-            # Content-Length头部可能有不同的键名格式
+            # 如果使用原始请求体，确保Content-Type为application/json
+            if "content-type" not in [k.lower() for k in headers]:
+                headers["Content-Type"] = "application/json"
+                logger.debug("为原始请求体添加Content-Type: application/json")
+            # 移除Content-Length头部
             content_length_keys = [k for k in headers if k.lower() == "content-length"]
             for key in content_length_keys:
                 del headers[key]
@@ -112,22 +119,22 @@ async def proxy_request(
 
         # 记录请求日志
         logger.info(
-            f"代理请求: {method} /{service_name}/{path}",
+            f"代理请求: {method} /{service_name}/{subpath}",
             extra={
                 "service_name": service_name,
                 "method": method,
-                "path": path,
+                "path": subpath,
                 "user": getattr(request.state, "user", None),
             },
         )
 
         # 准备调用forward_request
-        logger.info(f"准备转发请求: service_name={service_name}, path={path}, has_raw_body={raw_body is not None}")
+        logger.info(f"准备转发请求: service_name={service_name}, subpath={subpath}, has_raw_body={raw_body is not None}")
 
         # 转发请求
         response = await proxy_service.forward_request(
             service_name=service_name,
-            path=f"/{path}",
+            path=subpath,
             method=method,
             headers=headers,
             query_params=query_params,
@@ -146,10 +153,29 @@ async def proxy_request(
         )
         raise e
 
+    except BusinessError as e:
+        # 透传后端服务的业务错误（4xx状态码）
+        logger.warning(
+            f"透传后端服务业务错误: {service_name}",
+            extra={
+                "service_name": service_name,
+                "error_message": e.message,
+                "error_code": e.error_code,
+                "status_code": e.code,
+                "error_details": e.details,
+            },
+        )
+        raise e
+
     except ServiceUnavailableError as e:
+        # 后端服务不可用错误（503状态码）
         logger.error(
-            f"服务不可用: {service_name}",
-            extra={"service_name": service_name, "error": str(e)},
+            f"后端服务不可用: {service_name}",
+            extra={
+                "service_name": service_name,
+                "error_message": e.message,
+                "error_details": e.details,
+            },
         )
         raise e
 
@@ -163,13 +189,17 @@ async def proxy_request(
             },
             exc_info=True,
         )
-        raise HTTPException(
+
+        # 直接返回JSONResponse，避免HTTPException的detail包装
+        error_response = ErrorResponse(
+            code=HTTP_500_INTERNAL_SERVER_ERROR,
+            message="网关内部错误",
+            error_code="GATEWAY_ERROR",
+        )
+
+        return JSONResponse(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorResponse(
-                code=HTTP_500_INTERNAL_SERVER_ERROR,
-                message="网关内部错误",
-                error_code="GATEWAY_ERROR",
-            ).model_dump(),
+            content=error_response.model_dump(),
         )
 
 
@@ -223,13 +253,16 @@ async def check_service_health(
         )
 
     except ServiceNotFoundError as e:
-        raise HTTPException(
+        # 直接返回JSONResponse，避免HTTPException的detail包装
+        error_response = ErrorResponse(
+            code=HTTP_404_NOT_FOUND,
+            message=e.message,
+            error_code=e.error_code,
+        )
+
+        return JSONResponse(
             status_code=HTTP_404_NOT_FOUND,
-            detail=ErrorResponse(
-                code=HTTP_404_NOT_FOUND,
-                message=e.message,
-                error_code=e.error_code,
-            ).model_dump(),
+            content=error_response.model_dump(),
         )
 
 
@@ -244,8 +277,6 @@ async def catch_all_handler(request: Request, path: str):
     这个路由处理器会捕获所有没有被其他路由匹配的请求，
     统一返回符合项目规范的404错误响应格式。
     """
-    from fastapi.responses import JSONResponse
-
     from shared.common.response import ErrorResponse
 
     logger.warning(

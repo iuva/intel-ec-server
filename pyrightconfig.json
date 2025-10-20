@@ -18,7 +18,7 @@
   "reportInvalidStubStatement": true,
   "reportIncompleteStub": true,
   "reportUnsupportedDunderAll": true,
-  "reportUnusedImport": true,
+  "reportUnusedImport": "warning",
   "pythonVersion": "3.8",
   "pythonPlatform": "All",
   "include": [

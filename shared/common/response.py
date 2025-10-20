@@ -4,6 +4,7 @@
 提供标准化的API响应格式，包括成功响应、错误响应和分页响应
 """
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -40,6 +41,10 @@ class ErrorResponse(BaseModel):
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="错误时间戳",
+    )
+    request_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="请求唯一标识符",
     )
 
     model_config = {"from_attributes": True}
@@ -98,6 +103,7 @@ def create_error_response(
     error_code: str,
     code: int = 500,
     details: Optional[Dict[str, Any]] = None,
+    request_id: Optional[str] = None,
 ) -> ErrorResponse:
     """创建错误响应
 
@@ -106,10 +112,13 @@ def create_error_response(
         error_code: 错误类型标识
         code: HTTP状态码
         details: 错误详情
+        request_id: 请求唯一标识符（可选，不提供则自动生成）
 
     Returns:
         错误响应对象
     """
+    if request_id:
+        return ErrorResponse(code=code, message=message, error_code=error_code, details=details, request_id=request_id)
     return ErrorResponse(code=code, message=message, error_code=error_code, details=details)
 
 

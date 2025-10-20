@@ -6,6 +6,7 @@
 
 from shared.common.cache import cache_result, get_cache, redis_manager, set_cache
 from shared.common.database import Base, BaseDBModel, get_db_session, mariadb_manager
+from shared.common.decorators import handle_api_errors, handle_service_errors, monitor_operation
 from shared.common.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -69,9 +70,13 @@ __all__ = [
     "get_jwt_manager",
     "get_logger",
     "get_***REMOVED***word_hash",
+    # 装饰器
+    "handle_api_errors",
+    "handle_service_errors",
     "hash_***REMOVED***word",
     "init_jwt_manager",
     "mariadb_manager",
+    "monitor_operation",
     "redis_manager",
     "set_cache",
     "verify_***REMOVED***word",

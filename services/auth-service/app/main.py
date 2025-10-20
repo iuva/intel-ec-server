@@ -1,7 +1,7 @@
 """
 Auth Service 主应用入口
 
-提供用户认证、JWT令牌管理、OAuth 2.0等功能
+提供用户认证、JWT令牌管理等功能
 """
 
 import asyncio
@@ -166,7 +166,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # 创建FastAPI应用
 app = FastAPI(
     title="Auth Service API",
-    description="认证服务 - 提供用户认证、JWT令牌管理、OAuth 2.0等功能",
+    description="认证服务 - 提供用户认证、JWT令牌管理等功能",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
@@ -315,60 +315,6 @@ async def root():
         },
         message="Auth Service 运行正常",
     )
-
-
-# 捕获所有未匹配的请求，返回统一格式的404错误
-# 暂时禁用catch_all_handler进行测试
-# @app.api_route(
-#     "/{path:path}",
-#     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
-#     operation_id="auth_service_catch_all_handler",
-# )
-# async def catch_all_handler(request: Request, path: str):
-#     """捕获所有未匹配的请求，返回统一格式的404错误
-#
-#     这个路由处理器会捕获所有没有被其他路由匹配的请求，
-#     统一返回符合项目规范的404错误响应格式。
-#     """
-#     from fastapi.responses import JSONResponse
-#
-#     # 使用 try-except 方式处理路径导入
-#     try:
-#         from shared.common.response import ErrorResponse
-#     except ImportError:
-#         import sys
-#
-#         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
-#         from shared.common.response import ErrorResponse
-#
-#     logger.warning(
-#         f"未找到路由: {request.method} /{path}",
-#         extra={
-#             "method": request.method,
-#             "path": path,
-#             "user_agent": request.headers.get("user-agent"),
-#             "client_ip": request.client.host if request.client else "unknown",
-#         },
-#     )
-#
-#     # 检查是否是API路径但版本不正确
-#     if path.startswith("api/"):
-#         error_message = "API版本不存在"
-#     else:
-#         error_message = "请求的资源不存在"
-#
-#     # 返回统一格式的404错误响应
-#     error_response = ErrorResponse(
-#         code=404,
-#         message=error_message,
-#         error_code="RESOURCE_NOT_FOUND",
-#         details={
-#             "method": request.method,
-#             "path": f"/{path}",
-#         },
-#     )
-#
-#     return JSONResponse(status_code=404, content=error_response.model_dump())
 
 
 if __name__ == "__main__":

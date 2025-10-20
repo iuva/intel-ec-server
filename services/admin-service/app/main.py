@@ -53,11 +53,11 @@ def _get_service_config() -> Tuple[str, int, str, str]:
 
 def _build_database_urls() -> Tuple[str, str]:
     """构建数据库连接URL"""
-    # 从环境变量构建 MariaDB URL
-    mariadb_host = os.getenv("MARIADB_HOST", "localhost")
+    # 从环境变量构建 MariaDB URL（默认值与docker-compose.yml保持一致）
+    mariadb_host = os.getenv("MARIADB_HOST", "mariadb")
     mariadb_port = os.getenv("MARIADB_PORT", "3306")
-    mariadb_user = os.getenv("MARIADB_USER", "root")
-    mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "***REMOVED***word")
+    mariadb_user = os.getenv("MARIADB_USER", "intel_user")
+    mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "intel_***REMOVED***")
     mariadb_database = os.getenv("MARIADB_DATABASE", "intel_cw")
 
     # URL 编码密码中的特殊字符
@@ -83,8 +83,41 @@ def _build_database_urls() -> Tuple[str, str]:
 
 async def _initialize_databases() -> None:
     """初始化数据库连接"""
-    mariadb_url, redis_url = _build_database_urls()
-    await init_databases(mariadb_url=mariadb_url, redis_url=redis_url)
+    try:
+        mariadb_url, redis_url = _build_database_urls()
+        logger.info("正在初始化数据库连接...")
+        logger.info(f"MariaDB URL: {mariadb_url.replace(mariadb_url.split('@')[0].split('://')[1], '***:***')}")
+        logger.info(f"Redis URL: {redis_url.replace(redis_url.split('@')[0] if '@' in redis_url else '', '***:***')}")
+
+        await init_databases(mariadb_url=mariadb_url, redis_url=redis_url)
+        logger.info("数据库连接初始化成功")
+
+        # 测试数据库连接
+        try:
+            from shared.common.database import mariadb_manager
+            # 尝试获取会话来测试连接
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as test_session:
+                # 执行一个简单的查询来验证连接
+                from sqlalchemy import text
+                result = await test_session.execute(text("SELECT 1 as test"))
+                row = result.fetchone()
+                if row and row[0] == 1:
+                    logger.info("数据库连接测试成功")
+                else:
+                    logger.warning("数据库连接测试失败：查询结果异常")
+        except Exception as db_test_error:
+            logger.error(f"数据库连接测试失败: {db_test_error}")
+            raise RuntimeError(f"数据库连接测试失败: {db_test_error}")
+
+    except Exception as e:
+        logger.error(f"数据库初始化失败: {e}")
+        logger.error("请检查以下配置:")
+        logger.error("  1. MariaDB服务是否运行")
+        logger.error("  2. 数据库连接参数是否正确")
+        logger.error("  3. 数据库用户权限是否正确")
+        logger.error("  4. 网络连接是否正常")
+        raise
 
 
 def _initialize_monitoring() -> None:
@@ -244,6 +277,77 @@ try:
     logger.info("统一异常处理中间件已启用")
 except Exception as e:
     logger.error(f"添加统一异常处理失败: {e!s}", exc_info=True)
+
+# 添加请求验证错误的详细处理
+try:
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+    from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
+
+    from shared.common.response import ErrorResponse
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """处理请求验证错误，提供详细的错误信息
+
+        Args:
+            request: 请求对象
+            exc: 验证错误异常
+
+        Returns:
+            详细的验证错误响应
+        """
+        # 记录详细的验证错误信息
+        logger.warning(
+            "请求验证失败",
+            extra={
+                "operation": "request_validation",
+                "method": request.method,
+                "url": str(request.url),
+                "client_ip": request.client.host if request.client else "unknown",
+                "user_agent": request.headers.get("user-agent", "unknown"),
+                "validation_errors": [
+                    {
+                        "field": ".".join(str(loc) for loc in error["loc"]),
+                        "message": error["msg"],
+                        "error_type": error["type"],
+                        "input_value": str(error.get("input", ""))[:100]  # 限制输入值长度
+                    }
+                    for error in exc.errors()
+                ],
+                "error_count": len(exc.errors())
+            }
+        )
+
+        # 构建详细的错误响应
+        field_errors = [
+            {
+                "field": ".".join(str(loc) for loc in error["loc"]),
+                "message": error["msg"],
+                "error_type": error["type"]
+            }
+            for error in exc.errors()
+        ]
+
+        error_response = ErrorResponse(
+            code=HTTP_422_UNPROCESSABLE_ENTITY,
+            message="请求参数验证失败",
+            error_code="VALIDATION_ERROR",
+            details={
+                "field_errors": field_errors,
+                "total_errors": len(field_errors)
+            }
+        )
+
+        return JSONResponse(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            content=error_response.model_dump()
+        )
+
+    logger.info("请求验证错误处理器已启用")
+
+except Exception as e:
+    logger.warning(f"添加请求验证错误处理器失败: {e!s}")
 
 # 添加指标收集中间件（在最后添加，确保捕获所有请求）
 try:

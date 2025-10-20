@@ -96,14 +96,50 @@ class LogoutRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     """管理后台登录请求"""
 
-    user_account: str = Field(description="用户账号")
+    username: str = Field(description="用户名")
     ***REMOVED***word: str = Field(description="密码")
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "user_account": "admin",
+                "username": "admin",
                 "***REMOVED***word": "***REMOVED***",
+            }
+        }
+    }
+
+
+class DeviceLoginRequest(BaseModel):
+    """设备登录请求"""
+
+    mg_id: str = Field(description="唯一引导ID")
+    host_ip: str = Field(description="主机IP地址")
+    username: str = Field(description="主机账号")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "mg_id": "device-12345",
+                "host_ip": "192.168.1.100",
+                "username": "root",
+            }
+        }
+    }
+
+
+class LoginResponse(BaseModel):
+    """登录响应"""
+
+    token: str = Field(description="访问令牌")
+    token_type: str = Field(default="bearer", description="令牌类型")
+    expires_in: int = Field(description="过期时间（秒）")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer",
+                "expires_in": 1800,
             }
         }
     }
