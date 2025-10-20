@@ -28,10 +28,21 @@ ENV_FILE="$PROJECT_ROOT/.env"
 load_env_file() {
     if [ -f "$ENV_FILE" ]; then
         echo -e "${BLUE}📋 从 .env 文件加载环境变量...${NC}"
-        # 加载 .env 文件（过滤注释和空行）
-        set -a
-        source <(grep -v '^#' "$ENV_FILE" | grep -v '^$')
-        set +a
+        
+        # 读取 .env 文件，过滤注释和空行，然后导出每个变量
+        while IFS='=' read -r key value; do
+            # 跳过注释和空行
+            [[ "$key" =~ ^#.*$ ]] && continue
+            [ -z "$key" ] && continue
+            
+            # 移除可能的引号
+            value="${value%\'}"
+            value="${value#\'}"
+            
+            # 导出环境变量到当前 shell
+            export "$key"="$value"
+        done < "$ENV_FILE"
+        
         echo -e "${GREEN}✓ 环境变量加载成功${NC}"
     else
         echo -e "${YELLOW}⚠️  警告：.env 文件不存在，使用默认环境变量${NC}"
