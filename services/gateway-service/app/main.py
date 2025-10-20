@@ -209,7 +209,9 @@ logger.info("中间件执行顺序（请求处理）：Auth → Metrics → CORS
 logger.info("=" * 80)
 
 # 初始化 Jaeger 追踪器（在应用创建时）
-jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "http://jaeger:4318/v1/traces")
+# ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+# gRPC 避免了 protobuf over HTTP 的兼容性问题
+jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "jaeger:4317")
 try:
     init_jaeger(
         service_name="gateway-service",

@@ -198,7 +198,9 @@ services:
       NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
       NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
       # Jaeger配置
-      JAEGER_ENDPOINT: http://jaeger:4318/v1/traces
+      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+      # gRPC 避免了 protobuf over HTTP 的兼容性问题
+      JAEGER_ENDPOINT: jaeger:4317
       JAEGER_AGENT_HOST: jaeger
       JAEGER_AGENT_PORT: 6831
       # 应用配置

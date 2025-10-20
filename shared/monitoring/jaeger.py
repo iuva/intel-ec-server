@@ -8,7 +8,7 @@ import logging
 from typing import Any, Optional
 
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -42,7 +42,7 @@ class JaegerManager:
 
         Args:
             service_name: 服务名称
-            jaeger_endpoint: Jaeger收集器端点（OTLP HTTP）
+            jaeger_endpoint: Jaeger收集器端点（gRPC 端点，如 jaeger:4317）
             environment: 环境名称
             service_version: 服务版本
 
@@ -62,12 +62,12 @@ class JaegerManager:
             # 创建追踪器提供者
             self.tracer_provider = TracerProvider(resource=resource)
 
-            # 创建OTLP导出器
-            # ✅ 使用 HTTP 格式而不是 protobuf（兼容性更好）
+            # 创建OTLP gRPC导出器
+            # ✅ 使用 gRPC 格式而不是 protobuf over HTTP
+            # gRPC 原生支持二进制序列化，兼容性更好
             otlp_exporter = OTLPSpanExporter(
                 endpoint=jaeger_endpoint,
-                timeout=10,
-                headers=(("Content-Type", "application/json"),),  # 强制使用 JSON 格式
+                insecure=True,  # 开发环境使用 insecure=True（不验证证书）
             )
 
             # 创建批处理span处理器

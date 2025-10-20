@@ -175,7 +175,8 @@ app = FastAPI(
 )
 
 # 初始化 Jaeger 追踪器（在应用创建时）
-jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "http://jaeger:4318/v1/traces")
+# ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "jaeger:4317")
 try:
     init_jaeger(
         service_name="auth-service",

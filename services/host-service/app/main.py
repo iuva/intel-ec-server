@@ -199,7 +199,8 @@ except Exception as e:
     logger.warning(f"添加指标收集中间件失败: {e!s}")
 
 # 初始化 Jaeger 追踪器（在应用创建时）
-jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "http://jaeger:4318/v1/traces")
+# ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
+jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "jaeger:4317")
 try:
     init_jaeger(
         service_name="host-service",
