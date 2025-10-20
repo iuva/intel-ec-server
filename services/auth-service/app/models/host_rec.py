@@ -6,6 +6,7 @@
 
 from datetime import datetime
 from typing import Optional
+import time
 
 from sqlalchemy import BigInteger, DateTime, Integer, SmallInteger, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,13 +23,24 @@ except ImportError:
     from shared.common.database import Base
 
 
+def generate_snowflake_id() -> int:
+    """生成雪花ID（简化版）
+
+    使用时间戳 + 随机数生成唯一ID
+    """
+    import random
+    timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+    random_part = random.randint(0, 999999)  # 随机数
+    return (timestamp << 20) | random_part
+
+
 class HostRec(Base):
     """主机记录模型"""
 
     __tablename__ = "host_rec"
 
-    # 主键
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, comment="主键")
+    # 主键 - 使用雪花ID生成器
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id, comment="主键（雪花ID）")
 
     # 基础字段
     host_no: Mapped[Optional[str]] = mapped_column(String(64), comment="主机主键;对应 mongo 数据库 host 主键")
@@ -45,7 +57,9 @@ class HostRec(Base):
     )
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
-        comment="主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动. disable: 7, 手动停用. updating: 8, 更新中.}",
+        comment="主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中."
+        "offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动. "
+        "disable: 7, 手动停用. updating: 8, 更新中.}",
     )
 
     # 时间字段
@@ -53,11 +67,12 @@ class HostRec(Base):
     hw_id: Mapped[Optional[int]] = mapped_column(BigInteger, comment="硬件记录表主键;host_hw_rec 表主键")
     agent_ver: Mapped[Optional[str]] = mapped_column(String(10), comment="agent 版本号")
 
-    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="创建人")
+    # 审计字段 - 支持自动设置
+    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="创建人（当前登录用户ID）")
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
     )
-    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="更新人")
+    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="更新人（当前登录用户ID）")
     updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),

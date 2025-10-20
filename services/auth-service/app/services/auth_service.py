@@ -6,6 +6,7 @@
 
 from datetime import datetime, timezone
 import os
+from typing import Optional
 
 from sqlalchemy import select
 
@@ -309,13 +310,16 @@ class AuthService:
             )
             raise BusinessError(message="服务器内部错误", error_code="INTERNAL_SERVER_ERROR")
 
-    async def device_login(self, login_data: DeviceLoginRequest) -> LoginResponse:
+    async def device_login(
+        self, login_data: DeviceLoginRequest, current_user_id: Optional[int] = None
+    ) -> LoginResponse:
         """设备登录（传统方式）
 
         使用 host_rec 表进行认证，如果 mg_id 存在则更新，不存在则插入
 
         Args:
             login_data: 设备登录请求数据（mg_id, host_ip, username）
+            current_user_id: 当前用户ID（从token获取，可选）
 
         Returns:
             LoginResponse: 包含 token 的登录响应
@@ -336,10 +340,11 @@ class AuthService:
                 host_rec = result.scalar_one_or_none()
 
                 if host_rec:
-                    # mg_id 存在，更新 host_ip 和 username
+                    # mg_id 存在，更新 host_ip、username 和 updated_by
                     host_rec.host_ip = login_data.host_ip
                     host_rec.host_acct = login_data.username
                     host_rec.updated_time = datetime.now(timezone.utc)
+                    host_rec.updated_by = current_user_id  # 设置更新人
 
                     logger.info(
                         "设备信息更新",
@@ -349,6 +354,7 @@ class AuthService:
                             "host_ip": login_data.host_ip,
                             "username": login_data.username,
                             "host_rec_id": host_rec.id,
+                            "updated_by": current_user_id,
                         },
                     )
                 else:
@@ -357,10 +363,12 @@ class AuthService:
                         mg_id=login_data.mg_id,
                         host_ip=login_data.host_ip,
                         host_acct=login_data.username,
-                        appr_state=5,  # 待激活
+                        appr_state=1,  # 启用
                         host_state=5,  # 待激活
                         subm_time=datetime.now(timezone.utc),
+                        created_by=current_user_id,  # 设置创建人
                         created_time=datetime.now(timezone.utc),
+                        updated_by=current_user_id,  # 设置更新人
                         updated_time=datetime.now(timezone.utc),
                         del_flag=0,
                     )
@@ -375,6 +383,7 @@ class AuthService:
                             "host_ip": login_data.host_ip,
                             "username": login_data.username,
                             "host_rec_id": host_rec.id,
+                            "created_by": current_user_id,
                         },
                     )
 
@@ -449,7 +458,9 @@ class AuthService:
             # 删除会话记录
             session_factory = mariadb_manager.get_session()
             async with session_factory() as db_session:
-                stmt = select(UserSession).where(UserSession.access_token == token, not UserSession.is_deleted)
+                stmt = select(UserSession).where(
+                    UserSession.access_token == token, ~UserSession.is_deleted
+                )
                 result = await db_session.execute(stmt)
                 user_session = result.scalar_one_or_none()
 

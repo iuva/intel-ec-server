@@ -6,8 +6,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
+from typing import Optional
 
-from app.api.v1.dependencies import get_auth_service
+from app.api.v1.dependencies import get_auth_service, get_current_user
 from app.schemas.auth import (
     AdminLoginRequest,
     DeviceLoginRequest,
@@ -98,6 +99,7 @@ async def admin_login(
 async def device_login(
     login_data: DeviceLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    current_user: Optional[dict] = Depends(get_current_user),
 ) -> SuccessResponse:
     """设备登录（传统方式）
 
@@ -107,6 +109,7 @@ async def device_login(
     Args:
         login_data: 设备登录请求数据（mg_id, host_ip, username）
         auth_service: 认证服务实例
+        current_user: 当前用户信息（可选，用于审计）
 
     Returns:
         SuccessResponse: 包含 token 的成功响应
@@ -115,8 +118,14 @@ async def device_login(
         HTTPException: 登录失败时抛出
     """
     try:
-        # 执行登录
-        login_response = await auth_service.device_login(login_data)
+        # 从当前用户信息中获取 user_id（如果已认证）
+        current_user_id = None
+        if current_user:
+            # 从 token 中的 sub 字段获取用户ID
+            current_user_id = int(current_user.get("sub", 0)) if current_user.get("sub") else None
+
+        # 执行登录，传递当前用户ID用于审计
+        login_response = await auth_service.device_login(login_data, current_user_id=current_user_id)
 
         logger.info(
             "设备登录成功",
@@ -124,6 +133,7 @@ async def device_login(
                 "operation": "device_login",
                 "mg_id": login_data.mg_id,
                 "host_ip": login_data.host_ip,
+                "current_user_id": current_user_id,
             },
         )
 

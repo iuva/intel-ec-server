@@ -89,16 +89,18 @@ auth-service/
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | BIGINT | 主键ID |
+| id | BIGINT | 主键ID（雪花ID） |
 | mg_id | VARCHAR(128) | 唯一引导ID |
 | host_ip | VARCHAR(32) | IP地址 |
 | host_acct | VARCHAR(32) | 主机账号 |
 | appr_state | SMALLINT | 审批状态 |
 | host_state | SMALLINT | 主机状态 |
 | subm_time | DATETIME | 申报时间 |
-| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
+| created_by | BIGINT | 创建人（当前登录用户ID，从token自动获取） |
 | created_time | DATETIME | 创建时间 |
+| updated_by | BIGINT | 更新人（当前登录用户ID，从token自动获取） |
 | updated_time | DATETIME | 更新时间 |
+| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
 
 ### user_sessions 表（会话管理）
 
@@ -115,7 +117,94 @@ auth-service/
 | created_at | DATETIME | 创建时间 |
 | is_deleted | BOOLEAN | 是否已删除 |
 
-## 环境变量
+## 设备登录（Device Login）审计机制
+
+### 问题描述
+
+2025-10-20 发现设备登录（Device Login）时 `host_rec` 表中 `id` 字段报错：`Field 'id' doesn't have a default value`。
+
+### 解决方案
+
+#### 1. 主键改为雪花ID生成
+
+```python
+# app/models/host_rec.py
+def generate_snowflake_id() -> int:
+    """生成雪花ID"""
+    import random, time
+    timestamp = int(time.time() * 1000)
+    random_part = random.randint(0, 999999)
+    return (timestamp << 20) | random_part
+
+class HostRec(Base):
+    id: Mapped[int] = mapped_column(
+        BigInteger, 
+        primary_key=True, 
+        default=generate_snowflake_id,
+        comment="主键（雪花ID）"
+    )
+```
+
+#### 2. 审计字段自动设置
+
+设备登录时自动从 JWT token 中获取用户 ID，设置 `created_by` 和 `updated_by` 字段：
+
+```python
+# app/services/auth_service.py
+async def device_login(
+    self, login_data: DeviceLoginRequest, 
+    current_user_id: Optional[int] = None
+) -> LoginResponse:
+    # 创建新设备时
+    host_rec = HostRec(
+        mg_id=login_data.mg_id,
+        host_ip=login_data.host_ip,
+        host_acct=login_data.username,
+        created_by=current_user_id,      # 设置创建人
+        created_time=datetime.now(timezone.utc),
+        updated_by=current_user_id,      # 设置更新人
+        updated_time=datetime.now(timezone.utc),
+        del_flag=0,
+    )
+    
+    # 更新现有设备时
+    if host_rec:
+        host_rec.host_ip = login_data.host_ip
+        host_rec.host_acct = login_data.username
+        host_rec.updated_by = current_user_id  # 更新人
+        host_rec.updated_time = datetime.now(timezone.utc)
+```
+
+#### 3. API 端点获取当前用户信息
+
+```python
+# app/api/v1/endpoints/auth.py
+@router.post("/device/login")
+async def device_login(
+    login_data: DeviceLoginRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+    current_user: Optional[dict] = Depends(get_current_user),  # 获取当前用户
+) -> SuccessResponse:
+    # 从 token 中提取 user_id
+    current_user_id = None
+    if current_user:
+        current_user_id = int(current_user.get("sub", 0)) if current_user.get("sub") else None
+    
+    # 传递给服务层
+    login_response = await auth_service.device_login(
+        login_data, 
+        current_user_id=current_user_id
+    )
+```
+
+### 审计追踪优势
+
+- ✅ 记录设备何时创建、由谁创建
+- ✅ 记录设备何时更新、由谁更新
+- ✅ 完整的操作审计追踪链
+- ✅ 便于问题排查和日志分析
+
+### 环境变量
 
 ```bash
 # 服务配置
@@ -222,112 +311,3 @@ curl -X POST http://localhost:8001/api/v1/auth/device/login \
   }
 }
 ```
-
-### 刷新令牌
-
-```bash
-curl -X POST http://localhost:8001/api/v1/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }'
-```
-
-### 验证令牌
-
-```bash
-curl -X POST http://localhost:8001/api/v1/auth/introspect \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }'
-```
-
-### 用户注销
-
-```bash
-curl -X POST http://localhost:8001/api/v1/auth/logout \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }'
-```
-
-## 监控和健康检查
-
-### 健康检查
-
-```bash
-curl http://localhost:8001/health
-```
-
-### Prometheus 指标
-
-```bash
-curl http://localhost:8001/metrics
-```
-
-## 开发指南
-
-### 添加新的认证方式
-
-1. 在 `app/schemas/auth.py` 中定义新的请求/响应模式
-2. 在 `app/services/auth_service.py` 中实现业务逻辑
-3. 在 `app/api/v1/endpoints/auth.py` 中添加新的端点
-4. 更新 API 文档
-
-### 代码质量检查
-
-```bash
-# Ruff 检查
-ruff check services/auth-service/
-
-# MyPy 类型检查
-mypy services/auth-service/
-
-# Black 格式化
-black services/auth-service/
-```
-
-## 故障排查
-
-### 数据库连接失败
-
-1. 检查 MariaDB 服务是否运行
-2. 验证 `MARIADB_URL` 环境变量配置
-3. 检查数据库用户权限
-
-### Redis 连接失败
-
-1. 检查 Redis 服务是否运行
-2. 验证 `REDIS_URL` 环境变量配置
-3. 检查 Redis 网络连接
-
-### Nacos 注册失败
-
-1. 检查 Nacos 服务是否运行
-2. 验证 `NACOS_SERVER_ADDR` 配置
-3. 检查服务 IP 和端口配置
-
-## 相关文档
-
-- [项目总体规范](../../.cursor/rules/project-overview.mdc)
-- [微服务架构规范](../../.cursor/rules/microservice-architecture.mdc)
-- [API 设计规范](../../.cursor/rules/api-design-standards.mdc)
-- [认证安全规范](../../.cursor/rules/auth-security.mdc)
-
-## 更新历史
-
-- **2025-10-17**: 重构认证方式，移除 OAuth 2.0
-  - 实现传统登录方式
-  - 添加管理员登录接口（使用 sys_user 表）
-  - 添加设备登录接口（使用 host_rec 表）
-  - 移除 OAuth 2.0 相关代码
-  - 简化认证流程
-
-- **2025-01-29**: 初始版本，实现基础认证功能
-  - 用户登录认证
-  - JWT 令牌管理
-  - 令牌刷新和验证
-  - 用户注销
-  - 健康检查和监控
