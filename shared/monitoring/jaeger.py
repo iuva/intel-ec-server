@@ -4,20 +4,20 @@ Jaeger分布式追踪模块
 基于OpenTelemetry提供分布式追踪功能
 """
 
-import os
 import logging
+import os
 from typing import Any, Optional
 
 # ✅ 禁用 OpenTelemetry 的自动检测和 Thrift agent 导出器
 # 防止环境变量触发自动创建冲突的导出器
-os.environ.pop('JAEGER_AGENT_HOST', None)
-os.environ.pop('JAEGER_AGENT_PORT', None)
-os.environ.pop('JAEGER_SAMPLER_TYPE', None)
-os.environ.pop('JAEGER_SAMPLER_PARAM', None)
+os.environ.pop("JAEGER_AGENT_HOST", None)
+os.environ.pop("JAEGER_AGENT_PORT", None)
+os.environ.pop("JAEGER_SAMPLER_TYPE", None)
+os.environ.pop("JAEGER_SAMPLER_PARAM", None)
 # 也禁用 OTEL 自动检测（如果存在的话）
-os.environ.pop('OTEL_EXPORTER_OTLP_ENDPOINT', None)
-os.environ.pop('OTEL_EXPORTER_JAEGER_AGENT_HOST', None)
-os.environ.pop('OTEL_EXPORTER_JAEGER_AGENT_PORT', None)
+os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_HOST", None)
+os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_PORT", None)
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter

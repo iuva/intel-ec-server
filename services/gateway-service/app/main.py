@@ -41,7 +41,7 @@ except ImportError:
     from shared.monitoring.metrics import get_metrics_response, init_metrics
 
 # 配置日志（在应用启动前配置）
-service_name = os.getenv("SERVICE_NAME", "gateway-service")
+service_name = os.getenv("GATEWAY_SERVICE_NAME", "gateway-service")
 
 configure_logger(service_name=service_name, log_level="INFO")
 
@@ -62,12 +62,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         # 获取环境变量
         nacos_server_addr = os.getenv("NACOS_SERVER_ADDR", "http://intel-nacos:8848")
+        service_name = os.getenv("GATEWAY_SERVICE_NAME", "gateway-service")
         service_ip = os.getenv("SERVICE_IP", "172.20.0.100")
         service_port = int(os.getenv("SERVICE_PORT", "8000"))
 
         # 初始化监控指标
         init_metrics(
-            service_name="gateway-service",
+            service_name=service_name,
             service_version="1.0.0",
             environment=os.getenv("ENVIRONMENT", "production"),
         )
@@ -90,7 +91,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # 注册服务
         success = await nacos_manager.register_service(
-            service_name="gateway-service",
+            service_name=service_name,
             ip=service_ip,
             port=service_port,
             ephemeral=True,
@@ -105,7 +106,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # 启动心跳检测
             heartbeat_task = asyncio.create_task(
                 nacos_manager.start_heartbeat(
-                    service_name="gateway-service",
+                    service_name=service_name,
                     ip=service_ip,
                     port=service_port,
                     interval=5,
@@ -214,7 +215,7 @@ logger.info("=" * 80)
 jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "jaeger:4317")
 try:
     init_jaeger(
-        service_name="gateway-service",
+        service_name=service_name,
         jaeger_endpoint=jaeger_endpoint,
         environment=os.getenv("ENVIRONMENT", "production"),
         service_version="1.0.0",
@@ -236,7 +237,7 @@ try:
     from shared.app.exception_handler import setup_exception_handling
 
     logger.info("开始设置统一异常处理...")
-    setup_exception_handling(app, "gateway-service")
+    setup_exception_handling(app, service_name)
     logger.info("统一异常处理中间件已启用")
 except Exception as e:
     logger.error(f"添加统一异常处理失败: {e!s}", exc_info=True)
@@ -250,7 +251,7 @@ async def root():
     """根路径"""
     return SuccessResponse(
         data={
-            "service": "gateway-service",
+            "service": service_name,
             "version": "1.0.0",
             "status": "running",
         },
@@ -263,7 +264,7 @@ async def health_check():
     """健康检查端点"""
     return SuccessResponse(
         data={
-            "service": "gateway-service",
+            "service": service_name,
             "status": "healthy",
             "nacos": "connected" if nacos_manager else "disconnected",
         },

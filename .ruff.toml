@@ -182,6 +182,9 @@ ignore = [
 # These rules are relaxed for auth-service to maintain compatibility with existing code
 "**/auth-service/**/*.py" = ["B904", "N805"]  # raise from err, Pydantic validator cls naming
 
+# Gateway Service auth middleware - allow multiple return statements for authentication logic
+"**/middleware/auth_middleware.py" = ["PLR0911"]  # Too many return statements (justified for verification logic)
+
 # Formatter configuration (compatible with Black)
 [format]
 quote-style = "double"

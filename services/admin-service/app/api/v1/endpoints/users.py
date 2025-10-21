@@ -53,9 +53,7 @@ async def list_users(
         用户列表和分页信息
     """
     try:
-        users, total = await user_service.list_users(
-            page=page, page_size=page_size, search=search, is_active=is_active
-        )
+        users, total = await user_service.list_users(page=page, page_size=page_size, search=search, is_active=is_active)
 
         # 构建响应数据
         user_list = [UserResponse.model_validate(user) for user in users]

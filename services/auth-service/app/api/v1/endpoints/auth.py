@@ -4,13 +4,15 @@
 提供登录、令牌刷新、令牌验证、注销等功能
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
-from typing import Optional
 
 from app.api.v1.dependencies import get_auth_service, get_current_user
 from app.schemas.auth import (
     AdminLoginRequest,
+    AutoRefreshTokenRequest,
     DeviceLoginRequest,
     IntrospectRequest,
     LogoutRequest,
@@ -184,12 +186,27 @@ async def refresh_token(
         # 刷新令牌
         token_response = await auth_service.refresh_access_token(refresh_data)
 
-        logger.info("令牌刷新成功")
+        logger.info(
+            "令牌刷新成功",
+            extra={
+                "operation": "refresh_token",
+                "token_type": "refresh",
+                "response_type": type(token_response).__name__,
+            },
+        )
 
         return SuccessResponse(data=token_response.model_dump(), message="令牌刷新成功")
 
     except BusinessError as e:
-        logger.warning(f"令牌刷新失败: {e.message}")
+        logger.warning(
+            "令牌刷新失败",
+            extra={
+                "operation": "refresh_token",
+                "error_code": e.error_code,
+                "error_message": e.message,
+                "details": e.details,
+            },
+        )
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
@@ -207,6 +224,61 @@ async def refresh_token(
             detail=ErrorResponse(
                 code=HTTP_400_BAD_REQUEST,
                 message="令牌刷新失败",
+                error_code="AUTH_REFRESH_ERROR",
+            ).model_dump(),
+        )
+
+
+@router.post("/auto-refresh", response_model=SuccessResponse, summary="自动续期令牌")
+async def auto_refresh_tokens(
+    refresh_data: AutoRefreshTokenRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> SuccessResponse:
+    """自动续期访问令牌和刷新令牌
+
+    当刷新令牌将要过期时，同时生成新的 access_token 和 refresh_token
+    实现真正的"双 token 续期"机制
+
+    Args:
+        refresh_data: 自动续期请求数据（包含 auto_renew 参数）
+        auth_service: 认证服务实例
+
+    Returns:
+        SuccessResponse: 包含新的 access_token 和 refresh_token 的成功响应
+
+    Raises:
+        HTTPException: 续期失败时抛出
+    """
+    try:
+        # 自动续期令牌
+        token_response = await auth_service.auto_refresh_tokens(refresh_data)
+
+        logger.info("令牌自动续期成功", extra={"auto_renew": refresh_data.auto_renew})
+
+        return SuccessResponse(
+            data=token_response.model_dump(),
+            message="令牌续期成功",
+        )
+
+    except BusinessError as e:
+        logger.warning(f"令牌续期失败: {e.message}")
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail=ErrorResponse(
+                code=HTTP_401_UNAUTHORIZED,
+                message=e.message,
+                error_code=e.error_code,
+                details=e.details,
+            ).model_dump(),
+        )
+
+    except (ValueError, KeyError, AttributeError) as e:
+        logger.error(f"令牌续期异常: {e!s}")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                code=HTTP_400_BAD_REQUEST,
+                message="令牌续期失败",
                 error_code="AUTH_REFRESH_ERROR",
             ).model_dump(),
         )
@@ -234,13 +306,11 @@ async def introspect_token(
 
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(f"令牌验证异常: {e!s}")
-        raise HTTPException(
-            status_code=HTTP_400_BAD_REQUEST,
-            detail=ErrorResponse(
-                code=HTTP_400_BAD_REQUEST,
-                message="令牌验证失败",
-                error_code="AUTH_INTROSPECT_ERROR",
-            ).model_dump(),
+        # ✅ 正确：直接返回标准的成功响应，active=false 表示令牌无效
+        # 不抛出 HTTPException，保持响应格式一致性
+        return SuccessResponse(
+            data={"active": False, "username": None, "user_id": None, "exp": None, "token_type": None, "error": str(e)},
+            message="令牌验证失败或已过期",
         )
 
 

@@ -46,18 +46,18 @@ class ProxyService:
 
     def __init__(self):
         """初始化代理服务
-        
+
         支持两种启动方式：
         1. Docker: 使用服务名（auth-service, admin-service, host-service）
         2. 本地开发: 使用 localhost + 端口
         """
         import os
-        
+
         # 检测运行环境
         service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
         service_host_admin = os.getenv("SERVICE_HOST_ADMIN", "admin-service")
         service_host_host = os.getenv("SERVICE_HOST_HOST", "host-service")
-        
+
         # 服务路由映射表 - 基础URL
         # Docker 环境：使用服务名 (auth-service, admin-service, host-service)
         # 本地开发：使用 localhost:port (127.0.0.1:8001, 127.0.0.1:8002, 127.0.0.1:8003)

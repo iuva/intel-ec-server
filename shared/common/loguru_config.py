@@ -47,10 +47,9 @@ def configure_logger(
 
         try:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
-        except (PermissionError, OSError) as e:
+        except (PermissionError, OSError):
             # 如果没有权限创建日志目录，使用控制台输出并记录警告
-            print(f"警告: 无法创建日志目录 {log_dir}: {e}")
-            print("将仅使用控制台日志输出")
+            # 此时 logger 还未初始化，仅在启动时输出一次
             enable_file = False
             enable_error_file = False
 

@@ -5,8 +5,8 @@
 """
 
 from datetime import datetime
-from typing import Optional
 import time
+from typing import Optional
 
 from sqlalchemy import BigInteger, DateTime, Integer, SmallInteger, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,6 +29,7 @@ def generate_snowflake_id() -> int:
     使用时间戳 + 随机数生成唯一ID
     """
     import random
+
     timestamp = int(time.time() * 1000)  # 毫秒级时间戳
     random_part = random.randint(0, 999999)  # 随机数
     return (timestamp << 20) | random_part
@@ -40,7 +41,9 @@ class HostRec(Base):
     __tablename__ = "host_rec"
 
     # 主键 - 使用雪花ID生成器
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id, comment="主键（雪花ID）")
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, comment="主键（雪花ID）"
+    )
 
     # 基础字段
     host_no: Mapped[Optional[str]] = mapped_column(String(64), comment="主机主键;对应 mongo 数据库 host 主键")

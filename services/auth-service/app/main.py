@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # 使用 try-except 方式处理路径导入
 try:
+    from shared.common.cache import build_redis_url, mask_sensitive_info, validate_redis_config
     from shared.common.database import close_databases, init_databases
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.config.nacos_config import NacosManager
@@ -24,6 +25,7 @@ except ImportError:
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
+    from shared.common.cache import build_redis_url, mask_sensitive_info, validate_redis_config
     from shared.common.database import close_databases, init_databases
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.config.nacos_config import NacosManager
@@ -31,7 +33,7 @@ except ImportError:
     from shared.monitoring.metrics import get_metrics_response, init_metrics
 
 # 配置日志（在应用启动前配置）
-service_name = os.getenv("SERVICE_NAME", "auth-service")
+service_name = os.getenv("AUTH_SERVICE_NAME", "auth-service")
 configure_logger(service_name=service_name, log_level="INFO")
 
 logger = get_logger(__name__)
@@ -46,9 +48,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global nacos_manager
 
     # 启动时执行
-    service_name = os.getenv("SERVICE_NAME", "auth-service")
-    service_port = int(os.getenv("SERVICE_PORT", "8001"))
-    service_ip = os.getenv("SERVICE_IP", "172.20.0.101")
+    service_name = os.getenv("AUTH_SERVICE_NAME", "auth-service")
+    service_port = int(os.getenv("AUTH_SERVICE_PORT", "8001"))
+    service_ip = os.getenv("AUTH_SERVICE_IP", "172.20.0.101")
     nacos_server_addr = os.getenv("NACOS_SERVER_ADDR", "172.20.0.12:8848")
 
     logger.info(f"{service_name} 服务启动中... 端口: {service_port}")
@@ -72,15 +74,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # 从环境变量构建 Redis URL
     redis_host = os.getenv("REDIS_HOST", "redis")
-    redis_port = os.getenv("REDIS_PORT", "6379")
+    redis_port_str = os.getenv("REDIS_PORT", "11001")
     redis_***REMOVED***word = os.getenv("REDIS_PASSWORD", "")
-    redis_db = os.getenv("REDIS_DB", "1")
+    redis_db_str = os.getenv("REDIS_DB", "0")
+    redis_username = os.getenv("REDIS_USERNAME")  # Redis 6.0+ 可选
 
-    if redis_***REMOVED***word:
-        redis_***REMOVED***word_encoded = quote_plus(redis_***REMOVED***word)
-        redis_url = f"redis://:{redis_***REMOVED***word_encoded}@{redis_host}:{redis_port}/{redis_db}"
-    else:
-        redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
+    # 验证 Redis 配置
+    try:
+        redis_host, redis_port, redis_db = validate_redis_config(redis_host, redis_port_str, redis_db_str)
+    except ValueError as e:
+        logger.error(f"Redis 配置验证失败: {e}")
+        # 使用默认值
+        redis_host = "redis"
+        redis_port = 11001
+        redis_db = 0
+
+    # 使用新的 build_redis_url 函数构建 URL
+    redis_url = build_redis_url(
+        host=redis_host,
+        port=redis_port,
+        ***REMOVED***word=redis_***REMOVED***word if redis_***REMOVED***word else None,
+        db=redis_db,
+        username=redis_username,
+    )
+
+    # 记录 Redis 配置信息（脱敏）
+    masked_redis_url = mask_sensitive_info(redis_url)
+    logger.info(f"Redis 配置: host={redis_host}, port={redis_port}, db={redis_db}, url={masked_redis_url}")
 
     await init_databases(
         mariadb_url=mariadb_url,
@@ -89,7 +109,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # 初始化监控指标
     init_metrics(
-        service_name="auth-service",
+        service_name=service_name,
         service_version="1.0.0",
         environment=os.getenv("ENVIRONMENT", "production"),
     )
@@ -176,10 +196,11 @@ app = FastAPI(
 
 # 初始化 Jaeger 追踪器（在应用创建时）
 # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
-jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "jaeger:4317")
+jaeger_endpoint_host = os.getenv("JAEGER_ENDPOINT_HOST", "jaeger:4317")
+jaeger_endpoint = jaeger_endpoint_host
 try:
     init_jaeger(
-        service_name="auth-service",
+        service_name=service_name,
         jaeger_endpoint=jaeger_endpoint,
         environment=os.getenv("ENVIRONMENT", "production"),
         service_version="1.0.0",
@@ -209,7 +230,7 @@ app.add_middleware(
 try:
     from shared.app.exception_handler import setup_exception_handling
 
-    setup_exception_handling(app, "auth-service")
+    setup_exception_handling(app, service_name)
     logger.info("统一异常处理中间件已启用")
 except Exception as e:
     logger.error(f"添加统一异常处理失败: {e!s}", exc_info=True)
@@ -228,41 +249,81 @@ except Exception as e:
 # 健康检查端点
 @app.get("/health")
 async def health_check():
-    """健康检查"""
+    """健康检查
+
+    返回服务的健康状态，包括数据库和 Redis 的状态。
+
+    状态说明：
+    - healthy: 所有组件正常运行
+    - degraded: 部分组件不可用（如 Redis），但核心功能可用
+    - unhealthy: 核心组件（如数据库）不可用
+    """
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.response import SuccessResponse
 
-    # 检查数据库连接
+    # 检查数据库连接（核心组件）
     db_status = "healthy"
+    db_details = None
     try:
         from sqlalchemy import text
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as db_session:
             await db_session.execute(text("SELECT 1"))
+            db_details = {"connected": True, "message": "数据库连接正常"}
     except Exception as e:
-        db_status = f"unhealthy: {e!s}"
+        db_status = "unhealthy"
+        db_details = {"connected": False, "error": str(e)}
         logger.error(f"数据库健康检查失败: {e!s}")
 
-    # 检查Redis连接
-    redis_status = "healthy"
-    try:
-        if redis_manager.client:
+    # 检查 Redis 连接（可选组件）
+    redis_status = "unavailable"
+    redis_details = None
+
+    if redis_manager.is_connected and redis_manager.client:
+        try:
             await redis_manager.client.ping()
-    except Exception as e:
-        redis_status = f"unhealthy: {e!s}"
-        logger.error(f"Redis健康检查失败: {e!s}")
+            redis_status = "healthy"
+            redis_details = {"connected": True, "message": "Redis 连接正常", "mode": "cached"}
+        except Exception as e:
+            redis_status = "unhealthy"
+            redis_details = {"connected": False, "error": str(e), "mode": "degraded"}
+            logger.warning(f"Redis 健康检查失败: {e!s}")
+    else:
+        # Redis 未连接，服务运行在降级模式
+        redis_status = "unavailable"
+        redis_details = {
+            "connected": False,
+            "message": "Redis 未连接，服务运行在降级模式（无缓存）",
+            "mode": "degraded",
+        }
+
+    # 确定整体服务状态
+    # - 数据库不可用 -> unhealthy
+    # - 数据库正常但 Redis 不可用 -> degraded
+    # - 所有组件正常 -> healthy
+    if db_status == "unhealthy":
+        overall_status = "unhealthy"
+        status_message = "服务不可用：数据库连接失败"
+    elif redis_status != "healthy":
+        overall_status = "degraded"
+        status_message = "服务运行在降级模式：Redis 不可用"
+    else:
+        overall_status = "healthy"
+        status_message = "服务运行正常"
 
     return SuccessResponse(
         data={
-            "service": "auth-service",
+            "service": service_name,
             "version": "1.0.0",
-            "status": ("healthy" if db_status == "healthy" and redis_status == "healthy" else "degraded"),
-            "database": db_status,
-            "redis": redis_status,
+            "status": overall_status,
+            "components": {
+                "database": {"status": db_status, "details": db_details},
+                "redis": {"status": redis_status, "details": redis_details},
+            },
         },
-        message="服务运行正常",
+        message=status_message,
     )
 
 
@@ -308,7 +369,7 @@ async def root():
 
     return SuccessResponse(
         data={
-            "service": "auth-service",
+            "service": service_name,
             "version": "1.0.0",
             "docs": "/docs",
             "health": "/health",

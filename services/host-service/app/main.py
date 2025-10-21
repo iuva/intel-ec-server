@@ -37,7 +37,7 @@ except ImportError:
     from shared.monitoring.metrics import get_metrics_response, init_metrics
 
 # 配置日志（在应用启动前配置）
-service_name = os.getenv("SERVICE_NAME", "host-service")
+service_name = os.getenv("HOST_SERVICE_NAME", "host-service")
 configure_logger(service_name=service_name, log_level="INFO")
 
 logger = get_logger(__name__)
@@ -77,8 +77,8 @@ def _build_host_database_urls() -> Tuple[str, str]:
 def _get_host_service_config() -> Tuple[str, str, int]:
     """获取Host Service配置"""
     nacos_server_addr = os.getenv("NACOS_SERVER_ADDR", "http://localhost:8848")
-    service_ip = os.getenv("SERVICE_IP", "127.0.0.1")
-    service_port = int(os.getenv("SERVICE_PORT", "8003"))
+    service_ip = os.getenv("HOST_SERVICE_IP", "127.0.0.1")
+    service_port = int(os.getenv("HOST_SERVICE_PORT", "8003"))
     return nacos_server_addr, service_ip, service_port
 
 
@@ -113,7 +113,7 @@ async def _initialize_host_nacos(app: FastAPI) -> None:
         # 注册服务
         if nacos_manager is not None:
             success = await nacos_manager.register_service(
-                service_name="host-service",
+                service_name=service_name,
                 ip=service_ip,
                 port=service_port,
                 ephemeral=True,
@@ -127,7 +127,7 @@ async def _initialize_host_nacos(app: FastAPI) -> None:
 
                 heartbeat_task = asyncio.create_task(
                     nacos_manager.start_heartbeat(
-                        service_name="host-service",
+                        service_name=service_name,
                         ip=service_ip,
                         port=service_port,
                         interval=5,
@@ -200,10 +200,11 @@ except Exception as e:
 
 # 初始化 Jaeger 追踪器（在应用创建时）
 # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
-jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "jaeger:4317")
+jaeger_endpoint_host = os.getenv("JAEGER_ENDPOINT_HOST", "jaeger:4317")
+jaeger_endpoint = jaeger_endpoint_host
 try:
     init_jaeger(
-        service_name="host-service",
+        service_name=service_name,
         jaeger_endpoint=jaeger_endpoint,
         environment=os.getenv("ENVIRONMENT", "production"),
         service_version="1.0.0",
@@ -233,13 +234,13 @@ app.add_middleware(
 try:
     from shared.app.exception_handler import setup_exception_handling
 
-    setup_exception_handling(app, "host-service")
+    setup_exception_handling(app, service_name)
     logger.info("统一异常处理中间件已启用")
 except Exception as e:
     logger.error(f"添加统一异常处理失败: {e!s}", exc_info=True)
 
 # 初始化 Prometheus 指标
-init_metrics(service_name="host-service", service_version="1.0.0", environment="production")
+init_metrics(service_name=service_name, service_version="1.0.0", environment="production")
 
 
 # 健康检查端点
@@ -249,7 +250,7 @@ async def health_check():
     from shared.common.response import SuccessResponse
 
     return SuccessResponse(
-        data={"service": "host-service", "status": "healthy", "version": "1.0.0"},
+        data={"service": service_name, "status": "healthy", "version": "1.0.0"},
         message="服务运行正常",
     )
 
@@ -262,7 +263,7 @@ async def root():
 
     return SuccessResponse(
         data={
-            "service": "host-service",
+            "service": service_name,
             "version": "1.0.0",
             "docs": "/docs",
             "health": "/health",

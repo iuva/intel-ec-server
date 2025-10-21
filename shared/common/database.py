@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column  # type: ignore[attr-defined]
 
+from shared.common.cache import redis_manager
+
 logger = logging.getLogger(__name__)
 
 
@@ -169,7 +171,7 @@ async def init_databases(
 
     Args:
         mariadb_url: MariaDB数据库连接URL
-        redis_url: Redis连接URL（可选，暂未实现）
+        redis_url: Redis连接URL（可选）
         pool_size: 连接池大小
         max_overflow: 连接池最大溢出数
     """
@@ -181,6 +183,19 @@ async def init_databases(
             max_overflow=max_overflow,
         )
         logger.info("数据库初始化成功")
+
+        # ✅ 连接Redis（如果提供了URL）
+        if redis_url:
+            await redis_manager.connect(
+                redis_url=redis_url,
+                encoding="utf-8",
+                decode_responses=True,
+                max_connections=50,
+            )
+            logger.info("Redis连接已初始化")
+        else:
+            logger.warning("未提供Redis URL，缓存功能不可用")
+
     except Exception as e:
         logger.error(f"数据库初始化失败: {e!s}")
         raise
@@ -190,7 +205,12 @@ async def close_databases() -> None:
     """关闭所有数据库连接"""
     try:
         await mariadb_manager.disconnect()
-        logger.info("数据库连接已关闭")
+        logger.info("MariaDB连接已关闭")
+
+        # ✅ 关闭Redis连接
+        await redis_manager.disconnect()
+        logger.info("Redis连接已关闭")
+
     except Exception as e:
         logger.error(f"关闭数据库连接失败: {e!s}")
 

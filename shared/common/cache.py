@@ -8,11 +8,283 @@ from functools import wraps
 import hashlib
 import json
 import logging
-from typing import Any, Callable, Optional
+import re
+from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import quote_plus
 
 import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
+
+
+def build_redis_url(
+    host: str,
+    port: int,
+    ***REMOVED***word: Optional[str] = None,
+    db: int = 0,
+    username: Optional[str] = None,
+) -> str:
+    """构建 Redis 连接 URL
+
+    根据提供的参数构建符合 Redis 规范的连接 URL，自动处理密码中的特殊字符。
+
+    Args:
+        host: Redis 主机地址
+        port: Redis 端口
+        ***REMOVED***word: Redis 密码（可选）
+        db: 数据库编号，默认为 0
+        username: Redis 用户名（可选，Redis 6.0+）
+
+    Returns:
+        格式化的 Redis URL
+
+    Examples:
+        >>> build_redis_url("localhost", 6379)
+        'redis://localhost:6379/0'
+
+        >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***")
+        'redis://:***REMOVED***@localhost:6379/0'
+
+        >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***")
+        'redis://:p%40ss%21123@localhost:6379/0'
+
+        >>> build_redis_url("localhost", 6379, username="user", ***REMOVED***word="***REMOVED***")
+        'redis://user:***REMOVED***@localhost:6379/0'
+    """
+    # 基础 URL
+    if ***REMOVED***word:
+        # URL 编码密码中的特殊字符
+        encoded_***REMOVED***word = quote_plus(***REMOVED***word)
+
+        if username:
+            # 有用户名和密码（Redis 6.0+）
+            encoded_username = quote_plus(username)
+            auth_part = f"{encoded_username}:{encoded_***REMOVED***word}"
+        else:
+            # 只有密码（Redis 5.x 及以下）
+            auth_part = f":{encoded_***REMOVED***word}"
+
+        return f"redis://{auth_part}@{host}:{port}/{db}"
+
+    # 无密码
+    return f"redis://{host}:{port}/{db}"
+
+
+def validate_redis_config(
+    host: Optional[str],
+    port: Optional[str],
+    db: Optional[str],
+) -> Tuple[str, int, int]:
+    """验证并规范化 Redis 配置
+
+    验证 Redis 配置参数的有效性，并返回规范化的值。
+
+    Args:
+        host: Redis 主机地址
+        port: Redis 端口（字符串）
+        db: 数据库编号（字符串）
+
+    Returns:
+        (host, port, db) 元组，包含规范化的配置值
+
+    Raises:
+        ValueError: 当配置无效时抛出
+
+    Examples:
+        >>> validate_redis_config("localhost", "6379", "0")
+        ('localhost', 6379, 0)
+
+        >>> validate_redis_config("", "6379", "0")
+        ValueError: Redis host 不能为空
+
+        >>> validate_redis_config("localhost", "invalid", "0")
+        ValueError: Redis port 必须是有效的整数
+    """
+    # 验证 host
+    if not host or not host.strip():
+        raise ValueError("Redis host 不能为空")
+
+    # 验证 port
+    try:
+        port_int = int(port) if port else 6379
+        if not (1 <= port_int <= 65535):
+            raise ValueError("Redis port 必须在 1-65535 范围内")
+    except (ValueError, TypeError) as e:
+        if "must be" in str(e) or "范围" in str(e):
+            raise
+        raise ValueError("Redis port 必须是有效的整数")
+
+    # 验证 db
+    try:
+        db_int = int(db) if db else 0
+        if not (0 <= db_int <= 15):
+            raise ValueError("Redis db 必须在 0-15 范围内")
+    except (ValueError, TypeError) as e:
+        if "must be" in str(e) or "范围" in str(e):
+            raise
+        raise ValueError("Redis db 必须是有效的整数")
+
+    return host.strip(), port_int, db_int
+
+
+def mask_sensitive_info(url: str) -> str:
+    """脱敏 URL 中的敏感信息
+
+    将 Redis URL 中的密码部分替换为 ***，用于日志记录时保护敏感信息。
+
+    Args:
+        url: Redis 连接 URL
+
+    Returns:
+        脱敏后的 URL
+
+    Examples:
+        >>> mask_sensitive_info("redis://:***REMOVED***@localhost:6379/0")
+        'redis://:***@localhost:6379/0'
+
+        >>> mask_sensitive_info("redis://user:***REMOVED***word@localhost:6379/0")
+        'redis://user:***@localhost:6379/0'
+
+        >>> mask_sensitive_info("redis://localhost:6379/0")
+        'redis://localhost:6379/0'
+    """
+    # 匹配密码部分: ://[username]:***REMOVED***word@
+    # 捕获组: (://[^:]*:) 匹配到冒号, ([^@]+) 匹配密码, (@) 匹配 @
+    pattern = r"(://[^:]*:)([^@]+)(@)"
+    return re.sub(pattern, r"\1***\3", url)
+
+
+async def diagnose_connection_error(
+    error: Exception,
+    redis_url: str,
+    host: str,
+    port: int,
+) -> Dict[str, Any]:
+    """诊断 Redis 连接错误
+
+    根据错误类型提供具体的故障排查建议，帮助快速定位和解决 Redis 连接问题。
+
+    Args:
+        error: 连接异常对象
+        redis_url: 连接 URL（应该已经脱敏）
+        host: Redis 主机地址
+        port: Redis 端口
+
+    Returns:
+        诊断信息字典，包含以下字段：
+        - error_type: 错误类型名称
+        - error_message: 错误消息
+        - suggestions: 故障排查建议列表
+        - connection_info: 连接信息字典
+
+    Examples:
+        >>> error = ConnectionRefusedError("Connection refused")
+        >>> diagnosis = await diagnose_connection_error(
+        ...     error, "redis://:***@localhost:6379/0", "localhost", 6379
+        ... )
+        >>> diagnosis["error_type"]
+        'ConnectionRefusedError'
+        >>> len(diagnosis["suggestions"]) > 0
+        True
+    """
+    suggestions = []
+    error_str = str(error).lower()
+
+    # 根据错误类型提供建议
+    if "connection refused" in error_str or "refused" in error_str:
+        # 连接被拒绝错误
+        suggestions.extend(
+            [
+                f"检查 Redis 服务是否在 {host}:{port} 上运行",
+                f"运行命令验证: redis-cli -h {host} -p {port} ping",
+                "检查防火墙设置是否阻止了连接",
+                "确认 Redis 配置文件中的 bind 地址设置",
+                "检查 Redis 是否正在监听正确的端口",
+            ]
+        )
+
+    elif "timeout" in error_str or "timed out" in error_str:
+        # 超时错误
+        suggestions.extend(
+            [
+                "检查网络连接是否正常",
+                f"验证主机 {host} 是否可达: ping {host}",
+                "增加连接超时时间配置",
+                "检查是否存在网络延迟或丢包",
+                "确认 Redis 服务器负载是否过高",
+            ]
+        )
+
+    elif "authentication" in error_str or "auth" in error_str or "noauth" in error_str:
+        # 认证错误
+        suggestions.extend(
+            [
+                "检查 REDIS_PASSWORD 环境变量是否正确",
+                "验证 Redis 配置中的 require***REMOVED*** 设置",
+                "确认密码中的特殊字符已正确编码",
+                "检查是否使用了正确的用户名（Redis 6.0+）",
+                "尝试使用 redis-cli 手动连接验证密码",
+            ]
+        )
+
+    elif "name or service not known" in error_str or "nodename nor servname" in error_str:
+        # 主机名解析失败
+        suggestions.extend(
+            [
+                f"主机名 {host} 无法解析",
+                "检查 /etc/hosts 文件或 DNS 配置",
+                "尝试使用 IP 地址而不是主机名",
+                f"运行命令验证: nslookup {host}",
+                "确认网络连接正常",
+            ]
+        )
+
+    elif "max" in error_str and "client" in error_str:
+        # 最大连接数错误
+        suggestions.extend(
+            [
+                "Redis 服务器已达到最大客户端连接数",
+                "检查 Redis 配置中的 maxclients 设置",
+                "关闭不必要的 Redis 连接",
+                "考虑增加 maxclients 配置值",
+                "检查是否存在连接泄漏",
+            ]
+        )
+
+    elif "readonly" in error_str or "read only" in error_str:
+        # 只读模式错误
+        suggestions.extend(
+            [
+                "Redis 服务器处于只读模式",
+                "检查 Redis 是否为从节点（slave/replica）",
+                "确认是否需要连接到主节点（master）",
+                "检查磁盘空间是否已满",
+                "查看 Redis 日志了解只读原因",
+            ]
+        )
+
+    else:
+        # 通用错误处理
+        suggestions.extend(
+            [
+                "检查 Redis 服务状态",
+                "查看 Redis 服务器日志: /var/log/redis/redis-server.log",
+                "验证网络连接和防火墙配置",
+                f"尝试手动连接: redis-cli -h {host} -p {port}",
+                "检查 Redis 配置文件是否正确",
+            ]
+        )
+
+    return {
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+        "suggestions": suggestions,
+        "connection_info": {
+            "host": host,
+            "port": port,
+            "url": redis_url,  # 应该已经脱敏
+        },
+    }
 
 
 class RedisManager:
@@ -45,7 +317,20 @@ class RedisManager:
             decode_responses: 是否自动解码响应
             max_connections: 最大连接数
         """
+        # 脱敏 URL 用于日志记录
+        masked_url = mask_sensitive_info(redis_url)
+
+        # 从 URL 中提取 host 和 port 用于诊断
+        # 格式: redis://[auth@]host:port/db
+        url_pattern = r"redis://(?:[^@]+@)?([^:]+):(\d+)"
+        match = re.match(url_pattern, redis_url)
+        host = match.group(1) if match else "unknown"
+        port = int(match.group(2)) if match else 6379
+
         try:
+            # 记录连接尝试
+            logger.info(f"正在连接 Redis: {masked_url}")
+
             self.client = await redis.from_url(
                 redis_url,
                 encoding=encoding,
@@ -57,14 +342,34 @@ class RedisManager:
             await self.client.ping()
 
             self._is_connected = True
-            logger.info(f"Redis连接成功: {redis_url}")
+            logger.info(f"Redis 连接成功: {masked_url}")
 
         except Exception as e:
-            logger.error(f"Redis连接失败: {e!s}")
+            # 记录连接失败错误
+            logger.error(f"Redis 连接失败: {masked_url}")
+            logger.error(f"错误详情: {type(e).__name__}: {e!s}")
+
+            # 调用诊断函数获取详细的排查建议
+            diagnosis = await diagnose_connection_error(
+                error=e,
+                redis_url=masked_url,
+                host=host,
+                port=port,
+            )
+
+            # 记录错误类型和错误消息
+            logger.error(f"错误类型: {diagnosis['error_type']}")
+            logger.error(f"错误消息: {diagnosis['error_message']}")
+
+            # 记录所有排查建议
+            logger.error("故障排查建议:")
+            for i, suggestion in enumerate(diagnosis["suggestions"], 1):
+                logger.error(f"  {i}. {suggestion}")
+
             # 降级到无缓存模式
             self.client = None
             self._is_connected = False
-            logger.warning("Redis连接失败，降级到无缓存模式")
+            logger.warning("Redis 不可用，服务已降级到无缓存模式，将继续运行")
 
     async def disconnect(self) -> None:
         """断开Redis连接"""

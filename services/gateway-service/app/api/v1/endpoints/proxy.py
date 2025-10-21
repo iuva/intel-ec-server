@@ -129,7 +129,9 @@ async def proxy_request(
         )
 
         # 准备调用forward_request
-        logger.info(f"准备转发请求: service_name={service_name}, subpath={subpath}, has_raw_body={raw_body is not None}")
+        logger.info(
+            f"准备转发请求: service_name={service_name}, subpath={subpath}, has_raw_body={raw_body is not None}"
+        )
 
         # 转发请求
         response = await proxy_service.forward_request(

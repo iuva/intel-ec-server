@@ -5,21 +5,22 @@ API 依赖注入
 """
 
 from typing import Optional
+
 from fastapi import Request
 
 from app.services.auth_service import AuthService
 
 # 使用 try-except 方式处理路径导入
 try:
-    from shared.common.security import JWTManager
     from shared.common.loguru_config import get_logger
+    from shared.common.security import JWTManager
 except ImportError:
-    import sys
     import os
+    import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from shared.common.security import JWTManager
     from shared.common.loguru_config import get_logger
+    from shared.common.security import JWTManager
 
 logger = get_logger(__name__)
 
@@ -51,10 +52,7 @@ def get_jwt_manager() -> JWTManager:
     global _jwt_manager_instance
 
     if _jwt_manager_instance is None:
-        _jwt_manager_instance = JWTManager(
-            secret_key="your-secret-key-change-in-production",
-            algorithm="HS256"
-        )
+        _jwt_manager_instance = JWTManager(secret_key="your-secret-key-change-in-production", algorithm="HS256")
 
     return _jwt_manager_instance
 
@@ -103,5 +101,5 @@ async def get_current_user(request: Request) -> Optional[dict]:
         }
 
     except Exception as e:
-        logger.error(f"获取当前用户失败: {str(e)}")
+        logger.error(f"获取当前用户失败: {e!s}")
         return None

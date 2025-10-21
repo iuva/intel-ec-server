@@ -16,6 +16,7 @@ class TokenResponse(BaseModel):
     refresh_token: str = Field(description="刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     expires_in: int = Field(description="过期时间（秒）")
+    refresh_expires_in: Optional[int] = Field(default=None, description="刷新令牌过期时间（秒）")
 
     model_config = {
         "json_schema_extra": {
@@ -24,6 +25,7 @@ class TokenResponse(BaseModel):
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
                 "expires_in": 1800,
+                "refresh_expires_in": 604800,
             }
         }
     }
@@ -38,6 +40,22 @@ class RefreshTokenRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            }
+        }
+    }
+
+
+class AutoRefreshTokenRequest(BaseModel):
+    """自动续期令牌请求（同时续期 access_token 和 refresh_token）"""
+
+    refresh_token: str = Field(description="当前刷新令牌")
+    auto_renew: bool = Field(default=True, description="是否自动续期 refresh_token")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "auto_renew": True,
             }
         }
     }
@@ -131,15 +149,19 @@ class LoginResponse(BaseModel):
     """登录响应"""
 
     token: str = Field(description="访问令牌")
+    refresh_token: Optional[str] = Field(default=None, description="刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     expires_in: int = Field(description="过期时间（秒）")
+    refresh_expires_in: Optional[int] = Field(default=None, description="刷新令牌过期时间（秒）")
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
                 "expires_in": 1800,
+                "refresh_expires_in": 604800,
             }
         }
     }
