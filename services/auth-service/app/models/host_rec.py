@@ -18,9 +18,7 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import Base, generate_snowflake_id
 
 
@@ -67,30 +65,22 @@ class HostRec(Base):
     )
 
     # Time fields
-    subm_time: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), comment="Submission time"
-    )
+    subm_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="Submission time")
     hw_id: Mapped[Optional[int]] = mapped_column(
         BigInteger,
         comment="Hardware record table primary key; host_hw_rec table primary key",
     )
-    agent_ver: Mapped[Optional[str]] = mapped_column(
-        String(10), comment="Agent version number"
-    )
+    agent_ver: Mapped[Optional[str]] = mapped_column(String(10), comment="Agent version number")
 
     # Audit fields - support automatic setting
-    created_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, comment="Created by (currently logged-in user ID)"
-    )
+    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="Created by (currently logged-in user ID)")
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),
         nullable=False,
         comment="Creation time",
     )
-    updated_by: Mapped[Optional[int]] = mapped_column(
-        BigInteger, comment="Updated by (currently logged-in user ID)"
-    )
+    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="Updated by (currently logged-in user ID)")
     updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),

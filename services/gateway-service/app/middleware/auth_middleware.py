@@ -94,6 +94,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/admin/login",
             "/api/v1/auth/device/login",
             "/api/v1/auth/logout",
+<<<<<<< HEAD
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
         }
 
@@ -101,6 +102,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.browser_plugin_prefixes = [
             "/api/v1/host/hosts",  # Browser plugin - host management interface (includes /hosts/vnc/*)
         ]
+=======
+            "/api/v1/auth/refresh",  # ✅ Token 刷新端点
+            "/api/v1/auth/auto-refresh",  # ✅ 自动续期端点
+            "/api/v1/auth/introspect",  # Token 验证端点
+        }
+
+        service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
+
+        # Auth Service URL
+        self.auth_service_url = f"http://{service_host_auth}:8001"
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
 
         # ✅ Read authentication service URL from unified configuration
         from app.core.config import settings
@@ -703,17 +715,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         for public_path in self.public_paths:
             # 只对特定路径进行前缀匹配
-            if public_path in prefix_match_paths:
-                if clean_path.startswith(public_path):
-                    logger.debug(
-                        "路径前缀匹配公开路径（文档路径）",
-                        extra={
-                            "path": clean_path,
-                            "matched_prefix": public_path,
-                            "match_type": "prefix",
-                        },
-                    )
-                    return True
+            if public_path in prefix_match_paths and clean_path.startswith(public_path):
+                logger.debug(
+                    "路径前缀匹配公开路径（文档路径）",
+                    extra={
+                        "path": clean_path,
+                        "matched_prefix": public_path,
+                        "match_type": "prefix",
+                    },
+                )
+                return True
 
         logger.debug(
             "路径不是公开路径，需要认证",
@@ -760,10 +771,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         try:
 <<<<<<< HEAD
+<<<<<<< HEAD
             # Call Auth Service's introspect endpoint to verify token
             introspect_url = f"{self.auth_service_url}/api/v1/auth/introspect"
 =======
             # 使用新的 introspect 端点（去掉/auth前缀，与auth服务路由保持一致）
+=======
+            # 调用 Auth Service 的 introspect 端点来验证令牌
+            # auth_router 使用 prefix="" 注册，所以端点是 /api/v1/introspect 而不是 /api/v1/auth/introspect
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
             introspect_url = f"{self.auth_service_url}/api/v1/introspect"
 
             logger.debug(
@@ -778,6 +794,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
+                logger.debug(
+                    "准备调用 Auth Service introspect",
+                    extra={
+                        "url": introspect_url,
+                        "timeout": self.timeout,
+                        "token_preview": token_preview,
+                    },
+                )
+
                 response = await client.post(
                     introspect_url,
 <<<<<<< HEAD
@@ -882,7 +907,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             # 构造用户信息
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
                             user_info = {
+<<<<<<< HEAD
                                 "id": user_id,
+=======
+                                "user_id": data.get("user_id"),  # 修正：auth-service 返回的是 user_id 而不是 sub
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
                                 "username": data.get("username"),
                                 "user_type": data.get("user_type"),
                                 "active": data.get("active"),

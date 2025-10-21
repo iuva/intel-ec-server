@@ -273,7 +273,6 @@ class UserService:
         logger.info("开始执行用户列表查询", extra={"page": page, "page_size": page_size})
         session_factory = mariadb_manager.get_session()
         async with session_factory() as db_session:
-
             # 获取总数
             count_stmt = select(func.count(User.id)).where(User.del_flag == 0)
             count_result = await db_session.execute(count_stmt)

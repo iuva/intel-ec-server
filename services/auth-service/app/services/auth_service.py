@@ -6,27 +6,25 @@ Implement user login, token generation, token validation and other functions
 
 from datetime import datetime, timezone
 import os
-<<<<<<< HEAD
 import time
 from typing import Optional
-=======
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 from sqlalchemy import select
 
 from app.models.host_rec import HostRec
-<<<<<<< HEAD
 from app.models.sys_conf import SysConf
-=======
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 from app.models.sys_user import SysUser
 from app.models.user_session import UserSession
 from app.schemas.auth import (
     AdminLoginRequest,
 <<<<<<< HEAD
+<<<<<<< HEAD
     AutoRefreshTokenRequest,
 =======
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+    AutoRefreshTokenRequest,
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
     DeviceLoginRequest,
     IntrospectResponse,
     LoginResponse,
@@ -372,6 +370,75 @@ class AuthService:
             if payload.get("type") != "refresh":
                 raise BusinessError(message="令牌类型错误", error_code="AUTH_INVALID_TOKEN_TYPE")
 
+            # 检查 refresh_token 是否已被使用（在黑名单中）
+            blacklist_key = f"refresh_token_blacklist:{refresh_data.refresh_token}"
+
+            is_blacklisted = None
+            try:
+                is_blacklisted = await get_cache(blacklist_key)
+
+                logger.debug(
+                    "黑名单检查完成",
+                    extra={
+                        "operation": "refresh_token",
+                        "user_id": payload.get("sub"),
+                        "blacklist_key": blacklist_key[:50] + "...",
+                        "is_blacklisted": is_blacklisted,
+                        "redis_status": "连接正常" if is_blacklisted is not None or is_blacklisted is False else "未知",
+                    },
+                )
+            except Exception as redis_error:
+                # Redis 连接失败 - 为了安全起见，拒绝刷新
+                logger.error(
+                    "Redis 连接异常，拒绝 Token 刷新",
+                    extra={
+                        "operation": "refresh_token",
+                        "user_id": payload.get("sub"),
+                        "error": str(redis_error),
+                        "error_type": type(redis_error).__name__,
+                        "hint": "请检查 Redis 连接配置",
+                    },
+                )
+                raise BusinessError(
+                    message="刷新令牌服务暂时不可用，请稍后重试",
+                    error_code="AUTH_SERVICE_UNAVAILABLE",
+                )
+
+            # 检查 refresh_token 是否已被使用
+            if is_blacklisted is True:
+                logger.warning(
+                    "刷新令牌已被使用过，拒绝重复使用",
+                    extra={
+                        "operation": "refresh_token",
+                        "error_code": "AUTH_REFRESH_TOKEN_REUSED",
+                        "user_id": payload.get("sub"),
+                    },
+                )
+                raise BusinessError(
+                    message="刷新令牌已被使用，请重新登录",
+                    error_code="AUTH_REFRESH_TOKEN_REUSED",
+                )
+
+            # 注意：is_blacklisted is None 或 is_blacklisted is False 都表示令牌有效
+            # - None: Redis 中不存在该键（令牌未被使用过）
+            # - False: Redis 中存在该键且值为 False（正常情况）
+            # 两种情况下都应该允许刷新
+            if is_blacklisted not in (None, False):
+                # 这不应该发生，但如果发生说明有问题
+                logger.warning(
+                    "黑名单检查返回异常值",
+                    extra={
+                        "operation": "refresh_token",
+                        "user_id": payload.get("sub"),
+                        "blacklist_value": is_blacklisted,
+                        "value_type": type(is_blacklisted).__name__,
+                    },
+                )
+                raise BusinessError(
+                    message="令牌验证异常，请重新登录",
+                    error_code="AUTH_TOKEN_VERIFICATION_ERROR",
+                )
+
             user_id = payload.get("sub")
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             username = payload.get("username")
@@ -383,6 +450,7 @@ class AuthService:
                     error_code="AUTH_TOKEN_INVALID",
                 )
 
+<<<<<<< HEAD
 <<<<<<< HEAD
             # ✅ Use common method to build token payload
             token_data = self._build_token_payload(str(user_id), str(username))
@@ -397,21 +465,218 @@ class AuthService:
 
             logger.info(
                 "Token refresh successful",
+=======
+            # 将已使用的 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
+            import time
+
+            exp = payload.get("exp", 0)
+            ttl = max(1, int(exp - time.time()))  # 确保 TTL 至少为 1 秒
+
+            try:
+                await set_cache(blacklist_key, True, expire=ttl)
+                logger.debug(
+                    "令牌已添加到黑名单",
+                    extra={
+                        "operation": "refresh_token",
+                        "user_id": user_id,
+                        "ttl_seconds": ttl,
+                    },
+                )
+            except Exception as cache_error:
+                # 缓存设置失败，但不应该阻止令牌刷新
+                logger.warning(
+                    "添加令牌黑名单失败，但继续处理",
+                    extra={
+                        "operation": "refresh_token",
+                        "user_id": user_id,
+                        "error": str(cache_error),
+                        "error_type": type(cache_error).__name__,
+                    },
+                )
+                # 继续处理，不抛出异常
+
+            logger.info(
+                "令牌刷新成功",
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
                 extra={
                     "operation": "refresh_token",
                     "user_id": user_id,
                     "username": username,
                 },
             )
+<<<<<<< HEAD
 =======
             logger.info("令牌刷新成功", extra={"operation": "refresh_token", "user_id": user_id, "username": username})
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
 
             return TokenResponse(
                 access_token=access_token,
                 refresh_token=refresh_data.refresh_token,
                 token_type="bearer",
                 expires_in=self.access_token_expire_minutes * 60,
+            )
+        except BusinessError:
+            raise
+        except Exception as e:
+            logger.error(
+                "令牌刷新异常",
+                extra={
+                    "operation": "refresh_token",
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="令牌刷新失败，请重新登录",
+                error_code="AUTH_REFRESH_FAILED",
+            )
+
+    async def auto_refresh_tokens(self, refresh_data: AutoRefreshTokenRequest) -> TokenResponse:
+        """自动续期访问令牌和刷新令牌（双 token 续期机制）
+
+        当刷新令牌将要过期时，自动生成新的 refresh_token 和 access_token
+
+        Args:
+            refresh_data: 自动续期请求数据
+
+        Returns:
+            TokenResponse: 新的访问令牌和刷新令牌
+
+        Raises:
+            BusinessError: 续期失败时抛出
+        """
+        try:
+            # 验证刷新令牌
+            payload = self.jwt_manager.verify_token(refresh_data.refresh_token)
+            if not payload:
+                raise BusinessError(
+                    message="刷新令牌无效或已过期",
+                    error_code="AUTH_INVALID_REFRESH_TOKEN",
+                )
+
+            # 检查令牌类型
+            if payload.get("type") != "refresh":
+                raise BusinessError(message="令牌类型错误", error_code="AUTH_INVALID_TOKEN_TYPE")
+
+            # 检查 refresh_token 是否已被使用（在黑名单中）
+            blacklist_key = f"refresh_token_blacklist:{refresh_data.refresh_token}"
+
+            try:
+                is_blacklisted = await get_cache(blacklist_key)
+            except Exception as redis_error:
+                # Redis 连接失败 - 为了安全起见，拒绝刷新
+                logger.error(
+                    "Redis 连接异常，拒绝 Token 刷新",
+                    extra={
+                        "operation": "auto_refresh_tokens",
+                        "user_id": payload.get("sub"),
+                        "error": str(redis_error),
+                        "hint": "请检查 Redis 连接配置",
+                    },
+                )
+                raise BusinessError(
+                    message="刷新令牌服务暂时不可用，请稍后重试",
+                    error_code="AUTH_SERVICE_UNAVAILABLE",
+                )
+
+            # 使用 is True 明确检查（即使返回 None 也不会误判为 True）
+            if is_blacklisted is True:
+                logger.warning(
+                    "刷新令牌已被使用过，拒绝重复使用",
+                    extra={
+                        "operation": "auto_refresh_tokens",
+                        "error_code": "AUTH_REFRESH_TOKEN_REUSED",
+                        "user_id": payload.get("sub"),
+                    },
+                )
+                raise BusinessError(
+                    message="刷新令牌已被使用，请重新登录",
+                    error_code="AUTH_REFRESH_TOKEN_REUSED",
+                )
+            if is_blacklisted is None:
+                # 无法确定令牌状态 - 在严格安全模式下也应该拒绝
+                logger.warning(
+                    "无法访问黑名单 (可能 Redis 连接失败)",
+                    extra={
+                        "operation": "auto_refresh_tokens",
+                        "user_id": payload.get("sub"),
+                        "hint": "Token 状态无法确认，为了安全起见拒绝刷新",
+                    },
+                )
+                raise BusinessError(
+                    message="刷新令牌验证失败，请重新登录",
+                    error_code="AUTH_TOKEN_VERIFICATION_FAILED",
+                )
+
+            user_id = payload.get("sub")
+            username = payload.get("username")
+            user_type = payload.get("user_type", "admin")
+
+            # 生成新的访问令牌
+            excluded_keys = {"sub", "username", "user_type", "exp", "type", "iat"}
+            extra_fields = {k: v for k, v in payload.items() if k not in excluded_keys}
+            access_token_data = {
+                "sub": user_id,
+                "username": username,
+                "user_type": user_type,
+                **extra_fields,
+            }
+
+            access_token = self.jwt_manager.create_access_token(data=access_token_data)
+
+            # 如果需要自动续期 refresh_token
+            new_refresh_token = refresh_data.refresh_token
+            if refresh_data.auto_renew:
+                refresh_token_data = {
+                    "sub": user_id,
+                    "username": username,
+                    "user_type": user_type,
+                    **extra_fields,
+                }
+
+                new_refresh_token = self.jwt_manager.create_refresh_token(data=refresh_token_data)
+
+                logger.info(
+                    "令牌自动续期成功",
+                    extra={
+                        "operation": "auto_refresh_tokens",
+                        "user_id": user_id,
+                        "username": username,
+                        "auto_renewed": True,
+                    },
+                )
+            else:
+                logger.info(
+                    "访问令牌自动续期成功",
+                    extra={
+                        "operation": "auto_refresh_tokens",
+                        "user_id": user_id,
+                        "username": username,
+                        "auto_renewed": False,
+                    },
+                )
+
+            # 将已使用的旧 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
+            exp = payload.get("exp", 0)
+            import time
+
+            ttl = max(1, int(exp - time.time()))  # 确保 TTL 至少为 1 秒
+            await set_cache(blacklist_key, True, expire=ttl)
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
+
+            return TokenResponse(
+                access_token=access_token,
+<<<<<<< HEAD
+                refresh_token=refresh_data.refresh_token,
+                token_type="bearer",
+=======
+                refresh_token=new_refresh_token,
+                token_type=token_type,
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
+                expires_in=self.access_token_expire_minutes * 60,
+                refresh_expires_in=self.refresh_token_expire_days * 24 * 60 * 60,
             )
 
         except BusinessError:
@@ -434,12 +699,20 @@ class AuthService:
 =======
         except (ValueError, KeyError, AttributeError) as e:
             logger.error(
-                "令牌刷新异常",
-                extra={"operation": "refresh_token", "error_type": type(e).__name__, "error_message": str(e)},
+                "令牌自动续期异常",
+                extra={
+                    "operation": "auto_refresh_tokens",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
                 exc_info=True,
             )
+<<<<<<< HEAD
             raise BusinessError(message="令牌刷新失败", error_code="AUTH_REFRESH_ERROR")
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+            raise BusinessError(message="令牌续期失败", error_code="AUTH_REFRESH_ERROR")
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
 
     async def auto_refresh_tokens(
         self, refresh_data: AutoRefreshTokenRequest
@@ -758,11 +1031,23 @@ class AuthService:
                     },
                 )
 
+                # 生成刷新令牌
+                refresh_token = self.jwt_manager.create_refresh_token(
+                    data={
+                        "sub": str(user.id),
+                        "username": user.user_account,
+                        "user_type": "admin",
+                        "user_name": user.user_name,
+                    }
+                )
+
                 token_type = "bearer"
                 return LoginResponse(
                     token=access_token,
+                    refresh_token=refresh_token,
                     token_type=token_type,
                     expires_in=self.access_token_expire_minutes * 60,
+                    refresh_expires_in=self.refresh_token_expire_days * 24 * 60 * 60,
                 )
 
         except BusinessError:
@@ -886,11 +1171,24 @@ class AuthService:
                     },
                 )
 
+                # 生成刷新令牌
+                refresh_token = self.jwt_manager.create_refresh_token(
+                    data={
+                        "sub": str(host_rec.id),
+                        "mg_id": login_data.mg_id,
+                        "host_ip": login_data.host_ip,
+                        "username": login_data.username,
+                        "user_type": "device",
+                    }
+                )
+
                 token_type = "bearer"
                 return LoginResponse(
                     token=access_token,
+                    refresh_token=refresh_token,
                     token_type=token_type,
                     expires_in=self.access_token_expire_minutes * 60,
+                    refresh_expires_in=self.refresh_token_expire_days * 24 * 60 * 60,
                 )
 
         except BusinessError:
@@ -1297,9 +1595,13 @@ class AuthService:
             # Delete session record
             session_factory = self.session_factory
             async with session_factory() as db_session:
+<<<<<<< HEAD
                 stmt = select(UserSession).where(
                     UserSession.access_token == token, ~UserSession.del_flag
                 )
+=======
+                stmt = select(UserSession).where(UserSession.access_token == token, ~UserSession.is_deleted)
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
                 result = await db_session.execute(stmt)
                 user_session = result.scalar_one_or_none()
 

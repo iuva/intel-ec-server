@@ -26,6 +26,8 @@ from sqlalchemy.orm import (
 from shared.common.cache import redis_manager
 from shared.monitoring.sql_performance import SQLPerformanceMonitor
 
+from shared.common.cache import redis_manager
+
 logger = logging.getLogger(__name__)
 
 

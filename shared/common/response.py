@@ -5,7 +5,6 @@ Provides standardized API response formats, including success response, error re
 Supports multi-language messages.
 """
 
-import uuid
 from datetime import datetime, timezone
 import os
 import sys
@@ -208,15 +207,10 @@ class ErrorResponse(BaseModel):
     )
     request_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
-<<<<<<< HEAD
         description="Request unique identifier",
     )
     data: Optional[Any] = Field(default=None, description="Error data (optional, for unified format)")
     locale: Optional[str] = Field(default=None, description="Language code (for translating message_key)")
-=======
-        description="请求唯一标识符",
-    )
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
     model_config = {"from_attributes": True}
 
@@ -365,19 +359,11 @@ def create_error_response(
     """Create error response
 
     Args:
-<<<<<<< HEAD
         message: Error message
         error_code: Error type identifier
         code: HTTP status code
         details: Error details
         request_id: Request unique identifier (Optional, auto generated if not provided)
-=======
-        message: 错误消息
-        error_code: 错误类型标识
-        code: HTTP状态码
-        details: 错误详情
-        request_id: 请求唯一标识符（可选，不提供则自动生成）
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
     Returns:
         Error response object

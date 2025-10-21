@@ -24,9 +24,7 @@ try:
     from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from app.tasks.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger

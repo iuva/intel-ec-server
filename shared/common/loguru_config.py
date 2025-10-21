@@ -159,6 +159,7 @@ def configure_logger(
         try:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
 <<<<<<< HEAD
+<<<<<<< HEAD
         except (PermissionError, OSError):
             # If no permission to create log directory, use console output and log warning
 =======
@@ -167,6 +168,11 @@ def configure_logger(
             print(f"警告: 无法创建日志目录 {log_dir}: {e}")
             print("将仅使用控制台日志输出")
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+        except (PermissionError, OSError):
+            # 如果没有权限创建日志目录，使用控制台输出并记录警告
+            # 此时 logger 还未初始化，仅在启动时输出一次
+>>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
             enable_file = False
             enable_error_file = False
 

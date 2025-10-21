@@ -16,9 +16,7 @@ class TokenResponse(BaseModel):
     refresh_token: str = Field(description="Refresh token")
     token_type: str = Field(default="bearer", description="Token type")
     expires_in: int = Field(description="Expiration time (seconds)")
-    refresh_expires_in: Optional[int] = Field(
-        default=None, description="Refresh token expiration time (seconds)"
-    )
+    refresh_expires_in: Optional[int] = Field(default=None, description="Refresh token expiration time (seconds)")
 
     model_config = {
         "json_schema_extra": {
@@ -51,9 +49,7 @@ class AutoRefreshTokenRequest(BaseModel):
     """Auto-refresh Token Request (renew both access_token and refresh_token simultaneously)"""
 
     refresh_token: str = Field(description="Current refresh token")
-    auto_renew: bool = Field(
-        default=True, description="Whether to automatically renew refresh_token"
-    )
+    auto_renew: bool = Field(default=True, description="Whether to automatically renew refresh_token")
 
     model_config = {
         "json_schema_extra": {
@@ -83,27 +79,17 @@ class IntrospectResponse(BaseModel):
     """Token Validation Response"""
 
     active: bool = Field(description="Whether the token is valid")
-    id: Optional[str] = Field(
-        default=None, description="User/Device ID (unified field name)"
-    )
+    id: Optional[str] = Field(default=None, description="User/Device ID (unified field name)")
     username: Optional[str] = Field(default=None, description="Username")
-    user_id: Optional[str] = Field(
-        default=None, description="User ID (compatibility field, deprecated, use id)"
-    )
+    user_id: Optional[str] = Field(default=None, description="User ID (compatibility field, deprecated, use id)")
     exp: Optional[int] = Field(default=None, description="Expiration timestamp")
     token_type: Optional[str] = Field(default=None, description="Token type")
     # Additional fields: Support additional information for device login
-    user_type: Optional[str] = Field(
-        default=None, description="User type (admin/device)"
-    )
+    user_type: Optional[str] = Field(default=None, description="User type (admin/device)")
     mg_id: Optional[str] = Field(default=None, description="Device management ID")
     host_ip: Optional[str] = Field(default=None, description="Host IP")
-    sub: Optional[str] = Field(
-        default=None, description="Subject (user/device ID, compatibility field)"
-    )
-    error: Optional[str] = Field(
-        default=None, description="Error message (when active=False)"
-    )
+    sub: Optional[str] = Field(default=None, description="Subject (user/device ID, compatibility field)")
+    error: Optional[str] = Field(default=None, description="Error message (when active=False)")
 
     model_config = {
         "json_schema_extra": {
@@ -135,19 +121,13 @@ class LogoutRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     """Admin Login Request"""
 
-<<<<<<< HEAD
     username: str = Field(description="Username")
     ***REMOVED***word: str = Field(description="Password")
-=======
-    username: str = Field(description="用户名")
-    ***REMOVED***word: str = Field(description="密码")
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "username": "admin",
-<<<<<<< HEAD
                 "***REMOVED***word": "***REMOVED***",
             }
         }
@@ -183,9 +163,7 @@ class LoginResponse(BaseModel):
     refresh_token: Optional[str] = Field(default=None, description="Refresh token")
     token_type: str = Field(default="bearer", description="Token type")
     expires_in: int = Field(description="Expiration time (seconds)")
-    refresh_expires_in: Optional[int] = Field(
-        default=None, description="Refresh token expiration time (seconds)"
-    )
+    refresh_expires_in: Optional[int] = Field(default=None, description="Refresh token expiration time (seconds)")
 
     model_config = {
         "json_schema_extra": {
@@ -196,9 +174,6 @@ class LoginResponse(BaseModel):
                 "token_type": "bearer",
                 "expires_in": 86400,
                 "refresh_expires_in": 604800,
-=======
-                "***REMOVED***word": "***REMOVED***",
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
             }
         }
     }
@@ -226,15 +201,19 @@ class LoginResponse(BaseModel):
     """登录响应"""
 
     token: str = Field(description="访问令牌")
+    refresh_token: Optional[str] = Field(default=None, description="刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     expires_in: int = Field(description="过期时间（秒）")
+    refresh_expires_in: Optional[int] = Field(default=None, description="刷新令牌过期时间（秒）")
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
                 "expires_in": 1800,
+                "refresh_expires_in": 604800,
             }
         }
     }

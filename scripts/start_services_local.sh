@@ -54,6 +54,10 @@ load_env_file() {
         # Docker 启动时使用 jaeger:4317，本地开发使用 localhost:4317
         export JAEGER_ENDPOINT="localhost:4317"
         
+        # 本地开发特定配置：Jaeger 追踪端点
+        # Docker 启动时使用 jaeger:4317，本地开发使用 localhost:4317
+        export JAEGER_ENDPOINT="localhost:4317"
+        
         echo -e "${GREEN}✓ 环境变量加载成功${NC}"
         echo -e "${GREEN}  • GATEWAY_SERVICE_IP: $GATEWAY_SERVICE_IP${NC}"
         echo -e "${GREEN}  • AUTH_SERVICE_IP: $AUTH_SERVICE_IP${NC}"
