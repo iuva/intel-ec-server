@@ -42,6 +42,7 @@ class JaegerManager:
         self.tracer_provider: Optional[TracerProvider] = None
         self.tracer: Optional[trace.Tracer] = None
         self._is_initialized = False
+        self._fastapi_instrumented = False  # ✅ 防止重复 instrumentation
 
     def init_tracer(
         self,
@@ -116,8 +117,14 @@ class JaegerManager:
             logger.warning("Jaeger追踪器未初始化，跳过FastAPI追踪")
             return
 
+        # ✅ 防止重复 instrumentation
+        if self._fastapi_instrumented:
+            logger.debug("FastAPI已经被instrumented，跳过重复调用")
+            return
+
         try:
             FastAPIInstrumentor.instrument_app(app)
+            self._fastapi_instrumented = True
             logger.info("FastAPI追踪已启用")
         except Exception as e:
             logger.error(f"FastAPI追踪启用失败: {e!s}")

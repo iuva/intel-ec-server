@@ -87,7 +87,9 @@ def create_lifespan_handler(
         if jaeger_endpoint:
             try:
                 jaeger_manager.init_tracer(service_name=service_name, jaeger_endpoint=jaeger_endpoint)
-                jaeger_manager.instrument_fastapi(app)
+                # ❌ 注意：不要在这里调用 jaeger_manager.instrument_fastapi(app)
+                # 因为应用已经在处理请求，无法再添加中间件
+                # 应该在创建 FastAPI app 后立即调用
                 logger.info("Jaeger追踪初始化成功")
             except Exception as e:
                 logger.warning(f"Jaeger追踪初始化失败: {e!s}")
@@ -182,13 +184,14 @@ def create_exception_handlers() -> Dict[type, Callable]:
         logger.warning(f"HTTP异常: {exc.status_code} - {exc.detail}")
 
         # 检查 detail 是否已经是 ErrorResponse 格式的字典
-        if hasattr(exc, "detail"):
-            detail_value = exc.detail
-            if isinstance(detail_value, dict) and all(key in detail_value for key in ["code", "message", "error_code"]):  # type: ignore[unreachable]
-                # 类型安全：直接返回已格式化的错误响应
-                return JSONResponse(status_code=exc.status_code, content=detail_value)  # type: ignore[unreachable]
-        # 如果不是，按照原来的方式处理
-        error_response = create_error_response(message=str(exc.detail), error_code="HTTP_ERROR", code=exc.status_code)
+        detail_value = getattr(exc, "detail", None)
+        if isinstance(detail_value, dict) and all(key in detail_value for key in ["code", "message", "error_code"]):
+            return JSONResponse(status_code=exc.status_code, content=detail_value)
+        error_response = create_error_response(
+            message=str(exc.detail),
+            error_code="HTTP_ERROR",
+            code=exc.status_code,
+        )
 
         return JSONResponse(status_code=exc.status_code, content=error_response.model_dump())
 

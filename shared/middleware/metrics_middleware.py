@@ -9,13 +9,16 @@ from typing import Any
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from shared.monitoring.metrics import (
+from shared.common.loguru_config import get_logger
+from shared.monitoring.prometheus_metrics import (
     http_request_duration_seconds,
     http_request_size_bytes,
     http_requests_in_progress,
     http_requests_total,
     http_response_size_bytes,
 )
+
+logger = get_logger(__name__)
 
 
 class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
@@ -39,6 +42,7 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
         """
         super().__init__(app)
         self.service_name = service_name
+        logger.info(f"✅ PrometheusMetricsMiddleware 已初始化: service_name={self.service_name}")
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         """
@@ -59,7 +63,13 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
         endpoint = request.url.path
 
         # 增加进行中的请求数
-        http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).inc()
+        try:
+            http_requests_in_progress.labels(
+                method=method, endpoint=endpoint, service=self.service_name
+            ).inc()
+            logger.info(f"Incremented http_requests_in_progress for {method} {endpoint}")
+        except Exception as e:
+            logger.error(f"❌ 增加 http_requests_in_progress 失败: {e!s}")
 
         # 记录请求大小
         request_size = int(request.headers.get("content-length", 0))
@@ -67,28 +77,38 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
             http_request_size_bytes.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
                 request_size
             )
+            logger.info(f"Observed request size {request_size} for {method} {endpoint}")
 
         # 记录开始时间
         start_time = time.time()
+        logger.info(f"Start time recorded for {method} {endpoint}")
 
         try:
             # 处理请求
             response = await call_next(request)
+            logger.info(f"Request processed for {method} {endpoint}")
 
             # 记录响应时间
             duration = time.time() - start_time
             http_request_duration_seconds.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
                 duration
             )
+            logger.info(f"Observed duration {duration} for {method} {endpoint}")
 
             # 记录请求总数
             status = response.status_code
-            http_requests_total.labels(
-                method=method,
-                endpoint=endpoint,
-                status=status,
-                service=self.service_name,
-            ).inc()
+            try:
+                http_requests_total.labels(
+                    method=method,
+                    endpoint=endpoint,
+                    status=status,
+                    service=self.service_name,
+                ).inc()
+                logger.info(
+                    f"Incremented http_requests_total for {method} {endpoint} with status {status}"
+                )
+            except Exception as e:
+                logger.error(f"❌ 增加 http_requests_total 失败: {e!s}")
 
             # 记录响应大小
             response_size = int(response.headers.get("content-length", 0))
@@ -96,6 +116,7 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
                 http_response_size_bytes.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
                     response_size
                 )
+                logger.info(f"Observed response size {response_size} for {method} {endpoint}")
 
             return response
 
@@ -105,11 +126,14 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
             http_request_duration_seconds.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
                 duration
             )
+            logger.info(f"Observed duration {duration} for {method} {endpoint} (exception)")
 
             http_requests_total.labels(method=method, endpoint=endpoint, status=500, service=self.service_name).inc()
+            logger.info(f"Incremented http_requests_total for {method} {endpoint} with status 500 (exception)")
 
             raise
 
         finally:
             # 减少进行中的请求数
             http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).dec()
+            logger.info(f"Decremented http_requests_in_progress for {method} {endpoint}")

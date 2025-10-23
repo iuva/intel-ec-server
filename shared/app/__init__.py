@@ -1,13 +1,27 @@
 """
-共享应用模块
+Shared App 模块
 
-提供FastAPI应用创建和配置功能
+提供微服务应用的统一初始化、生命周期管理和异常处理。
 """
 
-from shared.app.application import create_exception_handlers, create_fastapi_app, create_lifespan_handler
+from shared.app.application import create_exception_handlers
+from shared.app.exception_handler import setup_exception_handling
+from shared.app.health_routes import include_health_routes
+from shared.app.health_routes import router as health_router
+from shared.app.service_factory import (
+    HealthCheckManager,
+    ServiceConfig,
+    ServiceLifecycleManager,
+    create_service_lifespan,
+)
 
 __all__ = [
+    "HealthCheckManager",
+    "ServiceConfig",
+    "ServiceLifecycleManager",
     "create_exception_handlers",
-    "create_fastapi_app",
-    "create_lifespan_handler",
+    "create_service_lifespan",
+    "health_router",
+    "include_health_routes",
+    "setup_exception_handling",
 ]
