@@ -4,35 +4,38 @@ Admin Service 主应用入口
 提供后台管理、用户管理、系统配置等功能
 """
 
-import asyncio
-from contextlib import asynccontextmanager
 import os
-from typing import AsyncGenerator, Tuple
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # 使用 try-except 方式处理路径导入
 try:
-    from shared.common.cache import build_redis_url, mask_sensitive_info, validate_redis_config
-    from shared.common.database import close_databases, init_databases
+    from app.api.v1 import api_router
+    from shared.app import (
+        ServiceConfig,
+        create_service_lifespan,
+        include_health_routes,
+        setup_exception_handling,
+    )
     from shared.common.loguru_config import configure_logger, get_logger
-    from shared.common.response import SuccessResponse
-    from shared.config.nacos_config import NacosManager
-    from shared.monitoring.jaeger import auto_instrument_app, init_jaeger
-    from shared.monitoring.metrics import get_metrics_response, init_metrics
+    from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
+    from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from shared.common.cache import build_redis_url, mask_sensitive_info, validate_redis_config
-    from shared.common.database import close_databases, init_databases
+    from app.api.v1 import api_router
+    from shared.app import (
+        ServiceConfig,
+        create_service_lifespan,
+        include_health_routes,
+        setup_exception_handling,
+    )
     from shared.common.loguru_config import configure_logger, get_logger
-    from shared.common.response import SuccessResponse
-    from shared.config.nacos_config import NacosManager
-    from shared.monitoring.jaeger import auto_instrument_app, init_jaeger
-    from shared.monitoring.metrics import get_metrics_response, init_metrics
+    from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
+    from shared.monitoring.metrics_endpoint import router as metrics_router
 
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("ADMIN_SERVICE_NAME", "admin-service")
@@ -291,293 +294,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 添加统一异常处理中间件
-try:
-    from shared.app.exception_handler import setup_exception_handling
+# 添加 Prometheus 指标收集中间件
+app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
 
-    setup_exception_handling(app, "admin-service")
-    logger.info("统一异常处理中间件已启用")
-except Exception as e:
-    logger.error(f"添加统一异常处理失败: {e!s}", exc_info=True)
+# ❌ 不要在这里调用 jaeger_manager.instrument_app(app)
+# 应用在此时已经启动，无法再添加 Jaeger 中间件
+# 如果需要 Jaeger 追踪，应该在应用创建前就设置好
 
-# 添加请求验证错误的详细处理
-try:
-    from fastapi.exceptions import RequestValidationError
-    from fastapi.responses import JSONResponse
-    from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
+# 最后立即注册异常处理器（确保所有异常都被正确捕获）
+# 注：这会添加 UnifiedExceptionMiddleware，必须最后调用以确保最高优先级
+setup_exception_handling(app, service_name)
 
-    from shared.common.response import ErrorResponse
+# 添加健康检查路由
+include_health_routes(app)
 
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        """处理请求验证错误，提供详细的错误信息
+# 添加公共 metrics 路由（用于 Prometheus 采集指标）
+app.include_router(metrics_router)
 
-        Args:
-            request: 请求对象
-            exc: 验证错误异常
-
-        Returns:
-            详细的验证错误响应
-        """
-        # 记录详细的验证错误信息
-        logger.warning(
-            "请求验证失败",
-            extra={
-                "operation": "request_validation",
-                "method": request.method,
-                "url": str(request.url),
-                "client_ip": request.client.host if request.client else "unknown",
-                "user_agent": request.headers.get("user-agent", "unknown"),
-                "validation_errors": [
-                    {
-                        "field": ".".join(str(loc) for loc in error["loc"]),
-                        "message": error["msg"],
-                        "error_type": error["type"],
-                        "input_value": str(error.get("input", ""))[:100],  # 限制输入值长度
-                    }
-                    for error in exc.errors()
-                ],
-                "error_count": len(exc.errors()),
-            },
-        )
-
-        # 构建详细的错误响应
-        field_errors = [
-            {"field": ".".join(str(loc) for loc in error["loc"]), "message": error["msg"], "error_type": error["type"]}
-            for error in exc.errors()
-        ]
-
-        error_response = ErrorResponse(
-            code=HTTP_422_UNPROCESSABLE_ENTITY,
-            message="请求参数验证失败",
-            error_code="VALIDATION_ERROR",
-            details={"field_errors": field_errors, "total_errors": len(field_errors)},
-        )
-
-        return JSONResponse(status_code=HTTP_422_UNPROCESSABLE_ENTITY, content=error_response.model_dump())
-
-    logger.info("请求验证错误处理器已启用")
-
-except Exception as e:
-    logger.warning(f"添加请求验证错误处理器失败: {e!s}")
-
-# 添加指标收集中间件（在最后添加，确保捕获所有请求）
-try:
-    from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
-
-    app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
-    logger.info("Prometheus指标收集中间件已启用")
-except Exception as e:
-    logger.warning(f"添加指标收集中间件失败: {e!s}")
+# 注册 API 路由
+app.include_router(api_router, prefix="/api/v1")
 
 
-# 健康检查端点
-@app.get("/health")
-async def health_check():
-    """健康检查
-
-    返回服务的健康状态，包括数据库和 Redis 的状态。
-
-    状态说明：
-    - healthy: 所有组件正常运行
-    - degraded: 部分组件不可用（如 Redis），但核心功能可用
-    - unhealthy: 核心组件（如数据库）不可用
-    """
-    from sqlalchemy import text
-
-    from shared.common.cache import redis_manager
-    from shared.common.database import mariadb_manager
-    from shared.common.response import SuccessResponse
-
-    # 检查数据库连接（核心组件）
-    db_status = "healthy"
-    db_details = None
-    try:
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as db_session:
-            await db_session.execute(text("SELECT 1"))
-            db_details = {"connected": True, "message": "数据库连接正常"}
-    except Exception as e:
-        db_status = "unhealthy"
-        db_details = {"connected": False, "error": str(e)}
-        logger.error(f"数据库健康检查失败: {e!s}")
-
-    # 检查 Redis 连接（可选组件）
-    redis_status = "unavailable"
-    redis_details = None
-
-    if redis_manager.is_connected and redis_manager.client:
-        try:
-            await redis_manager.client.ping()
-            redis_status = "healthy"
-            redis_details = {"connected": True, "message": "Redis 连接正常", "mode": "cached"}
-        except Exception as e:
-            redis_status = "unhealthy"
-            redis_details = {"connected": False, "error": str(e), "mode": "degraded"}
-            logger.warning(f"Redis 健康检查失败: {e!s}")
-    else:
-        # Redis 未连接，服务运行在降级模式
-        redis_status = "unavailable"
-        redis_details = {
-            "connected": False,
-            "message": "Redis 未连接，服务运行在降级模式（无缓存）",
-            "mode": "degraded",
-        }
-
-    # 确定整体服务状态
-    # - 数据库不可用 -> unhealthy
-    # - 数据库正常但 Redis 不可用 -> degraded
-    # - 所有组件正常 -> healthy
-    if db_status == "unhealthy":
-        overall_status = "unhealthy"
-        status_message = "服务不可用：数据库连接失败"
-    elif redis_status != "healthy":
-        overall_status = "degraded"
-        status_message = "服务运行在降级模式：Redis 不可用"
-    else:
-        overall_status = "healthy"
-        status_message = "服务运行正常"
-
-    return SuccessResponse(
-        data={
-            "service": "admin-service",
-            "version": "1.0.0",
-            "status": overall_status,
-            "components": {
-                "database": {"status": db_status, "details": db_details},
-                "redis": {"status": redis_status, "details": redis_details},
-            },
-        },
-        message=status_message,
-    )
-
-
-# Prometheus 指标端点
-@app.get("/metrics")
-async def metrics():
-    """Prometheus 指标"""
-
-    return get_metrics_response()
-
-
-# 注册 API 路由 - 使用 try-except 处理导入
-try:
-    from app.api.v1 import api_router
-
-    app.include_router(api_router, prefix="/api/v1")
-except ImportError as e:
-    logger.error(f"API 路由导入失败: {e!s}")
-    raise
-
-
-# 根路径端点
 @app.get("/")
 async def root():
     """根路径"""
-
-    return SuccessResponse(
-        data={
-            "service": "admin-service",
-            "version": "1.0.0",
-            "docs": "/docs",
-            "health": "/health",
-            "api": "/api/v1",
-        },
-        message="Admin Service 运行正常",
-    )
-
-
-# 捕获所有未匹配的请求，返回统一格式的404错误
-# 这个路由必须在最后注册，确保最低优先级
-@app.api_route(
-    "/{path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
-    operation_id="admin_service_catch_all_handler",
-)
-async def catch_all_handler(request: Request, path: str):
-    """捕获所有未匹配的请求，返回统一格式的404错误
-
-    这个路由处理器会捕获所有没有被其他路由匹配的请求，
-    统一返回符合项目规范的404错误响应格式。
-    """
-    from fastapi.responses import JSONResponse
-
-    # 使用 try-except 方式处理路径导入
-    try:
-        from shared.common.response import ErrorResponse
-    except ImportError:
-        import sys
-
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
-        from shared.common.response import ErrorResponse
-
-    logger.warning(
-        f"未找到路由: {request.method} /{path}",
-        extra={
-            "method": request.method,
-            "path": path,
-            "user_agent": request.headers.get("user-agent"),
-            "client_ip": request.client.host if request.client else "unknown",
-        },
-    )
-
-    # 检查是否是API路径但版本不正确
-    error_message = "API版本不存在" if path.startswith("api/") else "请求的资源不存在"
-
-    # 返回统一格式的404错误响应
-    error_response = ErrorResponse(
-        code=404,
-        message=error_message,
-        error_code="RESOURCE_NOT_FOUND",
-        details={
-            "method": request.method,
-            "path": f"/{path}",
-        },
-    )
-
-    return JSONResponse(status_code=404, content=error_response.model_dump())
-
-
-if __name__ == "__main__":
-    import logging
-
-    from loguru import logger
-    import uvicorn
-
-    # 禁用uvicorn的默认日志处理器
-    uvicorn_logger = logging.getLogger("uvicorn")
-    uvicorn_logger.handlers.clear()
-    uvicorn_access_logger = logging.getLogger("uvicorn.access")
-    uvicorn_access_logger.handlers.clear()
-
-    # 运行uvicorn
-    import threading
-    import time
-
-    def replace_uvicorn_handlers():
-        """在uvicorn启动后替换其处理器"""
-        time.sleep(1)  # 等待uvicorn启动
-
-        class UvicornLoguruHandler(logging.Handler):
-            def emit(self, record):
-                if record.name.startswith("uvicorn"):
-                    loguru_logger = logger.bind(
-                        name=record.name,
-                        function=record.funcName or "unknown",
-                        line=record.lineno or 0,
-                    )
-                    loguru_logger.log(record.levelname, record.getMessage())
-
-        handler = UvicornLoguruHandler()
-
-        # 替换所有uvicorn相关logger的处理器
-        for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error"]:
-            specific_logger = logging.getLogger(logger_name)
-            specific_logger.handlers.clear()
-            specific_logger.addHandler(handler)
-            specific_logger.setLevel(logging.INFO)
-
-    # 启动处理器替换线程
-    threading.Thread(target=replace_uvicorn_handlers, daemon=True).start()
-
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    return {"message": "Admin Service is running"}
