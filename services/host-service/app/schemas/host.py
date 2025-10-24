@@ -78,3 +78,69 @@ class VNCConnectionResponse(BaseModel):
     message: str = Field(description="处理消息")
 
     model_config = {"from_attributes": True}
+
+
+class QueryAvailableHostsRequest(BaseModel):
+    """查询可用主机列表请求模式 - 使用游标分页
+
+    业务说明：
+    - 首次请求不提供 last_id，从头开始
+    - 后续请求提供上一页最后一条记录的 id（last_id）
+    - 系统根据 last_id 计算内部偏移量
+    - 避免多用户并发时的状态污染问题
+    """
+
+    tc_id: str = Field(description="测试用例ID")
+    cycle_name: str = Field(description="测试周期名称")
+    user_name: str = Field(description="用户名")
+    page_size: int = Field(default=20, ge=1, le=100, description="每页数量（1-100）")
+    last_id: Optional[int] = Field(
+        default=None,
+        description="上一页最后一条记录的 id。首次请求为 null，后续请求需要传入上一页最后一条记录的 host_rec_id",
+    )
+
+    model_config = {"from_attributes": True}
+
+
+class HardwareHostData(BaseModel):
+    """外部硬件接口返回的主机数据"""
+
+    hardware_id: str = Field(description="硬件ID")
+    ip: str = Field(description="IP地址")
+    hostname: str = Field(description="主机名称")
+    query: Optional[str] = Field(default=None, description="查询条件")
+
+    model_config = {"from_attributes": True}
+
+
+class AvailableHostInfo(BaseModel):
+    """可用主机信息"""
+
+    host_rec_id: int = Field(description="主机记录ID (host_rec.id)")
+    hardware_id: str = Field(description="硬件ID")
+    user_name: str = Field(description="用户名 (host_acct)")
+    host_ip: str = Field(description="主机IP")
+    appr_state: int = Field(description="审批状态")
+    host_state: int = Field(description="主机状态")
+
+    model_config = {"from_attributes": True}
+
+
+class AvailableHostsListResponse(BaseModel):
+    """查询可用主机列表响应模式 - 游标分页响应
+
+    字段说明：
+    - hosts: 当前页的主机列表
+    - total: 本次查询过程中发现的可用主机总数（不是全局总数）
+    - page_size: 每页大小
+    - has_next: 是否还有下一页
+    - last_id: 当前页最后一条记录的 id，用于下一页请求
+    """
+
+    hosts: List[AvailableHostInfo] = Field(description="可用主机列表")
+    total: int = Field(description="本次查询发现的可用主机总数")
+    page_size: int = Field(description="每页大小")
+    has_next: bool = Field(description="是否有下一页")
+    last_id: Optional[int] = Field(default=None, description="当前页最后一条记录的 id，用于请求下一页")
+
+    model_config = {"from_attributes": True}

@@ -25,7 +25,7 @@ from shared.common.database import close_databases, init_databases, mariadb_mana
 from shared.common.loguru_config import get_logger
 from shared.common.response import SuccessResponse
 from shared.config.nacos_config import NacosManager
-from shared.monitoring.jaeger import auto_instrument_app, init_jaeger
+from shared.monitoring.jaeger import init_jaeger
 from shared.monitoring.metrics import init_metrics
 
 logger = get_logger(__name__)
@@ -58,8 +58,22 @@ class ServiceConfig:
         redis_url: Optional[str] = None,
         jwt_secret_key: Optional[str] = None,
         jaeger_endpoint: Optional[str] = None,
+        hardware_api_url: Optional[str] = None,
     ):
-        """初始化服务配置"""
+        """
+        初始化服务配置
+
+        Args:
+            service_name: 服务名称
+            service_port: 服务端口
+            service_ip: 服务 IP
+            nacos_server_addr: Nacos 服务器地址
+            mariadb_url: MariaDB 连接 URL
+            redis_url: Redis 连接 URL
+            jwt_secret_key: JWT 密钥
+            jaeger_endpoint: Jaeger 端点
+            hardware_api_url: 硬件接口基础 URL
+        """
         self.service_name = service_name
         self.service_port = service_port
         self.service_ip = service_ip
@@ -67,7 +81,9 @@ class ServiceConfig:
         self.mariadb_url = mariadb_url
         self.redis_url = redis_url
         self.jwt_secret_key = jwt_secret_key
+
         self.jaeger_endpoint = jaeger_endpoint
+        self.hardware_api_url = hardware_api_url
 
     @staticmethod
     def from_env(service_name: str, service_port_key: str = "SERVICE_PORT") -> "ServiceConfig":
@@ -122,6 +138,9 @@ class ServiceConfig:
         jwt_secret_key = os.getenv("JWT_SECRET_KEY")
         jaeger_endpoint = os.getenv("JAEGER_ENDPOINT", "http://localhost:14268/api/traces")
 
+        # 外部服务 API 配置
+        hardware_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
+
         return ServiceConfig(
             service_name=service_name,
             service_port=service_port,
@@ -131,6 +150,7 @@ class ServiceConfig:
             redis_url=redis_url,
             jwt_secret_key=jwt_secret_key,
             jaeger_endpoint=jaeger_endpoint,
+            hardware_api_url=hardware_api_url,
         )
 
 
