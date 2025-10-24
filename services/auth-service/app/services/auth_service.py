@@ -1596,12 +1596,16 @@ class AuthService:
             session_factory = self.session_factory
             async with session_factory() as db_session:
 <<<<<<< HEAD
+<<<<<<< HEAD
                 stmt = select(UserSession).where(
                     UserSession.access_token == token, ~UserSession.del_flag
                 )
 =======
                 stmt = select(UserSession).where(UserSession.access_token == token, ~UserSession.is_deleted)
 >>>>>>> 0c5b1ec (🔧 更新 .env.example 文件，添加 Redis 配置并简化环境变量说明)
+=======
+                stmt = select(UserSession).where(UserSession.access_token == token, ~UserSession.del_flag)
+>>>>>>> 1c319f3 (feat(host): 添加VNC连接结果上报功能-[#16])
                 result = await db_session.execute(stmt)
                 user_session = result.scalar_one_or_none()
 

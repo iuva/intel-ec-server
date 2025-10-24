@@ -18,9 +18,7 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import Base
 
 
@@ -30,9 +28,7 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
 
     # Primary key
-    id: Mapped[int] = mapped_column(
-        primary_key=True, autoincrement=True, comment="Primary key ID"
-    )
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="Primary key ID")
 
     # Association fields - now supports multiple entity types
     entity_id: Mapped[int] = mapped_column(
@@ -49,28 +45,16 @@ class UserSession(Base):
     )
 
     # Session fields
-    session_id: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True, index=True, comment="Session ID"
-    )
-    access_token: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="Access token"
-    )
-    refresh_token: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="Refresh token"
-    )
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True, comment="Session ID")
+    access_token: Mapped[str] = mapped_column(Text, nullable=False, comment="Access token")
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False, comment="Refresh token")
 
     # Client information
-    client_ip: Mapped[Optional[str]] = mapped_column(
-        String(45), nullable=True, comment="Client IP"
-    )
-    user_agent: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True, comment="User agent"
-    )
+    client_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True, comment="Client IP")
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="User agent")
 
     # Expiration time
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, comment="Expiration time"
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, comment="Expiration time")
 
     # Time fields
     created_time: Mapped[datetime] = mapped_column(
@@ -86,9 +70,7 @@ class UserSession(Base):
         nullable=False,
         comment="Update time",
     )
-    del_flag: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, comment="Is deleted"
-    )
+    del_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="Is deleted")
 
     def __repr__(self) -> str:
         """String representation"""

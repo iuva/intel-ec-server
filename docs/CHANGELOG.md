@@ -125,9 +125,9 @@ ERROR | admin-service | list_users 执行失败
 - `username` → `user_account`
 - `***REMOVED***word_hash` → `user_pwd`
 - `is_active` → `state_flag` (0=启用, 1=停用)
-- `is_deleted` → `del_flag` (0=使用中, 1=删除)
-- `created_at` → `created_time`
-- `updated_at` → `updated_time`
+- `del_flag` → `del_flag` (0=使用中, 1=删除)
+- `created_time` → `created_time`
+- `updated_time` → `updated_time`
 
 **向后兼容**:
 - 在 `UserResponse` 中添加计算属性保持 API 兼容性

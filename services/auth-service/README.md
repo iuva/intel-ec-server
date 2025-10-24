@@ -2,15 +2,10 @@
 
 ## Overview
 
-<<<<<<< HEAD
 Auth Service is the authentication service in Intel EC microservice architecture, providing user authentication, device authentication, JWT token management, and other functions.
-=======
-Auth Service 是 Intel EC 微服务架构中的认证服务，提供用户认证、设备认证、JWT令牌管理等功能。
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ## Features
 
-<<<<<<< HEAD
 - ✅ Administrator login authentication (traditional way)
 - ✅ Device login authentication (traditional way)
 - ✅ JWT token generation and validation
@@ -19,16 +14,6 @@ Auth Service 是 Intel EC 微服务架构中的认证服务，提供用户认证
 - ✅ Health checks
 - ✅ Prometheus monitoring metrics
 - ✅ Jaeger distributed tracing
-=======
-- ✅ 管理员登录认证（传统方式）
-- ✅ 设备登录认证（传统方式）
-- ✅ JWT 令牌生成和验证
-- ✅ 令牌刷新机制
-- ✅ 用户注销（令牌黑名单）
-- ✅ 健康检查
-- ✅ Prometheus 监控指标
-- ✅ Jaeger 分布式追踪
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ## Tech Stack
 
@@ -70,19 +55,11 @@ auth-service/
 
 ### Authentication Related
 
-<<<<<<< HEAD
 - `POST /api/v1/auth/admin/login` - Admin login
 - `POST /api/v1/auth/device/login` - Device login
 - `POST /api/v1/auth/refresh` - Refresh access token
 - `POST /api/v1/auth/introspect` - Validate token
 - `POST /api/v1/auth/logout` - User logout
-=======
-- `POST /api/v1/auth/admin/login` - 管理员登录
-- `POST /api/v1/auth/device/login` - 设备登录
-- `POST /api/v1/auth/refresh` - 刷新访问令牌
-- `POST /api/v1/auth/introspect` - 验证令牌
-- `POST /api/v1/auth/logout` - 用户注销
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 ### System Endpoints
 
@@ -93,41 +70,7 @@ auth-service/
 
 ## Database Tables
 
-<<<<<<< HEAD
 ### sys_user Table (Administrators)
-=======
-### sys_user 表（管理员）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT | 主键ID |
-| user_name | VARCHAR(32) | 用户名称 |
-| user_account | VARCHAR(32) | 登录账号 |
-| user_pwd | VARCHAR(128) | 登录密码（bcrypt加密） |
-| user_avatar | VARCHAR(32) | 用户头像 |
-| email | VARCHAR(32) | 邮箱 |
-| state_flag | SMALLINT | 账号状态（0:启用, 1:停用） |
-| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
-| created_time | DATETIME | 创建时间 |
-| updated_time | DATETIME | 更新时间 |
-
-### host_rec 表（设备）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | BIGINT | 主键ID |
-| mg_id | VARCHAR(128) | 唯一引导ID |
-| host_ip | VARCHAR(32) | IP地址 |
-| host_acct | VARCHAR(32) | 主机账号 |
-| appr_state | SMALLINT | 审批状态 |
-| host_state | SMALLINT | 主机状态 |
-| subm_time | DATETIME | 申报时间 |
-| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
-| created_time | DATETIME | 创建时间 |
-| updated_time | DATETIME | 更新时间 |
-
-### user_sessions 表（会话管理）
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 
 | Field | Type | Description |
 |------|------|------|
@@ -168,9 +111,14 @@ auth-service/
 | refresh_token | TEXT | 刷新令牌 |
 | client_ip | VARCHAR(45) | 客户端IP |
 | expires_at | DATETIME | 过期时间 |
+<<<<<<< HEAD
 | created_at | DATETIME | 创建时间 |
 | is_deleted | BOOLEAN | 是否已删除 |
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+| created_time | DATETIME | 创建时间 |
+| del_flag | BOOLEAN | 是否已删除 |
+>>>>>>> 1c319f3 (feat(host): 添加VNC连接结果上报功能-[#16])
 
 ### user_sessions Table (Session Management)
 
