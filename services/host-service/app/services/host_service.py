@@ -177,14 +177,8 @@ class HostService:
             return host
 
     @monitor_operation("vnc_connection_report", record_duration=True)
-    @handle_service_errors(
-        error_message="VNC连接结果上报失败",
-        error_code="VNC_CONNECTION_REPORT_FAILED"
-    )
-    async def report_vnc_connection(
-        self,
-        vnc_report: VNCConnectionReport
-    ) -> dict:
+    @handle_service_errors(error_message="VNC连接结果上报失败", error_code="VNC_CONNECTION_REPORT_FAILED")
+    async def report_vnc_connection(self, vnc_report: VNCConnectionReport) -> dict:
         """处理浏览器插件上报的VNC连接结果
 
         功能描述：根据 host_id 更新 host_rec 表，设置 host_state = 1（已锁定），
@@ -209,7 +203,7 @@ class HostService:
             # 注意：host_id 是字符串类型的 ID，对应 host_rec 表的 id 字段
             stmt = select(HostRec).where(
                 HostRec.id == int(vnc_report.host_id),
-                HostRec.del_flag == 0  # 未删除的记录
+                HostRec.del_flag == 0,  # 未删除的记录
             )
             result = await session.execute(stmt)
             host_rec = result.scalar_one_or_none()
