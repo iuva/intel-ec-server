@@ -1,7 +1,7 @@
 """WebSocket 连接管理器"""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from fastapi import WebSocket
@@ -55,7 +55,7 @@ class WebSocketManager:
                 "type": "welcome",
                 "message": "WebSocket 连接已建立",
                 "agent_id": agent_id,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -163,7 +163,7 @@ class WebSocketManager:
                     {
                         "type": "error",
                         "message": f"未知消息类型: {message_type}",
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )
         except Exception as e:
@@ -174,7 +174,7 @@ class WebSocketManager:
                     "type": "error",
                     "message": "消息处理失败",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -195,7 +195,7 @@ class WebSocketManager:
                 {
                     "type": "heartbeat_ack",
                     "message": "心跳已接收",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -222,7 +222,7 @@ class WebSocketManager:
                     "type": "status_update_ack",
                     "message": "状态更新成功",
                     "status": status,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -259,7 +259,7 @@ class WebSocketManager:
                 # 检查主机最后心跳时间
                 host = await self.host_service.get_host_by_id(agent_id)
                 if host and host.last_heartbeat:
-                    time_since_heartbeat = (datetime.utcnow() - host.last_heartbeat).total_seconds()
+                    time_since_heartbeat = (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds()
 
                     if time_since_heartbeat > self.heartbeat_timeout:
                         logger.warning(f"心跳超时: {agent_id}, " + f"最后心跳: {time_since_heartbeat:.0f}秒前")
@@ -271,7 +271,7 @@ class WebSocketManager:
                                 "type": "heartbeat_timeout_warning",
                                 "message": "心跳超时警告",
                                 "timeout": self.heartbeat_timeout,
-                                "timestamp": datetime.utcnow().isoformat(),
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
                             },
                         )
 

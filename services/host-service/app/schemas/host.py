@@ -63,11 +63,7 @@ class VNCConnectionReport(BaseModel):
 
     user_id: str = Field(..., description="用户ID")
     host_id: str = Field(..., description="主机ID")
-    connection_status: str = Field(
-        ...,
-        description="连接状态 (success/failed)",
-        regex=r"^(success|failed)$"
-    )
+    connection_status: str = Field(..., description="连接状态 (success/failed)", pattern=r"^(success|failed)$")
     connection_time: datetime = Field(..., description="连接时间")
 
     model_config = {"from_attributes": True}

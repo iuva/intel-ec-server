@@ -64,9 +64,7 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
 
         # 增加进行中的请求数
         try:
-            http_requests_in_progress.labels(
-                method=method, endpoint=endpoint, service=self.service_name
-            ).inc()
+            http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).inc()
             logger.info(f"Incremented http_requests_in_progress for {method} {endpoint}")
         except Exception as e:
             logger.error(f"❌ 增加 http_requests_in_progress 失败: {e!s}")
@@ -104,9 +102,7 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
                     status=status,
                     service=self.service_name,
                 ).inc()
-                logger.info(
-                    f"Incremented http_requests_total for {method} {endpoint} with status {status}"
-                )
+                logger.info(f"Incremented http_requests_total for {method} {endpoint} with status {status}")
             except Exception as e:
                 logger.error(f"❌ 增加 http_requests_total 失败: {e!s}")
 

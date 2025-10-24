@@ -53,16 +53,6 @@ class UserResponse(BaseModel):
         """向后兼容：state_flag 0=启用"""
         return self.state_flag == 0
 
-    @property
-    def created_time(self) -> datetime:
-        """向后兼容：返回 created_time"""
-        return self.created_time
-
-    @property
-    def updated_time(self) -> datetime:
-        """向后兼容：返回 updated_time"""
-        return self.updated_time
-
     model_config = {"from_attributes": True}
 
 

@@ -1,6 +1,6 @@
 """主机管理服务"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, cast
 
 from sqlalchemy import select
@@ -107,8 +107,8 @@ class HostService:
             # 更新状态和心跳时间
             old_status = host.status
             host.status = status_data.status
-            host.last_heartbeat = datetime.utcnow()
-            host.updated_time = datetime.utcnow()
+            host.last_heartbeat = datetime.now(timezone.utc)
+            host.updated_time = datetime.now(timezone.utc)
 
             await session.commit()
             await session.refresh(host)
@@ -157,10 +157,10 @@ class HostService:
 
             # 更新心跳时间和状态
             old_status = host.status
-            host.last_heartbeat = datetime.utcnow()
+            host.last_heartbeat = datetime.now(timezone.utc)
             if host.status != "online":
                 host.status = "online"
-            host.updated_time = datetime.utcnow()
+            host.updated_time = datetime.now(timezone.utc)
 
             await session.commit()
             await session.refresh(host)
@@ -177,14 +177,8 @@ class HostService:
             return host
 
     @monitor_operation("vnc_connection_report", record_duration=True)
-    @handle_service_errors(
-        error_message="VNC连接结果上报失败",
-        error_code="VNC_CONNECTION_REPORT_FAILED"
-    )
-    async def report_vnc_connection(
-        self,
-        vnc_report: VNCConnectionReport
-    ) -> dict:
+    @handle_service_errors(error_message="VNC连接结果上报失败", error_code="VNC_CONNECTION_REPORT_FAILED")
+    async def report_vnc_connection(self, vnc_report: VNCConnectionReport) -> dict:
         """处理浏览器插件上报的VNC连接结果
 
         功能描述：根据 host_id 更新 host_rec 表，设置 host_state = 1（已锁定），
@@ -209,7 +203,7 @@ class HostService:
             # 注意：host_id 是字符串类型的 ID，对应 host_rec 表的 id 字段
             stmt = select(HostRec).where(
                 HostRec.id == int(vnc_report.host_id),
-                HostRec.del_flag == 0  # 未删除的记录
+                HostRec.del_flag == 0,  # 未删除的记录
             )
             result = await session.execute(stmt)
             host_rec = result.scalar_one_or_none()
@@ -238,7 +232,7 @@ class HostService:
             # 根据连接状态更新 host_rec 表
             # 设置 host_state = 1（已锁定），subm_time = 当前时间
             host_rec.host_state = 1  # 已锁定状态
-            host_rec.subm_time = datetime.utcnow()
+            host_rec.subm_time = datetime.now(timezone.utc)
 
             # 提交更新
             await session.commit()

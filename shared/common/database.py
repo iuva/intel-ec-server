@@ -1,14 +1,12 @@
 """
-数据库连接管理模块
-
-提供MariaDB 10.11异步连接池管理和基础数据库模型类
+MariaDB 数据库管理器 - 异步 SQLAlchemy 集成
 """
 
 from datetime import datetime
 import logging
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import SmallInteger, DateTime, BigInteger, func
+from sqlalchemy import BigInteger, DateTime, SmallInteger, func
 from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]
     AsyncEngine,
     AsyncSession,

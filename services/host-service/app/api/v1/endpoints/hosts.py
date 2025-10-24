@@ -1,9 +1,10 @@
 """主机管理 API 端点"""
 
-from app.api.v1.dependencies import get_host_service
-from app.schemas.host import (VNCConnectionReport, VNCConnectionResponse)
-from app.services.host_service import HostService
 from fastapi import APIRouter, Depends
+
+from app.api.v1.dependencies import get_host_service
+from app.schemas.host import VNCConnectionReport, VNCConnectionResponse
+from app.services.host_service import HostService
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -31,10 +32,7 @@ router = APIRouter()
     summary="VNC连接结果上报",
     description="浏览器插件上报VNC连接结果到服务端",
     responses={
-        200: {
-            "description": "VNC连接结果上报成功",
-            "model": SuccessResponse
-        },
+        200: {"description": "VNC连接结果上报成功", "model": SuccessResponse},
         400: {
             "description": "主机不存在或请求参数错误",
             "content": {
@@ -42,10 +40,10 @@ router = APIRouter()
                     "example": {
                         "code": 400,
                         "message": "主机不存在: 1852278641262084097",
-                        "error_code": "HOST_NOT_FOUND"
+                        "error_code": "HOST_NOT_FOUND",
                     }
                 }
-            }
+            },
         },
         500: {
             "description": "服务器错误",
@@ -54,12 +52,12 @@ router = APIRouter()
                     "example": {
                         "code": 500,
                         "message": "VNC连接结果上报失败",
-                        "error_code": "VNC_CONNECTION_REPORT_FAILED"
+                        "error_code": "VNC_CONNECTION_REPORT_FAILED",
                     }
                 }
-            }
-        }
-    }
+            },
+        },
+    },
 )
 @handle_api_errors
 async def report_vnc_connection(
