@@ -10,32 +10,35 @@ from typing import Any, Dict, Optional
 
 # 使用 try-except 方式处理路径导入
 try:
-    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
+    from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
+
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient
     from shared.common.loguru_config import get_logger
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ServiceUnavailableError
-    from shared.common.http_client import AsyncHTTPClient
-    from shared.common.loguru_config import get_logger
-
-# 导入 httpx 异常类
-try:
-    from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
-except ImportError:
     # 兼容不同版本的 httpx
     from httpx import ConnectError, TimeoutException
 
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
+    from shared.common.http_client import AsyncHTTPClient
+    from shared.common.loguru_config import get_logger
+
+    # 导入 httpx 异常类
     try:
         from httpx._exceptions import HTTPStatusError, NetworkError
     except ImportError:
         # 如果还是失败，使用基础异常
-        HTTPStatusError = Exception
-        NetworkError = Exception
-
+        HTTPStatusError = Exception  # type: ignore[assignment, misc]
+        NetworkError = Exception  # type: ignore[assignment, misc]
 
 logger = get_logger(__name__)
+
+# 常量定义
+EXCLUDED_HEADERS = {"content-length", "transfer-encoding", "host"}
+API_VERSION = "v1"
+API_PREFIX = f"/api/{API_VERSION}"
 
 
 class ProxyService:
@@ -51,8 +54,6 @@ class ProxyService:
         1. Docker: 使用服务名（auth-service, admin-service, host-service）
         2. 本地开发: 使用 localhost + 端口
         """
-        import os
-
         # 检测运行环境
         service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
         service_host_admin = os.getenv("SERVICE_HOST_ADMIN", "admin-service")
@@ -67,7 +68,7 @@ class ProxyService:
             "host": f"http://{service_host_host}:8003",
         }
 
-        logger.info(f"服务路由配置: {self.service_routes}")
+        logger.info("服务路由已配置", extra={"services": list(self.service_routes.keys())})
 
         # 使用共享的 HTTP 客户端
         self.http_client = AsyncHTTPClient(
@@ -77,6 +78,14 @@ class ProxyService:
             max_connections=100,
             max_retries=3,
             retry_delay=1.0,
+        )
+
+        # 健康检查专用客户端（缓存以避免重复创建）
+        self._health_check_client = AsyncHTTPClient(
+            timeout=5.0,
+            connect_timeout=2.0,
+            max_retries=1,
+            retry_delay=0.5,
         )
 
     def get_service_url(self, service_name: str) -> str:
@@ -93,11 +102,123 @@ class ProxyService:
         """
         service_url = self.service_routes.get(service_name)
         if not service_url:
-            logger.warning(f"服务不存在: {service_name}")
+            logger.warning("服务不存在", extra={"service_name": service_name})
             raise ServiceNotFoundError(service_name)
 
-        logger.info(f"获取服务URL: service_name={service_name}, service_url={service_url}")
         return service_url
+
+    def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """清理请求头 - 移除可能导致问题的头部
+
+        Args:
+            headers: 原始请求头
+
+        Returns:
+            清理后的请求头
+        """
+        if not headers:
+            return {}
+
+        return {k: v for k, v in headers.items() if k.lower() not in EXCLUDED_HEADERS}
+
+    def _build_service_url(self, service_url: str, path: str) -> str:
+        """构建完整的服务 URL
+
+        Args:
+            service_url: 服务基础 URL
+            path: 请求路径
+
+        Returns:
+            完整的服务 URL
+        """
+        return f"{service_url}{API_PREFIX}/{path}"
+
+    def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
+        """记录后端错误日志
+
+        Args:
+            service_name: 服务名称
+            method: HTTP 方法
+            path: 请求路径
+            error_type: 错误类型
+            error: 错误信息
+        """
+        logger.error(
+            f"后端服务错误: {service_name} - {error_type}",
+            extra={
+                "service_name": service_name,
+                "method": method,
+                "path": path,
+                "error_type": error_type,
+                "error": error,
+            },
+            exc_info=True,
+        )
+
+    def _raise_connection_error(self, service_name: str, error: Exception) -> None:
+        """抛出连接错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        self._log_backend_error(service_name, "", "", "CONNECTION_ERROR", str(error))
+        raise BusinessError(
+            message=f"无法连接到后端服务: {service_name}",
+            error_code="GATEWAY_CONNECTION_FAILED",
+            code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
+            http_status_code=502,
+            details={"original_error": str(error), "service_name": service_name},
+        )
+
+    def _raise_timeout_error(self, service_name: str, error: Exception) -> None:
+        """抛出超时错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        self._log_backend_error(service_name, "", "", "TIMEOUT_ERROR", str(error))
+        raise BusinessError(
+            message=f"后端服务响应超时: {service_name}",
+            error_code="GATEWAY_TIMEOUT",
+            code=ServiceErrorCodes.GATEWAY_TIMEOUT,
+            http_status_code=504,
+            details={"original_error": str(error), "service_name": service_name, "timeout": True},
+        )
+
+    def _raise_network_error(self, service_name: str, error: Exception) -> None:
+        """抛出网络错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        self._log_backend_error(service_name, "", "", "NETWORK_ERROR", str(error))
+        raise BusinessError(
+            message=f"后端服务网络错误: {service_name}",
+            error_code="GATEWAY_NETWORK_ERROR",
+            code=ServiceErrorCodes.GATEWAY_NETWORK_ERROR,
+            http_status_code=502,
+            details={"original_error": str(error), "service_name": service_name},
+        )
+
+    def _raise_protocol_error(self, service_name: str, error: Exception) -> None:
+        """抛出协议错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        error_type = type(error).__name__
+        self._log_backend_error(service_name, "", "", "PROTOCOL_ERROR", str(error))
+        raise BusinessError(
+            message=f"后端服务协议错误: {service_name}",
+            error_code="GATEWAY_PROTOCOL_ERROR",
+            code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
+            http_status_code=502,
+            details={"original_error": str(error), "error_type": error_type, "service_name": service_name},
+        )
 
     async def forward_request(
         self,
@@ -131,13 +252,12 @@ class ProxyService:
             # 获取服务 URL
             service_url = self.get_service_url(service_name)
 
-            # 构建完整 URL - 所有服务都使用统一的API路径规则
-            # 格式: {service_url}/api/v1/{path}
-            full_url = f"{service_url}/api/v1/{path}"
+            # 构建完整 URL
+            full_url = self._build_service_url(service_url, path)
 
             # 记录请求日志
-            logger.info(
-                f"转发请求: {method} {full_url}",
+            logger.debug(
+                "转发请求到后端服务",
                 extra={
                     "service_name": service_name,
                     "method": method,
@@ -145,12 +265,8 @@ class ProxyService:
                 },
             )
 
-            # 清理头部 - 移除可能导致问题的头部
-            clean_headers = {}
-            if headers:
-                for k, v in headers.items():
-                    if k.lower() not in ["content-length", "transfer-encoding", "host"]:
-                        clean_headers[k] = v
+            # 清理请求头
+            clean_headers = self._clean_headers(headers)
 
             # 准备请求参数
             request_kwargs: Dict[str, Any] = {
@@ -176,79 +292,39 @@ class ProxyService:
             # 重新抛出服务不存在异常
             raise
 
-        except Exception as e:
-            # 详细分析异常类型并透传后端服务信息
+        except HTTPStatusError as e:
+            # 处理后端服务返回的 HTTP 错误
+            # _handle_backend_http_error 内部会抛出异常，不会返回
+            await self._handle_backend_http_error(service_name, method, path, e)
+            # 防御性编程：如果异常处理出错，抛出异常
+            raise
 
-            # 处理 HTTP 状态错误（后端服务返回的业务错误）
-            if isinstance(e, HTTPStatusError):
-                await self._handle_backend_http_error(service_name, method, path, e)
-
+        except ConnectError as e:
             # 处理连接错误
-            elif isinstance(e, ConnectError):
-                logger.error(
-                    f"后端服务连接失败: {service_name}",
-                    extra={
-                        "service_name": service_name,
-                        "method": method,
-                        "path": path,
-                        "error_type": "CONNECTION_ERROR",
-                        "error": str(e),
-                    },
-                    exc_info=True,
-                )
-                raise ServiceUnavailableError(f"无法连接到后端服务: {service_name}", details={"original_error": str(e)})
+            self._raise_connection_error(service_name, e)
 
+        except TimeoutException as e:
             # 处理超时错误
-            elif isinstance(e, TimeoutException):
-                logger.error(
-                    f"后端服务响应超时: {service_name}",
-                    extra={
-                        "service_name": service_name,
-                        "method": method,
-                        "path": path,
-                        "error_type": "TIMEOUT_ERROR",
-                        "error": str(e),
-                    },
-                    exc_info=True,
-                )
-                raise ServiceUnavailableError(
-                    f"后端服务响应超时: {service_name}", details={"original_error": str(e), "timeout": True}
-                )
+            self._raise_timeout_error(service_name, e)
 
-            # 处理其他网络错误
-            elif isinstance(e, NetworkError):
-                logger.error(
-                    f"后端服务网络错误: {service_name}",
-                    extra={
-                        "service_name": service_name,
-                        "method": method,
-                        "path": path,
-                        "error_type": "NETWORK_ERROR",
-                        "error": str(e),
-                    },
-                    exc_info=True,
-                )
-                raise ServiceUnavailableError(f"后端服务网络异常: {service_name}", details={"original_error": str(e)})
+        except NetworkError as e:
+            # 处理网络错误
+            self._raise_network_error(service_name, e)
 
-            # 处理其他未知异常
-            else:
-                logger.error(
-                    f"请求转发未知异常: {service_name}",
-                    extra={
-                        "service_name": service_name,
-                        "method": method,
-                        "path": path,
-                        "error_type": type(e).__name__,
-                        "error": str(e),
-                    },
-                    exc_info=True,
-                )
-                raise ServiceUnavailableError(
-                    f"请求转发异常: {service_name}", details={"original_error": str(e), "error_type": type(e).__name__}
-                )
+        except Exception as e:
+            # 处理其他错误（协议错误等）
+            self._raise_protocol_error(service_name, e)
+
+        # 不应该到达这里，但作为防御性编程
+        msg = f"请求转发异常（未捕获）: {service_name}"
+        raise RuntimeError(msg)
 
     async def _handle_backend_http_error(
-        self, service_name: str, method: str, path: str, http_error: HTTPStatusError
+        self,
+        service_name: str,
+        method: str,
+        path: str,
+        http_error: Any,  # type: ignore[arg-type]
     ) -> None:
         """处理后端服务的HTTP错误响应
 
@@ -277,11 +353,20 @@ class ProxyService:
         # 提取关键错误信息
         error_message = error_detail.get("message", f"后端服务错误: {status_code}")
         error_code = error_detail.get("error_code", f"BACKEND_{status_code}")
-        error_details = error_detail.get("details", {})
+        error_details_raw = error_detail.get("details", {})
+        # 保留后端服务的自定义错误码（code），而不是用 HTTP 状态码覆盖
+        backend_error_code_raw = error_detail.get("code")
+        backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
+
+        # 确保 error_details 是字典类型
+        if isinstance(error_details_raw, dict):
+            error_details: Dict[str, Any] = error_details_raw
+        else:
+            error_details = {"value": str(error_details_raw)}
 
         # 记录详细错误日志
         logger.warning(
-            f"后端服务返回业务错误: {service_name}",
+            "后端服务返回业务错误",
             extra={
                 "service_name": service_name,
                 "method": method,
@@ -290,34 +375,17 @@ class ProxyService:
                 "error_code": error_code,
                 "error_message": error_message,
                 "error_details": error_details,
-                "response_headers": dict(http_error.response.headers),
+                "backend_error_code": backend_error_code,
             },
         )
 
-        # 根据状态码决定异常类型
-        if 400 <= status_code < 500:
-            # 客户端错误（4xx）- 业务逻辑错误，透传给客户端
-            raise BusinessError(
-                message=error_message,
-                code=status_code,
-                error_code=error_code,
-                details=error_details,
-            )
-        if 500 <= status_code < 600:
-            # 服务器错误（5xx）- 后端服务内部错误，转换为网关错误
-            raise ServiceUnavailableError(
-                f"后端服务内部错误: {service_name}",
-                details={
-                    "backend_status_code": status_code,
-                    "backend_error": error_message,
-                    "backend_error_code": error_code,
-                },
-            )
-        # 其他状态码，透传给客户端
+        # 直接透传所有 HTTP 状态码
+        # 使用后端服务的自定义错误码（如 53009），而不是 HTTP 状态码（502）
         raise BusinessError(
             message=error_message,
-            code=status_code,
+            code=backend_error_code,  # 使用后端的自定义错误码
             error_code=error_code,
+            http_status_code=status_code,  # HTTP 状态码保持为 502
             details=error_details,
         )
 
@@ -334,15 +402,7 @@ class ProxyService:
             service_url = self.get_service_url(service_name)
             health_url = f"{service_url}/health"
 
-            # 使用共享的 HTTP 客户端，配置较短的超时时间
-            health_client = AsyncHTTPClient(
-                timeout=5.0,
-                connect_timeout=2.0,
-                max_retries=1,  # 健康检查只重试一次
-                retry_delay=0.5,
-            )
-
-            response = await health_client.request(
+            response = await self._health_check_client.request(
                 method="GET",
                 url=health_url,
                 retry=False,  # 健康检查不启用重试
@@ -351,20 +411,28 @@ class ProxyService:
             is_healthy = response["status_code"] == 200
 
             logger.debug(
-                f"健康检查结果: {service_name}",
-                extra={"service_name": service_name, "is_healthy": is_healthy, "status_code": response["status_code"]},
+                "健康检查完成",
+                extra={
+                    "service_name": service_name,
+                    "is_healthy": is_healthy,
+                    "status_code": response["status_code"],
+                },
             )
 
             return is_healthy
 
         except ServiceNotFoundError:
-            logger.warning(f"健康检查失败: 服务不存在 - {service_name}", extra={"service_name": service_name})
+            logger.warning("健康检查失败: 服务不存在", extra={"service_name": service_name})
             return False
 
         except Exception as e:
             logger.warning(
-                f"健康检查失败: {service_name}",
-                extra={"service_name": service_name, "error_type": type(e).__name__, "error": str(e)},
+                "健康检查失败",
+                extra={
+                    "service_name": service_name,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
             )
             return False
 
@@ -372,7 +440,11 @@ class ProxyService:
         """关闭代理服务，释放资源"""
         if self.http_client:
             await self.http_client.close()
-            logger.info("代理服务 HTTP 客户端已关闭")
+
+        if self._health_check_client:
+            await self._health_check_client.close()
+
+        logger.info("代理服务已关闭")
 
 
 # 全局代理服务实例

@@ -34,7 +34,13 @@ class ErrorResponse(BaseModel):
     用于所有错误的API响应，提供统一的错误格式
     """
 
-    code: int = Field(description="HTTP状态码")
+    code: int = Field(
+        description=(
+            "错误码（自定义业务错误码或HTTP状态码）\n"
+            "- 在统一格式错误中：为自定义错误码（如53009）\n"
+            "- 在非统一格式错误转换中：为HTTP状态码（如502）"
+        )
+    )
     message: str = Field(description="错误消息")
     error_code: str = Field(description="错误类型标识")
     details: Optional[Dict[str, Any]] = Field(default=None, description="错误详情")

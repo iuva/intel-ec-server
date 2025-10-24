@@ -23,7 +23,7 @@ from app.schemas.host import (
 try:
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 except ImportError:
     import os
@@ -32,7 +32,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -302,8 +302,9 @@ class HostDiscoveryService:
             )
             raise BusinessError(
                 message="硬件接口调用超时，请稍后重试",
-                error_code="HARDWARE_API_TIMEOUT",
-                code=408,
+                error_code="HOST_HARDWARE_API_TIMEOUT",
+                code=ServiceErrorCodes.HOST_OPERATION_TIMEOUT,
+                http_status_code=408,  # Request Timeout
             )
 
         except httpx.HTTPError as e:
@@ -317,8 +318,9 @@ class HostDiscoveryService:
             )
             raise BusinessError(
                 message="硬件接口调用失败，请稍后重试",
-                error_code="HARDWARE_API_ERROR",
-                code=503,
+                error_code="HOST_HARDWARE_API_ERROR",
+                code=ServiceErrorCodes.HOST_HARDWARE_API_ERROR,
+                http_status_code=502,  # Bad Gateway
             )
 
     async def _filter_available_hosts(
