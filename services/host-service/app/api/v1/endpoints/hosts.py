@@ -5,8 +5,9 @@
 
 import os
 import sys
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.dependencies import get_host_discovery_service
 from app.schemas.host import (
@@ -30,7 +31,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post(
+@router.get(
     "/available",
     response_model=AvailableHostsListResponse,
     summary="查询可用主机列表",
@@ -68,7 +69,11 @@ router = APIRouter()
 )
 @handle_api_errors
 async def query_available_hosts(
-    request: QueryAvailableHostsRequest,
+    tc_id: str = Query(..., description="测试用例 ID"),
+    cycle_name: str = Query(..., description="测试周期名称"),
+    user_name: str = Query(..., description="用户名"),
+    page_size: int = Query(20, ge=1, le=100, description="每页大小"),
+    last_id: Optional[int] = Query(None, description="上一页最后一条记录的 id"),
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
 ):
     """查询可用的主机列表 - 游标分页
@@ -113,20 +118,28 @@ async def query_available_hosts(
     logger.info(
         "接收查询可用主机列表请求",
         extra={
-            "tc_id": request.tc_id,
-            "cycle_name": request.cycle_name,
-            "user_name": request.user_name,
-            "page_size": request.page_size,
-            "last_id": request.last_id,
+            "tc_id": tc_id,
+            "cycle_name": cycle_name,
+            "user_name": user_name,
+            "page_size": page_size,
+            "last_id": last_id,
         },
     )
 
-    result = await host_discovery_service.query_available_hosts(request)
+    result = await host_discovery_service.query_available_hosts(
+        QueryAvailableHostsRequest(
+            tc_id=tc_id,
+            cycle_name=cycle_name,
+            user_name=user_name,
+            page_size=page_size,
+            last_id=last_id,
+        )
+    )
 
     logger.info(
         "查询可用主机列表完成",
         extra={
-            "tc_id": request.tc_id,
+            "tc_id": tc_id,
             "total_available": result.total,
             "page_size": result.page_size,
             "has_next": result.has_next,
