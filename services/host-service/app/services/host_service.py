@@ -620,3 +620,136 @@ class HostService:
             )
 
             return available_hosts
+
+    @handle_service_errors(
+        error_message="获取 VNC 连接信息失败",
+        error_code="GET_VNC_CONNECTION_FAILED",
+    )
+    async def get_vnc_connection_info(self, host_rec_id: str) -> dict:
+        """获取指定主机的 VNC 连接信息
+
+        业务逻辑：
+        1. 根据 host_rec_id 查询 host_rec 表
+        2. 检查数据有效性（del_flag=0, appr_state=1）
+        3. 返回 VNC 连接所需的字段
+
+        Args:
+            host_rec_id: 主机记录 ID
+
+        Returns:
+            包含 VNC 连接信息的字典
+            {
+                "ip": "192.168.101.118",
+                "port": "5900",
+                "username": "neusoft",
+                "***REMOVED***word": "***REMOVED***"
+            }
+
+        Raises:
+            BusinessError: 当主机不存在或数据无效时
+        """
+        logger.info(
+            "开始获取 VNC 连接信息",
+            extra={"operation": "get_vnc_connection_info", "host_rec_id": host_rec_id},
+        )
+
+        try:
+            # 将字符串 ID 转换为整数
+            try:
+                host_id = int(host_rec_id)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "主机ID格式错误",
+                    extra={"host_rec_id": host_rec_id, "error": "not a valid integer"},
+                )
+                raise BusinessError(
+                    message="主机ID格式无效",
+                    error_code="INVALID_HOST_ID",
+                    code=400,
+                )
+
+            # 查询主机记录
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # 查询条件：ID 匹配、已启用、未删除
+                stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id == host_id,  # 主机ID 匹配
+                        HostRec.appr_state == 1,  # 启用状态
+                        HostRec.del_flag == 0,  # 未删除
+                    )
+                )
+
+                result = await session.execute(stmt)
+                host_rec = result.scalar_one_or_none()
+
+                # 检查主机是否存在
+                if not host_rec:
+                    logger.warning(
+                        "主机不存在或无效",
+                        extra={
+                            "host_rec_id": host_rec_id,
+                            "error": "host not found or inactive",
+                        },
+                    )
+                    raise BusinessError(
+                        message="主机不存在或未启用",
+                        error_code="HOST_NOT_FOUND",
+                        code=404,
+                    )
+
+                # 检查 VNC 连接信息是否完整
+                if not host_rec.host_ip or not host_rec.host_port:
+                    logger.warning(
+                        "VNC 连接信息不完整",
+                        extra={
+                            "host_rec_id": host_rec_id,
+                            "has_ip": bool(host_rec.host_ip),
+                            "has_port": bool(host_rec.host_port),
+                        },
+                    )
+                    raise BusinessError(
+                        message="VNC 连接信息不完整",
+                        error_code="VNC_INFO_INCOMPLETE",
+                        code=400,
+                    )
+
+                # 构建响应数据
+                vnc_info = {
+                    "ip": cast(str, host_rec.host_ip),
+                    "port": str(cast(int, host_rec.host_port)) if host_rec.host_port else "5900",
+                    "username": cast(str, host_rec.host_acct) or "",
+                    "***REMOVED***word": cast(str, host_rec.host_pwd) or "",
+                }
+
+                logger.info(
+                    "VNC 连接信息获取成功",
+                    extra={
+                        "host_rec_id": host_rec_id,
+                        "ip": vnc_info["ip"],
+                        "port": vnc_info["port"],
+                        "username": vnc_info["username"],
+                    },
+                )
+
+                return vnc_info
+
+        except BusinessError:
+            # 重新抛出业务异常
+            raise
+
+        except Exception as e:
+            logger.error(
+                "获取 VNC 连接信息系统异常",
+                extra={
+                    "host_rec_id": host_rec_id,
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="获取 VNC 连接信息失败，请稍后重试",
+                error_code="VNC_GET_FAILED",
+                code=500,
+            )

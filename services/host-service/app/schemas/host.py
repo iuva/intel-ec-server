@@ -144,3 +144,22 @@ class AvailableHostsListResponse(BaseModel):
     last_id: Optional[int] = Field(default=None, description="当前页最后一条记录的 id，用于请求下一页")
 
     model_config = {"from_attributes": True}
+
+
+class GetVNCConnectionRequest(BaseModel):
+    """获取 VNC 连接信息请求模式"""
+
+    id: str = Field(description="主机ID (host_rec.id)")
+
+    model_config = {"from_attributes": True}
+
+
+class VNCConnectionInfo(BaseModel):
+    """VNC 连接信息响应模式"""
+
+    ip: str = Field(description="VNC服务器IP地址")
+    port: str = Field(description="VNC服务端口")
+    username: str = Field(description="连接用户名")
+    ***REMOVED***word: str = Field(description="连接密码")
+
+    model_config = {"from_attributes": True}

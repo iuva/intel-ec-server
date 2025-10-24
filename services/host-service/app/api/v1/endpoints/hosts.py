@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from app.api.v1.dependencies import get_host_service
 from app.schemas.host import (
     AvailableHostsListResponse,
+    GetVNCConnectionRequest,
     QueryAvailableHostsRequest,
     VNCConnectionReport,
     VNCConnectionResponse,
@@ -252,4 +253,127 @@ async def report_vnc_connection(
     return SuccessResponse(
         data=vnc_response.model_dump(),
         message="VNC连接结果上报成功",
+    )
+
+
+@router.post(
+    "/vnc/connect",
+    response_model=SuccessResponse,
+    summary="获取 VNC 连接信息",
+    description="获取指定主机的 VNC 连接信息",
+    responses={
+        200: {
+            "description": "获取成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "操作成功",
+                        "data": {
+                            "ip": "192.168.101.118",
+                            "port": "5900",
+                            "username": "neusoft",
+                            "***REMOVED***word": "***REMOVED***",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "请求参数错误",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 400,
+                        "message": "主机ID格式无效",
+                        "error_code": "INVALID_HOST_ID",
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "主机不存在",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 404,
+                        "message": "主机不存在或未启用",
+                        "error_code": "HOST_NOT_FOUND",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "服务器错误",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 500,
+                        "message": "获取 VNC 连接信息失败，请稍后重试",
+                        "error_code": "VNC_GET_FAILED",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def get_vnc_connection_info(
+    request: GetVNCConnectionRequest,
+    host_service: HostService = Depends(get_host_service),
+):
+    """获取指定主机的 VNC 连接信息
+
+    ## 请求参数说明
+    - `id`: 主机ID (host_rec.id)
+
+    ## 业务逻辑
+    1. 根据 ID 查询 host_rec 表有效数据
+    2. 检查数据有效性（del_flag=0, appr_state=1）
+    3. 返回 VNC 连接所需的字段
+
+    ## 返回字段说明
+    - `ip`: VNC 服务器 IP 地址
+    - `port`: VNC 服务端口
+    - `username`: 连接用户名
+    - `***REMOVED***word`: 连接密码
+
+    Args:
+        request: 包含主机ID的请求字典
+        host_service: 主机服务实例（依赖注入）
+
+    Returns:
+        包含 VNC 连接信息的响应
+    """
+    logger.info(
+        "接收获取 VNC 连接信息请求",
+        extra={"host_rec_id": request.id},
+    )
+
+    # 提取主机ID
+    host_rec_id = request.id
+
+    if not host_rec_id:
+        from shared.common.exceptions import BusinessError
+
+        raise BusinessError(
+            message="主机ID不能为空",
+            error_code="INVALID_HOST_ID",
+            code=400,
+        )
+
+    vnc_info = await host_service.get_vnc_connection_info(str(host_rec_id))
+
+    logger.info(
+        "获取 VNC 连接信息完成",
+        extra={
+            "host_rec_id": host_rec_id,
+            "ip": vnc_info.get("ip"),
+            "port": vnc_info.get("port"),
+        },
+    )
+
+    return SuccessResponse(
+        data=vnc_info,
+        message="获取 VNC 连接信息成功",
     )
