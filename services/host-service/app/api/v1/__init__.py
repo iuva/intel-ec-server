@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+<<<<<<< HEAD
 from app.api.v1.endpoints import (
     admin_appr_host,
     admin_hosts,
@@ -54,3 +55,13 @@ api_router.include_router(
 )
 # File management routes
 api_router.include_router(file_manage.router, prefix="/file", tags=["File Management"])
+=======
+from app.api.v1.endpoints import hosts, vnc, websocket
+
+api_router = APIRouter()
+
+# 注册端点路由
+api_router.include_router(hosts.router, prefix="/hosts", tags=["主机管理"])
+api_router.include_router(vnc.router, prefix="", tags=["VNC连接管理"])
+api_router.include_router(websocket.router, tags=["WebSocket通信"])
+>>>>>>> af8f7cc (feat(host-service): 重构主机发现与VNC连接管理功能)

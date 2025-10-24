@@ -1,4 +1,10 @@
-"""主机管理 API 端点"""
+"""主机管理 API 端点
+
+提供主机查询相关的 API 端点。
+"""
+
+import os
+import sys
 
 from app.api.v1.dependencies import get_host_service
 from app.schemas.host import VNCConnectionReport, VNCConnectionResponse
@@ -9,16 +15,12 @@ from fastapi import APIRouter, Depends
 try:
     from shared.common.decorators import handle_api_errors
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
-    import os
-    import sys
-
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+
+from app.services.host_discovery_service import HostDiscoveryService
 
 logger = get_logger(__name__)
 

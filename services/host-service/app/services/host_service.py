@@ -1,11 +1,13 @@
-"""主机管理服务"""
+"""主机管理服务
+
+提供主机查询、状态更新等核心业务逻辑。
+"""
 
 from datetime import datetime
 from typing import Optional, cast
 
 from sqlalchemy import select
 
-from app.models.host import Host
 from app.models.host_rec import HostRec
 from app.schemas.host import (
     HostStatusUpdate,
@@ -15,17 +17,16 @@ from app.schemas.host import (
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.database import mariadb_manager
-    from shared.common.decorators import handle_service_errors, monitor_operation
+    from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
     import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
-    from shared.common.decorators import handle_service_errors, monitor_operation
+    from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
 
@@ -33,7 +34,7 @@ logger = get_logger(__name__)
 
 
 class HostService:
-    """主机管理服务类"""
+    """主机管理服务类
 
     @handle_service_errors(error_message="获取主机失败", error_code="HOST_GET_FAILED")
     async def get_host_by_id(self, host_id: str) -> Optional[Host]:
@@ -43,66 +44,38 @@ class HostService:
             host_id: 主机ID
 
         Returns:
-            主机对象，如果不存在则返回 None
-        """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            stmt = select(Host).where(Host.host_id == host_id, Host.del_flag.is_(False))
-            result = await session.execute(stmt)
-            host = result.scalar_one_or_none()
-
-            if host:
-                logger.debug(
-                    "查询主机成功",
-                    extra={
-                        "operation": "get_host_by_id",
-                        "host_id": host_id,
-                        "status": host.status,
-                    },
-                )
-            else:
-                logger.warning(
-                    "主机不存在",
-                    extra={
-                        "operation": "get_host_by_id",
-                        "host_id": host_id,
-                    },
-                )
-
-            return host
-
-    @monitor_operation("host_status_update", record_duration=True)
-    @handle_service_errors(error_message="更新主机状态失败", error_code="HOST_STATUS_UPDATE_FAILED")
-    async def update_host_status(self, host_id: str, status_data: HostStatusUpdate) -> Host:
-        """更新主机状态
-
-        Args:
-            host_id: 主机ID
-            status_data: 状态更新数据
-
-        Returns:
-            更新后的主机对象
+            主机信息字典
 
         Raises:
-            BusinessError: 主机不存在
+            BusinessError: 主机不存在时
         """
+        try:
+            host_id_int = int(host_id)
+        except (ValueError, TypeError):
+            raise BusinessError(
+                message="主机ID格式无效",
+                error_code="INVALID_HOST_ID",
+                code=400,
+            )
+
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 查询主机
-            stmt = select(Host).where(Host.host_id == host_id, Host.del_flag.is_(False))
+            stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id_int,
+                    HostRec.del_flag == 0,
+                )
+            )
+
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if not host:
-                logger.warning(
-                    "主机不存在",
-                    extra={
-                        "operation": "update_host_status",
-                        "host_id": host_id,
-                        "error_code": "HOST_NOT_FOUND",
-                    },
+                raise BusinessError(
+                    message=f"主机不存在: {host_id}",
+                    error_code="HOST_NOT_FOUND",
+                    code=404,
                 )
-                raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
 
             # 更新状态和心跳时间
             old_status = host.status
@@ -116,44 +89,62 @@ class HostService:
             logger.info(
                 "主机状态更新成功",
                 extra={
-                    "operation": "update_host_status",
                     "host_id": host_id,
-                    "old_status": old_status,
-                    "new_status": status_data.status,
+                    "new_host_state": host.host_state,
+                    "new_appr_state": host.appr_state,
                 },
             )
-            return host
 
-    @handle_service_errors(error_message="更新主机心跳失败", error_code="HOST_HEARTBEAT_UPDATE_FAILED")
-    async def update_heartbeat(self, host_id: str) -> Host:
+            return {
+                "id": host.id,
+                "host_state": host.host_state,
+                "appr_state": host.appr_state,
+                "updated_at": cast(datetime, host.updated_at).isoformat() if host.updated_at else None,
+            }
+
+    @handle_service_errors(
+        error_message="更新主机心跳失败",
+        error_code="UPDATE_HEARTBEAT_FAILED",
+    )
+    async def update_heartbeat(self, host_id: str) -> dict:
         """更新主机心跳时间
 
         Args:
             host_id: 主机ID
 
         Returns:
-            更新后的主机对象
+            更新后的心跳信息
 
         Raises:
-            BusinessError: 主机不存在
+            BusinessError: 主机不存在或更新失败时
         """
+        try:
+            host_id_int = int(host_id)
+        except (ValueError, TypeError):
+            raise BusinessError(
+                message="主机ID格式无效",
+                error_code="INVALID_HOST_ID",
+                code=400,
+            )
+
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 查询主机
-            stmt = select(Host).where(Host.host_id == host_id, Host.del_flag.is_(False))
+            stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id_int,
+                    HostRec.del_flag == 0,
+                )
+            )
+
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
             if not host:
-                logger.warning(
-                    "主机不存在",
-                    extra={
-                        "operation": "update_heartbeat",
-                        "host_id": host_id,
-                        "error_code": "HOST_NOT_FOUND",
-                    },
+                raise BusinessError(
+                    message=f"主机不存在: {host_id}",
+                    error_code="HOST_NOT_FOUND",
+                    code=404,
                 )
-                raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
 
             # 更新心跳时间和状态
             old_status = host.status
@@ -252,23 +243,14 @@ class HostService:
                 connection_time_str = cast(datetime, vnc_report.connection_time).isoformat()
 
             logger.info(
-                "VNC连接结果上报处理成功",
+                "主机心跳更新成功",
                 extra={
-                    "operation": "report_vnc_connection",
-                    "user_id": vnc_report.user_id,
-                    "host_id": vnc_report.host_id,
-                    "connection_status": vnc_report.connection_status,
-                    "connection_time": connection_time_str,
-                    "old_host_state": old_host_state,
-                    "new_host_state": host_rec.host_state,
-                    "old_subm_time": old_subm_time_str,
-                    "new_subm_time": new_subm_time_str,
+                    "host_id": host_id,
+                    "updated_at": cast(datetime, host.updated_at).isoformat(),
                 },
             )
 
             return {
-                "host_id": vnc_report.host_id,
-                "connection_status": vnc_report.connection_status,
-                "connection_time": vnc_report.connection_time,
-                "message": "VNC连接结果上报成功，主机已锁定",
+                "host_id": host_id,
+                "heartbeat_at": cast(datetime, host.updated_at).isoformat(),
             }
