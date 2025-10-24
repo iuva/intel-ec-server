@@ -24,10 +24,6 @@ from typing import Any, Callable, TypeVar
 
 from fastapi import HTTPException
 from starlette.status import (
-    HTTP_400_BAD_REQUEST,
-    HTTP_401_UNAUTHORIZED,
-    HTTP_403_FORBIDDEN,
-    HTTP_404_NOT_FOUND,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
@@ -575,15 +571,9 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
 
         except BusinessError as e:
             # 业务异常转换为 HTTP 异常
-            status_code = e.code if hasattr(e, "code") else HTTP_400_BAD_REQUEST
-
-            # 根据错误码调整状态码
-            if "NOT_FOUND" in e.error_code:
-                status_code = HTTP_404_NOT_FOUND
-            elif "UNAUTHORIZED" in e.error_code or "AUTH" in e.error_code:
-                status_code = HTTP_401_UNAUTHORIZED
-            elif "FORBIDDEN" in e.error_code or "PERMISSION" in e.error_code:
-                status_code = HTTP_403_FORBIDDEN
+            # 使用 e.http_status_code 作为实际的 HTTP 状态码（必须是 100-599）
+            # 响应体中的 code 是自定义错误码（可能是 53009 这样的值）
+            status_code = e.http_status_code
 
             logger.warning(
                 f"业务异常: {e.error_code}",
@@ -598,7 +588,7 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
             raise HTTPException(
                 status_code=status_code,
                 detail=ErrorResponse(
-                    code=status_code,
+                    code=e.code,  # 使用自定义错误码作为响应体中的 code
                     message=e.message,
                     error_code=e.error_code,
                     details=e.details,
@@ -650,15 +640,9 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
 
         except BusinessError as e:
             # 业务异常转换为 HTTP 异常
-            status_code = e.code if hasattr(e, "code") else HTTP_400_BAD_REQUEST
-
-            # 根据错误码调整状态码
-            if "NOT_FOUND" in e.error_code:
-                status_code = HTTP_404_NOT_FOUND
-            elif "UNAUTHORIZED" in e.error_code or "AUTH" in e.error_code:
-                status_code = HTTP_401_UNAUTHORIZED
-            elif "FORBIDDEN" in e.error_code or "PERMISSION" in e.error_code:
-                status_code = HTTP_403_FORBIDDEN
+            # 使用 e.http_status_code 作为实际的 HTTP 状态码（必须是 100-599）
+            # 响应体中的 code 是自定义错误码（可能是 53009 这样的值）
+            status_code = e.http_status_code
 
             logger.warning(
                 f"业务异常: {e.error_code}",
@@ -673,7 +657,7 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
             raise HTTPException(
                 status_code=status_code,
                 detail=ErrorResponse(
-                    code=status_code,
+                    code=e.code,  # 使用自定义错误码作为响应体中的 code
                     message=e.message,
                     error_code=e.error_code,
                     details=e.details,

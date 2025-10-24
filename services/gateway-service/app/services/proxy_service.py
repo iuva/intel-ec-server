@@ -253,6 +253,119 @@ class ProxyService:
     # - raise_network_error()
     # - raise_protocol_error()
 
+    def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """清理请求头 - 移除可能导致问题的头部
+
+        Args:
+            headers: 原始请求头
+
+        Returns:
+            清理后的请求头
+        """
+        if not headers:
+            return {}
+
+        return {k: v for k, v in headers.items() if k.lower() not in EXCLUDED_HEADERS}
+
+    def _build_service_url(self, service_url: str, path: str) -> str:
+        """构建完整的服务 URL
+
+        Args:
+            service_url: 服务基础 URL
+            path: 请求路径
+
+        Returns:
+            完整的服务 URL
+        """
+        return f"{service_url}{API_PREFIX}/{path}"
+
+    def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
+        """记录后端错误日志
+
+        Args:
+            service_name: 服务名称
+            method: HTTP 方法
+            path: 请求路径
+            error_type: 错误类型
+            error: 错误信息
+        """
+        logger.error(
+            f"后端服务错误: {service_name} - {error_type}",
+            extra={
+                "service_name": service_name,
+                "method": method,
+                "path": path,
+                "error_type": error_type,
+                "error": error,
+            },
+            exc_info=True,
+        )
+
+    def _raise_connection_error(self, service_name: str, error: Exception) -> None:
+        """抛出连接错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        self._log_backend_error(service_name, "", "", "CONNECTION_ERROR", str(error))
+        raise BusinessError(
+            message=f"无法连接到后端服务: {service_name}",
+            error_code="GATEWAY_CONNECTION_FAILED",
+            code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
+            http_status_code=502,
+            details={"original_error": str(error), "service_name": service_name},
+        )
+
+    def _raise_timeout_error(self, service_name: str, error: Exception) -> None:
+        """抛出超时错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        self._log_backend_error(service_name, "", "", "TIMEOUT_ERROR", str(error))
+        raise BusinessError(
+            message=f"后端服务响应超时: {service_name}",
+            error_code="GATEWAY_TIMEOUT",
+            code=ServiceErrorCodes.GATEWAY_TIMEOUT,
+            http_status_code=504,
+            details={"original_error": str(error), "service_name": service_name, "timeout": True},
+        )
+
+    def _raise_network_error(self, service_name: str, error: Exception) -> None:
+        """抛出网络错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        self._log_backend_error(service_name, "", "", "NETWORK_ERROR", str(error))
+        raise BusinessError(
+            message=f"后端服务网络错误: {service_name}",
+            error_code="GATEWAY_NETWORK_ERROR",
+            code=ServiceErrorCodes.GATEWAY_NETWORK_ERROR,
+            http_status_code=502,
+            details={"original_error": str(error), "service_name": service_name},
+        )
+
+    def _raise_protocol_error(self, service_name: str, error: Exception) -> None:
+        """抛出协议错误异常
+
+        Args:
+            service_name: 服务名称
+            error: 原始异常
+        """
+        error_type = type(error).__name__
+        self._log_backend_error(service_name, "", "", "PROTOCOL_ERROR", str(error))
+        raise BusinessError(
+            message=f"后端服务协议错误: {service_name}",
+            error_code="GATEWAY_PROTOCOL_ERROR",
+            code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
+            http_status_code=502,
+            details={"original_error": str(error), "error_type": error_type, "service_name": service_name},
+        )
+
     async def forward_request(
         self,
         service_name: str,
