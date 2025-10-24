@@ -114,8 +114,8 @@ auth-service/
 | refresh_token | TEXT | 刷新令牌 |
 | client_ip | VARCHAR(45) | 客户端IP |
 | expires_at | DATETIME | 过期时间 |
-| created_at | DATETIME | 创建时间 |
-| is_deleted | BOOLEAN | 是否已删除 |
+| created_time | DATETIME | 创建时间 |
+| del_flag | BOOLEAN | 是否已删除 |
 
 ## 设备登录（Device Login）审计机制
 

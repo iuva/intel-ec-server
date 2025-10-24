@@ -61,7 +61,7 @@ class Host(BaseDBModel):
             "os_version": self.os_version,
             "status": self.status,
             "last_heartbeat": (self.last_heartbeat.isoformat() if self.last_heartbeat else None),
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "is_deleted": self.is_deleted,
+            "created_time": self.created_time.isoformat() if self.created_time else None,
+            "updated_time": self.updated_time.isoformat() if self.updated_time else None,
+            "del_flag": self.del_flag,
         }

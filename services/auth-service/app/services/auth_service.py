@@ -765,12 +765,12 @@ class AuthService:
             # 删除会话记录
             session_factory = mariadb_manager.get_session()
             async with session_factory() as db_session:
-                stmt = select(UserSession).where(UserSession.access_token == token, ~UserSession.is_deleted)
+                stmt = select(UserSession).where(UserSession.access_token == token, ~UserSession.del_flag)
                 result = await db_session.execute(stmt)
                 user_session = result.scalar_one_or_none()
 
                 if user_session:
-                    user_session.is_deleted = True
+                    user_session.del_flag = True
                     await db_session.commit()
 
             logger.info(

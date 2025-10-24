@@ -1,12 +1,16 @@
 """主机管理服务"""
 
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Optional, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.models.host import Host
-from app.schemas.host import HostCreate, HostStatusUpdate, HostUpdate
+from app.models.host_rec import HostRec
+from app.schemas.host import (
+    HostStatusUpdate,
+    VNCConnectionReport,
+)
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -31,67 +35,6 @@ logger = get_logger(__name__)
 class HostService:
     """主机管理服务类"""
 
-    @monitor_operation("host_create", record_duration=True)
-    @handle_service_errors(error_message="创建主机失败", error_code="HOST_CREATE_FAILED")
-    async def create_host(self, host_data: HostCreate) -> Host:
-        """创建主机
-
-        Args:
-            host_data: 主机创建数据
-
-        Returns:
-            创建的主机对象
-
-        Raises:
-            BusinessError: 主机已存在
-        """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            # 检查主机是否已存在
-            stmt = select(Host).where(Host.host_id == host_data.host_id, Host.is_deleted.is_(False))
-            result = await session.execute(stmt)
-            existing_host = result.scalar_one_or_none()
-
-            if existing_host:
-                logger.warning(
-                    "主机已存在",
-                    extra={
-                        "operation": "create_host",
-                        "host_id": host_data.host_id,
-                        "error_code": "HOST_ALREADY_EXISTS",
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机已存在: {host_data.host_id}",
-                    error_code="HOST_ALREADY_EXISTS",
-                )
-
-            # 创建新主机
-            new_host = Host(
-                host_id=host_data.host_id,
-                hostname=host_data.hostname,
-                ip_address=host_data.ip_address,
-                os_type=host_data.os_type,
-                os_version=host_data.os_version,
-                status="offline",  # 默认状态为离线
-                last_heartbeat=None,
-            )
-
-            session.add(new_host)
-            await session.commit()
-            await session.refresh(new_host)
-
-            logger.info(
-                "主机创建成功",
-                extra={
-                    "operation": "create_host",
-                    "host_id": new_host.host_id,
-                    "hostname": new_host.hostname,
-                    "ip_address": new_host.ip_address,
-                },
-            )
-            return new_host
-
     @handle_service_errors(error_message="获取主机失败", error_code="HOST_GET_FAILED")
     async def get_host_by_id(self, host_id: str) -> Optional[Host]:
         """根据 host_id 获取主机
@@ -104,7 +47,7 @@ class HostService:
         """
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
+            stmt = select(Host).where(Host.host_id == host_id, Host.del_flag.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
@@ -128,108 +71,6 @@ class HostService:
 
             return host
 
-    @monitor_operation("host_list", record_duration=True)
-    @handle_service_errors(error_message="获取主机列表失败", error_code="HOST_LIST_FAILED")
-    async def list_hosts(
-        self,
-        page: int = 1,
-        page_size: int = 20,
-        status: Optional[str] = None,
-    ) -> Tuple[List[Host], int]:
-        """获取主机列表
-
-        Args:
-            page: 页码
-            page_size: 每页大小
-            status: 状态过滤
-
-        Returns:
-            (主机列表, 总数)
-        """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            # 构建查询条件
-            conditions = [Host.is_deleted.is_(False)]
-            if status:
-                conditions.append(Host.status == status)
-
-            # 查询总数
-            count_stmt = select(func.count(Host.id)).where(*conditions)
-            total_result = await session.execute(count_stmt)
-            total = total_result.scalar_one()
-
-            # 查询数据
-            offset = (page - 1) * page_size
-            stmt = select(Host).where(*conditions).order_by(Host.created_at.desc()).offset(offset).limit(page_size)
-            result = await session.execute(stmt)
-            hosts = result.scalars().all()
-
-            logger.info(
-                "查询主机列表成功",
-                extra={
-                    "operation": "list_hosts",
-                    "page": page,
-                    "page_size": page_size,
-                    "status_filter": status,
-                    "total": total,
-                    "returned": len(hosts),
-                },
-            )
-            return list(hosts), total
-
-    @monitor_operation("host_update", record_duration=True)
-    @handle_service_errors(error_message="更新主机失败", error_code="HOST_UPDATE_FAILED")
-    async def update_host(self, host_id: str, host_data: HostUpdate) -> Host:
-        """更新主机信息
-
-        Args:
-            host_id: 主机ID
-            host_data: 更新数据
-
-        Returns:
-            更新后的主机对象
-
-        Raises:
-            BusinessError: 主机不存在
-        """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            # 查询主机
-            stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
-            result = await session.execute(stmt)
-            host = result.scalar_one_or_none()
-
-            if not host:
-                logger.warning(
-                    "主机不存在",
-                    extra={
-                        "operation": "update_host",
-                        "host_id": host_id,
-                        "error_code": "HOST_NOT_FOUND",
-                    },
-                )
-                raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
-
-            # 更新字段
-            update_data = host_data.model_dump(exclude_unset=True)
-            for field, value in update_data.items():
-                setattr(host, field, value)
-
-            host.updated_at = datetime.utcnow()
-
-            await session.commit()
-            await session.refresh(host)
-
-            logger.info(
-                "主机更新成功",
-                extra={
-                    "operation": "update_host",
-                    "host_id": host_id,
-                    "updated_fields": list(update_data.keys()),
-                },
-            )
-            return host
-
     @monitor_operation("host_status_update", record_duration=True)
     @handle_service_errors(error_message="更新主机状态失败", error_code="HOST_STATUS_UPDATE_FAILED")
     async def update_host_status(self, host_id: str, status_data: HostStatusUpdate) -> Host:
@@ -248,7 +89,7 @@ class HostService:
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
             # 查询主机
-            stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
+            stmt = select(Host).where(Host.host_id == host_id, Host.del_flag.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
@@ -267,7 +108,7 @@ class HostService:
             old_status = host.status
             host.status = status_data.status
             host.last_heartbeat = datetime.utcnow()
-            host.updated_at = datetime.utcnow()
+            host.updated_time = datetime.utcnow()
 
             await session.commit()
             await session.refresh(host)
@@ -282,54 +123,6 @@ class HostService:
                 },
             )
             return host
-
-    @monitor_operation("host_delete", record_duration=True)
-    @handle_service_errors(error_message="删除主机失败", error_code="HOST_DELETE_FAILED")
-    async def delete_host(self, host_id: str) -> bool:
-        """删除主机（软删除）
-
-        Args:
-            host_id: 主机ID
-
-        Returns:
-            是否删除成功
-
-        Raises:
-            BusinessError: 主机不存在
-        """
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            # 查询主机
-            stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
-            result = await session.execute(stmt)
-            host = result.scalar_one_or_none()
-
-            if not host:
-                logger.warning(
-                    "主机不存在",
-                    extra={
-                        "operation": "delete_host",
-                        "host_id": host_id,
-                        "error_code": "HOST_NOT_FOUND",
-                    },
-                )
-                raise BusinessError(message=f"主机不存在: {host_id}", error_code="HOST_NOT_FOUND")
-
-            # 软删除
-            host.is_deleted = True
-            host.updated_at = datetime.utcnow()
-
-            await session.commit()
-
-            logger.info(
-                "主机删除成功",
-                extra={
-                    "operation": "delete_host",
-                    "host_id": host_id,
-                    "hostname": host.hostname,
-                },
-            )
-            return True
 
     @handle_service_errors(error_message="更新主机心跳失败", error_code="HOST_HEARTBEAT_UPDATE_FAILED")
     async def update_heartbeat(self, host_id: str) -> Host:
@@ -347,7 +140,7 @@ class HostService:
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
             # 查询主机
-            stmt = select(Host).where(Host.host_id == host_id, Host.is_deleted.is_(False))
+            stmt = select(Host).where(Host.host_id == host_id, Host.del_flag.is_(False))
             result = await session.execute(stmt)
             host = result.scalar_one_or_none()
 
@@ -367,7 +160,7 @@ class HostService:
             host.last_heartbeat = datetime.utcnow()
             if host.status != "online":
                 host.status = "online"
-            host.updated_at = datetime.utcnow()
+            host.updated_time = datetime.utcnow()
 
             await session.commit()
             await session.refresh(host)
@@ -382,3 +175,106 @@ class HostService:
                 },
             )
             return host
+
+    @monitor_operation("vnc_connection_report", record_duration=True)
+    @handle_service_errors(
+        error_message="VNC连接结果上报失败",
+        error_code="VNC_CONNECTION_REPORT_FAILED"
+    )
+    async def report_vnc_connection(
+        self,
+        vnc_report: VNCConnectionReport
+    ) -> dict:
+        """处理浏览器插件上报的VNC连接结果
+
+        功能描述：根据 host_id 更新 host_rec 表，设置 host_state = 1（已锁定），
+                 subm_time = 当前时间。如果数据不存在，直接返回"主机不存在"。
+
+        Args:
+            vnc_report: VNC连接结果上报数据
+                - user_id: 用户ID
+                - host_id: 主机ID
+                - connection_status: 连接状态 (success/failed)
+                - connection_time: 连接时间
+
+        Returns:
+            处理结果字典，包含主机ID、连接状态和处理消息
+
+        Raises:
+            BusinessError: 主机不存在或处理失败
+        """
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 根据 host_id 查询 host_rec 表
+            # 注意：host_id 是字符串类型的 ID，对应 host_rec 表的 id 字段
+            stmt = select(HostRec).where(
+                HostRec.id == int(vnc_report.host_id),
+                HostRec.del_flag == 0  # 未删除的记录
+            )
+            result = await session.execute(stmt)
+            host_rec = result.scalar_one_or_none()
+
+            # 如果主机不存在，返回错误
+            if not host_rec:
+                logger.warning(
+                    "主机记录不存在",
+                    extra={
+                        "operation": "report_vnc_connection",
+                        "host_id": vnc_report.host_id,
+                        "user_id": vnc_report.user_id,
+                        "error_code": "HOST_NOT_FOUND",
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在: {vnc_report.host_id}",
+                    error_code="HOST_NOT_FOUND",
+                    code=400,  # 改为 400 而不是 404
+                )
+
+            # 记录更新前的状态
+            old_host_state = host_rec.host_state
+            old_subm_time = host_rec.subm_time
+
+            # 根据连接状态更新 host_rec 表
+            # 设置 host_state = 1（已锁定），subm_time = 当前时间
+            host_rec.host_state = 1  # 已锁定状态
+            host_rec.subm_time = datetime.utcnow()
+
+            # 提交更新
+            await session.commit()
+            await session.refresh(host_rec)
+
+            # 格式化时间戳用于日志记录
+            new_subm_time_str: Optional[str] = None
+            if host_rec.subm_time is not None:
+                new_subm_time_str = cast(datetime, host_rec.subm_time).isoformat()
+
+            old_subm_time_str: Optional[str] = None
+            if old_subm_time is not None:
+                old_subm_time_str = cast(datetime, old_subm_time).isoformat()
+
+            connection_time_str: Optional[str] = None
+            if vnc_report.connection_time is not None:
+                connection_time_str = cast(datetime, vnc_report.connection_time).isoformat()
+
+            logger.info(
+                "VNC连接结果上报处理成功",
+                extra={
+                    "operation": "report_vnc_connection",
+                    "user_id": vnc_report.user_id,
+                    "host_id": vnc_report.host_id,
+                    "connection_status": vnc_report.connection_status,
+                    "connection_time": connection_time_str,
+                    "old_host_state": old_host_state,
+                    "new_host_state": host_rec.host_state,
+                    "old_subm_time": old_subm_time_str,
+                    "new_subm_time": new_subm_time_str,
+                },
+            )
+
+            return {
+                "host_id": vnc_report.host_id,
+                "connection_status": vnc_report.connection_status,
+                "connection_time": vnc_report.connection_time,
+                "message": "VNC连接结果上报成功，主机已锁定",
+            }

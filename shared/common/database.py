@@ -8,7 +8,7 @@ from datetime import datetime
 import logging
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, func
+from sqlalchemy import SmallInteger, DateTime, BigInteger, func
 from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]
     AsyncEngine,
     AsyncSession,
@@ -31,25 +31,25 @@ class BaseDBModel(Base):
 
     提供所有数据库模型的标准字段：
     - id: 主键ID
-    - created_at: 创建时间
-    - updated_at: 更新时间
-    - is_deleted: 软删除标记
+    - created_time: 创建时间
+    - updated_time: 更新时间
+    - del_flag: 软删除标记
     """
 
     __abstract__ = True
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="主键ID")
-    created_at: Mapped[datetime] = mapped_column(
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
     )
-    updated_at: Mapped[datetime] = mapped_column(
+    updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),
         onupdate=func.now(),
         nullable=False,
         comment="更新时间",
     )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否已删除")
+    del_flag: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False, index=True, comment="是否已删除")
 
 
 class MariaDBManager:

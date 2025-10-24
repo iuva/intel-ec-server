@@ -42,9 +42,9 @@ class HostResponse(HostBase):
     id: int = Field(description="主键ID")
     status: str = Field(description="主机状态")
     last_heartbeat: Optional[datetime] = Field(default=None, description="最后心跳时间")
-    created_at: datetime = Field(description="创建时间")
-    updated_at: datetime = Field(description="更新时间")
-    is_deleted: bool = Field(description="是否已删除")
+    created_time: datetime = Field(description="创建时间")
+    updated_time: datetime = Field(description="更新时间")
+    del_flag: bool = Field(description="是否已删除")
 
     model_config = {"from_attributes": True}
 
@@ -56,3 +56,29 @@ class HostListResponse(BaseModel):
     total: int = Field(description="总数")
     page: int = Field(description="当前页码")
     page_size: int = Field(description="每页大小")
+
+
+class VNCConnectionReport(BaseModel):
+    """VNC 连接结果上报 - 浏览器插件上报VNC连接结果"""
+
+    user_id: str = Field(..., description="用户ID")
+    host_id: str = Field(..., description="主机ID")
+    connection_status: str = Field(
+        ...,
+        description="连接状态 (success/failed)",
+        regex=r"^(success|failed)$"
+    )
+    connection_time: datetime = Field(..., description="连接时间")
+
+    model_config = {"from_attributes": True}
+
+
+class VNCConnectionResponse(BaseModel):
+    """VNC 连接结果上报响应"""
+
+    host_id: str = Field(description="主机ID")
+    connection_status: str = Field(description="连接状态")
+    connection_time: datetime = Field(description="连接时间")
+    message: str = Field(description="处理消息")
+
+    model_config = {"from_attributes": True}

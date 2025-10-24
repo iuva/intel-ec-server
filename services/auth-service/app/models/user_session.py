@@ -51,17 +51,17 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, comment="过期时间")
 
     # 时间字段
-    created_at: Mapped[datetime] = mapped_column(
+    created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
     )
-    updated_at: Mapped[datetime] = mapped_column(
+    updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),
         onupdate=func.now(),
         nullable=False,
         comment="更新时间",
     )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否已删除")
+    del_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否已删除")
 
     def __repr__(self) -> str:
         """字符串表示"""

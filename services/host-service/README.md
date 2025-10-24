@@ -177,8 +177,8 @@ ws.onclose = () => {
     "os_version": "Ubuntu 20.04",
     "status": "online",
     "last_heartbeat": "2025-01-29T10:00:00Z",
-    "created_at": "2025-01-29T09:00:00Z",
-    "updated_at": "2025-01-29T10:00:00Z"
+    "created_time": "2025-01-29T09:00:00Z",
+    "updated_time": "2025-01-29T10:00:00Z"
 }
 ```
 

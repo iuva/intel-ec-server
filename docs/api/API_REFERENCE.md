@@ -257,7 +257,7 @@ Authorization: Bearer <access_token>
         "username": "admin",
         "email": "admin@example.com",
         "is_active": true,
-        "created_at": "2025-01-01T00:00:00Z"
+        "created_time": "2025-01-01T00:00:00Z"
       }
     ],
     "total": 1,
