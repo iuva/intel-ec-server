@@ -77,6 +77,8 @@ class ServiceErrorCodes:
     GATEWAY_RATE_LIMITED = 10008  # 请求频率限制
     GATEWAY_PROXY_ERROR = 10009  # 代理转发错误
     GATEWAY_INTERNAL_ERROR = 10010  # 网关内部错误
+    GATEWAY_AUTH_FAILED = 10011  # WebSocket 认证失败（403）
+    GATEWAY_UNAUTHORIZED = 10012  # WebSocket 未授权（401）
 
     # 认证服务错误码 (51001-51999)
     AUTH_INVALID_CREDENTIALS = 51001  # 无效的认证凭证

@@ -434,8 +434,37 @@ class ProxyService:
             )
 
         except websockets.exceptions.WebSocketException as e:
+            error_msg = str(e)
+
+            # ✅ 检查是否为认证失败（403 Forbidden）
+            if "HTTP 403" in error_msg or "403 Forbidden" in error_msg:
+                logger.warning(
+                    f"WebSocket 认证失败: {error_msg}",
+                    extra={"service_name": service_name, "path": path},
+                )
+                raise BusinessError(
+                    message="WebSocket 认证失败，Token 无效或已过期",
+                    error_code="WEBSOCKET_AUTH_FAILED",
+                    code=ServiceErrorCodes.GATEWAY_AUTH_FAILED,
+                    http_status_code=403,
+                )
+
+            # ✅ 检查是否为未授权（401 Unauthorized）
+            if "HTTP 401" in error_msg or "401 Unauthorized" in error_msg:
+                logger.warning(
+                    f"WebSocket 未授权: {error_msg}",
+                    extra={"service_name": service_name, "path": path},
+                )
+                raise BusinessError(
+                    message="WebSocket 连接未授权，请提供有效的认证令牌",
+                    error_code="WEBSOCKET_UNAUTHORIZED",
+                    code=ServiceErrorCodes.GATEWAY_UNAUTHORIZED,
+                    http_status_code=401,
+                )
+
+            # ✅ 其他 WebSocket 连接错误
             logger.error(
-                f"WebSocket 连接异常: {e!s}",
+                f"WebSocket 连接异常: {error_msg}",
                 extra={"service_name": service_name, "path": path},
             )
             raise BusinessError(
