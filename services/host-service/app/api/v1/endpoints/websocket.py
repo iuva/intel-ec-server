@@ -5,6 +5,7 @@
 
 import os
 import sys
+from typing import Dict, List
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
@@ -116,7 +117,7 @@ async def get_host_status(host_id: str):
 
 
 @router.post("/ws/send/{host_id}")
-async def send_message_to_host(host_id: str, message: dict):
+async def send_message_to_host(host_id: str, message: Dict):
     """发送消息给指定Host
 
     Args:
@@ -144,7 +145,7 @@ async def send_message_to_host(host_id: str, message: dict):
 
 
 @router.post("/ws/send-to-hosts")
-async def send_message_to_hosts(host_ids: list[str], message: dict):
+async def send_message_to_hosts(host_ids: List[str], message: Dict):
     """发送消息给指定的多个Hosts
 
     Args:
@@ -176,7 +177,7 @@ async def send_message_to_hosts(host_ids: list[str], message: dict):
 
 
 @router.post("/ws/broadcast")
-async def broadcast_message(message: dict, exclude_host_id: str = Query(None, description="排除的Host ID")):
+async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, description="排除的Host ID")):
     """广播消息给所有连接的Host
 
     Args:
