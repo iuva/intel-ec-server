@@ -136,11 +136,15 @@ class WebSocketManager:
             data: 消息数据
         """
         message_type = data.get("type", "unknown")
-        logger.debug(
-            "收到消息",
+        
+        # 📥 日志：接收到消息 (详细报文内容)
+        logger.info(
+            "📥 接收消息",
             extra={
                 "agent_id": agent_id,
                 "message_type": message_type,
+                "message_content": data,  # 完整消息内容
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -184,18 +188,29 @@ class WebSocketManager:
             return False
 
         try:
-            websocket = self.active_connections[host_id]
-            await websocket.send_json(message)
-            logger.debug(
-                "消息已发送",
+            # 📤 日志：发送消息 (详细报文内容)
+            logger.info(
+                "📤 发送消息",
                 extra={
                     "host_id": host_id,
                     "message_type": message.get("type"),
+                    "message_content": message,  # 完整消息内容
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
+            
+            websocket = self.active_connections[host_id]
+            await websocket.send_json(message)
             return True
         except Exception as e:
-            logger.error(f"发送消息失败: {host_id}, 错误: {e!s}")
+            logger.error(
+                "❌ 发送消息失败",
+                extra={
+                    "host_id": host_id,
+                    "message_type": message.get("type"),
+                    "error": str(e),
+                },
+            )
             await self.disconnect(host_id)
             return False
 
@@ -241,13 +256,27 @@ class WebSocketManager:
         Returns:
             成功发送的数量
         """
+        # 📢 日志：开始广播
+        target_hosts = [
+            host_id for host_id in self.active_connections.keys()
+            if not exclude or host_id != exclude
+        ]
+        
+        logger.info(
+            "📢 开始广播消息",
+            extra={
+                "message_type": message.get("type"),
+                "message_content": message,  # 完整消息内容
+                "target_count": len(target_hosts),
+                "exclude_host": exclude,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        
         success_count = 0
         failed_hosts = []
 
-        for host_id in list(self.active_connections.keys()):
-            if exclude and host_id == exclude:
-                continue
-
+        for host_id in target_hosts:
             if await self.send_to_host(host_id, message):
                 success_count += 1
             else:
@@ -257,9 +286,11 @@ class WebSocketManager:
             logger.warning(f"广播失败的Host: {failed_hosts}")
 
         logger.info(
-            f"广播完成: 成功 {success_count}/{len(self.active_connections)}",
+            f"✅ 广播完成: 成功 {success_count}/{len(target_hosts)}",
             extra={
                 "message_type": message.get("type"),
+                "success_count": success_count,
+                "failed_count": len(failed_hosts),
             },
         )
         return success_count
