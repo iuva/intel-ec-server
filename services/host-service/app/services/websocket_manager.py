@@ -314,16 +314,12 @@ class WebSocketManager:
             logger.debug(f"心跳时间戳已更新: {agent_id}")
 
             # 尝试更新数据库中的心跳时间（如果host在数据库中存在）
-            # 注意：数据库更新失败不影响 WebSocket 心跳监控
-            try:
-                await self.host_service.update_heartbeat(agent_id)
-                logger.debug(f"数据库心跳已更新: {agent_id}")
-            except Exception as db_error:
-                # 数据库更新失败（可能是 host 不存在或 ID 格式问题）
-                logger.debug(
-                    f"数据库心跳更新跳过: {agent_id}, 原因: {db_error!s}",
-                    extra={"agent_id": agent_id, "error": str(db_error)},
-                )
+            # 使用静默方法，失败时不记录 ERROR 日志
+            success = await self.host_service.update_heartbeat_silent(agent_id)
+            if success:
+                logger.debug(f"✅ 数据库心跳已更新: {agent_id}")
+            else:
+                logger.debug(f"⚠️ 数据库心跳更新跳过: {agent_id} (主机不存在或ID格式无效)")
 
             # 发送心跳确认
             ack_msg = {

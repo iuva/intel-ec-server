@@ -231,3 +231,55 @@ class HostService:
                 "host_id": host_id,
                 "heartbeat_at": cast(datetime, host.updated_at).isoformat(),
             }
+
+    async def update_heartbeat_silent(self, host_id: str) -> bool:
+        """静默更新主机心跳时间（用于WebSocket）
+
+        此方法专为 WebSocket 心跳监控设计，失败时不记录 ERROR 日志。
+        适用于 host_id 可能不在数据库中的场景。
+
+        Args:
+            host_id: 主机ID
+
+        Returns:
+            True: 更新成功
+            False: 更新失败（主机不存在或ID格式无效）
+
+        Note:
+            - 不抛出异常，仅返回成功/失败状态
+            - 不记录 ERROR 日志
+            - 失败是预期行为，不影响 WebSocket 心跳监控
+        """
+        try:
+            # 验证 ID 格式
+            host_id_int = int(host_id)
+        except (ValueError, TypeError):
+            # ID 格式无效，静默失败
+            return False
+
+        try:
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id == host_id_int,
+                        HostRec.del_flag == 0,
+                    )
+                )
+
+                result = await session.execute(stmt)
+                host = result.scalar_one_or_none()
+
+                if not host:
+                    # 主机不存在，静默失败
+                    return False
+
+                # 更新心跳时间
+                host.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+
+                return True
+
+        except Exception:
+            # 数据库操作失败，静默失败
+            return False
