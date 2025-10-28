@@ -5,7 +5,7 @@
 
 import os
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
@@ -30,25 +30,18 @@ router = APIRouter()
 ws_manager = WebSocketManager()
 
 
-@router.websocket("/ws/host")
-async def websocket_endpoint(websocket: WebSocket):
-    """Host WebSocket 连接端点
-
-    建立WebSocket连接，支持两种认证方式:
-    1. 查询参数: ?token=xxx
-    2. 请求头: Authorization: Bearer xxx
-
-    Note:
-        - host_id 从 JWT token 中的 sub 字段获取（设备登录时存储的 host_rec.id）
-        - 不再需要通过路径参数传递 host_id
+async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optional[str] = None):
+    """WebSocket 连接处理核心逻辑
 
     Args:
         websocket: WebSocket 连接对象
+        path_host_id: 从路径获取的 host_id（兼容旧API，实际不使用）
     """
     logger.info(
         "WebSocket 连接请求",
         extra={
             "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+            "path": websocket.url.path,
         },
     )
 
@@ -67,6 +60,9 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.warning("WebSocket token 中缺少 host_id")
         await handle_websocket_auth_error(websocket, "Token 中缺少 host_id")
         return
+
+    # 转换为字符串（确保类型一致）
+    host_id = str(host_id)
 
     logger.info(
         "WebSocket 认证成功",
@@ -100,6 +96,49 @@ async def websocket_endpoint(websocket: WebSocket):
             exc_info=True,
         )
         await ws_manager.disconnect(host_id)
+
+
+@router.websocket("/ws/host")
+async def websocket_endpoint_new(websocket: WebSocket):
+    """Host WebSocket 连接端点（新版 - 推荐）
+
+    建立WebSocket连接，支持两种认证方式:
+    1. 查询参数: ?token=xxx
+    2. 请求头: Authorization: Bearer xxx
+
+    Note:
+        - host_id 从 JWT token 中的 sub 字段获取（设备登录时存储的 host_rec.id）
+        - 不再需要通过路径参数传递 host_id
+
+    Args:
+        websocket: WebSocket 连接对象
+    """
+    await _handle_websocket_connection(websocket)
+
+
+@router.websocket("/ws/host/{host_id}")
+async def websocket_endpoint_legacy(websocket: WebSocket, host_id: str):
+    """Host WebSocket 连接端点（兼容旧版API）
+
+    **已弃用**: 请使用 /ws/host 端点（host_id 从 token 获取）
+
+    建立WebSocket连接，支持两种认证方式:
+    1. 查询参数: ?token=xxx
+    2. 请求头: Authorization: Bearer xxx
+
+    Note:
+        - 路径参数 host_id 已废弃，实际使用 token 中的 host_id
+        - 此端点仅为向后兼容保留
+
+    Args:
+        websocket: WebSocket 连接对象
+        host_id: 路径参数（已废弃，不使用）
+    """
+    logger.warning(
+        f"使用了已弃用的WebSocket端点: /ws/host/{host_id}",
+        extra={"deprecated_api": True},
+    )
+    await _handle_websocket_connection(websocket, path_host_id=host_id)
 
 
 # ========== HTTP API 端点 ==========

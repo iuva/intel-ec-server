@@ -81,11 +81,7 @@ async def verify_websocket_token(
             logger.warning(
                 "WebSocket 连接缺少 token",
                 extra={
-                    "client": (
-                        f"{websocket.client.host}:{websocket.client.port}"
-                        if websocket.client
-                        else "unknown"
-                    ),
+                    "client": (f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"),
                     "path": websocket.url.path,
                 },
             )
@@ -104,6 +100,14 @@ async def verify_websocket_token(
                     result = response.json()
                     data = result.get("data", {})
 
+                    logger.debug(
+                        "收到 introspect 响应",
+                        extra={
+                            "response_data": data,
+                            "active": data.get("active"),
+                        },
+                    )
+
                     # 检查 token 是否有效
                     if data.get("active", False):
                         user_info = {
@@ -119,6 +123,7 @@ async def verify_websocket_token(
                             extra={
                                 "user_id": user_info["user_id"],
                                 "username": user_info["username"],
+                                "user_type": user_info["user_type"],
                                 "client": f"{websocket.client.host}:{websocket.client.port}"
                                 if websocket.client
                                 else "unknown",
@@ -126,6 +131,13 @@ async def verify_websocket_token(
                             },
                         )
                         return True, user_info
+                    else:
+                        logger.warning(
+                            "Token active=False",
+                            extra={
+                                "data": data,
+                            },
+                        )
 
                 logger.warning(
                     "WebSocket token 无效或已过期",
@@ -170,11 +182,7 @@ async def handle_websocket_auth_error(websocket: WebSocket, message: str = "认�
             "WebSocket 连接因认证失败被关闭",
             extra={
                 "reason": message,
-                "client": (
-                    f"{websocket.client.host}:{websocket.client.port}"
-                    if websocket.client
-                    else "unknown"
-                ),
+                "client": (f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"),
             },
         )
     except Exception as e:
@@ -242,7 +250,7 @@ async def verify_token_string(
                     # 检查 token 是否有效
                     if data.get("active", False):
                         user_id = data.get("user_id") or data.get("sub")
-                        
+
                         if user_id:
                             logger.info(
                                 "Token 字符串验证成功",
