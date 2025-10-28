@@ -458,32 +458,53 @@ class ProxyService:
 
     async def _forward_messages(
         self,
-        source: Any,  # FastAPI WebSocket
-        destination: Any,  # websockets.WebSocket
+        source: Any,  # FastAPI WebSocket 或 websockets.WebSocketClientProtocol
+        destination: Any,  # websockets.WebSocketClientProtocol 或 FastAPI WebSocket
         direction: str = "unknown",
     ) -> None:
         """转发消息流
 
         Args:
-            source: 源 WebSocket (FastAPI WebSocket)
-            destination: 目标 WebSocket (websockets.WebSocket)
+            source: 源 WebSocket (可能是FastAPI WebSocket或websockets.WebSocketClientProtocol)
+            destination: 目标 WebSocket (可能是FastAPI WebSocket或websockets.WebSocketClientProtocol)
             direction: 转发方向（用于日志）
 
-        注意: FastAPI的WebSocket不能用async for遍历，需要使用receive_text/receive_bytes
+        注意: 需要区分FastAPI WebSocket和websockets.WebSocketClientProtocol两种类型
+        - FastAPI WebSocket: 使用 receive_text() / receive_bytes()
+        - websockets.WebSocketClientProtocol: 直接用 async for 遍历或使用 recv()
         """
         import websockets
 
         try:
+            # 判断source的类型来决定接收方法
+            is_fastapi_source = hasattr(source, 'receive_text')
+            is_fastapi_destination = hasattr(destination, 'send') and not hasattr(destination, '_writer')
+
             while True:
                 try:
-                    # ✅ 正确: 使用receive()来接收消息
-                    # FastAPI WebSocket可以接收文本、二进制或JSON数据
-                    try:
-                        message = await source.receive_text()
-                        await destination.send(message)
-                    except RuntimeError:
-                        # 如果不是文本消息，尝试接收字节数据
-                        message = await source.receive_bytes()
+                    message = None
+                    
+                    # ✅ 接收消息 - 根据source类型选择方法
+                    if is_fastapi_source:
+                        # FastAPI WebSocket
+                        try:
+                            message = await source.receive_text()
+                        except RuntimeError:
+                            # 不是文本消息，尝试接收字节
+                            message = await source.receive_bytes()
+                    else:
+                        # websockets.WebSocketClientProtocol
+                        message = await source.recv()
+                    
+                    # ✅ 发送消息 - 根据destination类型选择方法
+                    if is_fastapi_destination:
+                        # FastAPI WebSocket
+                        if isinstance(message, bytes):
+                            await destination.send_bytes(message)
+                        else:
+                            await destination.send_text(message)
+                    else:
+                        # websockets.WebSocketClientProtocol
                         await destination.send(message)
 
                 except websockets.exceptions.ConnectionClosed:
@@ -499,7 +520,12 @@ class ProxyService:
             logger.error(f"转发异常 ({direction}): {e!s}")
         finally:
             with contextlib.suppress(Exception):
-                await destination.close()
+                if hasattr(destination, 'close'):
+                    # FastAPI WebSocket
+                    await destination.close()
+                else:
+                    # websockets.WebSocketClientProtocol
+                    await destination.close()
 
     async def _handle_backend_http_error(
         self,
