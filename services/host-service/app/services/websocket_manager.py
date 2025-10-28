@@ -28,6 +28,29 @@ except ImportError:
 logger = get_logger(__name__)
 
 
+# 全局 WebSocket 管理器实例（单例）
+_ws_manager_instance: Optional["WebSocketManager"] = None
+
+
+def get_websocket_manager() -> "WebSocketManager":
+    """获取 WebSocket 管理器单例
+
+    Returns:
+        WebSocketManager 实例
+
+    Note:
+        - 使用单例模式，确保全局只有一个管理器实例
+        - 所有模块应该通过此函数获取管理器，而不是直接实例化
+    """
+    global _ws_manager_instance
+
+    if _ws_manager_instance is None:
+        _ws_manager_instance = WebSocketManager()
+        logger.info("✅ WebSocket 管理器实例已创建")
+
+    return _ws_manager_instance
+
+
 class WebSocketManager:
     """WebSocket 连接管理器
 
