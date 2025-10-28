@@ -478,7 +478,7 @@ class ProxyService:
         try:
             # 判断source的类型来决定接收方法
             is_fastapi_source = hasattr(source, 'receive_text')
-            is_fastapi_destination = hasattr(destination, 'send') and not hasattr(destination, '_writer')
+            is_fastapi_destination = hasattr(destination, 'send_text')
 
             while True:
                 try:
