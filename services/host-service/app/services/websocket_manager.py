@@ -44,6 +44,8 @@ class WebSocketManager:
         self.active_connections: Dict[str, WebSocket] = {}
         # 存储心跳任务: {agent_id: Task}
         self.heartbeat_tasks: Dict[str, asyncio.Task] = {}
+        # 存储心跳时间戳: {agent_id: datetime}
+        self.heartbeat_timestamps: Dict[str, datetime] = {}
         # 消息处理器映射: {message_type: handler_func}
         self.message_handlers: Dict[str, Callable] = {}
         # 心跳超时时间（秒）
@@ -110,6 +112,10 @@ class WebSocketManager:
         if agent_id in self.active_connections:
             del self.active_connections[agent_id]
 
+        # 清理心跳时间戳
+        if agent_id in self.heartbeat_timestamps:
+            del self.heartbeat_timestamps[agent_id]
+
         # 更新主机状态为离线
         try:
             from app.schemas.host import HostStatusUpdate
@@ -136,7 +142,7 @@ class WebSocketManager:
             data: 消息数据
         """
         message_type = data.get("type", "unknown")
-        
+
         # 📥 日志：接收到消息 (详细报文内容)
         logger.info(
             "📥 接收消息",
@@ -198,7 +204,7 @@ class WebSocketManager:
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
-            
+
             websocket = self.active_connections[host_id]
             await websocket.send_json(message)
             return True
@@ -257,11 +263,8 @@ class WebSocketManager:
             成功发送的数量
         """
         # 📢 日志：开始广播
-        target_hosts = [
-            host_id for host_id in self.active_connections.keys()
-            if not exclude or host_id != exclude
-        ]
-        
+        target_hosts = [host_id for host_id in self.active_connections.keys() if not exclude or host_id != exclude]
+
         logger.info(
             "📢 开始广播消息",
             extra={
@@ -272,7 +275,7 @@ class WebSocketManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
-        
+
         success_count = 0
         failed_hosts = []
 
@@ -319,7 +322,17 @@ class WebSocketManager:
     async def _handle_heartbeat(self, agent_id: str, data: dict) -> None:
         """处理心跳消息"""
         try:
-            await self.host_service.update_heartbeat(agent_id)
+            # 更新内存中的心跳时间戳
+            self.heartbeat_timestamps[agent_id] = datetime.now(timezone.utc)
+
+            # 尝试更新数据库中的心跳时间（如果host在数据库中存在）
+            try:
+                await self.host_service.update_heartbeat(agent_id)
+            except Exception as db_error:
+                # 数据库更新失败不影响心跳监控
+                logger.debug(f"数据库心跳更新跳过: {agent_id}, 原因: {db_error!s}")
+
+            # 发送心跳确认
             ack_msg = {
                 "type": "heartbeat_ack",
                 "message": "心跳已接收",
@@ -371,21 +384,26 @@ class WebSocketManager:
         """心跳监控任务
 
         定期检查Host的心跳状态
+
+        Note:
+            - 如果无法从数据库查询主机信息，将跳过心跳检查
+            - 主要依赖内存中的 heartbeat_timestamps 进行监控
         """
         try:
             while True:
                 await asyncio.sleep(self.heartbeat_timeout)
 
-                # 检查主机最后心跳时间
-                host = await self.host_service.get_host_by_id(agent_id)
-                if host and host.last_heartbeat:
-                    time_since_heartbeat = (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds()
+                # 优先检查内存中的心跳时间戳
+                if agent_id in self.heartbeat_timestamps:
+                    last_heartbeat_time = self.heartbeat_timestamps[agent_id]
+                    time_since_heartbeat = (datetime.now(timezone.utc) - last_heartbeat_time).total_seconds()
 
                     if time_since_heartbeat > self.heartbeat_timeout:
                         logger.warning(
                             f"心跳超时: {agent_id}",
                             extra={
                                 "last_heartbeat_seconds_ago": time_since_heartbeat,
+                                "timeout_threshold": self.heartbeat_timeout,
                             },
                         )
 
@@ -397,6 +415,8 @@ class WebSocketManager:
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                         await self.send_to_host(agent_id, timeout_msg)
+                else:
+                    logger.debug(f"心跳监控: 未找到心跳记录 - {agent_id}")
 
         except asyncio.CancelledError:
             logger.debug(f"心跳监控已取消: {agent_id}")

@@ -479,8 +479,8 @@ class ProxyService:
 
         try:
             # 判断source的类型来决定接收方法
-            is_fastapi_source = hasattr(source, 'receive_text')
-            is_fastapi_destination = hasattr(destination, 'send_text')
+            is_fastapi_source = hasattr(source, "receive_text")
+            is_fastapi_destination = hasattr(destination, "send_text")
 
             while True:
                 try:
@@ -521,7 +521,9 @@ class ProxyService:
                     if e.code in (1000, 1001, 1005, None):
                         logger.info(f"客户端正常断开 ({direction}): code={e.code}")
                     else:
-                        logger.warning(f"客户端异常断开 ({direction}): code={e.code}, reason={e.reason if hasattr(e, 'reason') else 'No reason'}")
+                        # 获取关闭原因
+                        reason = e.reason if hasattr(e, "reason") else "No reason"
+                        logger.warning(f"客户端异常断开 ({direction}): code={e.code}, reason={reason}")
                     break
                 except Exception as e:
                     # 其他异常才记录为错误
@@ -538,7 +540,7 @@ class ProxyService:
             logger.error(f"转发异常 ({direction}): {error_type} - {e!s}")
         finally:
             with contextlib.suppress(Exception):
-                if hasattr(destination, 'close'):
+                if hasattr(destination, "close"):
                     # FastAPI WebSocket
                     await destination.close()
                 else:
