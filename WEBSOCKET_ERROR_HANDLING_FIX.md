@@ -547,6 +547,97 @@ elif response.status_code == 502:
 2025-10-28 08:00:01 | ERROR | WebSocket 连接异常: connection refused
 ```
 
+## 🔧 补充修复：Gateway第一层认证失败处理
+
+### 问题：WebSocket 1006 错误
+
+在实际测试中发现，当Gateway第一层认证失败时（Token无效或缺失），会出现 **WebSocket 1006 (Abnormal Closure)** 错误。
+
+#### 根本原因
+
+FastAPI WebSocket 必须先 `accept()` 才能：
+1. 发送消息给客户端
+2. 正确设置关闭码和关闭原因
+
+之前的代码直接调用 `websocket.close()`，导致连接在握手阶段被异常关闭。
+
+#### 修复方案
+
+**文件**: `services/gateway-service/app/api/v1/endpoints/proxy.py`
+
+##### Before（修复前）
+```python
+if not token:
+    logger.warning("WebSocket 连接缺少认证令牌")
+    # ❌ 未先 accept，导致 1006 错误
+    await websocket.close(code=1008, reason="缺少认证令牌")
+    return
+
+user_id = await verify_token_string(token)
+if not user_id:
+    logger.warning("WebSocket 连接 token 验证失败")
+    # ❌ 未先 accept，导致 1006 错误
+    await websocket.close(code=1008, reason="认证令牌无效或已过期")
+    return
+```
+
+##### After（修复后）
+```python
+if not token:
+    logger.warning("WebSocket 连接缺少认证令牌")
+    # ✅ 先 accept 再发送错误消息
+    await websocket.accept()
+    await websocket.send_json({
+        "code": 401,
+        "message": "缺少认证令牌",
+        "error_code": "WEBSOCKET_MISSING_TOKEN",
+    })
+    await websocket.close(code=1008, reason="缺少认证令牌")
+    return
+
+user_id = await verify_token_string(token)
+if not user_id:
+    logger.warning("WebSocket 连接 token 验证失败")
+    # ✅ 先 accept 再发送错误消息
+    await websocket.accept()
+    await websocket.send_json({
+        "code": 403,
+        "message": "WebSocket 认证失败，Token 无效或已过期",
+        "error_code": "WEBSOCKET_AUTH_FAILED",
+    })
+    await websocket.close(code=1008, reason="认证令牌无效或已过期")
+    return
+```
+
+#### 效果对比
+
+| 场景 | Before | After |
+|---|---|---|
+| **关闭码** | 1006 (Abnormal Closure) | 1008 (Policy Violation) |
+| **错误消息** | ❌ 无法接收 | ✅ JSON格式错误消息 |
+| **客户端体验** | 连接异常关闭，原因不明 | 清晰的错误提示 |
+
+#### WebSocket生命周期说明
+
+```
+正常流程:
+1. 客户端发起连接
+2. 服务器 accept() 连接
+3. 双向消息传输
+4. 关闭连接
+
+错误流程（修复前）:
+1. 客户端发起连接
+2. ❌ 服务器直接 close()
+3. 1006 异常关闭 (握手失败)
+
+错误流程（修复后）:
+1. 客户端发起连接
+2. ✅ 服务器 accept() 连接
+3. ✅ 发送错误消息 (JSON)
+4. ✅ 1008 策略违规关闭
+```
+
 ## 📚 相关文档
 
 - [WEBSOCKET_AUTH_OPTIMIZATION.md](WEBSOCKET_AUTH_OPTIMIZATION.md) - WebSocket认证优化
@@ -558,5 +649,5 @@ elif response.status_code == 502:
 **修复日期**: 2025-10-28  
 **影响范围**: Gateway Service  
 **状态**: ✅ 已完成并测试  
-**版本**: v1.1
+**版本**: v1.2 (新增1006错误修复)
 
