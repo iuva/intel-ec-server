@@ -5,7 +5,7 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -106,7 +106,7 @@ class CommandMessage(BaseMessage):
     command_id: str = Field(..., description="命令ID（唯一标识）")
     command: str = Field(..., description="命令名称")
     args: Optional[Dict[str, Any]] = Field(default=None, description="命令参数")
-    target_agents: Optional[list[str]] = Field(default=None, description="目标Agent列表（None表示所有）")
+    target_agents: Optional[List[str]] = Field(default=None, description="目标Agent列表（None表示所有）")
 
 
 class CommandResponseMessage(BaseMessage):
