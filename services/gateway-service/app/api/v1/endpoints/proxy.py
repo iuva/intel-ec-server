@@ -170,27 +170,63 @@ async def websocket_proxy(
         )
 
     except Exception as e:
-        logger.error(
-            f"WebSocket 转发失败: {hostname}/{apiurl}",
-            extra={
-                "error": str(e),
-                "hostname": hostname,
-                "apiurl": apiurl,
-            },
-            exc_info=True,
-        )
+        # ✅ 检查是否为 BusinessError（包含准确的错误信息）
+        from shared.common.exceptions import BusinessError
 
-        # 尝试发送错误消息
+        if isinstance(e, BusinessError):
+            error_code = e.http_status_code or 500
+            error_message = e.message
+            error_type = e.error_code
+
+            logger.warning(
+                f"WebSocket 业务异常: {hostname}/{apiurl}",
+                extra={
+                    "error_code": error_code,
+                    "error_message": error_message,
+                    "hostname": hostname,
+                    "apiurl": apiurl,
+                },
+            )
+        else:
+            # ✅ 其他未知异常
+            error_code = 500
+            error_message = "WebSocket 转发异常"
+            error_type = "WEBSOCKET_PROXY_ERROR"
+
+            logger.error(
+                f"WebSocket 转发失败: {hostname}/{apiurl}",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "hostname": hostname,
+                    "apiurl": apiurl,
+                },
+                exc_info=True,
+            )
+
+        # ✅ 尝试发送准确的错误消息
         if websocket.client_state.name != "DISCONNECTED":
             try:
                 await websocket.send_json(
                     {
-                        "code": 500,
-                        "message": "WebSocket 转发异常",
-                        "error_code": "WEBSOCKET_PROXY_ERROR",
+                        "code": error_code,
+                        "message": error_message,
+                        "error_code": error_type,
                     }
                 )
-                await websocket.close(code=1011, reason="Server error")
+
+                # ✅ 根据错误码设置正确的关闭码
+                if error_code == 403:
+                    close_code = 1008  # Policy Violation
+                    close_reason = "Authentication failed"
+                elif error_code == 401:
+                    close_code = 1008  # Policy Violation
+                    close_reason = "Unauthorized"
+                else:
+                    close_code = 1011  # Internal Error
+                    close_reason = "Server error"
+
+                await websocket.close(code=close_code, reason=close_reason)
             except Exception as close_error:
                 logger.debug(f"关闭 WebSocket 时出错: {close_error!s}")
 
