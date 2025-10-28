@@ -436,6 +436,179 @@ SERVICE_SHORT_NAMES = {
 # Please use: /api/v1/ws/host-service/ws/agent/agent-123 (old format)
 
 
+@router.websocket("/ws/{hostname}/{apiurl:path}")
+async def websocket_proxy(
+    websocket: WebSocket,
+    hostname: str,
+    apiurl: str,
+    proxy_service: ProxyService = Depends(get_proxy_service),
+) -> None:
+    """WebSocket 转发端点
+
+    新格式: /ws/{hostname}/{apiurl}
+    例如: /ws/host-service/agent/agent-123
+
+    将客户端 WebSocket 连接转发到后端微服务
+    需要提供有效的认证令牌
+
+    Args:
+        websocket: 客户端 WebSocket 连接
+        hostname: 服务主机名（如 host-service, auth-service）
+        apiurl: API 路径（如 agent/agent-123）
+        proxy_service: 代理服务实例
+    """
+    try:
+        # ✅ 第一步：提取并验证 token（在接受连接前）
+        token = None
+
+        # 尝试从查询参数提取 token
+        token = websocket.query_params.get("token")
+
+        # 如果没有，尝试从 Authorization 头提取
+        if not token:
+            auth_header = websocket.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+
+        # 如果还是没有，尝试从自定义头提取
+        if not token:
+            token = websocket.headers.get("X-Token")
+
+        if not token:
+            logger.warning(
+                "WebSocket 连接缺少认证令牌",
+                extra={
+                    "hostname": hostname,
+                    "apiurl": apiurl,
+                    "client": websocket.client.host if websocket.client else "unknown",
+                },
+            )
+            # 拒绝连接
+            await websocket.close(code=1008, reason="缺少认证令牌")
+            return
+
+        # ✅ 验证 token 有效性
+        try:
+            from shared.common.websocket_auth import verify_token_string
+
+            user_id = await verify_token_string(token)
+            if not user_id:
+                logger.warning(
+                    "WebSocket 连接 token 验证失败",
+                    extra={
+                        "hostname": hostname,
+                        "apiurl": apiurl,
+                        "client": websocket.client.host if websocket.client else "unknown",
+                        "token_preview": token[:20] + "..." if len(token) > 20 else token,
+                    },
+                )
+                await websocket.close(code=1008, reason="认证令牌无效或已过期")
+                return
+
+            logger.info(
+                "WebSocket 连接认证成功",
+                extra={
+                    "hostname": hostname,
+                    "apiurl": apiurl,
+                    "user_id": user_id,
+                    "client": websocket.client.host if websocket.client else "unknown",
+                },
+            )
+
+        except Exception as e:
+            logger.error(
+                "WebSocket 连接 token 验证异常",
+                extra={
+                    "hostname": hostname,
+                    "apiurl": apiurl,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            await websocket.close(code=1011, reason="服务器内部错误")
+            return
+
+        # ✅ 第二步：接受连接
+        await websocket.accept()
+
+        logger.info(
+            f"WebSocket 连接已建立: {hostname}/{apiurl}",
+            extra={
+                "hostname": hostname,
+                "apiurl": apiurl,
+                "client": websocket.client.host if websocket.client else "unknown",
+                "has_token": bool(token),
+            },
+        )
+
+        # 映射完整服务名称到短名称
+        # 例如: host-service -> host, auth-service -> auth, admin-service -> admin
+        service_short_name = hostname.replace("-service", "")
+
+        logger.info(
+            f"服务名称映射: {hostname} -> {service_short_name}",
+            extra={
+                "hostname": hostname,
+                "service_short_name": service_short_name,
+                "apiurl": apiurl,
+            },
+        )
+
+        # 构建后端路径（添加 /api/v1/ws/ 前缀）
+        backend_path = f"/ws/{apiurl}"
+
+        # 转发 token 到后端（作为查询参数）
+        # 这样后端服务也能进行认证
+        if not backend_path.startswith("?"):
+            backend_path = f"{backend_path}?token={token}"
+
+        # 转发到后端服务
+        await proxy_service.forward_websocket(
+            service_name=service_short_name,
+            path=backend_path,
+            client_websocket=websocket,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"WebSocket 转发失败: {hostname}/{apiurl}",
+            extra={
+                "error": str(e),
+                "hostname": hostname,
+                "apiurl": apiurl,
+            },
+            exc_info=True,
+        )
+
+        # 尝试发送错误消息
+        if websocket.client_state.name != "DISCONNECTED":
+            try:
+                await websocket.send_json(
+                    {
+                        "code": 500,
+                        "message": "WebSocket 转发异常",
+                        "error_code": "WEBSOCKET_PROXY_ERROR",
+                    }
+                )
+                await websocket.close(code=1011, reason="Server error")
+            except Exception as close_error:
+                logger.debug(f"关闭 WebSocket 时出错: {close_error!s}")
+
+
+# ✅ 新增：支持简化格式的 WebSocket 代理路由
+# 支持格式: /host/ws/agent/agent-123 -> ws://host-service:8003/api/v1/ws/agent/agent-123
+SERVICE_SHORT_NAMES = {
+    "auth": "auth-service",
+    "admin": "admin-service",
+    "host": "host-service",
+}
+
+
+# ❌ 已删除：新格式 WebSocket 路由与 HTTP 路由冲突，仅在 /api/v1 下使用旧格式
+# @router.websocket("/{service_short_name}/{path:path}")
+# 请使用: /api/v1/ws/host-service/ws/agent/agent-123 (旧格式)
+
+
 @router.api_route(
     "/{service_name}/{subpath:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -749,6 +922,7 @@ async def proxy_request(
         )
         raise e
 
+<<<<<<< HEAD
     except ServiceUnavailableError as e:
         # 后端服务不可用错误（503状态码）
         logger.error(
@@ -762,6 +936,8 @@ async def proxy_request(
         )
         raise e
 
+=======
+>>>>>>> 1d435cd (fix: 修复WebSocket 403问题 - 修复auth-service路由前缀注册错误)
     except Exception as e:
         logger.error(
             "Proxy request exception",
@@ -821,7 +997,11 @@ async def check_service_health(
     service_name: str = Path(..., description="Service name (e.g., auth, host, admin)"),
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Union[SuccessResponse, JSONResponse]:
+<<<<<<< HEAD
     """Check service health status
+=======
+    """检查服务健康状态
+>>>>>>> 1d435cd (fix: 修复WebSocket 403问题 - 修复auth-service路由前缀注册错误)
 
     Args:
         service_name: Service name

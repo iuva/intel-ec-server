@@ -106,6 +106,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/refresh",  # ✅ Token 刷新端点
             "/api/v1/auth/auto-refresh",  # ✅ 自动续期端点
             "/api/v1/auth/introspect",  # Token 验证端点
+            # ⚠️ WebSocket 路由需要在路由级别进行认证检查，
+            # 不能在中间件级别设为公开路径，否则无法强制认证
         }
 
         service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
@@ -688,6 +690,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return True
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         # ✅ Check prefix match (for documentation paths and browser plugin interfaces)
         # Supported prefix match path patterns:
         # - /docs, /redoc, /openapi.json (documentation paths)
@@ -712,15 +715,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 检查路径前缀匹配（仅用于特定的文档路径）
         # 只对以下路径进行前缀匹配：/docs, /redoc, /openapi.json
         prefix_match_paths = {"/docs", "/redoc", "/openapi.json"}
+=======
+        # ✅ 检查前缀匹配（用于文档路径和 WebSocket 路由）
+        # 支持前缀匹配的路径模式：
+        # - /docs, /redoc, /openapi.json (文档路径)
+        # - /host/, /auth/, /admin/, /ws/ (WebSocket 路由)
+        prefix_match_paths = {
+            "/docs",      # Swagger UI
+            "/redoc",     # ReDoc
+            "/openapi.json",  # OpenAPI spec
+            # ⚠️ WebSocket 路由 (/ws/, /host/, /auth/, /admin/) 已移除
+            # 需要在路由级别进行认证检查
+        }
+>>>>>>> 1d435cd (fix: 修复WebSocket 403问题 - 修复auth-service路由前缀注册错误)
 
-        for public_path in self.public_paths:
-            # 只对特定路径进行前缀匹配
-            if public_path in prefix_match_paths and clean_path.startswith(public_path):
+        for prefix_path in prefix_match_paths:
+            if clean_path.startswith(prefix_path):
                 logger.debug(
-                    "路径前缀匹配公开路径（文档路径）",
+                    "路径前缀匹配公开路径",
                     extra={
                         "path": clean_path,
-                        "matched_prefix": public_path,
+                        "matched_prefix": prefix_path,
                         "match_type": "prefix",
                     },
                 )
