@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 # 使用 try-except 方式处理路径导入
 try:
+    from fastapi import WebSocketDisconnect
     from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
@@ -21,6 +22,7 @@ except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     # 兼容不同版本的 httpx
+    from fastapi import WebSocketDisconnect
     from httpx import ConnectError, TimeoutException
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
@@ -513,6 +515,13 @@ class ProxyService:
                         logger.info(f"连接正常关闭 ({direction}): code={e.code}")
                     else:
                         logger.warning(f"连接异常关闭 ({direction}): code={e.code}, reason={e.reason}")
+                    break
+                except WebSocketDisconnect as e:
+                    # FastAPI WebSocketDisconnect - 客户端正常断开
+                    if e.code in (1000, 1001, 1005, None):
+                        logger.info(f"客户端正常断开 ({direction}): code={e.code}")
+                    else:
+                        logger.warning(f"客户端异常断开 ({direction}): code={e.code}, reason={e.reason if hasattr(e, 'reason') else 'No reason'}")
                     break
                 except Exception as e:
                     # 其他异常才记录为错误
