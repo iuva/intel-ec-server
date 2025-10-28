@@ -144,14 +144,9 @@ class WebSocketManager:
         message_type = data.get("type", "unknown")
 
         # 📥 日志：接收到消息 (详细报文内容)
+        import json
         logger.info(
-            "📥 接收消息",
-            extra={
-                "agent_id": agent_id,
-                "message_type": message_type,
-                "message_content": data,  # 完整消息内容
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
+            f"📥 接收消息 | Agent: {agent_id} | 类型: {message_type} | 内容: {json.dumps(data, ensure_ascii=False)}",
         )
 
         try:
@@ -195,14 +190,10 @@ class WebSocketManager:
 
         try:
             # 📤 日志：发送消息 (详细报文内容)
+            import json
+            message_type = message.get("type", "unknown")
             logger.info(
-                "📤 发送消息",
-                extra={
-                    "host_id": host_id,
-                    "message_type": message.get("type"),
-                    "message_content": message,  # 完整消息内容
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | 内容: {json.dumps(message, ensure_ascii=False)}",
             )
 
             websocket = self.active_connections[host_id]
@@ -210,12 +201,7 @@ class WebSocketManager:
             return True
         except Exception as e:
             logger.error(
-                "❌ 发送消息失败",
-                extra={
-                    "host_id": host_id,
-                    "message_type": message.get("type"),
-                    "error": str(e),
-                },
+                f"❌ 发送消息失败 | Host: {host_id} | 类型: {message.get('type')} | 错误: {str(e)}",
             )
             await self.disconnect(host_id)
             return False
@@ -263,17 +249,13 @@ class WebSocketManager:
             成功发送的数量
         """
         # 📢 日志：开始广播
+        import json
         target_hosts = [host_id for host_id in self.active_connections.keys() if not exclude or host_id != exclude]
+        message_type = message.get("type", "unknown")
 
+        message_json = json.dumps(message, ensure_ascii=False)
         logger.info(
-            "📢 开始广播消息",
-            extra={
-                "message_type": message.get("type"),
-                "message_content": message,  # 完整消息内容
-                "target_count": len(target_hosts),
-                "exclude_host": exclude,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
+            f"📢 开始广播消息 | 类型: {message_type} | 目标数量: {len(target_hosts)} | 排除: {exclude} | 内容: {message_json}",
         )
 
         success_count = 0
@@ -320,17 +302,28 @@ class WebSocketManager:
         await self.send_to_host(agent_id, error_msg_obj)
 
     async def _handle_heartbeat(self, agent_id: str, data: dict) -> None:
-        """处理心跳消息"""
+        """处理心跳消息
+
+        Note:
+            - agent_id 是连接时从 token 获取的 host_id
+            - data 中的 agent_id 字段会被忽略（客户端可以不传）
+        """
         try:
             # 更新内存中的心跳时间戳
             self.heartbeat_timestamps[agent_id] = datetime.now(timezone.utc)
+            logger.debug(f"心跳时间戳已更新: {agent_id}")
 
             # 尝试更新数据库中的心跳时间（如果host在数据库中存在）
+            # 注意：数据库更新失败不影响 WebSocket 心跳监控
             try:
                 await self.host_service.update_heartbeat(agent_id)
+                logger.debug(f"数据库心跳已更新: {agent_id}")
             except Exception as db_error:
-                # 数据库更新失败不影响心跳监控
-                logger.debug(f"数据库心跳更新跳过: {agent_id}, 原因: {db_error!s}")
+                # 数据库更新失败（可能是 host 不存在或 ID 格式问题）
+                logger.debug(
+                    f"数据库心跳更新跳过: {agent_id}, 原因: {db_error!s}",
+                    extra={"agent_id": agent_id, "error": str(db_error)},
+                )
 
             # 发送心跳确认
             ack_msg = {
@@ -339,9 +332,12 @@ class WebSocketManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             await self.send_to_host(agent_id, ack_msg)
-            logger.debug(f"心跳处理完成: {agent_id}")
+            logger.debug(f"✅ 心跳处理完成: {agent_id}")
         except Exception as e:
-            logger.error(f"心跳处理失败: {agent_id}, 错误: {e!s}")
+            logger.error(
+                f"❌ 心跳处理失败: {agent_id}, 错误: {e!s}",
+                exc_info=True,
+            )
 
     async def _handle_status_update(self, agent_id: str, data: dict) -> None:
         """处理状态更新消息"""
