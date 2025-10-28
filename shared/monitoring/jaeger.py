@@ -8,26 +8,47 @@ import logging
 import os
 from typing import Any, Optional
 
-# ✅ 禁用 OpenTelemetry 的自动检测和 Thrift agent 导出器
-# 防止环境变量触发自动创建冲突的导出器
-os.environ.pop("JAEGER_AGENT_HOST", None)
-os.environ.pop("JAEGER_AGENT_PORT", None)
-os.environ.pop("JAEGER_SAMPLER_TYPE", None)
-os.environ.pop("JAEGER_SAMPLER_PARAM", None)
-# 也禁用 OTEL 自动检测（如果存在的话）
-os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
-os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_HOST", None)
-os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_PORT", None)
+# 使用 try-except 方式处理 OpenTelemetry 导入
+try:
+    # ✅ 禁用 OpenTelemetry 的自动检测和 Thrift agent 导出器
+    # 防止环境变量触发自动创建冲突的导出器
+    os.environ.pop("JAEGER_AGENT_HOST", None)
+    os.environ.pop("JAEGER_AGENT_PORT", None)
+    os.environ.pop("JAEGER_SAMPLER_TYPE", None)
+    os.environ.pop("JAEGER_SAMPLER_PARAM", None)
+    # 也禁用 OTEL 自动检测（如果存在的话）
+    os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+    os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_HOST", None)
+    os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_PORT", None)
 
-# noqa: E402 - OpenTelemetry 导入必须在环境变量清理之后
-from opentelemetry import trace  # noqa: E402
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # noqa: E402
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: E402
-from opentelemetry.instrumentation.redis import RedisInstrumentor  # noqa: E402
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor  # noqa: E402
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource  # noqa: E402
-from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
-from opentelemetry.sdk.trace.export import BatchSpanProcessor  # noqa: E402
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.redis import RedisInstrumentor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+except ImportError:
+    # 如果导入失败，重新尝试导入
+    # 清理环境变量
+    os.environ.pop("JAEGER_AGENT_HOST", None)
+    os.environ.pop("JAEGER_AGENT_PORT", None)
+    os.environ.pop("JAEGER_SAMPLER_TYPE", None)
+    os.environ.pop("JAEGER_SAMPLER_PARAM", None)
+    os.environ.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+    os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_HOST", None)
+    os.environ.pop("OTEL_EXPORTER_JAEGER_AGENT_PORT", None)
+
+    # 重新导入
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.redis import RedisInstrumentor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 logger = logging.getLogger(__name__)
 
