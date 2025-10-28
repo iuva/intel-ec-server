@@ -83,7 +83,15 @@ async def websocket_proxy(
                     "client": websocket.client.host if websocket.client else "unknown",
                 },
             )
-            # 拒绝连接
+            # ✅ 必须先 accept 才能发送错误消息
+            await websocket.accept()
+            await websocket.send_json(
+                {
+                    "code": 401,
+                    "message": "缺少认证令牌",
+                    "error_code": "WEBSOCKET_MISSING_TOKEN",
+                }
+            )
             await websocket.close(code=1008, reason="缺少认证令牌")
             return
 
@@ -101,6 +109,15 @@ async def websocket_proxy(
                         "client": websocket.client.host if websocket.client else "unknown",
                         "token_preview": token[:20] + "..." if len(token) > 20 else token,
                     },
+                )
+                # ✅ 必须先 accept 才能发送错误消息
+                await websocket.accept()
+                await websocket.send_json(
+                    {
+                        "code": 403,
+                        "message": "WebSocket 认证失败，Token 无效或已过期",
+                        "error_code": "WEBSOCKET_AUTH_FAILED",
+                    }
                 )
                 await websocket.close(code=1008, reason="认证令牌无效或已过期")
                 return
