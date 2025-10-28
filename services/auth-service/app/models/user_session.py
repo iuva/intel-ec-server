@@ -65,4 +65,7 @@ class UserSession(Base):
 
     def __repr__(self) -> str:
         """字符串表示"""
-        return f"<UserSession(id={self.id}, entity_id={self.entity_id}, entity_type={self.entity_type}, session_id={self.session_id})>"
+        return (
+            f"<UserSession(id={self.id}, entity_id={self.entity_id}, "
+            f"entity_type={self.entity_type}, session_id={self.session_id})>"
+        )
