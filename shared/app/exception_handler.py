@@ -28,9 +28,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
 
     # 注册 Pydantic 验证错误处理器（处理 422 错误）
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         """处理 Pydantic 验证错误"""
         logger.warning(f"参数验证失败: {exc.errors()}")
 
@@ -52,9 +50,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
 
     # 注册 HTTP 异常处理器
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         """处理 HTTP 异常"""
         logger.warning(f"HTTP异常: {exc.status_code} - {exc.detail}")
 
@@ -95,9 +91,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
 
     # 注册业务异常处理器
     @app.exception_handler(BusinessError)
-    async def business_error_handler(
-        request: Request, exc: BusinessError
-    ) -> JSONResponse:
+    async def business_error_handler(request: Request, exc: BusinessError) -> JSONResponse:
         """处理业务异常"""
         logger.warning(f"业务异常: {exc.error_code} - {exc.message}")
 
@@ -110,12 +104,13 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
 
         # 使用 http_status_code 作为 HTTP 响应状态码（必须是有效的 HTTP 状态码 100-599）
         # 响应体中的 code 是自定义错误码（可能是 53009 这样的服务级错误码）
-        return JSONResponse(
-            status_code=exc.http_status_code, content=error_response.model_dump()
-        )
+        return JSONResponse(status_code=exc.http_status_code, content=error_response.model_dump())
 
-    # 添加统一异常处理中间件（捕获路由处理器中的异常）
-    app.add_middleware(UnifiedExceptionMiddleware)
-
+    # ❌ 重要: 不要在这里添加中间件！
+    # 当 setup_exception_handling 被调用时，应用已经在 lifespan 中启动
+    # 此时无法再添加中间件（会抛出 "Cannot add middleware after an application has started" 错误）
+    # 中间件必须在 FastAPI 应用创建后、lifespan 启动前添加
+    # 参考: auth-service/app/main.py 第70-71行 - 在创建app之后立即添加
+    
     logger.info(f"已为 {service_name} 启用统一异常处理")
     logger.info("已注册异常处理器: RequestValidationError, HTTPException, BusinessError")

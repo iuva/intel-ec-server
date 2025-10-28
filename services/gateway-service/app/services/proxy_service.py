@@ -4,6 +4,8 @@
 提供请求转发功能，将客户端请求代理到后端微服务
 """
 
+import asyncio
+import contextlib
 import os
 import sys
 from typing import Any, Dict, Optional
@@ -102,7 +104,13 @@ class ProxyService:
         """
         service_url = self.service_routes.get(service_name)
         if not service_url:
-            logger.warning("服务不存在", extra={"service_name": service_name})
+            logger.warning(
+                "服务不存在",
+                extra={
+                    "service_name": service_name,
+                    "available_services": list(self.service_routes.keys()),
+                },
+            )
             raise ServiceNotFoundError(service_name)
 
         return service_url
@@ -318,6 +326,157 @@ class ProxyService:
         # 不应该到达这里，但作为防御性编程
         msg = f"请求转发异常（未捕获）: {service_name}"
         raise RuntimeError(msg)
+
+    async def forward_websocket(
+        self,
+        service_name: str,
+        path: str,
+        client_websocket: Any,  # WebSocket
+    ) -> None:
+        """转发 WebSocket 连接到后端服务
+
+        Args:
+            service_name: 后端服务名称
+            path: 请求路径
+            client_websocket: 客户端 WebSocket 连接
+
+        Raises:
+            ServiceNotFoundError: 服务不存在
+        """
+        import websockets
+
+        try:
+            # 获取服务 URL
+            service_url = self.get_service_url(service_name)
+
+            # 构建 WebSocket URL（转换 http -> ws）
+            ws_url = service_url.replace("http://", "ws://").replace("https://", "wss://")
+            full_ws_url = f"{ws_url}/api/v1{path}" if not path.startswith("/api") else f"{ws_url}{path}"
+
+            logger.info(
+                "转发 WebSocket 连接",
+                extra={
+                    "service_name": service_name,
+                    "path": path,
+                    "target_url": full_ws_url,
+                },
+            )
+
+            # 连接到后端 WebSocket
+            async with websockets.connect(full_ws_url, ping_interval=None) as server_websocket:
+                logger.info(
+                    "后端 WebSocket 连接已建立",
+                    extra={"service_name": service_name, "path": path},
+                )
+
+                # 创建双向消息转发任务
+                client_to_server = asyncio.create_task(
+                    self._forward_messages(
+                        source=client_websocket,
+                        destination=server_websocket,
+                        direction="client->server",
+                    )
+                )
+
+                server_to_client = asyncio.create_task(
+                    self._forward_messages(
+                        source=server_websocket,
+                        destination=client_websocket,
+                        direction="server->client",
+                    )
+                )
+
+                # 等待任一任务完成（表示连接已关闭）
+                done, pending = await asyncio.wait(
+                    [client_to_server, server_to_client],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                # 取消其他任务
+                for task in pending:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+
+                logger.info(
+                    "WebSocket 连接已关闭",
+                    extra={"service_name": service_name, "path": path},
+                )
+
+        except ServiceNotFoundError:
+            raise
+
+        except websockets.exceptions.InvalidURI as e:
+            logger.error(
+                f"无效的 WebSocket URL: {e!s}",
+                extra={"service_name": service_name, "path": path},
+            )
+            raise BusinessError(
+                message="WebSocket 服务不可用",
+                error_code="WEBSOCKET_SERVICE_UNAVAILABLE",
+                code=ServiceErrorCodes.GATEWAY_SERVICE_UNAVAILABLE,
+                http_status_code=503,
+            )
+
+        except websockets.exceptions.WebSocketException as e:
+            logger.error(
+                f"WebSocket 连接异常: {e!s}",
+                extra={"service_name": service_name, "path": path},
+            )
+            raise BusinessError(
+                message="WebSocket 连接失败",
+                error_code="WEBSOCKET_CONNECTION_ERROR",
+                code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
+                http_status_code=502,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"WebSocket 转发异常: {e!s}",
+                extra={"service_name": service_name, "path": path, "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="WebSocket 转发失败",
+                error_code="WEBSOCKET_PROXY_ERROR",
+                code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
+                http_status_code=502,
+            )
+
+    async def _forward_messages(
+        self,
+        source: Any,  # WebSocket
+        destination: Any,  # WebSocket
+        direction: str = "unknown",
+    ) -> None:
+        """转发消息流
+
+        Args:
+            source: 源 WebSocket
+            destination: 目标 WebSocket
+            direction: 转发方向（用于日志）
+        """
+        import websockets
+
+        try:
+            async for message in source:
+                try:
+                    if isinstance(message, (str, bytes)):
+                        await destination.send(message)
+                except websockets.exceptions.ConnectionClosed:
+                    logger.info(f"消息转发中连接已关闭: {direction}")
+                    break
+                except Exception as e:
+                    logger.error(f"消息转发失败 ({direction}): {e!s}")
+                    break
+
+        except websockets.exceptions.ConnectionClosed:
+            logger.debug(f"源连接已关闭: {direction}")
+        except Exception as e:
+            logger.error(f"转发异常 ({direction}): {e!s}")
+        finally:
+            with contextlib.suppress(Exception):
+                await destination.close()
 
     async def _handle_backend_http_error(
         self,

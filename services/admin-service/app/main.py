@@ -16,7 +16,6 @@ try:
         ServiceConfig,
         create_service_lifespan,
         include_health_routes,
-        setup_exception_handling,
     )
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
@@ -31,7 +30,6 @@ except ImportError:
         ServiceConfig,
         create_service_lifespan,
         include_health_routes,
-        setup_exception_handling,
     )
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
@@ -70,13 +68,24 @@ app.add_middleware(
 # 添加 Prometheus 指标收集中间件
 app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
 
+# 导入统一异常处理中间件
+try:
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+except ImportError:
+    import sys
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+
+# ✅ 立即添加统一异常处理中间件（必须在应用启动前添加）
+app.add_middleware(UnifiedExceptionMiddleware)
+
 # ❌ 不要在这里调用 jaeger_manager.instrument_app(app)
 # 应用在此时已经启动，无法再添加 Jaeger 中间件
 # 如果需要 Jaeger 追踪，应该在应用创建前就设置好
 
-# 最后立即注册异常处理器（确保所有异常都被正确捕获）
-# 注：这会添加 UnifiedExceptionMiddleware，必须最后调用以确保最高优先级
-setup_exception_handling(app, service_name)
+# 注意：异常处理器已经在 lifespan 的 startup() 中注册（shared/app/service_factory.py:243-245）
+# 所以这里不需要再调用 setup_exception_handling
+# 如果调用会导致异常处理器被注册两次，可能产生冲突
 
 # 添加健康检查路由
 include_health_routes(app)

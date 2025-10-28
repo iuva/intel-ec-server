@@ -19,7 +19,6 @@ from urllib.parse import quote_plus
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from shared.app.application import create_exception_handlers
 from shared.common.cache import build_redis_url, redis_manager, validate_redis_config
 from shared.common.database import close_databases, init_databases, mariadb_manager
 from shared.common.loguru_config import get_logger
@@ -236,14 +235,13 @@ class ServiceLifecycleManager:
                 service_version="1.0.0",
                 environment=os.getenv("ENVIRONMENT", "production"),
             )
+
             logger.info("监控指标初始化成功")
 
-            # 4. 注册异常处理器（确保统一的错误响应格式）
-            logger.info("注册异常处理器...")
-            exception_handlers = create_exception_handlers()
-            for exc_class, handler in exception_handlers.items():
-                app.add_exception_handler(exc_class, handler)
-            logger.info("异常处理器注册成功")
+            # ❌ 不要在这里注册异常处理器！
+            # 异常处理器必须在 FastAPI app 创建时就注册（在 main.py 中）
+            # 在 lifespan 启动时注册会导致重复注册，破坏路由表
+            # 参考: services/*/app/main.py - app.add_middleware(UnifiedExceptionMiddleware)
 
             # 5. 初始化Nacos服务注册
             logger.info("初始化Nacos服务发现...")

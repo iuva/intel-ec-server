@@ -160,6 +160,7 @@ ignore = [
 "**/load_balancer.py" = ["BLE001"]
 "**/proxy_service.py" = ["BLE001", "PERF403"]
 "**/http_client.py" = ["PERF203"]  # try-except in retry loop is necessary
+"**/websocket_connection_pool.py" = ["PERF203"]  # try-except in background loops is necessary
 "**/exception_middleware.py" = ["BLE001"]
 # Allow imports in __init__.py files
 "__init__.py" = ["F401"]

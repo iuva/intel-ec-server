@@ -1,19 +1,19 @@
 """WebSocket 端点"""
 
+import os
+import sys
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
-from app.services.websocket_manager import WebSocketManager
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.loguru_config import get_logger
+    from shared.common.websocket_auth import verify_websocket_token, handle_websocket_auth_error
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
-    import os
-    import sys
-
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
+    from shared.common.websocket_auth import verify_websocket_token, handle_websocket_auth_error
+
+from app.services.websocket_manager import WebSocketManager
 
 logger = get_logger(__name__)
 
@@ -27,11 +27,50 @@ ws_manager = WebSocketManager()
 async def websocket_endpoint(websocket: WebSocket, agent_id: str):
     """Agent WebSocket 连接端点
 
+    需要 token 认证。支持以下方式提供 token:
+    1. 查询参数: ?token=xxx
+    2. 请求头: Authorization: Bearer xxx
+    3. 自定义头: X-Token: xxx
+
     Args:
         websocket: WebSocket 连接对象
         agent_id: Agent 唯一标识
     """
-    await ws_manager.connect(agent_id, websocket)
+    logger.info(
+        "WebSocket 连接请求",
+        extra={
+            "agent_id": agent_id,
+            "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+            "path": websocket.url.path,
+        },
+    )
+
+    # ✅ 第一步：验证 token
+    is_valid, user_info = await verify_websocket_token(websocket)
+
+    if not is_valid:
+        logger.warning(
+            "WebSocket 连接认证失败",
+            extra={
+                "agent_id": agent_id,
+                "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+            },
+        )
+        await handle_websocket_auth_error(websocket, "缺少有效的认证令牌")
+        return
+
+    # ✅ 第二步：认证成功，接受连接
+    logger.info(
+        "WebSocket 连接认证成功，接受连接",
+        extra={
+            "agent_id": agent_id,
+            "user_id": user_info.get("user_id"),
+            "username": user_info.get("username"),
+            "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+        },
+    )
+
+    await websocket.accept()
 
     try:
         while True:
@@ -42,11 +81,25 @@ async def websocket_endpoint(websocket: WebSocket, agent_id: str):
             await ws_manager.handle_message(agent_id, data)
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket 正常断开: {agent_id}")
+        logger.info(
+            "WebSocket 正常断开",
+            extra={
+                "agent_id": agent_id,
+                "user_id": user_info.get("user_id"),
+            },
+        )
         await ws_manager.disconnect(agent_id)
 
     except (RuntimeError, ValueError, TypeError) as e:
-        logger.error(f"WebSocket 异常: {agent_id}, 错误: {e!s}")
+        logger.error(
+            "WebSocket 异常",
+            extra={
+                "agent_id": agent_id,
+                "user_id": user_info.get("user_id"),
+                "error": str(e),
+            },
+            exc_info=True,
+        )
         await ws_manager.disconnect(agent_id)
 
 
