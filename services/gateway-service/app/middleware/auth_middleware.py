@@ -335,8 +335,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # - /docs, /redoc, /openapi.json (文档路径)
         # - /host/, /auth/, /admin/, /ws/ (WebSocket 路由)
         prefix_match_paths = {
-            "/docs",      # Swagger UI
-            "/redoc",     # ReDoc
+            "/docs",  # Swagger UI
+            "/redoc",  # ReDoc
             "/openapi.json",  # OpenAPI spec
             # ⚠️ WebSocket 路由 (/ws/, /host/, /auth/, /admin/) 已移除
             # 需要在路由级别进行认证检查
@@ -383,8 +383,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         try:
             # 调用 Auth Service 的 introspect 端点来验证令牌
-            # auth_router 使用 prefix="" 注册，所以端点是 /api/v1/introspect 而不是 /api/v1/auth/introspect
-            introspect_url = f"{self.auth_service_url}/api/v1/introspect"
+            # ✅ 正确: auth_router 使用 prefix="/auth" 注册，所以端点是 /api/v1/auth/introspect
+            introspect_url = f"{self.auth_service_url}/api/v1/auth/introspect"
 
             logger.debug(
                 "调用 Auth Service 验证令牌",

@@ -15,18 +15,14 @@ from typing import Any, Dict, Optional
 try:
     import websockets  # type: ignore[import-not-found]
 except ImportError:
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     import websockets  # type: ignore[import-not-found]
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -202,9 +198,7 @@ class WebSocketConnectionPool:
             )
             raise
 
-    def _get_available_connection(
-        self, service_url: str
-    ) -> Optional[PooledConnection]:
+    def _get_available_connection(self, service_url: str) -> Optional[PooledConnection]:
         """从池中获取可用连接
 
         Args:
@@ -220,11 +214,7 @@ class WebSocketConnectionPool:
 
         # 查找第一个活跃、未过时、未过期的连接
         for conn in pool:
-            if (
-                conn.is_active
-                and not conn.is_stale(self.idle_timeout)
-                and not conn.is_expired(self.max_lifetime)
-            ):
+            if conn.is_active and not conn.is_stale(self.idle_timeout) and not conn.is_expired(self.max_lifetime):
                 # 验证连接是否仍然有效
                 try:
                     # 使用 ping 检查连接
@@ -241,9 +231,7 @@ class WebSocketConnectionPool:
 
         return None
 
-    async def release_connection(
-        self, service_url: str, connection: Any, reusable: bool = True
-    ) -> None:
+    async def release_connection(self, service_url: str, connection: Any, reusable: bool = True) -> None:
         """释放连接回池
 
         Args:
@@ -285,11 +273,7 @@ class WebSocketConnectionPool:
 
             for pooled in pool:
                 # 检查连接是否应该关闭
-                if (
-                    not pooled.is_active
-                    or pooled.is_stale(self.idle_timeout)
-                    or pooled.is_expired(self.max_lifetime)
-                ):
+                if not pooled.is_active or pooled.is_stale(self.idle_timeout) or pooled.is_expired(self.max_lifetime):
                     try:
                         await pooled.connection.close()
                         self.stats["total_closed"] += 1
@@ -317,13 +301,10 @@ class WebSocketConnectionPool:
             统计信息字典
         """
         total_connections = sum(len(pool) for pool in self.pools.values())
-        active_connections = sum(
-            sum(1 for c in pool if c.is_active) for pool in self.pools.values()
-        )
+        active_connections = sum(sum(1 for c in pool if c.is_active) for pool in self.pools.values())
 
         hit_rate = (
-            self.stats["pool_hits"]
-            / (self.stats["pool_hits"] + self.stats["pool_misses"])
+            self.stats["pool_hits"] / (self.stats["pool_hits"] + self.stats["pool_misses"])
             if (self.stats["pool_hits"] + self.stats["pool_misses"]) > 0
             else 0
         )

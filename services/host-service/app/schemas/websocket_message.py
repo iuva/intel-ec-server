@@ -39,10 +39,7 @@ class BaseMessage(BaseModel):
     """
 
     type: MessageType = Field(..., description="消息类型")
-    timestamp: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
-        description="消息时间戳"
-    )
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="消息时间戳")
     message_id: Optional[str] = Field(default=None, description="消息ID（用于追踪）")
 
     model_config = {"from_attributes": True}

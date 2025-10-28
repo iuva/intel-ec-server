@@ -111,6 +111,6 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
     # 此时无法再添加中间件（会抛出 "Cannot add middleware after an application has started" 错误）
     # 中间件必须在 FastAPI 应用创建后、lifespan 启动前添加
     # 参考: auth-service/app/main.py 第70-71行 - 在创建app之后立即添加
-    
+
     logger.info(f"已为 {service_name} 启用统一异常处理")
     logger.info("已注册异常处理器: RequestValidationError, HTTPException, BusinessError")

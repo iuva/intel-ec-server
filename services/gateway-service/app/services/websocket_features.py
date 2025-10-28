@@ -18,9 +18,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -67,9 +65,7 @@ class HeartbeatManager:
             },
         )
 
-    def register_connection(
-        self, connection_id: str, send_heartbeat: Callable[[], Any]
-    ) -> None:
+    def register_connection(self, connection_id: str, send_heartbeat: Callable[[], Any]) -> None:
         """注册连接心跳
 
         Args:
@@ -100,9 +96,7 @@ class HeartbeatManager:
 
             logger.debug(f"连接 {connection_id} 的心跳已注销")
 
-    async def _heartbeat_loop(
-        self, connection_id: str, send_heartbeat: Callable[[], Any]
-    ) -> None:
+    async def _heartbeat_loop(self, connection_id: str, send_heartbeat: Callable[[], Any]) -> None:
         """心跳循环"""
         while True:
             try:
@@ -118,9 +112,7 @@ class HeartbeatManager:
                 stats.total_heartbeats += 1
                 stats.successful_heartbeats += 1
                 stats.last_heartbeat_time = datetime.now(timezone.utc)
-                stats.average_response_time_ms = (
-                    stats.average_response_time_ms * 0.9 + response_time_ms * 0.1
-                )
+                stats.average_response_time_ms = stats.average_response_time_ms * 0.9 + response_time_ms * 0.1
 
                 logger.debug(
                     f"心跳发送成功: {connection_id}",
@@ -155,17 +147,9 @@ class HeartbeatManager:
             "total_heartbeats": stats.total_heartbeats,
             "successful_heartbeats": stats.successful_heartbeats,
             "failed_heartbeats": stats.failed_heartbeats,
-            "success_rate": (
-                stats.successful_heartbeats / stats.total_heartbeats
-                if stats.total_heartbeats > 0
-                else 0
-            ),
+            "success_rate": (stats.successful_heartbeats / stats.total_heartbeats if stats.total_heartbeats > 0 else 0),
             "average_response_time_ms": round(stats.average_response_time_ms, 2),
-            "last_heartbeat_time": (
-                stats.last_heartbeat_time.isoformat()
-                if stats.last_heartbeat_time
-                else None
-            ),
+            "last_heartbeat_time": (stats.last_heartbeat_time.isoformat() if stats.last_heartbeat_time else None),
         }
 
 
@@ -207,9 +191,7 @@ class RateLimiter:
             },
         )
 
-    async def check_rate_limit(
-        self, connection_id: str, message_size: int
-    ) -> Tuple[bool, Optional[str]]:
+    async def check_rate_limit(self, connection_id: str, message_size: int) -> Tuple[bool, Optional[str]]:
         """检查速率限制
 
         Args:
@@ -233,9 +215,7 @@ class RateLimiter:
         # 清理过期的消息时间戳
         message_times = self._message_times[connection_id]
         cutoff_time = current_time - self.window_size
-        self._message_times[connection_id] = [
-            t for t in message_times if t > cutoff_time
-        ]
+        self._message_times[connection_id] = [t for t in message_times if t > cutoff_time]
 
         # 检查消息频率
         if len(self._message_times[connection_id]) >= self.max_messages:
@@ -314,9 +294,7 @@ class MessageCompressor:
             extra={"compression_threshold": compression_threshold},
         )
 
-    async def compress_message(
-        self, message: str
-    ) -> Tuple[bool, str]:
+    async def compress_message(self, message: str) -> Tuple[bool, str]:
         """压缩消息
 
         Args:
@@ -374,9 +352,7 @@ class MessageCompressor:
 
         return True, compressed_message
 
-    async def decompress_message(
-        self, message: str
-    ) -> Optional[str]:
+    async def decompress_message(self, message: str) -> Optional[str]:
         """解压消息
 
         Args:
@@ -415,17 +391,11 @@ class MessageCompressor:
             return self._stats.copy()
 
         stats = self._stats.copy()
-        stats["compression_rate"] = round(
-            self._stats["compressed_count"] / total * 100, 2
-        )
+        stats["compression_rate"] = round(self._stats["compressed_count"] / total * 100, 2)
 
         if self._stats["bytes_original"] > 0:
-            stats["compression_ratio"] = round(
-                self._stats["bytes_compressed"] / self._stats["bytes_original"], 2
-            )
-            stats["bytes_saved"] = (
-                self._stats["bytes_original"] - self._stats["bytes_compressed"]
-            )
+            stats["compression_ratio"] = round(self._stats["bytes_compressed"] / self._stats["bytes_original"], 2)
+            stats["bytes_saved"] = self._stats["bytes_original"] - self._stats["bytes_compressed"]
 
         return stats
 

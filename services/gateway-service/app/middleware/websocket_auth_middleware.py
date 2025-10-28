@@ -16,9 +16,7 @@ try:
     from shared.common.security import JWTManager
     from shared.common.exceptions import AuthorizationError
 except ImportError:
-    sys.path.insert(
-        0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-    )
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
     from shared.common.security import JWTManager
     from shared.common.exceptions import AuthorizationError
@@ -45,9 +43,7 @@ class WebSocketAuthMiddleware:
         self.jwt_manager = jwt_manager
         self.logger = logger
 
-    async def authenticate(
-        self, websocket: WebSocket, require_auth: bool = False
-    ) -> Optional[Dict[str, Any]]:
+    async def authenticate(self, websocket: WebSocket, require_auth: bool = False) -> Optional[Dict[str, Any]]:
         """认证 WebSocket 连接
 
         Args:
@@ -73,9 +69,7 @@ class WebSocketAuthMiddleware:
                             "path": websocket.url.path,
                         },
                     )
-                    raise WebSocketException(
-                        code=1008, reason="缺少认证令牌"
-                    )
+                    raise WebSocketException(code=1008, reason="缺少认证令牌")
 
                 # 认证可选时返回 None
                 self.logger.debug(
@@ -86,9 +80,7 @@ class WebSocketAuthMiddleware:
 
             # 验证令牌
             if not self.jwt_manager:
-                self.logger.warning(
-                    "JWT 管理器未配置，无法验证令牌"
-                )
+                self.logger.warning("JWT 管理器未配置，无法验证令牌")
                 return None
 
             user_info = await self._verify_token(token)

@@ -136,25 +136,25 @@ class ProxyService:
 
         Args:
             service_url: 服务基础 URL
-            path: 请求路径 (如 'admin/login')
-            service_name: 服务名称 (如 'auth', 'admin', 'host')
+            path: 请求路径/subpath (如 'ws/hosts', 'auth/admin/login')
+            service_name: 服务名称 (如 'auth', 'admin', 'host') - 仅用于识别服务，不包含在转发URL中
 
         Returns:
-            完整的服务 URL (如 'http://auth-service:8001/api/v1/auth/admin/login')
+            完整的服务 URL (如 'http://host-service:8003/api/v1/ws/hosts')
 
         说明:
-            Gateway转发的URL格式为 /api/v1/{service_name}/{subpath}
-            需要保留service_name作为后端服务的路由前缀
+            Gateway接收的URL格式为 /api/v1/{service_name}/{subpath}
+            转发到后端服务时，去掉service_name，只转发subpath:
+            - Gateway接收: /api/v1/host/ws/hosts → 转发到: /api/v1/ws/hosts
+            - Gateway接收: /api/v1/auth/admin/login → 转发到: /api/v1/auth/admin/login
         """
-        # ✅ 构建URL - 包含服务标识符前缀
-        if service_name:
-            # 如果提供了service_name，使用它作为路由前缀
-            # /api/v1/auth/admin/login
-            return f"{service_url}{API_PREFIX}/{service_name}/{path}"
-        else:
-            # 兜底：没有service_name时使用原始方法
-            # (这种情况不应该发生，除非有内部调用)
-            return f"{service_url}{API_PREFIX}/{path}"
+        # ✅ 构建URL - 不包含service_name，直接转发subpath
+        # Gateway接收: /api/v1/{service_name}/{subpath}
+        # 转发到后端: /api/v1/{subpath}
+        # 示例:
+        #   Gateway接收: /api/v1/host/ws/hosts
+        #   转发到Host Service: /api/v1/ws/hosts ✅
+        return f"{service_url}{API_PREFIX}/{path}"
 
     def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
         """记录后端错误日志
