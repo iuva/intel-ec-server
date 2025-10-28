@@ -1,8 +1,15 @@
-"""WebSocket 连接管理器"""
+"""WebSocket 连接管理器
+
+核心功能:
+1. 管理WebSocket连接池 (通过agent_id/host_id)
+2. 根据消息类型进行路由和处理
+3. 支持指定host通知和广播通知
+4. 心跳检测和连接管理
+"""
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from fastapi import WebSocket
 
@@ -12,7 +19,6 @@ from app.services.host_service import HostService
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
     import os
     import sys
 
@@ -23,7 +29,14 @@ logger = get_logger(__name__)
 
 
 class WebSocketManager:
-    """WebSocket 连接管理器"""
+    """WebSocket 连接管理器
+
+    负责：
+    1. 管理Agent WebSocket连接
+    2. 根据消息类型进行路由处理
+    3. 支持单播（指定host）和广播
+    4. 心跳检测
+    """
 
     def __init__(self):
         """初始化 WebSocket 管理器"""
@@ -31,33 +44,53 @@ class WebSocketManager:
         self.active_connections: Dict[str, WebSocket] = {}
         # 存储心跳任务: {agent_id: Task}
         self.heartbeat_tasks: Dict[str, asyncio.Task] = {}
+        # 消息处理器映射: {message_type: handler_func}
+        self.message_handlers: Dict[str, Callable] = {}
         # 心跳超时时间（秒）
         self.heartbeat_timeout = 60
         # 主机服务实例
         self.host_service = HostService()
 
+        # 注册默认的消息处理器
+        self._register_default_handlers()
+
+    def _register_default_handlers(self) -> None:
+        """注册默认的消息处理器"""
+        self.message_handlers = {
+            "heartbeat": self._handle_heartbeat,
+            "status_update": self._handle_status_update,
+            "command_response": self._handle_command_response,
+        }
+
+    def register_handler(self, message_type: str, handler: Callable) -> None:
+        """注册自定义消息处理器
+
+        Args:
+            message_type: 消息类型
+            handler: 处理函数 async def handler(agent_id: str, data: dict) -> None
+        """
+        self.message_handlers[message_type] = handler
+        logger.info(f"消息处理器已注册: {message_type}")
+
     async def connect(self, agent_id: str, websocket: WebSocket) -> None:
         """建立 WebSocket 连接
 
         Args:
-            agent_id: Agent ID
+            agent_id: Agent/Host ID
             websocket: WebSocket 连接对象
         """
-        await websocket.accept()
         self.active_connections[agent_id] = websocket
 
-        logger.info(f"Agent 连接成功: {agent_id}, 当前连接数: {len(self.active_connections)}")
-
-        # 发送欢迎消息
-        await self.send_message(
-            agent_id,
-            {
-                "type": "welcome",
-                "message": "WebSocket 连接已建立",
+        logger.info(
+            "WebSocket 连接已建立",
+            extra={
                 "agent_id": agent_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "total_connections": len(self.active_connections),
             },
         )
+
+        # 发送欢迎消息
+        await self._send_welcome_message(agent_id)
 
         # 启动心跳检测任务
         self.heartbeat_tasks[agent_id] = asyncio.create_task(self._heartbeat_monitor(agent_id))
@@ -66,7 +99,7 @@ class WebSocketManager:
         """断开 WebSocket 连接
 
         Args:
-            agent_id: Agent ID
+            agent_id: Agent/Host ID
         """
         # 取消心跳检测任务
         if agent_id in self.heartbeat_tasks:
@@ -85,172 +118,228 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"更新主机状态失败: {agent_id}, 错误: {e!s}")
 
-        logger.info(f"Agent 断开连接: {agent_id}, 当前连接数: {len(self.active_connections)}")
+        logger.info(
+            "WebSocket 连接已断开",
+            extra={
+                "agent_id": agent_id,
+                "total_connections": len(self.active_connections),
+            },
+        )
 
-    async def send_message(self, agent_id: str, message: dict) -> bool:
-        """发送消息给指定 Agent
+    async def handle_message(self, agent_id: str, data: dict) -> None:
+        """处理接收到的消息
+
+        根据消息类型调用对应的处理器
 
         Args:
-            agent_id: Agent ID
-            message: 消息内容（字典）
+            agent_id: Agent/Host ID
+            data: 消息数据
+        """
+        message_type = data.get("type", "unknown")
+        logger.debug(
+            "收到消息",
+            extra={
+                "agent_id": agent_id,
+                "message_type": message_type,
+            },
+        )
+
+        try:
+            # 查找对应的消息处理器
+            handler = self.message_handlers.get(message_type)
+
+            if handler:
+                # 调用处理器
+                await handler(agent_id, data)
+            else:
+                # 未知消息类型
+                logger.warning(f"未知消息类型: {message_type}, Agent: {agent_id}")
+                await self._send_error_message(agent_id, f"未知消息类型: {message_type}")
+
+        except Exception as e:
+            logger.error(
+                f"消息处理失败: {agent_id}",
+                extra={
+                    "message_type": message_type,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            await self._send_error_message(agent_id, "消息处理失败")
+
+    # ========== 单播：发送给指定Host ==========
+
+    async def send_to_host(self, host_id: str, message: dict) -> bool:
+        """发送消息给指定Host
+
+        Args:
+            host_id: Host ID
+            message: 消息内容
 
         Returns:
             是否发送成功
         """
-        if agent_id not in self.active_connections:
-            logger.warning(f"Agent 未连接: {agent_id}")
+        if host_id not in self.active_connections:
+            logger.warning(f"Host 未连接: {host_id}")
             return False
 
         try:
-            websocket = self.active_connections[agent_id]
+            websocket = self.active_connections[host_id]
             await websocket.send_json(message)
-            logger.debug(f"消息发送成功: {agent_id}, 类型: {message.get('type')}")
+            logger.debug(
+                "消息已发送",
+                extra={
+                    "host_id": host_id,
+                    "message_type": message.get("type"),
+                },
+            )
             return True
         except Exception as e:
-            logger.error(f"消息发送失败: {agent_id}, 错误: {e!s}")
-            await self.disconnect(agent_id)
+            logger.error(f"发送消息失败: {host_id}, 错误: {e!s}")
+            await self.disconnect(host_id)
             return False
 
-    async def broadcast(self, message: dict, exclude: Optional[str] = None) -> int:
-        """广播消息给所有连接的 Agent
+    async def send_to_hosts(self, host_ids: List[str], message: dict) -> int:
+        """发送消息给指定的多个Hosts
 
         Args:
-            message: 消息内容（字典）
-            exclude: 排除的 Agent ID
+            host_ids: Host ID 列表
+            message: 消息内容
 
         Returns:
             成功发送的数量
         """
         success_count = 0
-        failed_agents = []
+        failed_hosts = []
 
-        for agent_id in list(self.active_connections.keys()):
-            if exclude and agent_id == exclude:
-                continue
-
-            if await self.send_message(agent_id, message):
+        for host_id in host_ids:
+            if await self.send_to_host(host_id, message):
                 success_count += 1
             else:
-                failed_agents.append(agent_id)
+                failed_hosts.append(host_id)
 
-        if failed_agents:
-            logger.warning(f"广播失败的 Agent: {failed_agents}")
+        if failed_hosts:
+            logger.warning(f"发送失败的Host: {failed_hosts}")
 
-        logger.info(f"消息广播完成: 成功 {success_count}/{len(self.active_connections)}")
+        logger.info(
+            f"多播完成: 成功 {success_count}/{len(host_ids)}",
+            extra={
+                "message_type": message.get("type"),
+            },
+        )
         return success_count
 
-    async def handle_message(self, agent_id: str, data: dict) -> None:
-        """处理接收到的消息
+    # ========== 广播：发送给所有Hosts ==========
+
+    async def broadcast(self, message: dict, exclude: Optional[str] = None) -> int:
+        """广播消息给所有连接的Hosts
 
         Args:
-            agent_id: Agent ID
-            data: 消息数据
-        """
-        message_type = data.get("type", "unknown")
-        logger.debug(f"收到消息: {agent_id}, 类型: {message_type}")
+            message: 消息内容
+            exclude: 排除的 Host ID
 
-        try:
-            if message_type == "heartbeat":
-                await self._handle_heartbeat(agent_id, data)
-            elif message_type == "status_update":
-                await self._handle_status_update(agent_id, data)
-            elif message_type == "command_response":
-                await self._handle_command_response(agent_id, data)
+        Returns:
+            成功发送的数量
+        """
+        success_count = 0
+        failed_hosts = []
+
+        for host_id in list(self.active_connections.keys()):
+            if exclude and host_id == exclude:
+                continue
+
+            if await self.send_to_host(host_id, message):
+                success_count += 1
             else:
-                logger.warning(f"未知消息类型: {message_type}, Agent: {agent_id}")
-                await self.send_message(
-                    agent_id,
-                    {
-                        "type": "error",
-                        "message": f"未知消息类型: {message_type}",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-        except Exception as e:
-            logger.error(f"处理消息异常: {agent_id}, 错误: {e!s}")
-            await self.send_message(
-                agent_id,
-                {
-                    "type": "error",
-                    "message": "消息处理失败",
-                    "error": str(e),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+                failed_hosts.append(host_id)
+
+        if failed_hosts:
+            logger.warning(f"广播失败的Host: {failed_hosts}")
+
+        logger.info(
+            f"广播完成: 成功 {success_count}/{len(self.active_connections)}",
+            extra={
+                "message_type": message.get("type"),
+            },
+        )
+        return success_count
+
+    # ========== 内部方法 ==========
+
+    async def _send_welcome_message(self, agent_id: str) -> None:
+        """发送欢迎消息"""
+        welcome_msg = {
+            "type": "welcome",
+            "agent_id": agent_id,
+            "message": "WebSocket 连接已建立",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        await self.send_to_host(agent_id, welcome_msg)
+
+    async def _send_error_message(self, agent_id: str, error_msg: str) -> None:
+        """发送错误消息"""
+        error_msg_obj = {
+            "type": "error",
+            "message": error_msg,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        await self.send_to_host(agent_id, error_msg_obj)
 
     async def _handle_heartbeat(self, agent_id: str, data: dict) -> None:
-        """处理心跳消息
-
-        Args:
-            agent_id: Agent ID
-            data: 心跳数据
-        """
+        """处理心跳消息"""
         try:
-            # 更新主机心跳时间
             await self.host_service.update_heartbeat(agent_id)
-
-            # 发送心跳响应
-            await self.send_message(
-                agent_id,
-                {
-                    "type": "heartbeat_ack",
-                    "message": "心跳已接收",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-
-            logger.debug(f"心跳处理成功: {agent_id}")
+            ack_msg = {
+                "type": "heartbeat_ack",
+                "message": "心跳已接收",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            await self.send_to_host(agent_id, ack_msg)
+            logger.debug(f"心跳处理完成: {agent_id}")
         except Exception as e:
             logger.error(f"心跳处理失败: {agent_id}, 错误: {e!s}")
 
     async def _handle_status_update(self, agent_id: str, data: dict) -> None:
-        """处理状态更新消息
-
-        Args:
-            agent_id: Agent ID
-            data: 状态数据
-        """
+        """处理状态更新消息"""
         try:
             status = data.get("status", "online")
             from app.schemas.host import HostStatusUpdate
 
             await self.host_service.update_host_status(agent_id, HostStatusUpdate(status=status))
 
-            await self.send_message(
-                agent_id,
-                {
-                    "type": "status_update_ack",
-                    "message": "状态更新成功",
-                    "status": status,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-
-            logger.info(f"状态更新成功: {agent_id} -> {status}")
+            ack_msg = {
+                "type": "status_update_ack",
+                "message": "状态更新成功",
+                "status": status,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            await self.send_to_host(agent_id, ack_msg)
+            logger.info(f"状态已更新: {agent_id} -> {status}")
         except Exception as e:
             logger.error(f"状态更新失败: {agent_id}, 错误: {e!s}")
 
     async def _handle_command_response(self, agent_id: str, data: dict) -> None:
-        """处理命令响应消息
-
-        Args:
-            agent_id: Agent ID
-            data: 命令响应数据
-        """
+        """处理命令响应消息"""
         command_id = data.get("command_id")
+        success = data.get("success", False)
         result = data.get("result")
         error = data.get("error")
 
-        logger.info(f"命令响应: {agent_id}, command_id: {command_id}, " + f"result: {result}, error: {error}")
-
-        # 这里可以添加命令响应的处理逻辑
-        # 例如：更新命令执行状态、通知其他服务等
+        logger.info(
+            "命令响应已接收",
+            extra={
+                "agent_id": agent_id,
+                "command_id": command_id,
+                "success": success,
+                "result": result,
+                "error": error,
+            },
+        )
 
     async def _heartbeat_monitor(self, agent_id: str) -> None:
         """心跳监控任务
 
-        Args:
-            agent_id: Agent ID
+        定期检查Host的心跳状态
         """
         try:
             while True:
@@ -262,29 +351,34 @@ class WebSocketManager:
                     time_since_heartbeat = (datetime.now(timezone.utc) - host.last_heartbeat).total_seconds()
 
                     if time_since_heartbeat > self.heartbeat_timeout:
-                        logger.warning(f"心跳超时: {agent_id}, " + f"最后心跳: {time_since_heartbeat:.0f}秒前")
-
-                        # 发送超时警告
-                        await self.send_message(
-                            agent_id,
-                            {
-                                "type": "heartbeat_timeout_warning",
-                                "message": "心跳超时警告",
-                                "timeout": self.heartbeat_timeout,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                        logger.warning(
+                            f"心跳超时: {agent_id}",
+                            extra={
+                                "last_heartbeat_seconds_ago": time_since_heartbeat,
                             },
                         )
 
+                        # 发送超时警告
+                        timeout_msg = {
+                            "type": "heartbeat_timeout_warning",
+                            "message": "心跳超时警告",
+                            "timeout": self.heartbeat_timeout,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await self.send_to_host(agent_id, timeout_msg)
+
         except asyncio.CancelledError:
-            logger.debug(f"心跳监控任务已取消: {agent_id}")
+            logger.debug(f"心跳监控已取消: {agent_id}")
         except Exception as e:
             logger.error(f"心跳监控异常: {agent_id}, 错误: {e!s}")
 
-    def get_active_connections(self) -> List[str]:
-        """获取所有活跃连接的 Agent ID
+    # ========== 查询方法 ==========
+
+    def get_active_hosts(self) -> List[str]:
+        """获取所有活跃连接的Host ID
 
         Returns:
-            Agent ID 列表
+            Host ID 列表
         """
         return list(self.active_connections.keys())
 
@@ -296,13 +390,13 @@ class WebSocketManager:
         """
         return len(self.active_connections)
 
-    def is_connected(self, agent_id: str) -> bool:
-        """检查 Agent 是否已连接
+    def is_connected(self, host_id: str) -> bool:
+        """检查Host是否已连接
 
         Args:
-            agent_id: Agent ID
+            host_id: Host ID
 
         Returns:
             是否已连接
         """
-        return agent_id in self.active_connections
+        return host_id in self.active_connections
