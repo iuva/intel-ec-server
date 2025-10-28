@@ -4,17 +4,19 @@
 提供用户CRUD操作、搜索和分页功能
 """
 
-from typing import List, Optional, Tuple
+import time
 
-from sqlalchemy import func, select
+from typing import List, Optional, Tuple
 
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
+from sqlalchemy import func, select
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.database import mariadb_manager
-    from shared.common.decorators import handle_service_errors, monitor_operation
+    from shared.common.decorators import (handle_service_errors,
+                                          monitor_operation)
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.common.security import get_***REMOVED***word_hash
@@ -25,7 +27,8 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
-    from shared.common.decorators import handle_service_errors, monitor_operation
+    from shared.common.decorators import (handle_service_errors,
+                                          monitor_operation)
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.common.security import get_***REMOVED***word_hash
@@ -50,7 +53,8 @@ class UserService:
         Raises:
             BusinessError: 用户账号或邮箱已存在
         """
-        async with mariadb_manager.get_session() as db_session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as db_session:
             # 检查用户账号是否已存在
             stmt = select(User).where(User.user_account == user_data.username, User.del_flag == 0)
             result = await db_session.execute(stmt)
@@ -78,7 +82,6 @@ class UserService:
             ***REMOVED***word_hash = get_***REMOVED***word_hash(user_data.***REMOVED***word)
 
             # 生成新的用户ID（使用雪花算法或其他ID生成策略）
-            import time
 
             new_user_id = int(time.time() * 1000)  # 简单的时间戳ID，生产环境应使用雪花算法
 
@@ -116,7 +119,8 @@ class UserService:
         Returns:
             用户对象，如果不存在则返回None
         """
-        async with mariadb_manager.get_session() as db_session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as db_session:
             stmt = select(User).where(User.id == user_id, User.del_flag == 0)
             result = await db_session.execute(stmt)
             user = result.scalar_one_or_none()
@@ -156,7 +160,8 @@ class UserService:
         Raises:
             BusinessError: 邮箱已被其他用户使用
         """
-        async with mariadb_manager.get_session() as db_session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as db_session:
             # 获取用户
             stmt = select(User).where(User.id == user_id, User.del_flag == 0)
             result = await db_session.execute(stmt)
@@ -220,7 +225,8 @@ class UserService:
         Returns:
             是否删除成功
         """
-        async with mariadb_manager.get_session() as db_session:
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as db_session:
             # 获取用户
             stmt = select(User).where(User.id == user_id, User.del_flag == 0)
             result = await db_session.execute(stmt)
