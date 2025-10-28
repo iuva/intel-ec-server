@@ -483,7 +483,7 @@ class ProxyService:
             while True:
                 try:
                     message = None
-                    
+
                     # ✅ 接收消息 - 根据source类型选择方法
                     if is_fastapi_source:
                         # FastAPI WebSocket
@@ -495,7 +495,7 @@ class ProxyService:
                     else:
                         # websockets.WebSocketClientProtocol
                         message = await source.recv()
-                    
+
                     # ✅ 发送消息 - 根据destination类型选择方法
                     if is_fastapi_destination:
                         # FastAPI WebSocket
@@ -507,17 +507,26 @@ class ProxyService:
                         # websockets.WebSocketClientProtocol
                         await destination.send(message)
 
-                except websockets.exceptions.ConnectionClosed:
-                    logger.info(f"消息转发中连接已关闭: {direction}")
+                except websockets.exceptions.ConnectionClosed as e:
+                    # 正常关闭：1000-1001, 1005 (无状态码)
+                    if e.code in (1000, 1001, 1005, None):
+                        logger.info(f"连接正常关闭 ({direction}): code={e.code}")
+                    else:
+                        logger.warning(f"连接异常关闭 ({direction}): code={e.code}, reason={e.reason}")
                     break
                 except Exception as e:
-                    logger.error(f"消息转发失败 ({direction}): {e!s}")
+                    # 其他异常才记录为错误
+                    error_type = type(e).__name__
+                    logger.error(f"消息转发失败 ({direction}): {error_type} - {e!s}")
                     break
 
-        except websockets.exceptions.ConnectionClosed:
-            logger.debug(f"源连接已关闭: {direction}")
+        except websockets.exceptions.ConnectionClosed as e:
+            # 外层捕获：连接正常关闭
+            logger.debug(f"源连接已关闭 ({direction}): code={e.code}")
         except Exception as e:
-            logger.error(f"转发异常 ({direction}): {e!s}")
+            # 外层捕获：转发异常
+            error_type = type(e).__name__
+            logger.error(f"转发异常 ({direction}): {error_type} - {e!s}")
         finally:
             with contextlib.suppress(Exception):
                 if hasattr(destination, 'close'):
