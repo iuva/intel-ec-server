@@ -458,24 +458,34 @@ class ProxyService:
 
     async def _forward_messages(
         self,
-        source: Any,  # WebSocket
-        destination: Any,  # WebSocket
+        source: Any,  # FastAPI WebSocket
+        destination: Any,  # websockets.WebSocket
         direction: str = "unknown",
     ) -> None:
         """转发消息流
 
         Args:
-            source: 源 WebSocket
-            destination: 目标 WebSocket
+            source: 源 WebSocket (FastAPI WebSocket)
+            destination: 目标 WebSocket (websockets.WebSocket)
             direction: 转发方向（用于日志）
+
+        注意: FastAPI的WebSocket不能用async for遍历，需要使用receive_text/receive_bytes
         """
         import websockets
 
         try:
-            async for message in source:
+            while True:
                 try:
-                    if isinstance(message, (str, bytes)):
+                    # ✅ 正确: 使用receive()来接收消息
+                    # FastAPI WebSocket可以接收文本、二进制或JSON数据
+                    try:
+                        message = await source.receive_text()
                         await destination.send(message)
+                    except RuntimeError:
+                        # 如果不是文本消息，尝试接收字节数据
+                        message = await source.receive_bytes()
+                        await destination.send(message)
+
                 except websockets.exceptions.ConnectionClosed:
                     logger.info(f"消息转发中连接已关闭: {direction}")
                     break
