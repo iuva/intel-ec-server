@@ -83,6 +83,11 @@ class IntrospectResponse(BaseModel):
     user_id: Optional[int] = Field(default=None, description="用户ID")
     exp: Optional[int] = Field(default=None, description="过期时间戳")
     token_type: Optional[str] = Field(default=None, description="令牌类型")
+    # 新增字段：支持设备登录的额外信息
+    user_type: Optional[str] = Field(default=None, description="用户类型（admin/device）")
+    mg_id: Optional[str] = Field(default=None, description="设备管理ID")
+    host_ip: Optional[str] = Field(default=None, description="主机IP")
+    sub: Optional[str] = Field(default=None, description="Subject（用户/设备ID）")
 
     model_config = {
         "json_schema_extra": {

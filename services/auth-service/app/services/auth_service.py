@@ -438,12 +438,21 @@ class AuthService:
             if not payload:
                 return IntrospectResponse(active=False)
 
+            # 提取 user_id（sub 字段）
+            sub = payload.get("sub")
+            user_id = int(sub) if sub and str(sub).isdigit() else None
+
             return IntrospectResponse(
                 active=True,
                 username=payload.get("username"),
-                user_id=int(payload.get("sub", 0)),
+                user_id=user_id,
                 exp=payload.get("exp"),
                 token_type=payload.get("type", "access"),
+                # ✅ 新增：返回所有 payload 字段，支持设备登录
+                user_type=payload.get("user_type"),
+                mg_id=payload.get("mg_id"),
+                host_ip=payload.get("host_ip"),
+                sub=sub,  # 原始 sub 字段（可能是字符串或整数）
             )
 
         except (ValueError, KeyError, AttributeError) as e:

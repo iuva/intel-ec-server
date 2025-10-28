@@ -16,22 +16,42 @@ Host Service 提供了完整的WebSocket API，支持：
 ### 建立连接
 
 ```
-ws://localhost:8003/api/v1/ws/host/{host_id}
-?token=your_jwt_token
+ws://localhost:8003/api/v1/ws/host?token=your_jwt_token
 ```
+
+**重要变更**: ✅ 不再需要在 URL 中传递 `host_id`，改为从 JWT token 中的 `sub` 字段获取。
 
 ### 认证方式
 
 支持两种认证方式：
 
-**方式1: 查询参数**
+**方式1: 查询参数（推荐）**
 ```
-ws://localhost:8003/api/v1/ws/host/host-001?token=eyJ...
+ws://localhost:8003/api/v1/ws/host?token=eyJ...
 ```
 
 **方式2: 请求头**
 ```
 Authorization: Bearer eyJ...
+```
+
+### Token 要求
+
+JWT token 必须包含以下字段：
+- **`sub`**: Host ID（来自设备登录时的 `host_rec.id`）
+- **`user_type`**: 必须为 `"device"`
+- **`mg_id`**: 设备管理ID（可选，用于日志记录）
+
+Token 示例 payload:
+```json
+{
+  "sub": "123",
+  "user_type": "device",
+  "mg_id": "device-001",
+  "host_ip": "192.168.1.100",
+  "username": "device_user",
+  "exp": 1640995200
+}
 ```
 
 ### 连接示例
@@ -42,14 +62,16 @@ import json
 import websockets
 
 async def connect():
-    uri = "ws://localhost:8003/api/v1/ws/host/host-001?token=your_jwt_token"
+    # ✅ 新格式：不需要在 URL 中指定 host_id
+    uri = "ws://localhost:8003/api/v1/ws/host?token=your_jwt_token"
+    
     async with websockets.connect(uri) as websocket:
         # 接收欢迎消息
         welcome = await websocket.recv()
         print(f"欢迎消息: {welcome}")
         
-        # 发送心跳
-        heartbeat = {"type": "heartbeat", "agent_id": "host-001"}
+        # 发送心跳（无需指定 agent_id，从 token 中自动获取）
+        heartbeat = {"type": "heartbeat"}
         await websocket.send(json.dumps(heartbeat))
         
         # 接收心跳确认
@@ -58,6 +80,16 @@ async def connect():
 
 asyncio.run(connect())
 ```
+
+### 通过 Gateway 连接
+
+如果通过 Gateway 连接：
+
+```
+ws://localhost:8000/ws/host-service/host?token=your_jwt_token
+```
+
+Gateway 会将请求转发到 Host Service 的 `/api/v1/ws/host` 端点。
 
 ---
 

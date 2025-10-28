@@ -30,22 +30,24 @@ router = APIRouter()
 ws_manager = WebSocketManager()
 
 
-@router.websocket("/ws/host/{host_id}")
-async def websocket_endpoint(websocket: WebSocket, host_id: str):
+@router.websocket("/ws/host")
+async def websocket_endpoint(websocket: WebSocket):
     """Host WebSocket 连接端点
 
     建立WebSocket连接，支持两种认证方式:
     1. 查询参数: ?token=xxx
     2. 请求头: Authorization: Bearer xxx
 
+    Note:
+        - host_id 从 JWT token 中的 sub 字段获取（设备登录时存储的 host_rec.id）
+        - 不再需要通过路径参数传递 host_id
+
     Args:
         websocket: WebSocket 连接对象
-        host_id: Host ID (唯一标识)
     """
     logger.info(
         "WebSocket 连接请求",
         extra={
-            "host_id": host_id,
             "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
         },
     )
@@ -53,10 +55,28 @@ async def websocket_endpoint(websocket: WebSocket, host_id: str):
     # ✅ 认证验证
     is_valid, user_info = await verify_websocket_token(websocket)
 
-    if not is_valid:
-        logger.warning(f"WebSocket 认证失败: {host_id}")
+    if not is_valid or not user_info:
+        logger.warning("WebSocket 认证失败")
         await handle_websocket_auth_error(websocket, "缺少有效的认证令牌")
         return
+
+    # ✅ 从 token 中获取 host_id (来自 device_login 时存储的 host_rec.id)
+    host_id = user_info.get("user_id")  # user_id 实际上是 host_rec.id
+
+    if not host_id:
+        logger.warning("WebSocket token 中缺少 host_id")
+        await handle_websocket_auth_error(websocket, "Token 中缺少 host_id")
+        return
+
+    logger.info(
+        "WebSocket 认证成功",
+        extra={
+            "host_id": host_id,
+            "user_type": user_info.get("user_type"),
+            "mg_id": user_info.get("mg_id"),
+            "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+        },
+    )
 
     # ✅ 认证成功，接受连接
     await websocket.accept()
