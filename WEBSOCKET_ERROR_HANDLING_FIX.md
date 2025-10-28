@@ -37,6 +37,12 @@ WebSocket 连接异常: server rejected WebSocket connection: HTTP 403
 
 ## 🔧 修复方案
 
+### 修复分两层
+
+修复需要在两个层面进行：
+1. **`proxy_service.py`**: 识别后端返回的 HTTP 403/401
+2. **`proxy.py`**: 传递准确的错误信息给客户端
+
 ### 1. 新增错误码
 
 **文件**: `shared/common/exceptions.py:80`
@@ -61,9 +67,11 @@ class ServiceErrorCodes:
     GATEWAY_UNAUTHORIZED = 10012     # WebSocket 未授权（401）
 ```
 
-### 2. 改进异常处理逻辑
+### 2. 改进 proxy_service.py 异常处理逻辑
 
 **文件**: `services/gateway-service/app/services/proxy_service.py:436`
+
+**作用**: 识别后端服务返回的 HTTP 403/401，抛出带准确信息的 `BusinessError`
 
 #### Before（修复前）
 
@@ -124,6 +132,102 @@ except websockets.exceptions.WebSocketException as e:
         code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
         http_status_code=502,
     )
+```
+
+### 3. 改进 proxy.py 端点错误处理
+
+**文件**: `services/gateway-service/app/api/v1/endpoints/proxy.py:172`
+
+**作用**: 捕获 `BusinessError` 并传递准确的错误信息给客户端
+
+#### Before（修复前）
+
+```python
+except Exception as e:
+    logger.error(
+        f"WebSocket 转发失败: {hostname}/{apiurl}",
+        extra={"error": str(e), "hostname": hostname, "apiurl": apiurl},
+        exc_info=True,
+    )
+
+    # ❌ 硬编码的错误响应
+    if websocket.client_state.name != "DISCONNECTED":
+        try:
+            await websocket.send_json(
+                {
+                    "code": 500,  # ❌ 总是 500
+                    "message": "WebSocket 转发异常",  # ❌ 通用消息
+                    "error_code": "WEBSOCKET_PROXY_ERROR",
+                }
+            )
+            await websocket.close(code=1011, reason="Server error")  # ❌ 总是 1011
+        except Exception as close_error:
+            logger.debug(f"关闭 WebSocket 时出错: {close_error!s}")
+```
+
+#### After（修复后）
+
+```python
+except Exception as e:
+    # ✅ 检查是否为 BusinessError（包含准确的错误信息）
+    from shared.common.exceptions import BusinessError
+
+    if isinstance(e, BusinessError):
+        error_code = e.http_status_code or 500
+        error_message = e.message
+        error_type = e.error_code
+
+        logger.warning(
+            f"WebSocket 业务异常: {hostname}/{apiurl}",
+            extra={
+                "error_code": error_code,
+                "error_message": error_message,
+                "hostname": hostname,
+                "apiurl": apiurl,
+            },
+        )
+    else:
+        # ✅ 其他未知异常
+        error_code = 500
+        error_message = "WebSocket 转发异常"
+        error_type = "WEBSOCKET_PROXY_ERROR"
+
+        logger.error(
+            f"WebSocket 转发失败: {hostname}/{apiurl}",
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "hostname": hostname,
+                "apiurl": apiurl,
+            },
+            exc_info=True,
+        )
+
+    # ✅ 发送准确的错误消息
+    if websocket.client_state.name != "DISCONNECTED":
+        try:
+            await websocket.send_json(
+                {
+                    "code": error_code,  # ✅ 准确的状态码
+                    "message": error_message,  # ✅ 准确的消息
+                    "error_code": error_type,
+                }
+            )
+
+            # ✅ 根据错误码设置正确的关闭码
+            if error_code == 403:
+                close_code = 1008  # Policy Violation
+                close_reason = "Authentication failed"
+            elif error_code == 401:
+                close_code = 1008  # Policy Violation
+                close_reason = "Unauthorized"
+            else:
+                close_code = 1011  # Internal Error
+                close_reason = "Server error"
+
+            await websocket.close(code=close_code, reason=close_reason)
+        except Exception as close_error:
+            logger.debug(f"关闭 WebSocket 时出错: {close_error!s}")
 ```
 
 ## 📊 错误响应对比
@@ -213,16 +317,36 @@ except websockets.exceptions.WebSocketException as e:
          │    │
          │    └─❌ 无效 → 拒绝连接（HTTP 403）
          │
-         └──→ Gateway: 捕获后端拒绝
+         └──→ Gateway proxy_service.py: 捕获后端拒绝
               │
               ├──→ 检查错误消息: "HTTP 403"
-              │    └──→ ✅ 返回 403 + 准确消息
+              │    └──→ ✅ 抛出 BusinessError(code=403, message="认证失败")
               │
               ├──→ 检查错误消息: "HTTP 401"
-              │    └──→ ✅ 返回 401 + 准确消息
+              │    └──→ ✅ 抛出 BusinessError(code=401, message="未授权")
               │
               └──→ 其他错误
-                   └──→ 返回 502 + 通用消息
+                   └──→ 抛出 BusinessError(code=502, message="连接失败")
+         │
+         └──→ Gateway proxy.py: 捕获 BusinessError
+              │
+              ├──→ isinstance(e, BusinessError)?
+              │    ├─✅ 是 → 使用异常中的准确信息
+              │    │         - error_code = e.http_status_code
+              │    │         - error_message = e.message
+              │    │         - WebSocket关闭码: 1008 (认证) 或 1011 (其他)
+              │    │
+              │    └─❌ 否 → 通用错误信息
+              │              - error_code = 500
+              │              - error_message = "WebSocket 转发异常"
+              │              - WebSocket关闭码: 1011
+              │
+              └──→ 返回给客户端:
+                   {
+                     "code": error_code,
+                     "message": error_message,
+                     "error_code": error_type
+                   }
 ```
 
 ## 🧪 测试验证
