@@ -129,17 +129,30 @@ class ProxyService:
 
         return {k: v for k, v in headers.items() if k.lower() not in EXCLUDED_HEADERS}
 
-    def _build_service_url(self, service_url: str, path: str) -> str:
+    def _build_service_url(self, service_url: str, path: str, service_name: str = "") -> str:
         """构建完整的服务 URL
 
         Args:
             service_url: 服务基础 URL
-            path: 请求路径
+            path: 请求路径 (如 'admin/login')
+            service_name: 服务名称 (如 'auth', 'admin', 'host')
 
         Returns:
-            完整的服务 URL
+            完整的服务 URL (如 'http://auth-service:8001/api/v1/auth/admin/login')
+
+        说明:
+            Gateway转发的URL格式为 /api/v1/{service_name}/{subpath}
+            需要保留service_name作为后端服务的路由前缀
         """
-        return f"{service_url}{API_PREFIX}/{path}"
+        # ✅ 构建URL - 包含服务标识符前缀
+        if service_name:
+            # 如果提供了service_name，使用它作为路由前缀
+            # /api/v1/auth/admin/login
+            return f"{service_url}{API_PREFIX}/{service_name}/{path}"
+        else:
+            # 兜底：没有service_name时使用原始方法
+            # (这种情况不应该发生，除非有内部调用)
+            return f"{service_url}{API_PREFIX}/{path}"
 
     def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
         """记录后端错误日志
@@ -261,7 +274,7 @@ class ProxyService:
             service_url = self.get_service_url(service_name)
 
             # 构建完整 URL
-            full_url = self._build_service_url(service_url, path)
+            full_url = self._build_service_url(service_url, path, service_name)
 
             # 记录请求日志
             logger.debug(
