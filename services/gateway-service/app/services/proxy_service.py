@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import websockets
 from typing import Any, Dict, Optional
 
 # 使用 try-except 方式处理路径导入
@@ -136,25 +137,25 @@ class ProxyService:
 
         Args:
             service_url: 服务基础 URL
-            path: 请求路径/subpath (如 'ws/hosts', 'auth/admin/login')
-            service_name: 服务名称 (如 'auth', 'admin', 'host') - 仅用于识别服务，不包含在转发URL中
+            path: 请求路径/subpath (如 'ws/hosts', 'device/login')
+            service_name: 服务名称 (如 'auth', 'admin', 'host')
 
         Returns:
-            完整的服务 URL (如 'http://host-service:8003/api/v1/ws/hosts')
+            完整的服务 URL (如 'http://host-service:8003/api/v1/host/ws/hosts')
 
         说明:
             Gateway接收的URL格式为 /api/v1/{service_name}/{subpath}
-            转发到后端服务时，去掉service_name，只转发subpath:
-            - Gateway接收: /api/v1/host/ws/hosts → 转发到: /api/v1/ws/hosts
-            - Gateway接收: /api/v1/auth/admin/login → 转发到: /api/v1/auth/admin/login
+            转发到后端服务时，保留service_name，构建完整路径:
+            - Gateway接收: /api/v1/host/ws/hosts → 转发到: /api/v1/host/ws/hosts
+            - Gateway接收: /api/v1/auth/device/login → 转发到: /api/v1/auth/device/login
         """
-        # ✅ 构建URL - 不包含service_name，直接转发subpath
+        # ✅ 构建URL - 包含service_name，确保路由完整
         # Gateway接收: /api/v1/{service_name}/{subpath}
-        # 转发到后端: /api/v1/{subpath}
+        # 转发到后端: /api/v1/{service_name}/{subpath}
         # 示例:
-        #   Gateway接收: /api/v1/host/ws/hosts
-        #   转发到Host Service: /api/v1/ws/hosts ✅
-        return f"{service_url}{API_PREFIX}/{path}"
+        #   Gateway接收: /api/v1/auth/device/login
+        #   转发到Auth Service: /api/v1/auth/device/login ✅
+        return f"{service_url}{API_PREFIX}/{service_name}/{path}"
 
     def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
         """记录后端错误日志
@@ -358,7 +359,6 @@ class ProxyService:
         Raises:
             ServiceNotFoundError: 服务不存在
         """
-        import websockets
 
         try:
             # 获取服务 URL
@@ -504,7 +504,6 @@ class ProxyService:
         - FastAPI WebSocket: 使用 receive_text() / receive_bytes()
         - websockets.WebSocketClientProtocol: 直接用 async for 遍历或使用 recv()
         """
-        import websockets
 
         try:
             # 判断source的类型来决定接收方法
