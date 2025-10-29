@@ -1,13 +1,14 @@
-"""主机管理服务
+"""浏览器插件主机管理服务
 
-提供主机查询、状态更新等核心业务逻辑。
+提供浏览器插件使用的主机查询、状态更新等核心业务逻辑。
 """
 
 from datetime import datetime, timezone
-from typing import cast
+from typing import List, cast
 
+from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
-from app.schemas.host import HostStatusUpdate
+from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
 from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
@@ -29,10 +30,10 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-class HostService:
-    """主机管理服务类
+class BrowserHostService:
+    """浏览器插件主机管理服务类
 
-    负责主机的基本管理操作，包括查询、状态更新、心跳更新等。
+    负责浏览器插件的主机管理操作，包括查询、状态更新、心跳更新等。
     """
 
     @handle_service_errors(
@@ -334,6 +335,7 @@ class HostService:
             # 更新 tcp_state
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
+                # ✅ 修复：不手动设置 updated_time，让 onupdate=func.now() 自动更新
                 stmt = (
                     update(HostRec)
                     .where(
@@ -342,10 +344,7 @@ class HostService:
                             HostRec.del_flag == 0,
                         )
                     )
-                    .values(
-                        tcp_state=tcp_state,
-                        updated_time=datetime.now(timezone.utc),
-                    )
+                    .values(tcp_state=tcp_state)  # 移除手动设置的 updated_time
                 )
 
                 result = await session.execute(stmt)
@@ -362,12 +361,226 @@ class HostService:
                     )
                     return True
                 else:
+                    logger.warning(
+                        f"TCP状态更新无匹配行: host_id={host_id}, tcp_state={tcp_state}",
+                        extra={
+                            "host_id": host_id,
+                            "host_id_int": host_id_int,
+                            "tcp_state": tcp_state,
+                            "reason": "记录不存在或已删除",
+                        },
+                    )
                     return False
 
         except Exception as e:
             logger.error(
-                f"更新TCP状态失败: host_id={host_id}, tcp_state={tcp_state}",
-                extra={"host_id": host_id, "tcp_state": tcp_state, "error": str(e)},
+                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={str(e)}",
+                extra={
+                    "host_id": host_id,
+                    "tcp_state": tcp_state,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
                 exc_info=True,
             )
             return False
+
+    @handle_service_errors(
+        error_message="查询重试 VNC 列表失败",
+        error_code="GET_RETRY_VNC_LIST_FAILED",
+    )
+    async def get_retry_vnc_list(self, user_id: str) -> List[RetryVNCHostInfo]:
+        """查询需要重试的 VNC 连接列表
+
+        业务逻辑：
+        1. 查询 host_exec_log 表，条件：
+           - user_id = 入参的user_id
+           - case_state != 2（非成功状态）
+           - del_flag = 0（未删除）
+        2. 获取这些记录的 host_id
+        3. 查询 host_rec 表对应的主机信息
+        4. 返回 host_id（主机ID）和 host_acct（重命名为 user_name）
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            重试 VNC 主机信息列表
+        """
+        logger.info(
+            "查询重试 VNC 列表",
+            extra={
+                "user_id": user_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 查询 host_exec_log 表，获取需要重试的 host_id 列表
+            log_stmt = (
+                select(HostExecLog.host_id)
+                .where(
+                    and_(
+                        HostExecLog.user_id == user_id,
+                        HostExecLog.case_state != 2,  # 非成功状态
+                        HostExecLog.del_flag == 0,
+                    )
+                )
+                .distinct()  # 去重，同一个 host_id 可能有多条失败记录
+            )
+
+            log_result = await session.execute(log_stmt)
+            host_ids = [row[0] for row in log_result.fetchall() if row[0] is not None]
+
+            logger.info(
+                "查询到需要重试的主机ID列表",
+                extra={
+                    "user_id": user_id,
+                    "host_id_count": len(host_ids),
+                    "host_ids": host_ids,
+                },
+            )
+
+            # 2. 如果没有需要重试的主机，直接返回空列表
+            if not host_ids:
+                logger.info(
+                    "没有需要重试的 VNC 连接",
+                    extra={
+                        "user_id": user_id,
+                    },
+                )
+                return []
+
+            # 3. 查询 host_rec 表，获取主机详细信息
+            host_stmt = select(HostRec.id, HostRec.host_ip, HostRec.host_acct).where(
+                and_(
+                    HostRec.id.in_(host_ids),
+                    HostRec.del_flag == 0,
+                )
+            )
+
+            host_result = await session.execute(host_stmt)
+            hosts = host_result.fetchall()
+
+            logger.info(
+                "查询到主机详细信息",
+                extra={
+                    "user_id": user_id,
+                    "host_count": len(hosts),
+                },
+            )
+
+            # 4. 构建返回结果
+            retry_vnc_list = [
+                RetryVNCHostInfo(
+                    host_id=host[0],
+                    host_ip=host[1] or "",  # 防止 None 值
+                    user_name=host[2] or "",  # host_acct 重命名为 user_name
+                )
+                for host in hosts
+            ]
+
+            logger.info(
+                "查询重试 VNC 列表成功",
+                extra={
+                    "user_id": user_id,
+                    "total": len(retry_vnc_list),
+                },
+            )
+
+            return retry_vnc_list
+
+    @handle_service_errors(
+        error_message="释放主机失败",
+        error_code="RELEASE_HOSTS_FAILED",
+    )
+    async def release_hosts(self, user_id: str, host_list: List[str]) -> int:
+        """释放主机 - 逻辑删除执行日志记录
+
+        逻辑删除 host_exec_log 表中符合条件的记录（设置 del_flag = 1）：
+        - user_id = 入参的 user_id
+        - host_id IN (host_list)
+        - del_flag = 0（只删除未删除的记录）
+
+        Args:
+            user_id: 用户ID
+            host_list: 主机ID列表
+
+        Returns:
+            更新的记录数
+        """
+        logger.info(
+            "开始释放主机（逻辑删除）",
+            extra={
+                "user_id": user_id,
+                "host_count": len(host_list),
+                "host_list": host_list,
+            },
+        )
+
+        # 将 host_list 中的字符串转换为整数
+        try:
+            host_ids = [int(host_id) for host_id in host_list]
+        except (ValueError, TypeError) as e:
+            logger.error(
+                "主机ID格式转换失败",
+                extra={
+                    "user_id": user_id,
+                    "host_list": host_list,
+                    "error": str(e),
+                },
+            )
+            raise BusinessError(
+                message="主机ID格式无效",
+                error_code="INVALID_HOST_ID",
+                code=400,
+            )
+
+        logger.info(
+            "主机ID转换完成",
+            extra={
+                "user_id": user_id,
+                "host_ids": host_ids,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 构建逻辑删除语句（UPDATE del_flag = 1）
+            stmt = (
+                update(HostExecLog)
+                .where(
+                    and_(
+                        HostExecLog.user_id == user_id,
+                        HostExecLog.host_id.in_(host_ids),
+                        HostExecLog.del_flag == 0,  # 只更新未删除的记录
+                    )
+                )
+                .values(del_flag=1)  # 设置为已删除
+            )
+
+            logger.info(
+                "执行逻辑删除操作",
+                extra={
+                    "user_id": user_id,
+                    "host_ids": host_ids,
+                    "operation": "UPDATE del_flag = 1",
+                },
+            )
+
+            # 执行更新
+            result = await session.execute(stmt)
+            await session.commit()
+
+            updated_count = result.rowcount
+
+            logger.info(
+                "释放主机完成（逻辑删除）",
+                extra={
+                    "user_id": user_id,
+                    "host_count": len(host_list),
+                    "updated_count": updated_count,
+                },
+            )
+
+            return updated_count

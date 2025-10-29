@@ -1,6 +1,6 @@
-"""VNC 连接管理 API 端点
+"""浏览器插件 VNC 连接管理 API 端点
 
-提供 VNC 连接相关的 API 端点，包括：
+提供浏览器插件使用的 VNC 连接相关的 API 端点，包括：
 - POST /vnc/report - 上报 VNC 连接结果
 - POST /vnc/connect - 获取 VNC 连接信息
 """
@@ -24,7 +24,7 @@ except ImportError:
 
 from app.api.v1.dependencies import get_vnc_service
 from app.schemas.host import GetVNCConnectionRequest, VNCConnectionInfo, VNCConnectionReport, VNCConnectionResponse
-from app.services.vnc_service import VNCService
+from app.services.browser_vnc_service import BrowserVNCService
 
 logger = get_logger(__name__)
 
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
     response_model=SuccessResponse,
     status_code=HTTP_200_OK,
     summary="上报 VNC 连接结果",
-    description="处理浏览器插件上报的 VNC 连接结果，更新主机状态为已锁定",
+    description="处理浏览器插件上报的 VNC 连接结果，更新主机状态并管理执行日志",
     responses={
         200: {
             "description": "上报成功",
@@ -49,7 +49,7 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
                             "host_id": "123",
                             "connection_status": "success",
                             "connection_time": "2025-10-15T10:00:00Z",
-                            "message": "VNC连接结果上报成功，主机已锁定",
+                            "message": "VNC连接结果上报成功，主机已锁定，执行日志已deleted_and_created",
                         },
                     }
                 }
@@ -72,28 +72,35 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
 @handle_api_errors
 async def report_vnc_connection(
     request: VNCConnectionReport,
-    vnc_service: VNCService = Depends(get_vnc_service),
+    vnc_service: BrowserVNCService = Depends(get_vnc_service),
 ):
     """上报 VNC 连接结果
 
     处理浏览器插件上报的 VNC 连接结果，记录连接状态和时间，
-    并更新主机状态为已锁定。
+    并更新主机状态和执行日志。
 
     ## 请求参数说明
     - `user_id`: 用户ID（必填）
+    - `tc_id`: 执行测试ID（必填）
+    - `cycle_name`: 周期名称（必填）
+    - `user_name`: 用户名称（必填）
     - `host_id`: 主机ID，对应 host_rec.id（必填）
     - `connection_status`: 连接状态，可选值: success/failed（必填）
-    - `connection_time`: VNC 连接时间（可选）
+    - `connection_time`: VNC 连接时间（必填）
 
     ## 业务逻辑
-    1. 根据 host_id 查询 host_rec 表
+    1. 根据 host_id 查询 host_rec 表，验证主机是否存在
     2. 若主机不存在，返回 400 错误
-    3. 更新 host_state = 1（已锁定）
-    4. 更新 subm_time = 当前时间
+    3. 如果 connection_status = "success"：
+       - 查询 host_exec_log 表（user_id、tc_id、cycle_name、user_name、host_id、del_flag=0）
+       - 如果存在旧记录：先逻辑删除旧记录（del_flag=1）
+       - 无论是否存在旧记录：都新增一条新记录（host_state=1, case_state=0）
+    4. 更新 host_rec 表：host_state = 1（已锁定），subm_time = 当前时间
     5. 记录详细操作日志
 
     ## 错误码
     - `HOST_NOT_FOUND`: 主机不存在（400）
+    - `INVALID_HOST_ID`: 主机ID格式无效（400）
 
     Args:
         request: VNC 连接结果上报数据
@@ -106,6 +113,9 @@ async def report_vnc_connection(
         "接收 VNC 连接结果上报请求",
         extra={
             "user_id": request.user_id,
+            "tc_id": request.tc_id,
+            "cycle_name": request.cycle_name,
+            "user_name": request.user_name,
             "host_id": request.host_id,
             "connection_status": request.connection_status,
         },
@@ -123,6 +133,7 @@ async def report_vnc_connection(
     logger.info(
         "VNC 连接结果上报处理完成",
         extra={
+            "user_id": request.user_id,
             "host_id": request.host_id,
             "connection_status": request.connection_status,
         },
@@ -187,7 +198,7 @@ async def report_vnc_connection(
 @handle_api_errors
 async def get_vnc_connection(
     request: GetVNCConnectionRequest,
-    vnc_service: VNCService = Depends(get_vnc_service),
+    vnc_service: BrowserVNCService = Depends(get_vnc_service),
 ):
     """获取 VNC 连接信息
 

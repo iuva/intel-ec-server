@@ -62,6 +62,9 @@ class VNCConnectionReport(BaseModel):
     """VNC 连接结果上报 - 浏览器插件上报VNC连接结果"""
 
     user_id: str = Field(..., description="用户ID")
+    tc_id: str = Field(..., description="执行测试ID")
+    cycle_name: str = Field(..., description="周期名称")
+    user_name: str = Field(..., description="用户名称")
     host_id: str = Field(..., description="主机ID")
     connection_status: str = Field(..., description="连接状态 (success/failed)", pattern=r"^(success|failed)$")
     connection_time: datetime = Field(..., description="连接时间")
@@ -161,5 +164,51 @@ class VNCConnectionInfo(BaseModel):
     port: str = Field(description="VNC服务端口")
     username: str = Field(description="连接用户名")
     ***REMOVED***word: str = Field(description="连接密码")
+
+    model_config = {"from_attributes": True}
+
+
+class GetRetryVNCListRequest(BaseModel):
+    """获取重试 VNC 列表请求模式"""
+
+    user_id: str = Field(description="用户ID")
+
+    model_config = {"from_attributes": True}
+
+
+class RetryVNCHostInfo(BaseModel):
+    """重试 VNC 主机信息"""
+
+    host_id: int = Field(description="主机ID (host_rec.id)")
+    host_ip: str = Field(description="主机IP")
+    user_name: str = Field(description="主机账号 (host_acct)")
+
+    model_config = {"from_attributes": True}
+
+
+class RetryVNCListResponse(BaseModel):
+    """重试 VNC 列表响应模式"""
+
+    hosts: List[RetryVNCHostInfo] = Field(description="重试 VNC 主机列表")
+    total: int = Field(description="主机总数")
+
+    model_config = {"from_attributes": True}
+
+
+class ReleaseHostsRequest(BaseModel):
+    """释放主机请求模式"""
+
+    user_id: str = Field(description="用户ID")
+    host_list: List[str] = Field(description="主机ID列表")
+
+    model_config = {"from_attributes": True}
+
+
+class ReleaseHostsResponse(BaseModel):
+    """释放主机响应模式"""
+
+    updated_count: int = Field(description="更新的记录数（逻辑删除）")
+    user_id: str = Field(description="用户ID")
+    host_list: List[str] = Field(description="主机ID列表")
 
     model_config = {"from_attributes": True}

@@ -1,6 +1,6 @@
-"""VNC 连接管理服务
+"""浏览器插件 VNC 连接管理服务
 
-提供 VNC 连接相关的业务逻辑服务，包括：
+提供浏览器插件使用的 VNC 连接相关的业务逻辑服务，包括：
 - 处理 VNC 连接结果上报
 - 获取主机 VNC 连接信息
 """
@@ -8,9 +8,10 @@
 from datetime import datetime, timezone
 from typing import Optional, cast
 
+from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import VNCConnectionReport
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -31,10 +32,10 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-class VNCService:
-    """VNC 连接管理服务类
+class BrowserVNCService:
+    """浏览器插件 VNC 连接管理服务类
 
-    负责处理 VNC 连接相关的业务逻辑，包括连接结果上报和连接信息获取。
+    负责处理浏览器插件的 VNC 连接相关的业务逻辑，包括连接结果上报和连接信息获取。
     """
 
     @handle_service_errors(
@@ -44,12 +45,20 @@ class VNCService:
     async def report_vnc_connection(self, vnc_report: VNCConnectionReport) -> dict:
         """处理浏览器插件上报的VNC连接结果
 
-        功能描述：根据 host_id 更新 host_rec 表，设置 host_state = 1（已锁定），
-                 subm_time = 当前时间。如果数据不存在，直接返回"主机不存在"。
+        功能描述：
+        1. 根据 host_id 验证主机是否存在
+        2. 如果 connection_status = "success"：
+           - 查询 host_exec_log 表（user_id、tc_id、cycle_name、user_name、host_id、del_flag=0）
+           - 如果存在旧记录：先逻辑删除旧记录（del_flag=1）
+           - 无论是否存在旧记录：都新增一条新记录（host_state=1, case_state=0）
+        3. 更新 host_rec 表：host_state = 1, subm_time = 当前时间
 
         Args:
             vnc_report: VNC连接结果上报数据
                 - user_id: 用户ID
+                - tc_id: 执行测试ID
+                - cycle_name: 周期名称
+                - user_name: 用户名称
                 - host_id: 主机ID
                 - connection_status: 连接状态 (success/failed)
                 - connection_time: 连接时间
@@ -60,18 +69,33 @@ class VNCService:
         Raises:
             BusinessError: 主机不存在或处理失败
         """
+        # 转换 host_id 为整数
+        try:
+            host_id_int = int(vnc_report.host_id)
+        except (ValueError, TypeError):
+            logger.warning(
+                "主机ID格式错误",
+                extra={
+                    "host_id": vnc_report.host_id,
+                    "error": "not a valid integer",
+                },
+            )
+            raise BusinessError(
+                message="主机ID格式无效",
+                error_code="INVALID_HOST_ID",
+                code=400,
+            )
+
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 根据 host_id 查询 host_rec 表
-            # 注意：host_id 是字符串类型的 ID，对应 host_rec 表的 id 字段
+            # 1. 验证主机是否存在
             stmt = select(HostRec).where(
-                HostRec.id == int(vnc_report.host_id),
-                HostRec.del_flag == 0,  # 未删除的记录
+                HostRec.id == host_id_int,
+                HostRec.del_flag == 0,
             )
             result = await session.execute(stmt)
             host_rec = result.scalar_one_or_none()
 
-            # 如果主机不存在，返回错误
             if not host_rec:
                 logger.warning(
                     "主机记录不存在",
@@ -85,19 +109,85 @@ class VNCService:
                 raise BusinessError(
                     message=f"主机不存在: {vnc_report.host_id}",
                     error_code="HOST_NOT_FOUND",
-                    code=400,  # 改为 400 而不是 404
+                    code=400,
                 )
 
             # 记录更新前的状态
             old_host_state = host_rec.host_state
             old_subm_time = host_rec.subm_time
 
-            # 根据连接状态更新 host_rec 表
-            # 设置 host_state = 1（已锁定），subm_time = 当前时间
+            # 2. 如果连接状态为 success，处理 host_exec_log 表
+            exec_log_action = None  # 记录操作类型：deleted_and_created/created
+            if vnc_report.connection_status == "success":
+                # 查询 host_exec_log 表
+                log_stmt = select(HostExecLog).where(
+                    and_(
+                        HostExecLog.user_id == vnc_report.user_id,
+                        HostExecLog.tc_id == vnc_report.tc_id,
+                        HostExecLog.cycle_name == vnc_report.cycle_name,
+                        HostExecLog.user_name == vnc_report.user_name,
+                        HostExecLog.host_id == host_id_int,
+                        HostExecLog.del_flag == 0,
+                    )
+                )
+                log_result = await session.execute(log_stmt)
+                existing_log = log_result.scalar_one_or_none()
+
+                if existing_log:
+                    # 存在记录：先逻辑删除
+                    logger.info(
+                        "找到已存在的执行日志，先进行逻辑删除",
+                        extra={
+                            "log_id": existing_log.id,
+                            "user_id": vnc_report.user_id,
+                            "host_id": vnc_report.host_id,
+                        },
+                    )
+
+                    update_stmt = (
+                        update(HostExecLog)
+                        .where(HostExecLog.id == existing_log.id)
+                        .values(del_flag=1)
+                    )
+                    await session.execute(update_stmt)
+                    exec_log_action = "deleted_and_created"
+                else:
+                    logger.info(
+                        "未找到已存在的执行日志",
+                        extra={
+                            "user_id": vnc_report.user_id,
+                            "host_id": vnc_report.host_id,
+                        },
+                    )
+                    exec_log_action = "created"
+
+                # 无论是否存在旧记录，都新增一条新记录
+                logger.info(
+                    "创建新的执行日志记录",
+                    extra={
+                        "user_id": vnc_report.user_id,
+                        "host_id": vnc_report.host_id,
+                    },
+                )
+
+                new_log = HostExecLog(
+                    host_id=host_id_int,
+                    user_id=vnc_report.user_id,
+                    tc_id=vnc_report.tc_id,
+                    cycle_name=vnc_report.cycle_name,
+                    user_name=vnc_report.user_name,
+                    host_state=1,  # 已锁定
+                    case_state=0,  # 空闲
+                    begin_time=datetime.now(timezone.utc),
+                    del_flag=0,
+                )
+                session.add(new_log)
+
+            # 3. 更新 host_rec 表
             host_rec.host_state = 1  # 已锁定状态
             host_rec.subm_time = datetime.now(timezone.utc)
 
-            # 提交更新
+            # 提交所有更改
             await session.commit()
             await session.refresh(host_rec)
 
@@ -119,6 +209,9 @@ class VNCService:
                 extra={
                     "operation": "report_vnc_connection",
                     "user_id": vnc_report.user_id,
+                    "tc_id": vnc_report.tc_id,
+                    "cycle_name": vnc_report.cycle_name,
+                    "user_name": vnc_report.user_name,
                     "host_id": vnc_report.host_id,
                     "connection_status": vnc_report.connection_status,
                     "connection_time": connection_time_str,
@@ -126,6 +219,7 @@ class VNCService:
                     "new_host_state": host_rec.host_state,
                     "old_subm_time": old_subm_time_str,
                     "new_subm_time": new_subm_time_str,
+                    "exec_log_action": exec_log_action,
                 },
             )
 
@@ -133,7 +227,7 @@ class VNCService:
                 "host_id": vnc_report.host_id,
                 "connection_status": vnc_report.connection_status,
                 "connection_time": vnc_report.connection_time,
-                "message": "VNC连接结果上报成功，主机已锁定",
+                "message": f"VNC连接结果上报成功，主机已锁定{f'，执行日志已{exec_log_action}' if exec_log_action else ''}",
             }
 
     @handle_service_errors(

@@ -12,20 +12,25 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
-from app.services.host_service import HostService
+from app.services.browser_host_service import BrowserHostService
 from fastapi import WebSocket
+from sqlalchemy import and_, select
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.loguru_config import get_logger
+    from shared.common.database import mariadb_manager
     from app.schemas.host import HostStatusUpdate
+    from app.models.host_exec_log import HostExecLog
 except ImportError:
     import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
+    from shared.common.database import mariadb_manager
     from app.schemas.host import HostStatusUpdate
+    from app.models.host_exec_log import HostExecLog
 
 logger = get_logger(__name__)
 
@@ -75,8 +80,8 @@ class WebSocketManager:
         self.message_handlers: Dict[str, Callable] = {}
         # 心跳超时时间（秒）
         self.heartbeat_timeout = 60
-        # 主机服务实例
-        self.host_service = HostService()
+        # 主机服务实例（共享基础功能）
+        self.host_service = BrowserHostService()
 
         # 注册默认的消息处理器
         self._register_default_handlers()
@@ -87,6 +92,7 @@ class WebSocketManager:
             "heartbeat": self._handle_heartbeat,
             "status_update": self._handle_status_update,
             "command_response": self._handle_command_response,
+            "connection_result": self._handle_connection_result,  # Agent 上报连接结果
         }
 
     def register_handler(self, message_type: str, handler: Callable) -> None:
@@ -399,6 +405,149 @@ class WebSocketManager:
                 "error": error,
             },
         )
+
+    async def _handle_connection_result(self, agent_id: str, data: dict) -> None:
+        """处理 Agent 上报连接结果
+
+        业务逻辑:
+        1. 查询 host_exec_log 表: host_id = agent_id, host_state = 1, del_flag = 0
+        2. 获取最新一条数据（按 created_at 降序）
+        3. 如果数据不存在: 发送错误消息
+        4. 如果数据存在:
+           - 更新 host_state = 2 (已占用)
+           - 提取 tc_id, cycle_name, user_name
+           - 下发执行参数给 Agent
+
+        Args:
+            agent_id: Agent/Host ID (来自 token)
+            data: 消息数据
+        """
+        try:
+            # 转换 agent_id 为整数
+            try:
+                host_id_int = int(agent_id)
+            except (ValueError, TypeError):
+                logger.error(
+                    f"Agent ID 格式错误: {agent_id}",
+                    extra={
+                        "agent_id": agent_id,
+                        "error": "not a valid integer",
+                    },
+                )
+                await self._send_error_message(agent_id, "Host ID 格式无效")
+                return
+
+            logger.info(
+                "开始处理 Agent 连接结果上报",
+                extra={
+                    "agent_id": agent_id,
+                    "host_id": host_id_int,
+                },
+            )
+
+            # 查询 host_exec_log 表
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # 查询条件: host_id = agent_id, host_state = 1, del_flag = 0
+                # 按 created_at 降序，获取最新一条
+                stmt = (
+                    select(HostExecLog)
+                    .where(
+                        and_(
+                            HostExecLog.host_id == host_id_int,
+                            HostExecLog.host_state == 1,  # 已锁定
+                            HostExecLog.del_flag == 0,
+                        )
+                    )
+                    .order_by(HostExecLog.created_at.desc())
+                    .limit(1)
+                )
+
+                result = await session.execute(stmt)
+                exec_log = result.scalar_one_or_none()
+
+                if not exec_log:
+                    # 数据不存在: 发送错误消息
+                    logger.warning(
+                        "未找到执行日志记录",
+                        extra={
+                            "agent_id": agent_id,
+                            "host_id": host_id_int,
+                            "host_state": 1,
+                            "del_flag": 0,
+                        },
+                    )
+
+                    error_msg = {
+                        "type": "connection_result_error",
+                        "message": "未找到待执行任务，请先通过 VNC 上报连接结果",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    await self.send_to_host(agent_id, error_msg)
+                    return
+
+                # 数据存在: 更新 host_state = 2
+                logger.info(
+                    "找到执行日志记录，准备更新状态并下发执行参数",
+                    extra={
+                        "agent_id": agent_id,
+                        "log_id": exec_log.id,
+                        "tc_id": exec_log.tc_id,
+                        "cycle_name": exec_log.cycle_name,
+                        "user_name": exec_log.user_name,
+                    },
+                )
+
+                # 更新 host_state = 2 (已占用)
+                from sqlalchemy import update
+
+                update_stmt = (
+                    update(HostExecLog)
+                    .where(HostExecLog.id == exec_log.id)
+                    .values(host_state=2)  # 已占用
+                )
+                await session.execute(update_stmt)
+                await session.commit()
+
+                logger.info(
+                    "执行日志状态已更新",
+                    extra={
+                        "agent_id": agent_id,
+                        "log_id": exec_log.id,
+                        "old_host_state": 1,
+                        "new_host_state": 2,
+                    },
+                )
+
+                # 提取执行参数
+                execute_params = {
+                    "type": "execute_params",
+                    "tc_id": exec_log.tc_id,
+                    "cycle_name": exec_log.cycle_name,
+                    "user_name": exec_log.user_name,
+                    "message": "执行参数已下发",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+
+                # 下发执行参数给 Agent
+                await self.send_to_host(agent_id, execute_params)
+
+                logger.info(
+                    "执行参数已下发",
+                    extra={
+                        "agent_id": agent_id,
+                        "tc_id": exec_log.tc_id,
+                        "cycle_name": exec_log.cycle_name,
+                        "user_name": exec_log.user_name,
+                    },
+                )
+
+        except Exception as e:
+            logger.error(
+                f"处理 Agent 连接结果失败: {agent_id}, 错误: {e!s}",
+                exc_info=True,
+            )
+            await self._send_error_message(agent_id, "处理连接结果失败")
 
     async def _heartbeat_monitor(self, agent_id: str) -> None:
         """心跳监控任务
