@@ -1,9 +1,9 @@
-"""WebSocket 连接管理器
+"""Agent WebSocket 连接管理器
 
 核心功能:
-1. 管理WebSocket连接池 (通过agent_id/host_id)
+1. 管理 Agent WebSocket 连接池 (通过agent_id/host_id)
 2. 根据消息类型进行路由和处理
-3. 支持指定host通知和广播通知
+3. 支持指定 host 通知和广播通知
 4. 心跳检测和连接管理
 """
 
@@ -35,34 +35,34 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# 全局 WebSocket 管理器实例（单例）
-_ws_manager_instance: Optional["WebSocketManager"] = None
+# 全局 Agent WebSocket 管理器实例（单例）
+_agent_ws_manager_instance: Optional["AgentWebSocketManager"] = None
 
 
-def get_websocket_manager() -> "WebSocketManager":
-    """获取 WebSocket 管理器单例
+def get_agent_websocket_manager() -> "AgentWebSocketManager":
+    """获取 Agent WebSocket 管理器单例
 
     Returns:
-        WebSocketManager 实例
+        AgentWebSocketManager 实例
 
     Note:
         - 使用单例模式，确保全局只有一个管理器实例
         - 所有模块应该通过此函数获取管理器，而不是直接实例化
     """
-    global _ws_manager_instance
+    global _agent_ws_manager_instance
 
-    if _ws_manager_instance is None:
-        _ws_manager_instance = WebSocketManager()
-        logger.info("✅ WebSocket 管理器实例已创建")
+    if _agent_ws_manager_instance is None:
+        _agent_ws_manager_instance = AgentWebSocketManager()
+        logger.info("✅ Agent WebSocket 管理器实例已创建")
 
-    return _ws_manager_instance
+    return _agent_ws_manager_instance
 
 
-class WebSocketManager:
-    """WebSocket 连接管理器
+class AgentWebSocketManager:
+    """Agent WebSocket 连接管理器
 
     负责：
-    1. 管理Agent WebSocket连接
+    1. 管理 Agent WebSocket 连接
     2. 根据消息类型进行路由处理
     3. 支持单播（指定host）和广播
     4. 心跳检测

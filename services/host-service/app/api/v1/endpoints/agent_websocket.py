@@ -1,6 +1,6 @@
-"""WebSocket 连接端点
+"""Agent WebSocket 连接端点
 
-提供 Host 的 WebSocket 连接接口
+提供 Agent 的 WebSocket 连接接口
 """
 
 import os
@@ -18,7 +18,7 @@ except ImportError:
     from shared.common.loguru_config import get_logger
     from shared.common.websocket_auth import verify_websocket_token, handle_websocket_auth_error
 
-from app.services.websocket_manager import get_websocket_manager
+from app.services.agent_websocket_manager import get_agent_websocket_manager
 
 logger = get_logger(__name__)
 
@@ -37,7 +37,7 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
         - 认证失败会直接返回，不建立连接
         - 连接建立后会自动发送欢迎消息
     """
-    ws_manager = get_websocket_manager()
+    ws_manager = get_agent_websocket_manager()
     logger.info(
         "WebSocket 连接请求",
         extra={

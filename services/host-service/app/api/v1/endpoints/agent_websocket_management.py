@@ -1,6 +1,6 @@
-"""WebSocket 管理 HTTP API 端点
+"""Agent WebSocket 管理 HTTP API 端点
 
-提供 WebSocket 连接管理和消息发送的 HTTP 接口
+提供 Agent WebSocket 连接管理和消息发送的 HTTP 接口
 """
 
 import os
@@ -20,7 +20,7 @@ except ImportError:
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 
-from app.services.websocket_manager import get_websocket_manager
+from app.services.agent_websocket_manager import get_agent_websocket_manager
 
 logger = get_logger(__name__)
 
@@ -54,7 +54,7 @@ async def get_active_hosts():
         }
         ```
     """
-    ws_manager = get_websocket_manager()
+    ws_manager = get_agent_websocket_manager()
     hosts = ws_manager.get_active_hosts()
 
     logger.info(f"查询活跃Host列表: 共 {len(hosts)} 个")
@@ -92,7 +92,7 @@ async def get_host_status(host_id: str):
         }
         ```
     """
-    ws_manager = get_websocket_manager()
+    ws_manager = get_agent_websocket_manager()
     is_connected = ws_manager.is_connected(host_id)
 
     logger.debug(f"查询Host连接状态: {host_id} -> {'已连接' if is_connected else '未连接'}")
@@ -151,7 +151,7 @@ async def send_message_to_host(host_id: str, message: Dict):
             code=400,
         )
 
-    ws_manager = get_websocket_manager()
+    ws_manager = get_agent_websocket_manager()
     success = await ws_manager.send_to_host(host_id, message)
 
     if success:
@@ -213,7 +213,7 @@ async def send_message_to_hosts(host_ids: List[str], message: Dict):
             code=400,
         )
 
-    ws_manager = get_websocket_manager()
+    ws_manager = get_agent_websocket_manager()
     success_count = await ws_manager.send_to_hosts(host_ids, message)
 
     logger.info(f"多播消息完成: 目标 {len(host_ids)} 个Host, 成功 {success_count} 个, 类型: {message.get('type')}")
@@ -273,7 +273,7 @@ async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, de
             code=400,
         )
 
-    ws_manager = get_websocket_manager()
+    ws_manager = get_agent_websocket_manager()
     success_count = await ws_manager.broadcast(message, exclude=exclude_host_id)
     total_count = ws_manager.get_connection_count()
 
