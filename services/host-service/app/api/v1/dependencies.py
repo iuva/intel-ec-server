@@ -399,45 +399,49 @@ Host Service API 依赖注入
 
 from typing import Optional
 
+from app.services.browser_host_service import BrowserHostService
+from app.services.browser_vnc_service import BrowserVNCService
 from app.services.host_discovery_service import HostDiscoveryService
-from app.services.host_service import HostService
-from app.services.vnc_service import VNCService
 
 # 全局服务实例缓存（使用 Optional 类型注解）
-_host_service_instance: Optional[HostService] = None
-_vnc_service_instance: Optional[VNCService] = None
+_browser_host_service_instance: Optional[BrowserHostService] = None
+_browser_vnc_service_instance: Optional[BrowserVNCService] = None
 _host_discovery_service_instance: Optional[HostDiscoveryService] = None
 
 
-def get_host_service() -> HostService:
-    """获取主机服务实例（单例模式）
+def get_host_service() -> BrowserHostService:
+    """获取浏览器插件主机服务实例（单例模式）
 
     Returns:
-        HostService: 主机服务实例
+        BrowserHostService: 浏览器插件主机服务实例
     """
-    global _host_service_instance
+    global _browser_host_service_instance
 
-    if _host_service_instance is None:
-        _host_service_instance = HostService()
+    if _browser_host_service_instance is None:
+        _browser_host_service_instance = BrowserHostService()
 
+<<<<<<< HEAD
     return _host_service_instance
 <<<<<<< HEAD
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 =======
+=======
+    return _browser_host_service_instance
+>>>>>>> 2994441 (feat(host-service): 重构主机与VNC服务为浏览器插件专用版本)
 
 
-def get_vnc_service() -> VNCService:
-    """获取 VNC 服务实例（单例模式）
+def get_vnc_service() -> BrowserVNCService:
+    """获取浏览器插件 VNC 服务实例（单例模式）
 
     Returns:
-        VNCService: VNC 服务实例
+        BrowserVNCService: 浏览器插件 VNC 服务实例
     """
-    global _vnc_service_instance
+    global _browser_vnc_service_instance
 
-    if _vnc_service_instance is None:
-        _vnc_service_instance = VNCService()
+    if _browser_vnc_service_instance is None:
+        _browser_vnc_service_instance = BrowserVNCService()
 
-    return _vnc_service_instance
+    return _browser_vnc_service_instance
 
 
 def get_host_discovery_service() -> HostDiscoveryService:
