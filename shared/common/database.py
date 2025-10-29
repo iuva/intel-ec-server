@@ -2,18 +2,22 @@
 MariaDB 数据库管理器 - 异步 SQLAlchemy 集成
 """
 
-from datetime import datetime
 import logging
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy import BigInteger, DateTime, SmallInteger, func
-from sqlalchemy.ext.asyncio import (  # type: ignore[attr-defined]
-    AsyncEngine,
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,  # type: ignore[attr-defined]
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column  # type: ignore[attr-defined]
+from sqlalchemy.orm import (
+    DeclarativeBase,  # type: ignore[attr-defined]
+    Mapped,
+    mapped_column,
+)
 
 from shared.common.cache import redis_manager
 

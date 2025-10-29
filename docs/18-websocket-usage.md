@@ -75,7 +75,8 @@ ws://localhost:8000/api/v1/ws/host
 
 | 参数 | 必需 | 说明 | 示例 |
 |-----|------|------|------|
-| `token` | ✅ | JWT认证令牌 | `?token=eyJhbGc...` |
+| `Authorization` | ✅ | 请球头JWT认证令牌（推荐） | `?token=eyJhbGc...` |
+| `token` | ✅ | JWT认证令牌（不推荐） | `?token=eyJhbGc...` |
 
 ### ⚠️ 重要变更
 
@@ -228,12 +229,12 @@ JWT Token 必须包含以下字段：
 
 ### 认证方式
 
-#### 方式1: 查询参数 (推荐)
+#### 方式1: 查询参数
 ```
 ws://localhost:8003/api/v1/ws/host?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-#### 方式2: Authorization Header
+#### 方式2: Authorization Header (推荐)
 ```python
 import websockets
 

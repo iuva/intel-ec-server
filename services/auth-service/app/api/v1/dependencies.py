@@ -6,9 +6,8 @@ API 依赖注入
 
 from typing import Optional
 
-from fastapi import Request
-
 from app.services.auth_service import AuthService
+from fastapi import Request
 
 # 使用 try-except 方式处理路径导入
 try:

@@ -61,7 +61,6 @@ def configure_logger(
         root_logger.removeHandler(handler)
 
     # 配置loguru拦截标准logging
-    from typing import Any
 
     # 构建处理器配置，不使用 cast() 避免类型错误
     handlers_config: Any = [

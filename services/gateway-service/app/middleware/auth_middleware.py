@@ -6,11 +6,11 @@
 
 import os
 import sys
+import httpx
 from typing import Any, Dict, Optional
 
 # 使用 try-except 方式处理路径导入
 try:
-    import httpx
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
     from starlette.responses import JSONResponse
@@ -20,7 +20,6 @@ try:
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    import httpx
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
     from starlette.responses import JSONResponse

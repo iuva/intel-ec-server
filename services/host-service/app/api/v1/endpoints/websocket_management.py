@@ -216,9 +216,7 @@ async def send_message_to_hosts(host_ids: List[str], message: Dict):
     ws_manager = get_websocket_manager()
     success_count = await ws_manager.send_to_hosts(host_ids, message)
 
-    logger.info(
-        f"多播消息完成: 目标 {len(host_ids)} 个Host, 成功 {success_count} 个, 类型: {message.get('type')}"
-    )
+    logger.info(f"多播消息完成: 目标 {len(host_ids)} 个Host, 成功 {success_count} 个, 类型: {message.get('type')}")
 
     return SuccessResponse(
         data={

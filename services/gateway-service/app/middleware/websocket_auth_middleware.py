@@ -6,20 +6,21 @@ WebSocket 认证中间件
 
 import os
 import sys
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+from urllib.parse import parse_qs, urlparse
+
 from fastapi import WebSocket, WebSocketException
-from urllib.parse import urlparse, parse_qs
 
 # 使用 try-except 方式处理路径导入
 try:
+    from shared.common.exceptions import AuthorizationError
     from shared.common.loguru_config import get_logger
     from shared.common.security import JWTManager
-    from shared.common.exceptions import AuthorizationError
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from shared.common.exceptions import AuthorizationError
     from shared.common.loguru_config import get_logger
     from shared.common.security import JWTManager
-    from shared.common.exceptions import AuthorizationError
 
 logger = get_logger(__name__)
 

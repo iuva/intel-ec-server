@@ -3,8 +3,9 @@ Prometheus 指标收集模块
 提供统一的指标收集和导出功能
 """
 
-from functools import wraps
+import sys
 import time
+from functools import wraps
 from typing import Any, Awaitable, Callable, Optional
 
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Info, generate_latest
@@ -356,7 +357,6 @@ def set_app_info(service_name: str, version: str, environment: str = "developmen
 
 def set_python_info() -> None:
     """设置 Python 版本信息"""
-    import sys
 
     info_metric = get_python_info()
     if info_metric is not None:

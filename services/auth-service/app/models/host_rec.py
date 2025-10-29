@@ -4,8 +4,8 @@
 定义主机记录表结构和字段
 """
 
-from datetime import datetime
 import time
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import BigInteger, DateTime, Integer, SmallInteger, String, func

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Host WebSocket 测试</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .status { padding: 15px; margin: 10px 0; border-radius: 5px; font-size: 16px; }
+        .connected { background: #d4edda; color: #155724; border: 2px solid #28a745; }
+        .disconnected { background: #f8d7da; color: #721c24; border: 2px solid #dc3545; }
+        button { 
+            padding: 12px 24px; 
+            margin: 8px; 
+            font-size: 14px;
+            cursor: pointer; 
+            border-radius: 5px;
+            border: none;
+        }
+        .btn-connect { background: #28a745; color: white; }
+        .btn-send { background: #007bff; color: white; }
+        .btn-disconnect { background: #dc3545; color: white; }
+        #messages { 
+            border: 2px solid #ddd; 
+            padding: 15px; 
+            height: 400px; 
+            overflow-y: auto; 
+            background: white;
+            border-radius: 5px;
+        }
+        .message { 
+            padding: 8px; 
+            margin: 5px 0; 
+            background: #f8f9fa; 
+            border-left: 4px solid #007bff;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .message.error { border-left-color: #dc3545; background: #fff5f5; }
+        .message.success { border-left-color: #28a745; background: #f0f9f0; }
+    </style>
+</head>
+<body>
+    <h1>🖥️ Host WebSocket 连接测试</h1>
+    
+    <div id="status" class="status disconnected">
+        ⚠️ 未连接 - 请先获取设备 Token
+    </div>
+    
+    <div>
+        <input type="text" id="tokenInput" placeholder="粘贴设备 Token" 
+               style="width: 500px; padding: 10px; font-size: 14px;">
+        <br>
+        <button class="btn-connect" onclick="connectWebSocket()">🔌 连接</button>
+        <button class="btn-send" onclick="sendHeartbeat()">💓 发送心跳</button>
+        <button class="btn-disconnect" onclick="disconnect()">❌ 断开</button>
+    </div>
+    
+    <h3>📨 消息记录</h3>
+    <div id="messages"></div>
+
+    <script>
+        let ws = null;
+        
+        function connectWebSocket() {
+            const token = document.getElementById('tokenInput').value.trim();
+            
+            if (!token) {
+                addMessage('⚠️ 请先输入设备 Token', 'error');
+                return;
+            }
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('⚠️ 已经连接，无需重复连接', 'error');
+                return;
+            }
+            
+            // ✅ 正确的 WebSocket 路径（修复后）
+            const wsUrl = `ws://localhost:8000/api/v1/ws/host-service/host?token=${token}`;
+            
+            addMessage(`🔄 正在连接到: ${wsUrl}`);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                updateStatus('✅ WebSocket 已连接', true);
+                addMessage('✅ WebSocket 连接成功建立', 'success');
+                
+                // 自动发送首次心跳
+                setTimeout(() => sendHeartbeat(), 500);
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                addMessage(`📥 收到: ${JSON.stringify(message, null, 2)}`, 'success');
+                
+                // 处理命令消息
+                if (message.type === 'command') {
+                    addMessage(`⚡ 收到命令: ${message.command}`);
+                    
+                    // 发送命令响应
+                    const response = {
+                        type: 'command_response',
+                        command_id: message.command_id,
+                        status: 'success',
+                        result: '命令执行完成',
+                        timestamp: Date.now()
+                    };
+                    ws.send(JSON.stringify(response));
+                    addMessage(`📤 发送响应: ${JSON.stringify(response)}`, 'success');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                updateStatus('❌ 连接错误', false);
+                addMessage(`❌ WebSocket 错误: ${error.message || '连接失败'}`, 'error');
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = (event) => {
+                updateStatus('⚠️ 已断开', false);
+                addMessage(`⚠️ 连接关闭 (code: ${event.code}, reason: ${event.reason || '正常关闭'})`);
+            };
+        }
+        
+        function sendHeartbeat() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('⚠️ 未连接，无法发送心跳', 'error');
+                return;
+            }
+            
+            const heartbeat = {
+                type: 'heartbeat',
+                data: {
+                    timestamp: Date.now(),
+                    source: 'web-client'
+                }
+            };
+            
+            ws.send(JSON.stringify(heartbeat));
+            addMessage(`💓 发送心跳: ${JSON.stringify(heartbeat)}`, 'success');
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+                addMessage('🔌 主动断开连接');
+            } else {
+                addMessage('⚠️ 尚未建立连接', 'error');
+            }
+        }
+        
+        function updateStatus(text, connected) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = text;
+            statusEl.className = connected ? 'status connected' : 'status disconnected';
+        }
+        
+        function addMessage(text, type = '') {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message ' + type;
+            messageEl.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+    </script>
+</body>
+</html>

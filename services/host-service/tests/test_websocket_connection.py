@@ -9,11 +9,12 @@ WebSocket 连接测试模块
 - 多个连接管理
 """
 
+import asyncio
+import json
+
 import pytest
 import websockets
 from websockets.exceptions import ConnectionClosed
-import json
-import asyncio
 
 
 @pytest.mark.asyncio

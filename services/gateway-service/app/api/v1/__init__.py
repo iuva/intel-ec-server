@@ -2,9 +2,8 @@
 Gateway Service API v1 路由配置
 """
 
-from fastapi import APIRouter
-
 from app.api.v1.endpoints import proxy
+from fastapi import APIRouter
 
 # 创建 API 路由器
 api_router = APIRouter()

@@ -7,32 +7,25 @@ Host Service 主应用入口
 import os
 import sys
 
+from app.api.v1 import api_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import api_router
-
 # 使用 try-except 方式处理路径导入
 try:
-    from shared.app import (
-        ServiceConfig,
-        create_service_lifespan,
-        include_health_routes,
-    )
+    from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from shared.app import (
-        ServiceConfig,
-        create_service_lifespan,
-        include_health_routes,
-    )
+    from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("HOST_SERVICE_NAME", "host-service")
@@ -67,15 +60,6 @@ app.add_middleware(
 # 添加 Prometheus 指标收集中间件
 app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
 
-# 导入统一异常处理中间件
-try:
-    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
-except ImportError:
-    import sys
-
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
-
 # ✅ 立即添加统一异常处理中间件（必须在应用启动前添加）
 app.add_middleware(UnifiedExceptionMiddleware)
 
@@ -92,8 +76,8 @@ include_health_routes(app)
 # 添加公共 metrics 路由（用于 Prometheus 采集指标）
 app.include_router(metrics_router)
 
-# 注册 API 路由
-app.include_router(api_router, prefix="/api/v1")
+# 注册 API 路由（✅ 添加 /host 前缀以匹配 Gateway 转发规则）
+app.include_router(api_router, prefix="/api/v1/host")
 
 
 @app.get("/")

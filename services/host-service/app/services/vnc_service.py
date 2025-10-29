@@ -8,10 +8,9 @@
 from datetime import datetime, timezone
 from typing import Optional, cast
 
-from sqlalchemy import and_, select
-
 from app.models.host_rec import HostRec
 from app.schemas.host import VNCConnectionReport
+from sqlalchemy import and_, select
 
 # 使用 try-except 方式处理路径导入
 try:

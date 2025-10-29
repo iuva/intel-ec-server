@@ -4,11 +4,10 @@
 实现用户登录、令牌生成、令牌验证等功能
 """
 
-from datetime import datetime, timezone
 import os
+import time
+from datetime import datetime, timezone
 from typing import Optional
-
-from sqlalchemy import select
 
 from app.models.host_rec import HostRec
 from app.models.sys_user import SysUser
@@ -22,6 +21,7 @@ from app.schemas.auth import (
     RefreshTokenRequest,
     TokenResponse,
 )
+from sqlalchemy import select
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -202,7 +202,6 @@ class AuthService:
             access_token = self.jwt_manager.create_access_token(data={"sub": user_id, "username": username})
 
             # 将已使用的 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
-            import time
 
             exp = payload.get("exp", 0)
             ttl = max(1, int(exp - time.time()))  # 确保 TTL 至少为 1 秒
@@ -389,7 +388,6 @@ class AuthService:
 
             # 将已使用的旧 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
             exp = payload.get("exp", 0)
-            import time
 
             ttl = max(1, int(exp - time.time()))  # 确保 TTL 至少为 1 秒
             await set_cache(blacklist_key, True, expire=ttl)

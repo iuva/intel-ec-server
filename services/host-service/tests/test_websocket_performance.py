@@ -8,12 +8,13 @@ WebSocket 性能测试模块
 - 消息延迟
 """
 
+import asyncio
+import json
+import os
+import time
+
 import pytest
 import websockets
-import json
-import asyncio
-import time
-import os
 
 
 @pytest.mark.asyncio

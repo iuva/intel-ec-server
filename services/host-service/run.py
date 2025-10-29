@@ -13,7 +13,6 @@ sys.path.insert(0, project_root)
 # 现在可以正常导入并启动应用
 if __name__ == "__main__":
     import uvicorn
-
     from app.main import app
 
     host = os.getenv("SERVICE_HOST", "127.0.0.1")  # 默认仅本地访问

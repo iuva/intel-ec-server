@@ -4,12 +4,12 @@ Redis缓存管理模块
 提供Redis异步连接管理、缓存操作和装饰器功能
 """
 
-from functools import wraps
 import hashlib
 import json
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from functools import wraps
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import quote_plus
 
 import redis.asyncio as redis

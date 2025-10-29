@@ -5,14 +5,12 @@
 """
 
 import asyncio
-from functools import wraps
 import time
+from functools import wraps
 from typing import Any, Callable, TypeVar
 
 from fastapi import HTTPException
-from starlette.status import (
-    HTTP_500_INTERNAL_SERVER_ERROR,
-)
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 try:
     from shared.common.exceptions import BusinessError

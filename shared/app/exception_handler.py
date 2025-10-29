@@ -13,7 +13,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from shared.common.exceptions import BusinessError, ErrorCode
 from shared.common.loguru_config import get_logger
 from shared.common.response import ErrorResponse
-from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 
 logger = get_logger(__name__)
 

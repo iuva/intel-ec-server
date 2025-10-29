@@ -7,23 +7,25 @@
 4. 心跳检测和连接管理
 """
 
+import json
 import asyncio
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
-from fastapi import WebSocket
-
 from app.services.host_service import HostService
+from fastapi import WebSocket
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.loguru_config import get_logger
+    from app.schemas.host import HostStatusUpdate
 except ImportError:
     import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
+    from app.schemas.host import HostStatusUpdate
 
 logger = get_logger(__name__)
 
@@ -117,6 +119,9 @@ class WebSocketManager:
         # 发送欢迎消息
         await self._send_welcome_message(agent_id)
 
+        # 更新 TCP 状态为 2 (监听/连接建立)
+        await self.host_service.update_tcp_state(agent_id, tcp_state=2)
+
         # 启动心跳检测任务
         self.heartbeat_tasks[agent_id] = asyncio.create_task(self._heartbeat_monitor(agent_id))
 
@@ -139,10 +144,11 @@ class WebSocketManager:
         if agent_id in self.heartbeat_timestamps:
             del self.heartbeat_timestamps[agent_id]
 
+        # 更新 TCP 状态为 0 (关闭/连接断开)
+        await self.host_service.update_tcp_state(agent_id, tcp_state=0)
+
         # 更新主机状态为离线
         try:
-            from app.schemas.host import HostStatusUpdate
-
             await self.host_service.update_host_status(agent_id, HostStatusUpdate(status="offline"))
         except Exception as e:
             logger.error(f"更新主机状态失败: {agent_id}, 错误: {e!s}")
@@ -167,7 +173,7 @@ class WebSocketManager:
         message_type = data.get("type", "unknown")
 
         # 📥 日志：接收到消息 (详细报文内容)
-        import json
+
         logger.info(
             f"📥 接收消息 | Agent: {agent_id} | 类型: {message_type} | 内容: {json.dumps(data, ensure_ascii=False)}",
         )
@@ -213,7 +219,7 @@ class WebSocketManager:
 
         try:
             # 📤 日志：发送消息 (详细报文内容)
-            import json
+
             message_type = message.get("type", "unknown")
             logger.info(
                 f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | 内容: {json.dumps(message, ensure_ascii=False)}",
@@ -272,7 +278,7 @@ class WebSocketManager:
             成功发送的数量
         """
         # 📢 日志：开始广播
-        import json
+
         target_hosts = [host_id for host_id in self.active_connections.keys() if not exclude or host_id != exclude]
         message_type = message.get("type", "unknown")
 
@@ -362,7 +368,6 @@ class WebSocketManager:
         """处理状态更新消息"""
         try:
             status = data.get("status", "online")
-            from app.schemas.host import HostStatusUpdate
 
             await self.host_service.update_host_status(agent_id, HostStatusUpdate(status=status))
 
@@ -421,6 +426,9 @@ class WebSocketManager:
                                 "timeout_threshold": self.heartbeat_timeout,
                             },
                         )
+
+                        # 更新 TCP 状态为 1 (等待/心跳超时)
+                        await self.host_service.update_tcp_state(agent_id, tcp_state=1)
 
                         # 发送超时警告
                         timeout_msg = {

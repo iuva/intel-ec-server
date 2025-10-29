@@ -2,10 +2,10 @@
 Admin Service API v1 路由配置
 """
 
+from app.api.v1.endpoints import users
+
 # 导入端点路由
 from fastapi import APIRouter
-
-from app.api.v1.endpoints import users
 
 # 创建API路由器
 api_router = APIRouter()

@@ -6,10 +6,9 @@
 from datetime import datetime, timezone
 from typing import cast
 
-from sqlalchemy import and_, select
-
 from app.models.host_rec import HostRec
 from app.schemas.host import HostStatusUpdate
+from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -282,4 +281,93 @@ class HostService:
 
         except Exception:
             # 数据库操作失败，静默失败
+            return False
+
+    async def update_tcp_state(self, host_id: str, tcp_state: int) -> bool:
+        """更新主机TCP连接状态
+
+        Args:
+            host_id: 主机ID (对应 HostRec.id 或 mg_id)
+            tcp_state: TCP状态码
+                - 0: 关闭 (连接断开)
+                - 1: 等待 (心跳超时)
+                - 2: 监听 (连接建立成功)
+
+        Returns:
+            True: 更新成功
+            False: 更新失败（主机不存在或ID格式无效）
+
+        Note:
+            - 用于 WebSocket 连接生命周期管理
+            - 静默失败，不记录 ERROR 日志
+        """
+        try:
+            # 验证 tcp_state 取值范围
+            if tcp_state not in (0, 1, 2):
+                logger.warning(
+                    f"无效的 tcp_state 值: {tcp_state}",
+                    extra={"host_id": host_id, "valid_values": [0, 1, 2]},
+                )
+                return False
+
+            # 尝试将 host_id 转为整数
+            try:
+                host_id_int = int(host_id)
+            except (ValueError, TypeError):
+                # 如果 host_id 不是整数，尝试通过 mg_id 查询
+                session_factory = mariadb_manager.get_session()
+                async with session_factory() as session:
+                    stmt = select(HostRec).where(
+                        and_(
+                            HostRec.mg_id == host_id,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    result = await session.execute(stmt)
+                    host = result.scalar_one_or_none()
+
+                    if not host:
+                        return False
+
+                    host_id_int = host.id
+
+            # 更新 tcp_state
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                stmt = (
+                    update(HostRec)
+                    .where(
+                        and_(
+                            HostRec.id == host_id_int,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    .values(
+                        tcp_state=tcp_state,
+                        updated_time=datetime.now(timezone.utc),
+                    )
+                )
+
+                result = await session.execute(stmt)
+                await session.commit()
+
+                if result.rowcount > 0:
+                    logger.info(
+                        f"TCP状态已更新: host_id={host_id}, tcp_state={tcp_state}",
+                        extra={
+                            "host_id": host_id,
+                            "tcp_state": tcp_state,
+                            "tcp_state_name": {0: "关闭", 1: "等待", 2: "监听"}.get(tcp_state),
+                        },
+                    )
+                    return True
+                else:
+                    return False
+
+        except Exception as e:
+            logger.error(
+                f"更新TCP状态失败: host_id={host_id}, tcp_state={tcp_state}",
+                extra={"host_id": host_id, "tcp_state": tcp_state, "error": str(e)},
+                exc_info=True,
+            )
             return False

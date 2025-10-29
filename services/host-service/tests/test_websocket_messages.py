@@ -9,10 +9,11 @@ WebSocket 消息处理测试模块
 - 快速消息序列
 """
 
+import asyncio
+import json
+
 import pytest
 import websockets
-import json
-import asyncio
 
 
 @pytest.mark.asyncio

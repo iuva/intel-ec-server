@@ -364,9 +364,16 @@ class ProxyService:
             # 获取服务 URL
             service_url = self.get_service_url(service_name)
 
-            # 构建 WebSocket URL（转换 http -> ws）
+            # 构建 WebSocket URL（转换 http -> ws，添加服务标识符前缀）
             ws_url = service_url.replace("http://", "ws://").replace("https://", "wss://")
-            full_ws_url = f"{ws_url}/api/v1{path}" if not path.startswith("/api") else f"{ws_url}{path}"
+
+            # ✅ 添加服务标识符前缀（与 HTTP 转发保持一致）
+            # 例如: service_name="host", path="/ws/host?token=xxx"
+            # 结果: ws://host-service:8003/api/v1/host/ws/host?token=xxx
+            if not path.startswith("/api"):
+                full_ws_url = f"{ws_url}/api/v1/{service_name}{path}"
+            else:
+                full_ws_url = f"{ws_url}{path}"
 
             logger.info(
                 "转发 WebSocket 连接",

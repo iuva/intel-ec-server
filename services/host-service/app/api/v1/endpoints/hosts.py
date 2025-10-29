@@ -7,13 +7,9 @@ import os
 import sys
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
-
 from app.api.v1.dependencies import get_host_discovery_service
-from app.schemas.host import (
-    AvailableHostsListResponse,
-    QueryAvailableHostsRequest,
-)
+from app.schemas.host import AvailableHostsListResponse, QueryAvailableHostsRequest
+from fastapi import APIRouter, Depends, Query
 
 # 使用 try-except 方式处理路径导入
 try:

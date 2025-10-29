@@ -1,8 +1,7 @@
 """API v1 路由配置"""
 
-from fastapi import APIRouter
-
 from app.api.v1.endpoints import hosts, vnc, websocket, websocket_management
+from fastapi import APIRouter
 
 api_router = APIRouter()
 

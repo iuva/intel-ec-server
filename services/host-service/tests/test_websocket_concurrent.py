@@ -8,11 +8,12 @@ WebSocket 并发测试模块
 - 并发断开处理
 """
 
+import asyncio
+import json
+from typing import List
+
 import pytest
 import websockets
-import json
-import asyncio
-from typing import List
 
 
 @pytest.mark.asyncio

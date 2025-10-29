@@ -2,9 +2,10 @@
 Pytest 配置文件 - WebSocket 测试通用配置
 """
 
-import pytest
 import asyncio
 import os
+
+import pytest
 
 
 @pytest.fixture(scope="session")

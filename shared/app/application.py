@@ -4,9 +4,9 @@ FastAPI应用模板模块
 提供统一的FastAPI应用创建和配置功能
 """
 
-from contextlib import asynccontextmanager
 import logging
 import time
+from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, Request, Response

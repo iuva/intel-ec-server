@@ -6,29 +6,32 @@
 
 import os
 import sys
+import json
 from typing import Any, Union
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.services.proxy_service import ProxyService, get_proxy_service
     from fastapi import APIRouter, Depends, Request, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
-    from app.services.proxy_service import ProxyService, get_proxy_service
-    from shared.common.exceptions import BusinessError, ServiceNotFoundError
+    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
+    from shared.common.websocket_auth import verify_token_string
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.services.proxy_service import ProxyService, get_proxy_service
     from fastapi import APIRouter, Depends, Request, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
-    from app.services.proxy_service import ProxyService, get_proxy_service
-    from shared.common.exceptions import BusinessError, ServiceNotFoundError
+    from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
+    from shared.common.websocket_auth import verify_token_string
 
 
 logger = get_logger(__name__)
@@ -97,8 +100,6 @@ async def websocket_proxy(
 
         # ✅ 验证 token 有效性
         try:
-            from shared.common.websocket_auth import verify_token_string
-
             user_id = await verify_token_string(token)
             if not user_id:
                 logger.warning(
@@ -188,7 +189,6 @@ async def websocket_proxy(
 
     except Exception as e:
         # ✅ 检查是否为 BusinessError（包含准确的错误信息）
-        from shared.common.exceptions import BusinessError
 
         if isinstance(e, BusinessError):
             error_code = e.http_status_code or 500
@@ -306,8 +306,6 @@ async def proxy_request(
 
                 # 如果有请求体内容，尝试解析为JSON
                 if raw_body:
-                    import json
-
                     try:
                         body = json.loads(raw_body.decode("utf-8"))
                         logger.debug(f"解析请求体成功: {len(raw_body)} bytes")
@@ -321,8 +319,6 @@ async def proxy_request(
             except Exception as e:
                 logger.error(f"读取请求体失败: {e}", exc_info=True)
                 # 如果读取失败，抛出适当的错误
-                from shared.common.exceptions import ValidationError
-
                 raise ValidationError(f"无法读取请求体: {e!s}")
 
         # 获取请求头（在请求体处理之后）
@@ -493,7 +489,6 @@ async def catch_all_handler(request: Request, path: str):
     这个路由处理器会捕获所有没有被其他路由匹配的请求，
     统一返回符合项目规范的404错误响应格式。
     """
-    from shared.common.response import ErrorResponse
 
     logger.warning(
         f"未找到路由: {request.method} /{path}",

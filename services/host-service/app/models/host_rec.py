@@ -68,6 +68,14 @@ class HostRec(BaseDBModel):
         comment=("审批状态;{disable: 0, 停用. enable: 1, 启用. new: 1, 新增. change: 2, 存在改动.}"),
     )
 
+    # TCP在线状态;{close: 0, 关闭. wait: 1, 等待. lsn: 2, 监听.}
+    tcp_state: Mapped[Optional[int]] = mapped_column(
+        SmallInteger,
+        nullable=True,
+        index=True,
+        comment="tcp在线状态;{close: 0, 关闭. wait: 1, 等待. lsn: 2, 监听.}",
+    )
+
     # 主机状态 - 对应多个状态码
     # {free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.
     #  offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动.

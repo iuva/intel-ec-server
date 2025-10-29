@@ -6,9 +6,6 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
-
 from app.api.v1.dependencies import get_auth_service, get_current_user
 from app.schemas.auth import (
     AdminLoginRequest,
@@ -19,6 +16,8 @@ from app.schemas.auth import (
     RefreshTokenRequest,
 )
 from app.services.auth_service import AuthService
+from fastapi import APIRouter, Depends, HTTPException
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 # 使用 try-except 方式处理路径导入
 try:
