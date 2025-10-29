@@ -2,7 +2,6 @@
 MariaDB Database Manager - Asynchronous SQLAlchemy Integration
 """
 
-from datetime import datetime
 import logging
 import os
 import random

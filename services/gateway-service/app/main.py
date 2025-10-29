@@ -13,6 +13,8 @@ import sys
 
 # Use try-except to handle path imports
 try:
+    from app.api.v1 import api_router
+    from app.middleware.auth_middleware import AuthMiddleware
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -30,6 +32,8 @@ try:
 except ImportError:
     # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    from app.api.v1 import api_router
+    from app.middleware.auth_middleware import AuthMiddleware
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 

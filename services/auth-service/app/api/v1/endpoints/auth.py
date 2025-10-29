@@ -28,6 +28,8 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.auth_service import AuthService
+from fastapi import APIRouter, Depends, HTTPException
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 
 # Use try-except approach to handle path imports
 try:

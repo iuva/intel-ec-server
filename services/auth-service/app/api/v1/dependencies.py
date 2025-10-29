@@ -8,9 +8,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from fastapi import Request
-
 from app.services.auth_service import AuthService
+from fastapi import Request
 
 # Use try-except approach to handle path imports
 try:

@@ -4,11 +4,10 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from starlette.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
-
 from app.schemas.user import UserCreate, UserListResponse, UserResponse, UserUpdate
 from app.services.user_service import UserService, get_user_service
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
 
 # 使用 try-except 方式处理路径导入
 try:

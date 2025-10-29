@@ -29,12 +29,11 @@ except ImportError:
 """
 
 import asyncio
-from contextlib import asynccontextmanager
 import time
+from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, Optional, Set
 from urllib.parse import urlparse
 
-import httpx
 from httpx import AsyncClient, HTTPStatusError, Limits, RequestError, Timeout
 
 try:

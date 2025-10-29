@@ -182,10 +182,14 @@ def configure_logger(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
+<<<<<<< HEAD
     # ✅ Configure loguru to intercept standard logging (including uvicorn)
     # Intercept all standard library logging calls, use loguru format uniformly
     class InterceptHandler(logging.Handler):
         """Handler that intercepts standard logging, forward logs to loguru"""
+=======
+    # 配置loguru拦截标准logging
+>>>>>>> 45558e6 (docs(websocket): 更新WebSocket认证方式和状态管理文档)
 
         def emit(self, record: logging.LogRecord) -> None:
             # Get corresponding loguru level

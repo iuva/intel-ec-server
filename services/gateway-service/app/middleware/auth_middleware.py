@@ -6,6 +6,7 @@ Responsible for validating JWT tokens in requests, calling Auth Service for toke
 
 import os
 import sys
+import httpx
 from typing import Any, Dict, Optional
 
 import httpx

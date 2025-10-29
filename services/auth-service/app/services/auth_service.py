@@ -4,12 +4,9 @@ Authentication Service Business Logic
 Implement user login, token generation, token validation and other functions
 """
 
-from datetime import datetime, timezone
 import os
 import time
 from typing import Optional
-
-from sqlalchemy import select
 
 from app.models.host_rec import HostRec
 from app.models.sys_conf import SysConf
@@ -31,6 +28,7 @@ from app.schemas.auth import (
     RefreshTokenRequest,
     TokenResponse,
 )
+from sqlalchemy import select
 
 # Use try-except approach to handle path imports
 try:
@@ -467,7 +465,6 @@ class AuthService:
                 "Token refresh successful",
 =======
             # 将已使用的 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
-            import time
 
             exp = payload.get("exp", 0)
             ttl = max(1, int(exp - time.time()))  # 确保 TTL 至少为 1 秒
@@ -660,7 +657,6 @@ class AuthService:
 
             # 将已使用的旧 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
             exp = payload.get("exp", 0)
-            import time
 
             ttl = max(1, int(exp - time.time()))  # 确保 TTL 至少为 1 秒
             await set_cache(blacklist_key, True, expire=ttl)

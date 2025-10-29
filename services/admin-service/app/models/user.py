@@ -7,7 +7,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, Integer, SmallInteger, String, func
+from sqlalchemy import BigInteger, DateTime, SmallInteger, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入

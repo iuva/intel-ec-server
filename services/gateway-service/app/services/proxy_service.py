@@ -408,7 +408,6 @@ class ProxyService:
             ServiceUnavailableError: Service unavailable
         """
         try:
-<<<<<<< HEAD
             # Get service URL (async)
             service_url = await self.get_service_url(service_name)
             # logger.info(f"Get service URL: {service_url}")
@@ -418,17 +417,6 @@ class ProxyService:
             # Log request (include complete URL)
             logger.info(
                 f"Forwarding request to backend service: {method} {full_url}",
-=======
-            # 获取服务 URL
-            service_url = self.get_service_url(service_name)
-
-            # 构建完整 URL
-            full_url = self._build_service_url(service_url, path, service_name)
-
-            # 记录请求日志
-            logger.debug(
-                "转发请求到后端服务",
->>>>>>> 676f33a (fix: 修复Gateway URL转发缺少服务标识符的问题)
                 extra={
                     "service_name": service_name,
                     "method": method,

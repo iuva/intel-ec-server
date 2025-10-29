@@ -1,16 +1,17 @@
 """WebSocket 连接管理器"""
 
+import json
 import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import WebSocket
-
 from app.services.host_service import HostService
+from fastapi import WebSocket
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.loguru_config import get_logger
+    from app.schemas.host import HostStatusUpdate
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     import os
@@ -18,6 +19,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
+    from app.schemas.host import HostStatusUpdate
 
 logger = get_logger(__name__)
 
@@ -59,6 +61,9 @@ class WebSocketManager:
             },
         )
 
+        # 更新 TCP 状态为 2 (监听/连接建立)
+        await self.host_service.update_tcp_state(agent_id, tcp_state=2)
+
         # 启动心跳检测任务
         self.heartbeat_tasks[agent_id] = asyncio.create_task(self._heartbeat_monitor(agent_id))
 
@@ -79,8 +84,6 @@ class WebSocketManager:
 
         # 更新主机状态为离线
         try:
-            from app.schemas.host import HostStatusUpdate
-
             await self.host_service.update_host_status(agent_id, HostStatusUpdate(status="offline"))
         except Exception as e:
             logger.error(f"更新主机状态失败: {agent_id}, 错误: {e!s}")
@@ -212,7 +215,6 @@ class WebSocketManager:
         """
         try:
             status = data.get("status", "online")
-            from app.schemas.host import HostStatusUpdate
 
             await self.host_service.update_host_status(agent_id, HostStatusUpdate(status=status))
 

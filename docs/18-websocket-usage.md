@@ -62,13 +62,11 @@ uri = f"ws://localhost:8000/api/v1/ws/host?token={token}"
 ### 连接端点
 
 **直接连接 Host Service:**
-
 ```
 ws://localhost:8003/api/v1/ws/host
 ```
 
 **通过 Gateway 连接:**
-
 ```
 ws://localhost:8000/api/v1/ws/host
 ```
@@ -83,19 +81,16 @@ ws://localhost:8000/api/v1/ws/host
 ### ⚠️ 重要变更
 
 **新版本 (v1.2.0+):**
-
 - ✅ **不再需要** 在 URL 中传递 `host_id`
 - ✅ `host_id` 自动从 JWT token 的 `sub` 字段中提取
 - ✅ 更安全、更符合标准
 
 **旧版本 (已废弃):**
-
 ```
 ❌ ws://localhost:8003/api/v1/ws/host/{host_id}?token=xxx
 ```
 
 **新版本 (推荐):**
-
 ```
 ✅ ws://localhost:8003/api/v1/ws/host?token=xxx
 ```
@@ -196,7 +191,6 @@ ws.onclose = (event) => {
 ### Token 获取
 
 #### 管理员Token
-
 ```bash
 curl -X POST 'http://localhost:8000/api/v1/auth/admin/login' \
   -H 'Content-Type: application/json' \
@@ -207,7 +201,6 @@ curl -X POST 'http://localhost:8000/api/v1/auth/admin/login' \
 ```
 
 #### 设备Token
-
 ```bash
 curl -X POST 'http://localhost:8000/api/v1/auth/device/login' \
   -H 'Content-Type: application/json' \
@@ -237,13 +230,11 @@ JWT Token 必须包含以下字段：
 ### 认证方式
 
 #### 方式1: 查询参数
-
 ```
 ws://localhost:8003/api/v1/ws/host?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 #### 方式2: Authorization Header (推荐)
-
 ```python
 import websockets
 
@@ -606,7 +597,6 @@ Agent ──► 启动日志监控/回放
 ```
 
 **失败响应:**
-
 ```json
 {
   "type": "command_response",
@@ -789,7 +779,6 @@ curl -X GET 'http://localhost:8000/api/v1/host/ws/hosts' \
 ```
 
 **响应:**
-
 ```json
 {
   "code": 200,
@@ -814,7 +803,6 @@ curl -X GET 'http://localhost:8000/api/v1/host/ws/status/1846486359367955051' \
 ```
 
 **响应:**
-
 ```json
 {
   "code": 200,
@@ -904,7 +892,6 @@ curl -X POST 'http://localhost:8000/api/v1/host/ws/send' \
 ```
 
 **响应:**
-
 ```json
 {
   "code": 200,
@@ -938,7 +925,6 @@ curl -X POST 'http://localhost:8000/api/v1/host/ws/send-to-hosts' \
 ```
 
 **响应:**
-
 ```json
 {
   "code": 200,
@@ -1053,7 +1039,6 @@ curl -X POST 'http://localhost:8000/api/v1/host/ws/broadcast?exclude_host_id=184
 ```
 
 **响应:**
-
 ```json
 {
   "code": 200,
@@ -1361,12 +1346,10 @@ if __name__ == "__main__":
 **症状**: `InvalidStatusCode: server rejected WebSocket connection: HTTP 401`
 
 **原因**:
-
 - Token无效或已过期
 - Token未正确传递
 
 **解决方案**:
-
 ```python
 # 1. 检查Token是否有效
 async def verify_token(token: str):
@@ -1399,7 +1382,6 @@ async def get_new_token():
 **原因**: 目标Host没有建立WebSocket连接
 
 **解决方案**:
-
 ```python
 # 1. 检查Host连接状态
 async def check_host_connected(token: str, host_id: str) -> bool:
@@ -1428,7 +1410,6 @@ async def wait_for_host(token: str, host_id: str, timeout: int = 60):
 **原因**: Host超过60秒未发送心跳
 
 **解决方案**:
-
 1. 检查网络连接稳定性
 2. 调整心跳间隔（建议30秒）
 3. 增加错误重试机制

@@ -5,6 +5,7 @@ Provides standardized API response formats, including success response, error re
 Supports multi-language messages.
 """
 
+import uuid
 from datetime import datetime, timezone
 import os
 import sys

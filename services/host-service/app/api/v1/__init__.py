@@ -1,5 +1,6 @@
 """API v1 route configuration"""
 
+<<<<<<< HEAD
 from fastapi import APIRouter
 
 <<<<<<< HEAD
@@ -57,6 +58,10 @@ api_router.include_router(
 api_router.include_router(file_manage.router, prefix="/file", tags=["File Management"])
 =======
 from app.api.v1.endpoints import hosts, vnc, websocket
+=======
+from app.api.v1.endpoints import hosts, vnc, websocket, websocket_management
+from fastapi import APIRouter
+>>>>>>> 45558e6 (docs(websocket): 更新WebSocket认证方式和状态管理文档)
 
 api_router = APIRouter()
 

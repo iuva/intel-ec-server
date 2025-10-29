@@ -1,18 +1,12 @@
 """
-<<<<<<< HEAD
 Decorator module
 
 Provides unified error handling, monitoring and logging decorators
-=======
-装饰器模块
-
-提供统一的错误处理、监控和日志记录装饰器
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
 """
 
 import asyncio
-from functools import wraps
 import time
+<<<<<<< HEAD
 <<<<<<< HEAD
 import traceback
 from typing import Any, Callable, Dict, Optional, TypeVar
@@ -27,6 +21,13 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+from functools import wraps
+from typing import Any, Callable, TypeVar
+
+from fastapi import HTTPException
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+>>>>>>> 45558e6 (docs(websocket): 更新WebSocket认证方式和状态管理文档)
 
 try:
     from shared.common.exceptions import BusinessError

@@ -23,12 +23,7 @@ except ImportError:
     from shared.common.response import SuccessResponse
 
 from app.api.v1.dependencies import get_vnc_service
-from app.schemas.host import (
-    GetVNCConnectionRequest,
-    VNCConnectionInfo,
-    VNCConnectionReport,
-    VNCConnectionResponse,
-)
+from app.schemas.host import GetVNCConnectionRequest, VNCConnectionInfo, VNCConnectionReport, VNCConnectionResponse
 from app.services.vnc_service import VNCService
 
 logger = get_logger(__name__)

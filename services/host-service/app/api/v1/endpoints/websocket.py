@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.loguru_config import get_logger
-    from shared.common.websocket_auth import verify_websocket_token, handle_websocket_auth_error
+    from shared.common.websocket_auth import handle_websocket_auth_error, verify_websocket_token
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger

@@ -4,9 +4,9 @@ FastAPI Application Template Module
 Provides unified FastAPI application creation and configuration functionality
 """
 
-from contextlib import asynccontextmanager
 import logging
 import time
+from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, Request, Response

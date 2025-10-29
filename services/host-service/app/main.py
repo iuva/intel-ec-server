@@ -7,6 +7,7 @@ Provides host management and WebSocket real-time communication functionality
 import os
 import sys
 
+from app.api.v1 import api_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,6 +23,7 @@ try:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 except ImportError:
     # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
@@ -33,6 +35,7 @@ except ImportError:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 
 # Load .env file (if exists)
 try:

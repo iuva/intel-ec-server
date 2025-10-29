@@ -4,9 +4,8 @@ API v1 Version
 Register all v1 version routes
 """
 
-from fastapi import APIRouter
-
 from app.api.v1.endpoints.auth import router as auth_router
+from fastapi import APIRouter
 
 # Create v1 API router
 api_router = APIRouter()

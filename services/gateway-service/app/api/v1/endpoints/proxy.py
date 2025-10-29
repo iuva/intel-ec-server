@@ -489,8 +489,6 @@ async def websocket_proxy(
 
         # ✅ 验证 token 有效性
         try:
-            from shared.common.websocket_auth import verify_token_string
-
             user_id = await verify_token_string(token)
             if not user_id:
                 logger.warning(
@@ -1067,9 +1065,12 @@ async def catch_all_handler(
     and returns a unified 404 error response format that conforms to project specifications.
     """
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     from shared.common.response import ErrorResponse
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+>>>>>>> 45558e6 (docs(websocket): 更新WebSocket认证方式和状态管理文档)
 
     logger.warning(
         "Route not found",

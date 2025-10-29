@@ -15,8 +15,7 @@ from sqlalchemy import func, select
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.database import mariadb_manager
-    from shared.common.decorators import (handle_service_errors,
-                                          monitor_operation)
+    from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.common.security import get_***REMOVED***word_hash
@@ -27,8 +26,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
-    from shared.common.decorators import (handle_service_errors,
-                                          monitor_operation)
+    from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.common.security import get_***REMOVED***word_hash
