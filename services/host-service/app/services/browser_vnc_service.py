@@ -8,10 +8,11 @@
 from datetime import datetime, timezone
 from typing import Optional, cast
 
+from sqlalchemy import and_, select, update
+
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import VNCConnectionReport
-from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -144,11 +145,7 @@ class BrowserVNCService:
                         },
                     )
 
-                    update_stmt = (
-                        update(HostExecLog)
-                        .where(HostExecLog.id == existing_log.id)
-                        .values(del_flag=1)
-                    )
+                    update_stmt = update(HostExecLog).where(HostExecLog.id == existing_log.id).values(del_flag=1)
                     await session.execute(update_stmt)
                     exec_log_action = "deleted_and_created"
                 else:

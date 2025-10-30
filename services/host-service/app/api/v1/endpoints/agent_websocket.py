@@ -16,7 +16,7 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.loguru_config import get_logger
-    from shared.common.websocket_auth import verify_websocket_token, handle_websocket_auth_error
+    from shared.common.websocket_auth import handle_websocket_auth_error, verify_websocket_token
 
 from app.services.agent_websocket_manager import get_agent_websocket_manager
 

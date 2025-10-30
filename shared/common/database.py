@@ -3,6 +3,8 @@ MariaDB 数据库管理器 - 异步 SQLAlchemy 集成
 """
 
 import logging
+import random
+import time
 from datetime import datetime
 from typing import AsyncGenerator, Optional
 
@@ -24,6 +26,30 @@ from shared.common.cache import redis_manager
 logger = logging.getLogger(__name__)
 
 
+def generate_snowflake_id() -> int:
+    """生成雪花ID（简化版）
+
+    使用时间戳 + 随机数生成唯一ID，适用于分布式系统
+
+    Returns:
+        int: 雪花ID（64位整数）
+
+    算法说明:
+        - 高44位: 毫秒级时间戳
+        - 低20位: 随机数（0-999999）
+        - 总共64位，满足BigInteger要求
+
+    示例:
+        >>> id1 = generate_snowflake_id()
+        >>> id2 = generate_snowflake_id()
+        >>> id1 != id2  # 保证唯一性
+        True
+    """
+    timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+    random_part = random.randint(0, 999999)  # 随机数部分
+    return (timestamp << 20) | random_part
+
+
 class Base(DeclarativeBase):
     """SQLAlchemy声明式基类"""
 
@@ -32,7 +58,7 @@ class BaseDBModel(Base):
     """数据库模型基类
 
     提供所有数据库模型的标准字段：
-    - id: 主键ID
+    - id: 主键ID（雪花ID）
     - created_time: 创建时间
     - updated_time: 更新时间
     - del_flag: 软删除标记
@@ -40,7 +66,9 @@ class BaseDBModel(Base):
 
     __abstract__ = True
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True, comment="主键ID")
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, comment="主键ID（雪花ID）"
+    )
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
     )

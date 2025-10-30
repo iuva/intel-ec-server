@@ -502,9 +502,7 @@ class AgentWebSocketManager:
                 from sqlalchemy import update
 
                 update_stmt = (
-                    update(HostExecLog)
-                    .where(HostExecLog.id == exec_log.id)
-                    .values(host_state=2)  # 已占用
+                    update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=2)  # 已占用
                 )
                 await session.execute(update_stmt)
                 await session.commit()

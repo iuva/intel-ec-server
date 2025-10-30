@@ -4,7 +4,6 @@
 定义主机记录表结构和字段
 """
 
-import time
 from datetime import datetime
 from typing import Optional
 
@@ -13,26 +12,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入
 try:
-    from shared.common.database import Base
+    from shared.common.database import Base, generate_snowflake_id
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from shared.common.database import Base
-
-
-def generate_snowflake_id() -> int:
-    """生成雪花ID（简化版）
-
-    使用时间戳 + 随机数生成唯一ID
-    """
-    import random
-
-    timestamp = int(time.time() * 1000)  # 毫秒级时间戳
-    random_part = random.randint(0, 999999)  # 随机数
-    return (timestamp << 20) | random_part
+    from shared.common.database import Base, generate_snowflake_id
 
 
 class HostRec(Base):

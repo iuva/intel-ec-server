@@ -29,7 +29,7 @@ try:
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
-    from shared.common.security import JWTManager
+    from shared.common.security import JWTManager, hash_***REMOVED***word, verify_***REMOVED***word
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     import sys
@@ -39,52 +39,7 @@ except ImportError:
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
-    from shared.common.security import JWTManager
-
-# 密码加密配置
-from ***REMOVED***lib.context import CryptContext
-
-# 创建密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def hash_admin_***REMOVED***word(plain_***REMOVED***word: str) -> str:
-    """哈希管理后台用户密码
-
-    用于创建或更新用户时对密码进行哈希处理
-
-    Args:
-        plain_***REMOVED***word: 明文密码
-
-    Returns:
-        str: 哈希后的密码
-    """
-    return pwd_context.hash(plain_***REMOVED***word)
-
-
-def verify_admin_***REMOVED***word(plain_***REMOVED***word: str, hashed_***REMOVED***word: str) -> bool:
-    """验证管理后台用户密码
-
-    使用bcrypt进行密码验证
-
-    Args:
-        plain_***REMOVED***word: 明文密码
-        hashed_***REMOVED***word: 数据库中存储的哈希密码
-
-    Returns:
-        bool: 密码是否正确
-    """
-    try:
-        # 使用***REMOVED***lib的bcrypt上下文验证密码
-        return pwd_context.verify(plain_***REMOVED***word, hashed_***REMOVED***word)
-    except (ValueError, TypeError) as e:
-        # 如果密码验证失败，记录错误但不抛出异常
-        logger.warning(
-            "密码验证异常",
-            extra={"operation": "verify_***REMOVED***word", "error_type": type(e).__name__, "error_message": str(e)},
-        )
-        return False
-
+    from shared.common.security import JWTManager, hash_***REMOVED***word, verify_***REMOVED***word
 
 logger = get_logger(__name__)
 
@@ -515,7 +470,7 @@ class AuthService:
                     raise BusinessError(message="用户账号已被禁用", error_code="AUTH_USER_DISABLED")
 
                 # 验证密码
-                if not verify_admin_***REMOVED***word(login_data.***REMOVED***word, user.user_pwd):
+                if not verify_***REMOVED***word(login_data.***REMOVED***word, user.user_pwd):
                     logger.warning(
                         "管理员密码错误",
                         extra={

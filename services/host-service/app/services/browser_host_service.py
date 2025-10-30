@@ -6,10 +6,11 @@
 from datetime import datetime, timezone
 from typing import List, cast
 
+from sqlalchemy import and_, select, update
+
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
-from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -360,21 +361,20 @@ class BrowserHostService:
                         },
                     )
                     return True
-                else:
-                    logger.warning(
-                        f"TCP状态更新无匹配行: host_id={host_id}, tcp_state={tcp_state}",
-                        extra={
-                            "host_id": host_id,
-                            "host_id_int": host_id_int,
-                            "tcp_state": tcp_state,
-                            "reason": "记录不存在或已删除",
-                        },
-                    )
-                    return False
+                logger.warning(
+                    f"TCP状态更新无匹配行: host_id={host_id}, tcp_state={tcp_state}",
+                    extra={
+                        "host_id": host_id,
+                        "host_id_int": host_id_int,
+                        "tcp_state": tcp_state,
+                        "reason": "记录不存在或已删除",
+                    },
+                )
+                return False
 
         except Exception as e:
             logger.error(
-                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={str(e)}",
+                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={e!s}",
                 extra={
                     "host_id": host_id,
                     "tcp_state": tcp_state,
