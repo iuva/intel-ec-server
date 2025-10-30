@@ -6,17 +6,19 @@ Token 提取和验证工具类
 
 import os
 import sys
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 
 # 使用 try-except 方式处理路径导入
 try:
-    import httpx
     from fastapi import Request
+    import httpx
+
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    import httpx
     from fastapi import Request
+    import httpx
+
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -89,7 +91,7 @@ class TokenExtractor:
         )
         return None
 
-    async def verify_token(self, token: str, timeout: float = 10.0) -> tuple[bool, Optional[Dict[str, Any]]]:
+    async def verify_token(self, token: str, timeout: float = 10.0) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """验证 token 有效性
 
         调用 auth-service 的 introspect 接口验证 token。
@@ -152,25 +154,23 @@ class TokenExtractor:
                             },
                         )
                         return True, user_info
-                    else:
-                        logger.warning("Token 已失效或无效")
-                        return False, None
-                else:
-                    logger.warning(
-                        f"Token 验证请求失败: {response.status_code}",
-                        extra={"status_code": response.status_code},
-                    )
+                    logger.warning("Token 已失效或无效")
                     return False, None
+                logger.warning(
+                    f"Token 验证请求失败: {response.status_code}",
+                    extra={"status_code": response.status_code},
+                )
+                return False, None
 
         except httpx.TimeoutException:
-            logger.error(f"Token 验证超时: auth-service 无响应")
+            logger.error("Token 验证超时: auth-service 无响应")
             return False, None
 
         except Exception as e:
-            logger.error(f"Token 验证异常: {str(e)}", exc_info=True)
+            logger.error(f"Token 验证异常: {e!s}", exc_info=True)
             return False, None
 
-    async def extract_and_verify(self, request: Request) -> tuple[bool, Optional[Dict[str, Any]]]:
+    async def extract_and_verify(self, request: Request) -> Tuple[bool, Optional[Dict[str, Any]]]:
         """一步到位：提取并验证 token
 
         从 Request 中提取 token 并调用 auth-service 验证。
