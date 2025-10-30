@@ -3,10 +3,16 @@ MariaDB Database Manager - Asynchronous SQLAlchemy Integration
 """
 
 import logging
+<<<<<<< HEAD
 import os
 import random
 import ssl
 import time
+=======
+import random
+import time
+from datetime import datetime
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy import BigInteger, DateTime, SmallInteger, event, func
@@ -31,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_snowflake_id() -> int:
+<<<<<<< HEAD
     """Generate Snowflake ID (Simplified)
 
     Generates a unique ID using timestamp + random number, suitable for distributed systems.
@@ -51,6 +58,28 @@ def generate_snowflake_id() -> int:
     """
     timestamp = int(time.time() * 1000)  # Millisecond-level timestamp
     random_part = random.randint(0, 999999)  # Random part
+=======
+    """生成雪花ID（简化版）
+
+    使用时间戳 + 随机数生成唯一ID，适用于分布式系统
+
+    Returns:
+        int: 雪花ID（64位整数）
+
+    算法说明:
+        - 高44位: 毫秒级时间戳
+        - 低20位: 随机数（0-999999）
+        - 总共64位，满足BigInteger要求
+
+    示例:
+        >>> id1 = generate_snowflake_id()
+        >>> id2 = generate_snowflake_id()
+        >>> id1 != id2  # 保证唯一性
+        True
+    """
+    timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+    random_part = random.randint(0, 999999)  # 随机数部分
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
     return (timestamp << 20) | random_part
 
 
@@ -61,17 +90,29 @@ class Base(DeclarativeBase):
 class BaseDBModel(Base):
     """Database Model Base Class
 
+<<<<<<< HEAD
     Provides standard fields for all database models:
     - id: Primary Key ID (Snowflake ID)
     - created_time: Creation time
     - updated_time: Update time
     - del_flag: Soft delete flag
+=======
+    提供所有数据库模型的标准字段：
+    - id: 主键ID（雪花ID）
+    - created_time: 创建时间
+    - updated_time: 更新时间
+    - del_flag: 软删除标记
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
     """
 
     __abstract__ = True
 
     id: Mapped[int] = mapped_column(
+<<<<<<< HEAD
         BigInteger, primary_key=True, default=generate_snowflake_id, comment="Primary Key ID (Snowflake ID)"
+=======
+        BigInteger, primary_key=True, default=generate_snowflake_id, comment="主键ID（雪花ID）"
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
     )
     created_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False, comment="Creation time"

@@ -8,6 +8,8 @@ import sys
 
 from fastapi import APIRouter, Body, Depends, Request
 
+from fastapi import APIRouter, Body, Depends, Query
+
 from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
     AvailableHostsListResponse,

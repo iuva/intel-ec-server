@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, List, Optional, Set, cast
 
 import httpx
 from sqlalchemy import and_, select
+<<<<<<< HEAD
 from sqlalchemy.exc import OperationalError
 
 from app.constants.host_constants import (
@@ -20,6 +21,9 @@ from app.constants.host_constants import (
     HOST_STATE_FREE,
     TCP_STATE_LISTEN,
 )
+=======
+
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 from app.models.host_rec import HostRec
 from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, HardwareHostData, QueryAvailableHostsRequest
 

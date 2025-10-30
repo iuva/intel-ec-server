@@ -1,4 +1,5 @@
 """
+<<<<<<< HEAD
 Shared Utilities Module
 
 Provides commonly used utility classes and helper functions in the project
@@ -28,12 +29,21 @@ from shared.utils.logging_utils import (
     timed_operation_sync,
     with_request_logging,
 )
+=======
+共享工具模块
+
+提供项目中常用的工具类和辅助函数
+"""
+
+from shared.utils.json_comparator import JSONComparator
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 from shared.utils.pagination import (
     CursorPaginationParams,
     CursorPaginationResponse,
     PaginationParams,
     PaginationResponse,
 )
+<<<<<<< HEAD
 from shared.utils.service_discovery import ServiceDiscovery, get_service_discovery, init_service_discovery
 from shared.utils.template_validator import TemplateValidator
 from shared.utils.token_extractor import TokenExtractor, get_token_extractor
@@ -50,10 +60,20 @@ __all__ = [
     # JSON comparison tools
     "JSONComparator",
     # Pagination tools
+=======
+from shared.utils.template_validator import TemplateValidator
+from shared.utils.token_extractor import TokenExtractor, get_token_extractor
+
+__all__ = [
+    # JSON 对比工具
+    "JSONComparator",
+    # 分页工具
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
     "PaginationParams",
     "PaginationResponse",
     "CursorPaginationParams",
     "CursorPaginationResponse",
+<<<<<<< HEAD
     # Service discovery tools
     "ServiceDiscovery",
     "get_service_discovery",
@@ -86,4 +106,11 @@ __all__ = [
     "log_auth_failure",
     "log_service_startup",
     "log_service_shutdown",
+=======
+    # 模板验证工具
+    "TemplateValidator",
+    # Token 提取工具
+    "TokenExtractor",
+    "get_token_extractor",
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 ]

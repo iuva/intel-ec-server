@@ -36,7 +36,11 @@ try:
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+<<<<<<< HEAD
     from shared.common.security import JWTManager, verify_***REMOVED***word
+=======
+    from shared.common.security import JWTManager, hash_***REMOVED***word, verify_***REMOVED***word
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 except ImportError:
     # If import fails, add project root directory to Python path
     import sys
@@ -48,6 +52,7 @@ except ImportError:
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+<<<<<<< HEAD
 <<<<<<< HEAD
     from shared.common.security import JWTManager, verify_***REMOVED***word
 =======
@@ -98,6 +103,9 @@ def verify_admin_***REMOVED***word(plain_***REMOVED***word: str, hashed_***REMOV
         return False
 
 >>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+=======
+    from shared.common.security import JWTManager, hash_***REMOVED***word, verify_***REMOVED***word
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 
 logger = get_logger(__name__)
 
@@ -994,7 +1002,7 @@ class AuthService:
                     raise BusinessError(message="用户账号已被禁用", error_code="AUTH_USER_DISABLED")
 
                 # 验证密码
-                if not verify_admin_***REMOVED***word(login_data.***REMOVED***word, user.user_pwd):
+                if not verify_***REMOVED***word(login_data.***REMOVED***word, user.user_pwd):
                     logger.warning(
                         "管理员密码错误",
                         extra={

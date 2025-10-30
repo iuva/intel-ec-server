@@ -79,9 +79,10 @@ class UserService:
             # 创建新用户
             ***REMOVED***word_hash = get_***REMOVED***word_hash(user_data.***REMOVED***word)
 
-            # 生成新的用户ID（使用雪花算法或其他ID生成策略）
+            # 生成雪花ID
+            from shared.common.database import generate_snowflake_id
 
-            new_user_id = int(time.time() * 1000)  # 简单的时间戳ID，生产环境应使用雪花算法
+            new_user_id = generate_snowflake_id()
 
             new_user = User(
                 id=new_user_id,

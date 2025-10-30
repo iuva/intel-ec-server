@@ -9,6 +9,7 @@ from typing import List, cast
 
 from sqlalchemy import and_, select, update
 
+<<<<<<< HEAD
 from app.constants.host_constants import (
     APPR_STATE_ENABLE,
     CASE_STATE_SUCCESS,
@@ -57,6 +58,11 @@ from app.schemas.host import (
 from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
 from sqlalchemy import and_, select, update
 >>>>>>>> 2994441 (feat(host-service): 重构主机与VNC服务为浏览器插件专用版本):services/host-service/app/services/browser_host_service.py
+=======
+from app.models.host_exec_log import HostExecLog
+from app.models.host_rec import HostRec
+from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -992,21 +998,20 @@ class BrowserHostService:
                         },
                     )
                     return True
-                else:
-                    logger.warning(
-                        f"TCP状态更新无匹配行: host_id={host_id}, tcp_state={tcp_state}",
-                        extra={
-                            "host_id": host_id,
-                            "host_id_int": host_id_int,
-                            "tcp_state": tcp_state,
-                            "reason": "记录不存在或已删除",
-                        },
-                    )
-                    return False
+                logger.warning(
+                    f"TCP状态更新无匹配行: host_id={host_id}, tcp_state={tcp_state}",
+                    extra={
+                        "host_id": host_id,
+                        "host_id_int": host_id_int,
+                        "tcp_state": tcp_state,
+                        "reason": "记录不存在或已删除",
+                    },
+                )
+                return False
 
         except Exception as e:
             logger.error(
-                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={str(e)}",
+                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={e!s}",
                 extra={
                     "host_id": host_id,
                     "tcp_state": tcp_state,

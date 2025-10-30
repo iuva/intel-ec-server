@@ -8,7 +8,11 @@ Provides VNC connection related business logic services for browser plugins, inc
 from datetime import datetime, timezone
 from typing import Optional, cast
 
+<<<<<<< HEAD
 from sqlalchemy import and_, func, select, update
+=======
+from sqlalchemy import and_, select, update
+>>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
