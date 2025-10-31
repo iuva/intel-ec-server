@@ -37,13 +37,15 @@ class TokenExtractor:
         >>>     user_id = payload.get("user_id")
     """
 
-    def __init__(self, auth_service_url: str = "http://auth-service:8001"):
+    def __init__(self, auth_service_url: str = "http://auth-service:8001", service_discovery=None):
         """初始化 Token 提取器
 
         Args:
-            auth_service_url: 认证服务 URL
+            auth_service_url: 认证服务 URL（静态配置，当 service_discovery 未提供时使用）
+            service_discovery: ServiceDiscovery 实例（可选），用于动态获取服务地址
         """
         self.auth_service_url = auth_service_url
+        self.service_discovery = service_discovery
 
     def extract_token_from_request(self, request: Request) -> Optional[str]:
         """从 HTTP Request 中提取 token
@@ -114,9 +116,15 @@ class TokenExtractor:
             return False, None
 
         try:
+            # 获取 auth-service 地址（动态或静态）
+            if self.service_discovery:
+                auth_service_url = await self.service_discovery.get_service_url("auth-service")
+            else:
+                auth_service_url = self.auth_service_url
+
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
-                    f"{self.auth_service_url}/api/v1/auth/introspect",
+                    f"{auth_service_url}/api/v1/auth/introspect",
                     json={"token": token},
                     headers={"Content-Type": "application/json"},
                 )

@@ -23,6 +23,7 @@ try:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.utils.service_discovery import init_service_discovery
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
@@ -36,6 +37,7 @@ except ImportError:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.utils.service_discovery import init_service_discovery
 
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("GATEWAY_SERVICE_NAME", "gateway-service")
@@ -49,6 +51,10 @@ config = ServiceConfig.from_env(
     service_port_key="GATEWAY_SERVICE_PORT",
 )
 
+# 初始化服务发现（在 create_service_lifespan 之前）
+# 注意：Nacos 管理器将在 lifespan 中初始化，这里只初始化服务发现实例
+service_discovery = init_service_discovery(cache_ttl=30)
+
 # 创建 FastAPI 应用
 app = FastAPI(
     title="Gateway Service",
@@ -56,6 +62,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=create_service_lifespan(config),
 )
+
+# 在应用状态中保存服务发现实例，以便在路由中使用
+app.state.service_discovery = service_discovery
 
 # ✅ 在这里立即添加所有中间件（在 lifespan 之前）
 # 添加 CORS 中间件

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, TINYINT, VARCHAR, BigInteger, DateTime
+from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入
@@ -58,7 +58,7 @@ class HostExecLog(BaseDBModel):
 
     # 主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线.}
     host_state: Mapped[Optional[int]] = mapped_column(
-        TINYINT,
+        SmallInteger,
         nullable=True,
         index=True,
         comment="主机状态;0-空闲 1-已锁定 2-已占用 3-case执行中 4-离线",
@@ -66,7 +66,7 @@ class HostExecLog(BaseDBModel):
 
     # case 执行状态;{free: 0, 空闲. start: 1, 启动. success: 2, 成功. failed: 3, 失败.}
     case_state: Mapped[int] = mapped_column(
-        TINYINT,
+        SmallInteger,
         default=0,
         nullable=False,
         comment="case 执行状态;0-空闲 1-启动 2-成功 3-失败",

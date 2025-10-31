@@ -30,6 +30,7 @@ class MessageType(str, Enum):
     NOTIFICATION = "notification"  # 系统通知
     ERROR = "error"  # 错误消息
     HEARTBEAT_TIMEOUT_WARNING = "heartbeat_timeout_warning"  # 心跳超时警告
+    HOST_OFFLINE_NOTIFICATION = "host_offline_notification"  # Host下线通知
 
 
 class BaseMessage(BaseModel):
@@ -153,6 +154,18 @@ class HeartbeatTimeoutWarningMessage(BaseMessage):
     timeout: int = Field(..., description="心跳超时时间（秒）")
 
 
+class HostOfflineNotificationMessage(BaseMessage):
+    """Host下线通知 - Server → Agent
+
+    通知Agent其Host已下线，Agent收到后需要更新host_exec_log表的host_state为4
+    """
+
+    type: MessageType = Field(default=MessageType.HOST_OFFLINE_NOTIFICATION, description="消息类型")
+    host_id: str = Field(..., description="Host ID")
+    message: str = Field(default="Host已下线", description="下线消息")
+    reason: Optional[str] = Field(default=None, description="下线原因")
+
+
 # 消息类型映射
 MESSAGE_TYPE_MAP = {
     MessageType.WELCOME: WelcomeMessage,
@@ -165,6 +178,7 @@ MESSAGE_TYPE_MAP = {
     MessageType.NOTIFICATION: NotificationMessage,
     MessageType.ERROR: ErrorMessage,
     MessageType.HEARTBEAT_TIMEOUT_WARNING: HeartbeatTimeoutWarningMessage,
+    MessageType.HOST_OFFLINE_NOTIFICATION: HostOfflineNotificationMessage,
 }
 
 

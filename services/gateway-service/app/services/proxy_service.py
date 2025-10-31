@@ -11,9 +11,10 @@ import sys
 import websockets
 from typing import Any, Dict, Optional
 
+from fastapi import Request, WebSocket, WebSocketDisconnect
+
 # 使用 try-except 方式处理路径导入
 try:
-    from fastapi import WebSocketDisconnect
     from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
@@ -23,7 +24,6 @@ except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     # 兼容不同版本的 httpx
-    from fastapi import WebSocketDisconnect
     from httpx import ConnectError, TimeoutException
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
@@ -52,28 +52,34 @@ class ProxyService:
     负责将请求转发到后端微服务
     """
 
-    def __init__(self):
+    def __init__(self, service_discovery=None):
         """初始化代理服务
 
-        支持两种启动方式：
-        1. Docker: 使用服务名（auth-service, admin-service, host-service）
-        2. 本地开发: 使用 localhost + 端口
-        """
-        # 检测运行环境
-        service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
-        service_host_admin = os.getenv("SERVICE_HOST_ADMIN", "admin-service")
-        service_host_host = os.getenv("SERVICE_HOST_HOST", "host-service")
+        支持三种服务发现方式：
+        1. Nacos 动态服务发现（推荐）
+        2. Docker: 使用服务名（auth-service, admin-service, host-service）
+        3. 本地开发: 使用 localhost + 端口
 
-        # 服务路由映射表 - 基础URL
-        # Docker 环境：使用服务名 (auth-service, admin-service, host-service)
-        # 本地开发：使用 localhost:port (127.0.0.1:8001, 127.0.0.1:8002, 127.0.0.1:8003)
-        self.service_routes = {
-            "auth": f"http://{service_host_auth}:8001",
-            "admin": f"http://{service_host_admin}:8002",
-            "host": f"http://{service_host_host}:8003",
+        Args:
+            service_discovery: ServiceDiscovery 实例（可选）
+        """
+        # 服务发现工具
+        self.service_discovery = service_discovery
+
+        # 服务名称映射（短名称 -> 完整服务名）
+        self.service_name_map = {
+            "auth": "auth-service",
+            "admin": "admin-service",
+            "host": "host-service",
         }
 
-        logger.info("服务路由已配置", extra={"services": list(self.service_routes.keys())})
+        logger.info(
+            "代理服务初始化完成",
+            extra={
+                "service_discovery_enabled": service_discovery is not None,
+                "services": list(self.service_name_map.keys()),
+            },
+        )
 
         # 使用共享的 HTTP 客户端
         self.http_client = AsyncHTTPClient(
@@ -93,30 +99,42 @@ class ProxyService:
             retry_delay=0.5,
         )
 
-    def get_service_url(self, service_name: str) -> str:
-        """获取服务 URL
+    async def get_service_url(self, service_name: str) -> str:
+        """获取服务 URL（异步方法）
+
+        优先级：
+        1. 使用 ServiceDiscovery 从 Nacos 动态获取
+        2. 使用静态后备地址
 
         Args:
-            service_name: 服务名称
+            service_name: 服务名称（短名称如 "auth"）
 
         Returns:
-            服务 URL
+            服务 URL（如 "http://172.20.0.101:8001"）
 
         Raises:
             ServiceNotFoundError: 服务不存在
         """
-        service_url = self.service_routes.get(service_name)
-        if not service_url:
-            logger.warning(
-                "服务不存在",
-                extra={
-                    "service_name": service_name,
-                    "available_services": list(self.service_routes.keys()),
-                },
-            )
-            raise ServiceNotFoundError(service_name)
+        # 将短名称映射为完整服务名
+        full_service_name = self.service_name_map.get(service_name, service_name)
 
-        return service_url
+        # 使用服务发现
+        if self.service_discovery:
+            try:
+                service_url = await self.service_discovery.get_service_url(full_service_name)
+                logger.debug(f"获取服务地址: {service_name} -> {service_url}")
+                return service_url
+            except Exception as e:
+                logger.error(
+                    f"服务发现失败: {service_name}",
+                    extra={"error": str(e)},
+                    exc_info=True,
+                )
+                raise ServiceNotFoundError(service_name) from e
+        else:
+            # 无服务发现时抛出异常
+            logger.error(f"服务发现未配置，无法获取服务地址: {service_name}")
+            raise ServiceNotFoundError(service_name)
 
     def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
         """清理请求头 - 移除可能导致问题的头部
@@ -273,8 +291,8 @@ class ProxyService:
             ServiceUnavailableError: 服务不可用
         """
         try:
-            # 获取服务 URL
-            service_url = self.get_service_url(service_name)
+            # 获取服务 URL（异步）
+            service_url = await self.get_service_url(service_name)
 
             # 构建完整 URL
             full_url = self._build_service_url(service_url, path, service_name)
@@ -714,8 +732,13 @@ class ProxyService:
 _proxy_service_instance: Optional[ProxyService] = None
 
 
-def get_proxy_service() -> ProxyService:
-    """获取代理服务实例（单例模式）
+async def get_proxy_service(request: Request) -> ProxyService:
+    """获取代理服务实例（HTTP依赖注入）
+
+    从 request.app.state 获取服务发现实例并创建/返回 ProxyService。
+
+    Args:
+        request: FastAPI Request 对象
 
     Returns:
         代理服务实例
@@ -723,6 +746,41 @@ def get_proxy_service() -> ProxyService:
     global _proxy_service_instance
 
     if _proxy_service_instance is None:
-        _proxy_service_instance = ProxyService()
+        # 获取服务发现实例（如果存在）
+        service_discovery = None
+        if hasattr(request.app.state, "service_discovery"):
+            service_discovery = request.app.state.service_discovery
+            logger.info("✅ 代理服务使用 Nacos 服务发现")
+        else:
+            logger.warning("⚠️ 代理服务未找到服务发现实例，使用静态配置")
+
+        _proxy_service_instance = ProxyService(service_discovery=service_discovery)
+
+    return _proxy_service_instance
+
+
+async def get_proxy_service_ws(websocket: WebSocket) -> ProxyService:
+    """获取代理服务实例（WebSocket依赖注入）
+
+    从 websocket.app.state 获取服务发现实例并创建/返回 ProxyService。
+
+    Args:
+        websocket: FastAPI WebSocket 对象
+
+    Returns:
+        代理服务实例
+    """
+    global _proxy_service_instance
+
+    if _proxy_service_instance is None:
+        # 获取服务发现实例（如果存在）
+        service_discovery = None
+        if hasattr(websocket.app.state, "service_discovery"):
+            service_discovery = websocket.app.state.service_discovery
+            logger.info("✅ 代理服务（WebSocket）使用 Nacos 服务发现")
+        else:
+            logger.warning("⚠️ 代理服务（WebSocket）未找到服务发现实例，使用静态配置")
+
+        _proxy_service_instance = ProxyService(service_discovery=service_discovery)
 
     return _proxy_service_instance

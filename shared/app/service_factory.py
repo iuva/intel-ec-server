@@ -248,6 +248,11 @@ class ServiceLifecycleManager:
             await self._init_nacos(app)
             logger.info("Nacos 初始化完成")
 
+            # 6. 设置 Nacos 管理器到服务发现实例
+            if hasattr(app.state, "service_discovery") and app.state.service_discovery and self.nacos_manager:
+                app.state.service_discovery.set_nacos_manager(self.nacos_manager)
+                logger.info("✅ 服务发现已连接到 Nacos")
+
             # 6. 执行自定义启动处理器
             for handler in self.startup_handlers:
                 if asyncio.iscoroutinefunction(handler):

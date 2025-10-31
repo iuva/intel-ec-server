@@ -290,3 +290,80 @@ async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, de
         },
         message=f"广播完成 ({success_count}/{total_count}成功)",
     )
+
+
+# ========== Host 下线通知端点 ==========
+
+
+@router.post("/ws/notify-offline/{host_id}")
+async def notify_host_offline(host_id: str, reason: str = Query(None, description="下线原因")):
+    """通知指定 Host 下线
+
+    服务端主动通知 Agent 其 Host 已下线，Agent 收到后会：
+    1. 查询 host_exec_log 表的最新一条记录（del_flag=0）
+    2. 更新 host_state 为 4（离线状态）
+
+    Args:
+        host_id: 目标 Host ID
+        reason: 下线原因（可选）
+
+    Returns:
+        通知发送结果
+
+    Raises:
+        BusinessError: Host 未连接
+
+    Example:
+        ```
+        POST /api/v1/ws/notify-offline/1846486359367955051?reason=系统维护
+        ```
+
+    Response:
+        ```json
+        {
+            "code": 200,
+            "message": "Host下线通知已发送",
+            "data": {
+                "host_id": "1846486359367955051",
+                "success": true,
+                "reason": "系统维护"
+            }
+        }
+        ```
+    """
+    ws_manager = get_agent_websocket_manager()
+
+    # 检查 Host 是否连接
+    if not ws_manager.is_connected(host_id):
+        logger.warning(f"⚠️ Host 未连接，无法发送下线通知: {host_id}")
+        raise BusinessError(
+            message=f"Host 未连接: {host_id}",
+            error_code="HOST_NOT_CONNECTED",
+            code=404,
+        )
+
+    # 构建下线通知消息
+    offline_message = {
+        "type": "host_offline_notification",
+        "host_id": host_id,
+        "message": "Host已下线",
+        "reason": reason or "未指定原因",
+    }
+
+    # 发送消息
+    success = await ws_manager.send_to_host(host_id, offline_message)
+
+    if success:
+        logger.info(f"✅ Host下线通知已发送: {host_id}, 原因: {reason or '未指定原因'}")
+    else:
+        logger.warning(f"⚠️ Host下线通知发送失败: {host_id}")
+        raise BusinessError(
+            message=f"发送下线通知失败: {host_id}",
+            error_code="SEND_NOTIFICATION_FAILED",
+            code=500,
+        )
+
+    return SuccessResponse(
+        data={"host_id": host_id, "success": success, "reason": reason or "未指定原因"},
+        message="Host下线通知已发送",
+    )

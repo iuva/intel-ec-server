@@ -11,7 +11,7 @@ from typing import Any, Union
 
 # 使用 try-except 方式处理路径导入
 try:
-    from app.services.proxy_service import ProxyService, get_proxy_service
+    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Request, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
@@ -23,7 +23,7 @@ try:
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from app.services.proxy_service import ProxyService, get_proxy_service
+    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Request, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
@@ -44,7 +44,7 @@ async def websocket_proxy(
     websocket: WebSocket,
     hostname: str,
     apiurl: str,
-    proxy_service: ProxyService = Depends(get_proxy_service),
+    proxy_service: ProxyService = Depends(get_proxy_service_ws),
 ) -> None:
     """WebSocket 转发端点
 

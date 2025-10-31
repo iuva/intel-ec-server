@@ -93,6 +93,7 @@ class AgentWebSocketManager:
             "status_update": self._handle_status_update,
             "command_response": self._handle_command_response,
             "connection_result": self._handle_connection_result,  # Agent 上报连接结果
+            "host_offline_notification": self._handle_host_offline_notification,  # Host下线通知
         }
 
     def register_handler(self, message_type: str, handler: Callable) -> None:
@@ -546,6 +547,122 @@ class AgentWebSocketManager:
                 exc_info=True,
             )
             await self._send_error_message(agent_id, "处理连接结果失败")
+
+    async def _handle_host_offline_notification(self, agent_id: str, data: dict) -> None:
+        """处理 Host 下线通知
+
+        业务逻辑:
+        1. 从消息中获取 host_id
+        2. 查询 host_exec_log 表: host_id = data['host_id'], del_flag = 0
+        3. 获取最新一条数据（按 created_time 降序）
+        4. 如果数据存在:
+           - 更新 host_state = 4 (离线)
+
+        Args:
+            agent_id: Agent/Host ID (来自 token，实际上不使用，用于日志)
+            data: 消息数据，包含 host_id 字段
+
+        Note:
+            - 此消息由 Server 主动发送给 Agent
+            - Agent 不需要响应，只需要处理业务逻辑
+        """
+        try:
+            # 从消息中获取 host_id
+            msg_host_id = data.get("host_id")
+            if not msg_host_id:
+                logger.error("Host下线通知消息缺少 host_id 字段")
+                return
+
+            # 转换 host_id 为整数
+            try:
+                host_id_int = int(msg_host_id)
+            except (ValueError, TypeError):
+                logger.error(
+                    f"Host ID 格式错误: {msg_host_id}",
+                    extra={
+                        "host_id": msg_host_id,
+                        "error": "not a valid integer",
+                    },
+                )
+                return
+
+            reason = data.get("reason", "未知原因")
+
+            logger.info(
+                "开始处理 Host 下线通知",
+                extra={
+                    "host_id": host_id_int,
+                    "reason": reason,
+                },
+            )
+
+            # 查询 host_exec_log 表
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # 查询条件: host_id = msg_host_id, del_flag = 0
+                # 按 created_time 降序，获取最新一条
+                stmt = (
+                    select(HostExecLog)
+                    .where(
+                        and_(
+                            HostExecLog.host_id == host_id_int,
+                            HostExecLog.del_flag == 0,
+                        )
+                    )
+                    .order_by(HostExecLog.created_time.desc())
+                    .limit(1)
+                )
+
+                result = await session.execute(stmt)
+                exec_log = result.scalar_one_or_none()
+
+                if not exec_log:
+                    # 数据不存在: 记录日志但不报错
+                    logger.warning(
+                        "未找到执行日志记录（Host可能未执行过任务）",
+                        extra={
+                            "host_id": host_id_int,
+                            "del_flag": 0,
+                        },
+                    )
+                    return
+
+                # 数据存在: 更新 host_state = 4 (离线)
+                logger.info(
+                    "找到执行日志记录，准备更新 Host 状态为离线",
+                    extra={
+                        "host_id": host_id_int,
+                        "log_id": exec_log.id,
+                        "old_host_state": exec_log.host_state,
+                        "new_host_state": 4,
+                    },
+                )
+
+                # 更新 host_state = 4 (离线)
+                from sqlalchemy import update
+
+                update_stmt = (
+                    update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=4)  # 离线
+                )
+                await session.execute(update_stmt)
+                await session.commit()
+
+                logger.info(
+                    "✅ Host 执行日志状态已更新为离线",
+                    extra={
+                        "host_id": host_id_int,
+                        "log_id": exec_log.id,
+                        "old_host_state": exec_log.host_state,
+                        "new_host_state": 4,
+                        "reason": reason,
+                    },
+                )
+
+        except Exception as e:
+            logger.error(
+                f"❌ 处理 Host 下线通知失败: {agent_id}, 错误: {e!s}",
+                exc_info=True,
+            )
 
     async def _heartbeat_monitor(self, agent_id: str) -> None:
         """心跳监控任务

@@ -186,20 +186,30 @@ class NacosManager:
             服务实例信息
         """
         try:
-            instance = self.client.select_one_healthy_instance(
+            # 使用 list_naming_instance 获取所有实例
+            instances = self.client.list_naming_instance(
                 service_name=service_name,
                 group_name=self.group,
                 clusters=clusters or "DEFAULT",
+                healthy_only=True,  # 只获取健康实例
             )
 
-            if instance:
-                logger.debug(f"选择服务实例: {service_name} " + f"({instance.get('ip')}:{instance.get('port')})")
-                return instance  # type: ignore[no-any-return]
-            logger.warning(f"没有可用的服务实例: {service_name}")
-            return None
+            # 获取实例列表
+            hosts = instances.get("hosts", [])
+            
+            if not hosts:
+                logger.warning(f"没有可用的服务实例: {service_name}")
+                return None
+
+            # 简单负载均衡：选择第一个实例（也可以实现轮询等策略）
+            instance = hosts[0]
+            logger.debug(
+                f"选择服务实例: {service_name} ({instance.get('ip')}:{instance.get('port')})"
+            )
+            return instance  # type: ignore[no-any-return]
 
         except Exception as e:
-            logger.error(f"获取服务实例异常: {service_name}, 错误: {e!s}")
+            logger.error(f"获取服务实例异常: {service_name}, 错误: {e!s}", exc_info=True)
             return None
 
     async def start_heartbeat(
