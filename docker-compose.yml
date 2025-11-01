@@ -179,7 +179,8 @@ services:
     environment:
       SERVICE_NAME: gateway-service
       SERVICE_PORT: 8000
-      SERVICE_IP: gateway-service
+      GATEWAY_SERVICE_PORT: 8000
+      SERVICE_IP: 172.20.0.100
       # MariaDB配置（外部服务）
       MARIADB_HOST: ${MARIADB_HOST:-mariadb}
       MARIADB_PORT: ${MARIADB_PORT:-3306}
@@ -211,7 +212,8 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - intel-network
+      intel-network:
+        ipv4_address: 172.20.0.100
     depends_on:
       mariadb:
         condition: service_healthy
@@ -245,7 +247,8 @@ services:
     environment:
       SERVICE_NAME: auth-service
       SERVICE_PORT: 8001
-      SERVICE_IP: auth-service
+      AUTH_SERVICE_PORT: 8001
+      SERVICE_IP: 172.20.0.101
       # MariaDB配置（外部服务）
       MARIADB_HOST: ${MARIADB_HOST:-mariadb}
       MARIADB_PORT: ${MARIADB_PORT:-3306}
@@ -281,7 +284,8 @@ services:
     ports:
       - "8001:8001"
     networks:
-      - intel-network
+      intel-network:
+        ipv4_address: 172.20.0.101
     depends_on:
       mariadb:
         condition: service_healthy
@@ -291,66 +295,6 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # ==========================================
-  # Admin Service (管理服务)
-  # ==========================================
-  admin-service:
-    build:
-      context: .
-      dockerfile: services/admin-service/Dockerfile
-    image: intel-cw-ms/admin-service:latest
-    container_name: admin-service
-    restart: unless-stopped
-    environment:
-      SERVICE_NAME: admin-service
-      SERVICE_PORT: 8002
-      SERVICE_IP: admin-service
-      # MariaDB配置（外部服务）
-      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
-      MARIADB_PORT: ${MARIADB_PORT:-3306}
-      MARIADB_USER: ${MARIADB_USER:-intel_user}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
-      # Redis配置（外部服务）
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 2
-      # Nacos配置
-      NACOS_SERVER_ADDR: http://nacos:8848
-      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
-      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
-      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
-      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
-      # Jaeger配置
-      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
-      # gRPC 避免了 protobuf over HTTP 的兼容性问题
-      JAEGER_ENDPOINT: jaeger:4317
-      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
-      # 原因：这些环境变量会被 OpenTelemetry 自动检测
-      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
-      # 应用配置
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    ports:
-      - "8002:8002"
-    networks:
-      - intel-network
-    depends_on:
-      mariadb:
-        condition: service_healthy
-      nacos:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -369,7 +313,8 @@ services:
     environment:
       SERVICE_NAME: host-service
       SERVICE_PORT: 8003
-      SERVICE_IP: host-service
+      HOST_SERVICE_PORT: 8003
+      SERVICE_IP: 172.20.0.103
       # MariaDB配置（外部服务）
       MARIADB_HOST: ${MARIADB_HOST:-mariadb}
       MARIADB_PORT: ${MARIADB_PORT:-3306}
@@ -401,7 +346,8 @@ services:
     ports:
       - "8003:8003"
     networks:
-      - intel-network
+      intel-network:
+        ipv4_address: 172.20.0.103
     depends_on:
       mariadb:
         condition: service_healthy

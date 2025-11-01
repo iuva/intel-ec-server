@@ -137,10 +137,36 @@ class MariaDBManager:
                 await conn.execute(func.now())
 
             self._is_connected = True
-            logger.info(f"MariaDB连接成功: {database_url.split('@')[-1]}")
+            # 安全地记录连接信息（隐藏密码）
+            url_parts = database_url.split("@")
+            safe_url = url_parts[-1] if len(url_parts) > 1 else "unknown"
+            logger.info(
+                "MariaDB连接成功",
+                extra={"host": safe_url.split("/")[0] if "/" in safe_url else safe_url},
+            )
 
         except Exception as e:
-            logger.error(f"MariaDB连接失败: {e!s}")
+            # 提取连接信息用于错误提示（隐藏敏感信息）
+            try:
+                url_parts = database_url.split("@")
+                if len(url_parts) > 1:
+                    host_part = url_parts[-1].split("/")[0]
+                    user_part = url_parts[0].split("://")[-1].split(":")[0] if "://" in url_parts[0] else "unknown"
+                    logger.error(
+                        "MariaDB连接失败",
+                        extra={
+                            "host": host_part,
+                            "user": user_part,
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                        },
+                        exc_info=True,
+                    )
+                else:
+                    logger.error(f"MariaDB连接失败: {e!s}", exc_info=True)
+            except Exception:
+                # 如果解析失败，使用简单日志
+                logger.error(f"MariaDB连接失败: {e!s}", exc_info=True)
             raise
 
     async def disconnect(self) -> None:

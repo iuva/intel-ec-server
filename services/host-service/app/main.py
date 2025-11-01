@@ -14,6 +14,7 @@ from app.api.v1 import api_router
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.services.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
@@ -22,11 +23,21 @@ try:
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    from app.services.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
+
+# 加载 .env 文件（如果存在）
+try:
+    from shared.utils.env_loader import ensure_env_loaded
+
+    ensure_env_loaded()
+except ImportError:
+    # 如果无法导入，跳过（可能在 Docker 环境中）
+    ***REMOVED***
 
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("HOST_SERVICE_NAME", "host-service")
@@ -40,12 +51,38 @@ config = ServiceConfig.from_env(
     service_port_key="HOST_SERVICE_PORT",
 )
 
-# 创建 FastAPI 应用
+
+# 定时任务启动和关闭处理器
+async def startup_case_timeout_task(app):
+    """启动 Case 超时检测定时任务
+
+    Args:
+        app: FastAPI 应用实例（生命周期处理器必须接受此参数）
+    """
+    case_timeout_task = get_case_timeout_task_service()
+    await case_timeout_task.start()
+
+
+async def shutdown_case_timeout_task(app):
+    """停止 Case 超时检测定时任务
+
+    Args:
+        app: FastAPI 应用实例（生命周期处理器必须接受此参数）
+    """
+    case_timeout_task = get_case_timeout_task_service()
+    await case_timeout_task.stop()
+
+
+# 创建 FastAPI 应用（集成定时任务生命周期）
 app = FastAPI(
     title="Host Service",
     description="主机管理和WebSocket实时通信服务",
     version="1.0.0",
-    lifespan=create_service_lifespan(config),
+    lifespan=create_service_lifespan(
+        config,
+        startup_handlers=[startup_case_timeout_task],
+        shutdown_handlers=[shutdown_case_timeout_task],
+    ),
 )
 
 # ✅ 在这里立即添加所有中间件（在 lifespan 之前）

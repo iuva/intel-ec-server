@@ -7,7 +7,7 @@ echo "🚀 开始构建所有微服务..."
 echo ""
 
 # 定义服务列表
-services=("gateway-service" "admin-service" "auth-service" "host-service")
+services=("gateway-service" "auth-service" "host-service")
 
 # 构建计数
 success_count=0

@@ -69,7 +69,6 @@ class ProxyService:
         # 服务名称映射（短名称 -> 完整服务名）
         self.service_name_map = {
             "auth": "auth-service",
-            "admin": "admin-service",
             "host": "host-service",
         }
 

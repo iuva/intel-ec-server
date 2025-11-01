@@ -78,9 +78,26 @@ pip install -r requirements.txt
 
 ### 启动服务
 
+> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
+
 ```bash
-python -m uvicorn app.main:app --reload --port 8003
+# 开发模式（支持热重载）
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+
+# 生产模式
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8003
 ```
+
+**环境变量配置**:
+- 如果数据库在 Docker 中，需要在 `.env` 文件中设置：
+  ```bash
+  # macOS/Windows
+  MARIADB_HOST=host.docker.internal
+  
+  # Linux
+  MARIADB_HOST=172.17.0.1
+  ```
+- 详细配置说明请参考 [快速开始指南](../../docs/00-quick-start.md#步骤-7-本地启动微服务非-docker-方式)
 
 ### 访问文档
 

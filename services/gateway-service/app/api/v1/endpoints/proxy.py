@@ -252,7 +252,6 @@ async def websocket_proxy(
 # 支持格式: /host/ws/agent/agent-123 -> ws://host-service:8003/api/v1/ws/agent/agent-123
 SERVICE_SHORT_NAMES = {
     "auth": "auth-service",
-    "admin": "admin-service",
     "host": "host-service",
 }
 

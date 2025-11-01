@@ -50,7 +50,6 @@ class ServiceDiscovery:
         # 后备静态服务地址（环境变量优先）
         self._fallback_urls = {
             "auth-service": os.getenv("SERVICE_HOST_AUTH", "auth-service"),
-            "admin-service": os.getenv("SERVICE_HOST_ADMIN", "admin-service"),
             "host-service": os.getenv("SERVICE_HOST_HOST", "host-service"),
         }
 
@@ -204,7 +203,6 @@ class ServiceDiscovery:
         # 推断端口
         port_map = {
             "auth-service": 8001,
-            "admin-service": 8002,
             "host-service": 8003,
         }
 

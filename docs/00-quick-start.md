@@ -122,6 +122,258 @@ curl http://localhost:8848/nacos/v1/console/health/readiness
 open http://localhost:16686
 ```
 
+### 步骤 7: 本地启动微服务（非 Docker 方式）
+
+> **💡 提示**: 本地启动适用于开发调试，生产环境建议使用 Docker Compose。
+
+#### 前提条件
+
+1. **确保已安装依赖**：
+
+   ```bash
+   # 在项目根目录
+   pip install -r requirements.txt
+   
+   # 安装各服务的依赖
+   pip install -r services/gateway-service/requirements.txt
+   pip install -r services/auth-service/requirements.txt
+   pip install -r services/host-service/requirements.txt
+   ```
+
+2. **配置环境变量**：
+   确保 `.env` 文件已正确配置（参考步骤 2）
+
+   > **💡 重要说明**：
+   > - 代码会在启动时**自动加载** `.env` 文件到环境变量
+   > - `.env` 文件中的值会被加载为环境变量
+   > - 如果系统环境变量中已有同名变量，**不会覆盖**（系统环境变量优先级更高）
+   > - 如果 `.env` 文件不存在或无法加载，会使用代码中的默认值
+
+3. **确保基础设施服务已启动**：
+
+   ```bash
+   # 启动数据库和基础设施服务
+   docker-compose up -d mariadb nacos jaeger
+   ```
+
+4. **配置数据库连接地址（重要）**：
+
+   由于本地启动的服务需要连接到 Docker 中的数据库，需要在 `.env` 文件中配置正确的数据库主机地址：
+
+   ```bash
+   # macOS/Windows Docker Desktop
+   MARIADB_HOST=host.docker.internal
+   MARIADB_PORT=3306
+   
+   # Linux（使用 Docker 网关）
+   MARIADB_HOST=172.17.0.1
+   MARIADB_PORT=3306
+   
+   # Redis 配置（如果 Redis 在 Docker 中）
+   REDIS_HOST=host.docker.internal  # macOS/Windows
+   # 或
+   REDIS_HOST=172.17.0.1  # Linux
+   REDIS_PORT=6379
+   ```
+
+   > **💡 提示**：如果不设置 `MARIADB_HOST` 和 `REDIS_HOST`，代码会自动检测运行环境：
+   > - 在 Docker 容器内：自动使用容器名（`mariadb`、`redis`）
+   > - 在本地环境：默认使用 `localhost`（需要数据库也在本地）
+   >
+   > 如果数据库在 Docker 中，**必须**显式设置上述环境变量。
+
+#### 启动 Gateway Service (端口 8000)
+
+```bash
+# 进入 Gateway Service 目录
+cd services/gateway-service
+
+# 启动服务（开发模式，支持热重载）
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 或者指定环境变量
+SERVICE_PORT=8000 GATEWAY_SERVICE_PORT=8000 \
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**访问地址**:
+
+- API 文档: <http://localhost:8000/docs>
+- 健康检查: <http://localhost:8000/health>
+- 指标端点: <http://localhost:8000/metrics>
+
+#### 启动 Auth Service (端口 8001)
+
+```bash
+# 打开新的终端，进入 Auth Service 目录
+cd services/auth-service
+
+# 启动服务（开发模式，支持热重载）
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+# 或者指定环境变量
+SERVICE_PORT=8001 AUTH_SERVICE_PORT=8001 \
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+**访问地址**:
+
+- API 文档: <http://localhost:8001/docs>
+- 健康检查: <http://localhost:8001/health>
+- 指标端点: <http://localhost:8001/metrics>
+
+#### 启动 Host Service (端口 8003)
+
+```bash
+# 打开新的终端，进入 Host Service 目录
+cd services/host-service
+
+# 启动服务（开发模式，支持热重载）
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+
+# 或者指定环境变量
+SERVICE_PORT=8003 HOST_SERVICE_PORT=8003 \
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+```
+
+**访问地址**:
+
+- API 文档: <http://localhost:8003/docs>
+- 健康检查: <http://localhost:8003/health>
+- 指标端点: <http://localhost:8003/metrics>
+
+#### 启动所有服务（使用终端多窗口）
+
+建议为每个服务打开一个独立的终端窗口，便于查看日志和调试：
+
+```bash
+# 终端 1: Gateway Service
+cd services/gateway-service
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 终端 2: Auth Service
+cd services/auth-service
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+# 终端 3: Host Service
+cd services/host-service
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+```
+
+#### 环境变量配置
+
+如果需要覆盖 `.env` 文件中的配置，可以在启动命令前设置环境变量：
+
+```bash
+# Gateway Service 示例（macOS/Windows - 连接 Docker 中的数据库）
+MARIADB_HOST=host.docker.internal \
+MARIADB_PORT=3306 \
+MARIADB_USER=intel_user \
+MARIADB_PASSWORD=intel_***REMOVED*** \
+MARIADB_DATABASE=intel_cw \
+REDIS_HOST=host.docker.internal \
+REDIS_PORT=6379 \
+NACOS_SERVER_ADDR=http://localhost:8848 \
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Linux 示例（使用 Docker 网关）
+MARIADB_HOST=172.17.0.1 \
+REDIS_HOST=172.17.0.1 \
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**重要说明**：
+
+- **macOS/Windows**: 使用 `host.docker.internal` 连接 Docker 中的数据库
+- **Linux**: 使用 `172.17.0.1`（Docker 默认网关）连接 Docker 中的数据库
+- **本地数据库**: 如果数据库在本地（非 Docker），使用 `localhost`
+
+#### 启动顺序建议
+
+1. **首先启动基础设施服务**：
+
+   ```bash
+   docker-compose up -d nacos jaeger
+   ```
+
+2. **然后依次启动微服务**（建议顺序）：
+   - Auth Service（认证服务）
+   - Host Service（主机服务）
+   - Gateway Service（网关服务，依赖其他服务）
+
+#### 验证服务启动
+
+```bash
+# 检查所有服务是否正常运行
+curl http://localhost:8000/health  # Gateway
+curl http://localhost:8001/health  # Auth
+curl http://localhost:8003/health  # Host
+
+# 检查服务是否注册到 Nacos
+curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=gateway-service
+curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=auth-service
+curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=host-service
+```
+
+#### 数据库连接问题排查
+
+如果本地启动时无法连接数据库，请检查：
+
+1. **确认数据库在 Docker 中运行**：
+
+   ```bash
+   docker-compose ps mariadb
+   ```
+
+2. **检查 `.env` 配置**：
+
+   ```bash
+   # macOS/Windows
+   grep MARIADB_HOST .env
+   # 应该显示: MARIADB_HOST=host.docker.internal
+   
+   # Linux
+   grep MARIADB_HOST .env
+   # 应该显示: MARIADB_HOST=172.17.0.1
+   ```
+
+3. **测试数据库连接**：
+
+   ```bash
+   # macOS/Windows
+   mysql -h host.docker.internal -P 3306 -u intel_user -p
+   
+   # Linux
+   mysql -h 172.17.0.1 -P 3306 -u intel_user -p
+   ```
+
+4. **查看服务日志**：
+   服务启动时会在日志中显示使用的数据库连接地址，检查是否正确。
+
+#### 环境变量加载机制
+
+> **💡 重要说明**：
+>
+> 本地启动时，代码会自动加载 `.env` 文件，环境变量读取优先级为：
+>
+> 1. **系统环境变量**（最高优先级）- 命令行设置或 `export` 的变量
+> 2. **`.env` 文件**（自动加载）- 应用启动时自动加载项目根目录的 `.env` 文件
+> 3. **代码默认值**（最低优先级）- 如果都没有设置，使用代码中的默认值
+>
+> 详细说明请参考 [基础设施配置指南](./01-infrastructure-config.md)。
+
+#### 常用启动参数说明
+
+- `--host 0.0.0.0`: 监听所有网络接口（允许外部访问）
+- `--port 8000`: 指定服务端口
+- `--reload`: 开发模式，代码修改后自动重启（生产环境不要使用）
+- `--log-level info`: 设置日志级别（可选：debug, info, warning, error）
+- `--workers 4`: 生产模式，启动多个工作进程（开发模式不使用）
+
+#### 停止服务
+
+按 `Ctrl+C` 停止服务，或者直接关闭终端窗口。
+
 ## 📊 服务访问地址
 
 ### 基础设施服务
@@ -144,11 +396,10 @@ open http://localhost:16686
   - 密码: ***REMOVED***
   - 详细说明：[Prometheus + Grafana 监控指南](prometheus-grafana-setup.md)
 
-### 微服务（待实现后可用）
+### 微服务
 
 - **Gateway Service**: <http://localhost:8000>
 - **Auth Service**: <http://localhost:8001>
-- **Admin Service**: <http://localhost:8002>
 - **Host Service**: <http://localhost:8003>
 
 ## 🛠️ 开发工作流
@@ -322,8 +573,9 @@ curl http://localhost:8848/nacos/v1/console/health/readiness
 # 检查端口占用
 lsof -i :8848  # Nacos
 lsof -i :16686 # Jaeger
-lsof -i :8000  # Gateway
+lsof -i :8000  # Gateway Service
 lsof -i :8001  # Auth Service
+lsof -i :8003  # Host Service
 
 # 修改 docker-compose.yml 中的端口映射
 ```
@@ -365,5 +617,5 @@ lsof -i :8001  # Auth Service
 
 ---
 
-**文档版本**: 1.0.0
-**最后更新**: 2025-10-10
+**文档版本**: 1.1.0
+**最后更新**: 2025-10-31

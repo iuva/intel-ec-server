@@ -5,33 +5,24 @@
 本文档提供Intel EC微服务系统的完整API参考，包括所有服务的端点说明、使用示例和最佳实践。
 
 **版本**: v1.0.0
-**更新时间**: 2025-10-15
+**更新时间**: 2025-11-01
 **兼容性**: OpenAPI 3.0
+
+> **注意**: Admin Service 已从项目中移除，相关功能已整合到其他服务中。
 
 ## 🏗️ 架构概览
 
 ### 服务架构
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Gateway       │────│   Auth Service  │────│   Admin Service │
-│   (8000)        │    │   (8001)        │    │   (8002)        │
+│   Gateway       │────│   Auth Service  │────│   Host Service  │
+│   (8000)        │    │   (8001)        │    │   (8003)        │
 │                 │    │                 │    │                 │
-│ • API网关       │    │ • JWT认证       │    │ • 用户管理      │
-│ • 路由转发      │    │ • OAuth 2.0     │    │ • 系统配置      │
-│ • 负载均衡      │    │ • 会话管理      │    │ • 权限控制      │
+│ • API网关       │    │ • JWT认证       │    │ • Host管理      │
+│ • 路由转发      │    │ • OAuth 2.0     │    │ • Agent通信     │
+│ • 负载均衡      │    │ • 会话管理      │    │ • WebSocket     │
+│ • 认证验证      │    │ • 令牌刷新      │    │ • 实时监控      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │   Host Service  │
-                    │   (8003)        │
-                    │                 │
-                    │ • Host管理      │
-                    │ • Agent通信     │
-                    │ • WebSocket     │
-                    │ • 实时监控      │
-                    └─────────────────┘
 ```
 
 ### 统一响应格式
@@ -111,7 +102,6 @@ GET /health/detailed
       "nacos": "connected",
       "backend_services": {
         "auth-service": "healthy",
-        "admin-service": "healthy",
         "host-service": "healthy"
       }
     }
@@ -224,98 +214,6 @@ POST /api/v1/oauth2/device/token
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=***REMOVED***word&username=device001&***REMOVED***word=device_secret&scope=device
-```
-
-## 👥 管理服务 (Admin Service)
-
-**端口**: 8002
-**文档**: http://localhost:8002/docs
-
-### 核心功能
-- 用户管理
-- 角色权限管理
-- 系统配置
-- 审计日志
-
-### 用户管理API
-
-#### 获取用户列表
-```http
-GET /api/v1/users?page=1&page_size=20&keyword=admin
-Authorization: Bearer <access_token>
-```
-
-**响应**:
-```json
-{
-  "code": 200,
-  "message": "获取用户列表成功",
-  "data": {
-    "data": [
-      {
-        "user_id": "user123",
-        "username": "admin",
-        "email": "admin@example.com",
-        "is_active": true,
-        "created_time": "2025-01-01T00:00:00Z"
-      }
-    ],
-    "total": 1,
-    "page": 1,
-    "page_size": 20
-  }
-}
-```
-
-#### 创建用户
-```http
-POST /api/v1/users
-Content-Type: application/json
-Authorization: Bearer <access_token>
-
-{
-  "username": "newuser",
-  "email": "newuser@example.com",
-  "***REMOVED***word": "***REMOVED***",
-  "phone": "+8613800000000"
-}
-```
-
-#### 更新用户信息
-```http
-PUT /api/v1/users/{user_id}
-Content-Type: application/json
-Authorization: Bearer <access_token>
-
-{
-  "email": "updated@example.com",
-  "phone": "+8613811111111"
-}
-```
-
-#### 删除用户
-```http
-DELETE /api/v1/users/{user_id}
-Authorization: Bearer <access_token>
-```
-
-### 角色和权限管理
-
-#### 获取角色列表
-```http
-GET /api/v1/roles
-Authorization: Bearer <access_token>
-```
-
-#### 分配用户角色
-```http
-POST /api/v1/users/{user_id}/roles
-Content-Type: application/json
-Authorization: Bearer <access_token>
-
-{
-  "role_ids": ["admin", "manager"]
-}
 ```
 
 ## 🖥️ 主机服务 (Host Service)

@@ -39,6 +39,15 @@ except ImportError:
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.utils.service_discovery import init_service_discovery
 
+# 加载 .env 文件（如果存在）
+try:
+    from shared.utils.env_loader import ensure_env_loaded
+
+    ensure_env_loaded()
+except ImportError:
+    # 如果无法导入，跳过（可能在 Docker 环境中）
+    ***REMOVED***
+
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("GATEWAY_SERVICE_NAME", "gateway-service")
 configure_logger(service_name=service_name, log_level="INFO")

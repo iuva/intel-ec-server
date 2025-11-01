@@ -26,6 +26,11 @@ from shared.common.response import SuccessResponse
 from shared.config.nacos_config import NacosManager
 from shared.monitoring.jaeger import init_jaeger
 from shared.monitoring.metrics import init_metrics
+from shared.utils.docker_detection import (
+    resolve_mariadb_host,
+    resolve_nacos_host,
+    resolve_redis_host,
+)
 
 logger = get_logger(__name__)
 
@@ -99,13 +104,19 @@ class ServiceConfig:
         # 基础配置
         service_port = int(os.getenv(service_port_key, "8000"))
         service_ip = os.getenv("SERVICE_IP", "127.0.0.1")
-        nacos_server_addr = os.getenv("NACOS_SERVER_ADDR", "localhost:8848")
 
-        # 数据库配置
-        mariadb_host = os.getenv("MARIADB_HOST", "localhost")
+        # Nacos 配置 - 智能解析主机地址
+        nacos_host = resolve_nacos_host()
+        nacos_port = os.getenv("NACOS_PORT", "8848")
+        nacos_server_addr = os.getenv("NACOS_SERVER_ADDR", f"{nacos_host}:{nacos_port}")
+
+        # 数据库配置 - 智能解析主机地址
+        # 优先使用环境变量，否则根据运行环境自动选择
+        mariadb_host = os.getenv("MARIADB_HOST") or resolve_mariadb_host(default_in_docker="mariadb")
         mariadb_port = os.getenv("MARIADB_PORT", "3306")
-        mariadb_user = os.getenv("MARIADB_USER", "root")
-        mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "***REMOVED***word")
+        # 默认用户和密码与 docker-compose.yml 保持一致
+        mariadb_user = os.getenv("MARIADB_USER", "intel_user")
+        mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "intel_***REMOVED***")
         mariadb_database = os.getenv("MARIADB_DATABASE", "intel_cw")
 
         encoded_***REMOVED***word = quote_plus(mariadb_***REMOVED***word)
@@ -113,8 +124,9 @@ class ServiceConfig:
             f"mysql+aiomysql://{mariadb_user}:{encoded_***REMOVED***word}@{mariadb_host}:{mariadb_port}/{mariadb_database}"
         )
 
-        # Redis 配置
-        redis_host = os.getenv("REDIS_HOST", "localhost")
+        # Redis 配置 - 智能解析主机地址
+        # 优先使用环境变量，否则根据运行环境自动选择
+        redis_host = os.getenv("REDIS_HOST") or resolve_redis_host(default_in_docker="redis")
         redis_port_str = os.getenv("REDIS_PORT", "6379")
         redis_***REMOVED***word = os.getenv("REDIS_PASSWORD", "")
         redis_db_str = os.getenv("REDIS_DB", "0")
