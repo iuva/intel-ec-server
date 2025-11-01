@@ -80,6 +80,8 @@ pip install -r requirements.txt
 
 > **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
 
+> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
+
 ```bash
 # Development mode (supports hot reload)
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload

@@ -256,19 +256,33 @@ python create_tables.py create
 
 > **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
 
+> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
+
 ```bash
+<<<<<<< HEAD
 # Development mode (supports hot reload)
+=======
+# 开发模式（支持热重载）
+>>>>>>> c374822 (docs(readme): 更新微服务架构文档)
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
 # Production mode
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
+<<<<<<< HEAD
 **Environment Variable Configuration**:
 - If the database is in Docker, you need to set the correct database host address in the `.env` file
 - For detailed configuration, please refer to [Quick Start Guide](../../docs/00-quick-start.md#step-7-start-microservices-locally-non-docker-way)
 
 ### 3. Docker Deployment
+=======
+**环境变量配置**:
+- 如果数据库在 Docker 中，需要在 `.env` 文件中设置正确的数据库主机地址
+- 详细配置请参考 [快速开始指南](../../docs/00-quick-start.md#步骤-7-本地启动微服务非-docker-方式)
+
+### 3. Docker 部署
+>>>>>>> c374822 (docs(readme): 更新微服务架构文档)
 
 ```bash
 # Build image

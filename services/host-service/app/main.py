@@ -12,20 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
 
-<<<<<<< HEAD
 # Use try-except to handle path imports
-=======
-# 使用 try-except 方式处理路径导入
->>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 try:
     from app.tasks.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
-<<<<<<< HEAD
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
-=======
->>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
@@ -36,10 +29,7 @@ except ImportError:
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
-<<<<<<< HEAD
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
-=======
->>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
