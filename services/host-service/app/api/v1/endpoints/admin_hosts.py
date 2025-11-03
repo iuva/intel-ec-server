@@ -48,6 +48,7 @@ router = APIRouter()
        - 主机状态（host_state）
        - 唯一引导ID（mg_id）
     3. 关联查询执行日志，获取最新执行用户名称
+    4. 支持排序：默认按创建时间倒序，可选择按申报时间排序
 
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
@@ -58,6 +59,13 @@ router = APIRouter()
     - 所有搜索条件都是可选的（可以为空）
     - 支持模糊匹配（LIKE查询）
     - 多个条件之间是 AND 关系
+
+    ## 排序说明
+    - 默认排序：按创建时间（created_time）倒序
+    - 申报时间排序：传入 subm_time_sort 参数
+      - `0`: 申报时间正序（从早到晚）
+      - `1`: 申报时间倒序（从晚到早）
+    - 如果不传入 subm_time_sort，则按创建时间倒序
 
     ## 返回数据说明
     - `hardware_id`: MongoDB 硬件ID
@@ -90,6 +98,9 @@ async def list_hosts(
     username: Optional[str] = Query(None, description="主机账号（可选搜索条件）"),
     host_state: Optional[int] = Query(None, description="主机状态（可选搜索条件）"),
     mg_id: Optional[str] = Query(None, description="唯一引导ID（可选搜索条件）"),
+    subm_time_sort: Optional[int] = Query(
+        None, ge=0, le=1, description="申报时间排序字段（0=正序，1=倒序，不传则按创建时间倒序）"
+    ),
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
 ) -> SuccessResponse:
@@ -102,6 +113,7 @@ async def list_hosts(
         username: 主机账号（可选）
         host_state: 主机状态（可选）
         mg_id: 唯一引导ID（可选）
+        subm_time_sort: 申报时间排序字段（0=正序，1=倒序，不传则按创建时间倒序）
         admin_host_service: 管理后台主机服务实例
         current_user: 当前登录用户信息
 
@@ -117,6 +129,7 @@ async def list_hosts(
             "username": username,
             "host_state": host_state,
             "mg_id": mg_id,
+            "subm_time_sort": subm_time_sort,
             "user_id": current_user.get("user_id"),
         },
     )
@@ -129,6 +142,7 @@ async def list_hosts(
         username=username,
         host_state=host_state,
         mg_id=mg_id,
+        subm_time_sort=subm_time_sort,
     )
 
     # 调用服务层查询

@@ -65,6 +65,7 @@ class AdminHostService:
                 "username": request.username,
                 "host_state": request.host_state,
                 "mg_id": request.mg_id,
+                "subm_time_sort": request.subm_time_sort,
             },
         )
 
@@ -100,9 +101,33 @@ class AdminHostService:
             count_result = await session.execute(count_stmt)
             total = count_result.scalar() or 0
 
-            # 2. 分页查询主机记录
+            # 2. 分页查询主机记录 - 根据排序参数选择排序方式
             pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
-            stmt = base_stmt.order_by(HostRec.id.desc()).offset(pagination_params.offset).limit(pagination_params.limit)
+
+            # 默认按创建时间倒序，如果传入了申报时间排序参数，则按申报时间排序
+            if request.subm_time_sort is not None:
+                # 按申报时间排序
+                if request.subm_time_sort == 0:
+                    # 正序（从早到晚）
+                    stmt = (
+                        base_stmt.order_by(HostRec.subm_time.asc().nulls_last())
+                        .offset(pagination_params.offset)
+                        .limit(pagination_params.limit)
+                    )
+                else:
+                    # 倒序（从晚到早）
+                    stmt = (
+                        base_stmt.order_by(HostRec.subm_time.desc().nulls_last())
+                        .offset(pagination_params.offset)
+                        .limit(pagination_params.limit)
+                    )
+            else:
+                # 默认按创建时间倒序
+                stmt = (
+                    base_stmt.order_by(HostRec.created_time.desc())
+                    .offset(pagination_params.offset)
+                    .limit(pagination_params.limit)
+                )
 
             result = await session.execute(stmt)
             host_recs = result.scalars().all()

@@ -226,6 +226,12 @@ class AdminHostListRequest(BaseModel):
     username: Optional[str] = Field(default=None, description="主机账号（host_acct，可选搜索条件）")
     host_state: Optional[int] = Field(default=None, description="主机状态（可选搜索条件）")
     mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件）")
+    subm_time_sort: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="申报时间排序字段（0=正序，1=倒序，不传则按创建时间倒序）",
+    )
 
     model_config = {"from_attributes": True}
 
