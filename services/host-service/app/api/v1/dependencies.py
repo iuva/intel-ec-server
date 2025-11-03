@@ -431,6 +431,7 @@ logger = get_logger(__name__)
 _browser_host_service_instance: Optional[BrowserHostService] = None
 _browser_vnc_service_instance: Optional[BrowserVNCService] = None
 _host_discovery_service_instance: Optional[HostDiscoveryService] = None
+_admin_host_service_instance: Optional[Any] = None
 
 
 def get_host_service() -> BrowserHostService:
@@ -487,6 +488,74 @@ def get_host_discovery_service() -> HostDiscoveryService:
 <<<<<<< HEAD
 >>>>>>> af8f7cc (feat(host-service): 重构主机发现与VNC连接管理功能)
 =======
+
+
+def get_admin_host_service() -> Any:
+    """获取管理后台主机服务实例（单例模式）
+
+    Returns:
+        AdminHostService: 管理后台主机服务实例
+    """
+    global _admin_host_service_instance
+
+    if _admin_host_service_instance is None:
+        try:
+            from app.services.admin_host_service import AdminHostService
+        except ImportError:
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+            from app.services.admin_host_service import AdminHostService
+
+        _admin_host_service_instance = AdminHostService()
+
+    return _admin_host_service_instance
+
+
+async def get_current_user(request: Request) -> Dict[str, Any]:
+    """获取当前用户信息（从 token 中提取）
+
+    从请求的 Authorization 头中提取并验证 JWT token，
+    返回用户信息。
+
+    Args:
+        request: FastAPI 请求对象
+
+    Returns:
+        dict: 用户信息
+
+    Raises:
+        HTTPException: token 缺失、无效或验证失败时抛出 401
+    """
+    try:
+        from shared.utils.token_extractor import get_token_extractor
+
+        extractor = get_token_extractor()
+        is_valid, user_info = await extractor.extract_and_verify(request)
+
+        if not is_valid or not user_info:
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=ErrorResponse(
+                    code=HTTP_401_UNAUTHORIZED,
+                    message="缺少有效的认证令牌",
+                    error_code="UNAUTHORIZED",
+                ).model_dump(),
+            )
+
+        return user_info
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"获取当前用户失败: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail=ErrorResponse(
+                code=HTTP_401_UNAUTHORIZED,
+                message="认证失败",
+                error_code="AUTHENTICATION_FAILED",
+            ).model_dump(),
+        )
 
 
 async def get_current_agent(request: Request) -> Dict[str, Any]:

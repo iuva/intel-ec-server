@@ -1028,3 +1028,46 @@ class ReleaseHostsResponse(BaseModel):
     host_list: List[str] = Field(description="主机ID列表")
 
     model_config = {"from_attributes": True}
+
+
+# ==================== 管理后台主机管理 Schema ====================
+
+
+class AdminHostListRequest(BaseModel):
+    """管理后台主机列表查询请求模式"""
+
+    page: int = Field(default=1, ge=1, description="页码（从1开始）")
+    page_size: int = Field(default=20, ge=1, le=100, description="每页大小（1-100）")
+    mac: Optional[str] = Field(default=None, description="MAC地址（可选搜索条件）")
+    username: Optional[str] = Field(default=None, description="主机账号（host_acct，可选搜索条件）")
+    host_state: Optional[int] = Field(default=None, description="主机状态（可选搜索条件）")
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostInfo(BaseModel):
+    """管理后台主机信息响应模式"""
+
+    hardware_id: Optional[str] = Field(description="MongoDB 硬件ID")
+    host_acct: Optional[str] = Field(description="主机账号")
+    mg_id: Optional[str] = Field(description="唯一引导ID")
+    mac: Optional[str] = Field(description="MAC地址")
+    host_state: Optional[int] = Field(description="主机状态")
+    user_name: Optional[str] = Field(default=None, description="执行用户名称（来自host_exec_log）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostListResponse(BaseModel):
+    """管理后台主机列表响应模式"""
+
+    hosts: List[AdminHostInfo] = Field(description="主机列表")
+    total: int = Field(description="总记录数")
+    page: int = Field(description="当前页码")
+    page_size: int = Field(description="每页大小")
+    total_pages: int = Field(description="总页数")
+    has_next: bool = Field(description="是否有下一页")
+    has_prev: bool = Field(description="是否有上一页")
+
+    model_config = {"from_attributes": True}
