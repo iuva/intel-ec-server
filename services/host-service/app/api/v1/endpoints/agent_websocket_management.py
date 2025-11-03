@@ -11,12 +11,12 @@ from fastapi import APIRouter, Query
 
 # 使用 try-except 方式处理路径导入
 try:
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 
@@ -339,7 +339,8 @@ async def notify_host_offline(host_id: str, reason: str = Query(None, descriptio
         raise BusinessError(
             message=f"Host 未连接: {host_id}",
             error_code="HOST_NOT_CONNECTED",
-            code=404,
+            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+            http_status_code=400,
         )
 
     # 构建下线通知消息

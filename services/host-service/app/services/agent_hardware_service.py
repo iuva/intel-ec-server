@@ -19,7 +19,7 @@ try:
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
     from shared.common.database import generate_snowflake_id, mariadb_manager
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.json_comparator import JSONComparator
     from shared.utils.template_validator import TemplateValidator
@@ -29,7 +29,7 @@ except ImportError:
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
     from shared.common.database import generate_snowflake_id, mariadb_manager
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.json_comparator import JSONComparator
     from shared.utils.template_validator import TemplateValidator
@@ -540,7 +540,8 @@ class AgentHardwareService:
                     raise BusinessError(
                         message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
                         error_code="EXEC_LOG_NOT_FOUND",
-                        code=404,
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=400,
                     )
 
                 logger.info(

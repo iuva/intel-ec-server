@@ -342,12 +342,12 @@ class ServiceNotFoundError(GatewayError):
     def __init__(self, service_name: str):
         super().__init__(
             message=f"服务不存在: {service_name}",
-            code=404,
+            code=ServiceErrorCodes.GATEWAY_SERVICE_NOT_FOUND,
             error_code=ErrorCode.SERVICE_NOT_FOUND,
             details={"service_name": service_name},
         )
-        # 覆盖 http_status_code 为 404
-        self.http_status_code = 404
+        # 使用业务错误码，HTTP 状态码设为 400（业务逻辑错误而非资源不存在）
+        self.http_status_code = 400
 
 
 class RateLimitExceededError(GatewayError):

@@ -16,7 +16,7 @@ from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
 try:
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 except ImportError:
     import os
@@ -25,7 +25,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -78,7 +78,8 @@ class BrowserHostService:
                 raise BusinessError(
                     message=f"主机不存在: {host_id}",
                     error_code="HOST_NOT_FOUND",
-                    code=404,
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
                 )
 
             logger.info(
@@ -141,7 +142,8 @@ class BrowserHostService:
                 raise BusinessError(
                     message=f"主机不存在: {host_id}",
                     error_code="HOST_NOT_FOUND",
-                    code=404,
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
                 )
 
             # 更新主机状态
@@ -211,7 +213,8 @@ class BrowserHostService:
                 raise BusinessError(
                     message=f"主机不存在: {host_id}",
                     error_code="HOST_NOT_FOUND",
-                    code=404,
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
                 )
 
             # 更新心跳时间

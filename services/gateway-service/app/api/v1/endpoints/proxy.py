@@ -466,13 +466,14 @@ async def check_service_health(
     except ServiceNotFoundError as e:
         # 直接返回JSONResponse，避免HTTPException的detail包装
         error_response = ErrorResponse(
-            code=HTTP_404_NOT_FOUND,
+            code=e.code,  # 使用业务错误码
             message=e.message,
             error_code=e.error_code,
+            details=e.details,
         )
 
         return JSONResponse(
-            status_code=HTTP_404_NOT_FOUND,
+            status_code=e.http_status_code,  # 使用异常定义的HTTP状态码（400）
             content=error_response.model_dump(),
         )
 

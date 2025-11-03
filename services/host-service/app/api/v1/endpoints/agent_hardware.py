@@ -344,12 +344,12 @@ async def report_hardware(
                 }
             },
         },
-        404: {
+        400: {
             "description": "未找到执行日志记录",
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 404,
+                        "code": 53012,
                         "message": "未找到主机的测试用例执行记录",
                         "error_code": "EXEC_LOG_NOT_FOUND",
                         "details": None,

@@ -17,6 +17,8 @@ try:
         AdminHostDeleteResponse,
         AdminHostListRequest,
         AdminHostListResponse,
+        AdminHostUpdateApprovalRequest,
+        AdminHostUpdateApprovalResponse,
     )
     from app.services.admin_host_service import AdminHostService
     from shared.common.decorators import handle_api_errors
@@ -29,6 +31,8 @@ except ImportError:
         AdminHostDeleteResponse,
         AdminHostListRequest,
         AdminHostListResponse,
+        AdminHostUpdateApprovalRequest,
+        AdminHostUpdateApprovalResponse,
     )
     from app.services.admin_host_service import AdminHostService
     from shared.common.decorators import handle_api_errors
@@ -208,9 +212,9 @@ async def list_hosts(
     - 回滚机制：如果外部API通知失败，自动将 `del_flag` 改回 0
 
     ## 错误处理
-    - 主机不存在：返回 404 错误
-    - 主机已删除：返回 400 错误
-    - 外部API通知失败：返回 500 错误并自动回滚
+    - 主机不存在：返回业务错误码 53001
+    - 主机已删除：返回业务错误码 400
+    - 外部API通知失败：返回业务错误码 500 并自动回滚
     """,
     responses={
         200: {
@@ -218,10 +222,7 @@ async def list_hosts(
             "model": SuccessResponse,
         },
         400: {
-            "description": "删除失败（主机已删除或无效）",
-        },
-        404: {
-            "description": "主机不存在",
+            "description": "删除失败（主机不存在、已删除或无效）",
         },
         500: {
             "description": "外部API通知失败，已自动回滚",
@@ -275,4 +276,101 @@ async def delete_host(
     return SuccessResponse(
         data=response_data.model_dump(),
         message="主机删除成功",
+    )
+
+
+@router.put(
+    "/approval",
+    response_model=SuccessResponse,
+    status_code=HTTP_200_OK,
+    summary="停用/启用主机",
+    description="""
+    管理后台主机停用/启用接口，支持更新主机审批状态。
+
+    ## 功能说明
+    1. 根据主机ID和审批状态参数更新 host_rec 表的 appr_state 字段
+    2. 支持停用（appr_state=0）和启用（appr_state=1）两种操作
+
+    ## 认证要求
+    - 需要在 Authorization 头中提供有效的 JWT token
+    - Token 格式：`Bearer <token>`
+    - 需要管理员权限
+
+    ## 审批状态说明
+    - `0`: 停用
+    - `1`: 启用
+
+    ## 业务逻辑
+    - 检查主机是否存在且未删除
+    - 如果当前状态已是目标状态，返回提示信息，不执行更新
+    - 执行状态更新并返回更新后的状态
+
+    ## 错误处理
+    - 主机不存在：返回业务错误码 53001
+    - 主机已删除：返回业务错误码 400
+    - 状态更新失败：返回业务错误码 400
+    """,
+    responses={
+        200: {
+            "description": "更新成功",
+            "model": SuccessResponse,
+        },
+        400: {
+            "description": "更新失败（主机不存在、参数无效或主机已删除）",
+        },
+    },
+)
+@handle_api_errors
+async def update_host_approval_state(
+    request: AdminHostUpdateApprovalRequest,
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+) -> SuccessResponse:
+    """更新主机审批状态（停用/启用）
+
+    Args:
+        request: 包含主机ID和审批状态的请求对象
+        admin_host_service: 管理后台主机服务实例
+        current_user: 当前登录用户信息
+
+    Returns:
+        SuccessResponse: 包含更新结果信息
+
+    Raises:
+        BusinessError: 主机不存在或更新失败时
+    """
+    logger.info(
+        "接收管理后台主机审批状态更新请求",
+        extra={
+            "host_id": request.host_id,
+            "appr_state": request.appr_state,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层更新
+    result = await admin_host_service.update_host_approval_state(
+        host_id=request.host_id,
+        appr_state=request.appr_state,
+    )
+
+    # 构建响应数据
+    response_data = AdminHostUpdateApprovalResponse(
+        id=result["id"],
+        appr_state=result["appr_state"],
+        message=result["message"],
+    )
+
+    logger.info(
+        "管理后台主机审批状态更新完成",
+        extra={
+            "host_id": result["id"],
+            "appr_state": result["appr_state"],
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    return SuccessResponse(
+        data=response_data.model_dump(),
+        message=result["message"],
     )

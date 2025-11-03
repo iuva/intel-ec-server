@@ -16,7 +16,7 @@ try:
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
@@ -26,7 +26,7 @@ except ImportError:
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
@@ -236,7 +236,8 @@ class AdminHostService:
                 raise BusinessError(
                     message=f"主机不存在或已删除（ID: {host_id}）",
                     error_code="HOST_NOT_FOUND",
-                    code=404,
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
                 )
 
             # 2. 执行逻辑删除（设置 del_flag = 1）
@@ -355,3 +356,134 @@ class AdminHostService:
             )
 
             return host_id
+
+    @handle_service_errors(
+        error_message="更新主机审批状态失败",
+        error_code="UPDATE_HOST_APPROVAL_STATE_FAILED",
+    )
+    async def update_host_approval_state(self, host_id: int, appr_state: int) -> dict:
+        """更新主机审批状态（停用/启用）
+
+        根据主机ID更新 host_rec 表的 appr_state 字段。
+
+        Args:
+            host_id: 主机ID（host_rec.id）
+            appr_state: 审批状态（0=停用，1=启用）
+
+        Returns:
+            dict: 包含更新后的主机ID和审批状态
+
+        Raises:
+            BusinessError: 主机不存在或更新失败时
+        """
+        logger.info(
+            "开始更新主机审批状态",
+            extra={
+                "host_id": host_id,
+                "appr_state": appr_state,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 检查主机是否存在且未删除
+            check_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只检查未删除的记录
+                )
+            )
+            check_result = await session.execute(check_stmt)
+            host_rec = check_result.scalar_one_or_none()
+
+            if not host_rec:
+                logger.warning(
+                    "主机不存在或已删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在或已删除（ID: {host_id}）",
+                    error_code="HOST_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
+                )
+
+            # 2. 检查当前状态是否已为目标状态
+            if host_rec.appr_state == appr_state:
+                state_name = "启用" if appr_state == 1 else "停用"
+                logger.info(
+                    "主机审批状态已是目标状态，无需更新",
+                    extra={
+                        "host_id": host_id,
+                        "current_appr_state": host_rec.appr_state,
+                        "target_appr_state": appr_state,
+                    },
+                )
+                return {
+                    "id": host_id,
+                    "appr_state": appr_state,
+                    "message": f"主机已是{state_name}状态",
+                }
+
+            # 3. 更新审批状态
+            update_stmt = (
+                update(HostRec)
+                .where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                    )
+                )
+                .values(appr_state=appr_state)
+            )
+
+            logger.info(
+                "执行审批状态更新操作",
+                extra={
+                    "host_id": host_id,
+                    "old_appr_state": host_rec.appr_state,
+                    "new_appr_state": appr_state,
+                    "operation": "UPDATE appr_state",
+                },
+            )
+
+            # 执行更新
+            result = await session.execute(update_stmt)
+            await session.commit()
+
+            updated_count = result.rowcount
+
+            if updated_count == 0:
+                logger.warning(
+                    "审批状态更新失败，记录可能已被删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机审批状态更新失败，记录可能已被删除（ID: {host_id}）",
+                    error_code="HOST_UPDATE_APPROVAL_STATE_FAILED",
+                    code=400,
+                )
+
+            # 4. 刷新对象以获取最新数据
+            await session.refresh(host_rec)
+
+            state_name = "启用" if appr_state == 1 else "停用"
+            logger.info(
+                "主机审批状态更新成功",
+                extra={
+                    "host_id": host_id,
+                    "old_appr_state": host_rec.appr_state,
+                    "new_appr_state": appr_state,
+                    "updated_count": updated_count,
+                },
+            )
+
+            return {
+                "id": host_id,
+                "appr_state": appr_state,
+                "message": f"主机已{state_name}",
+            }

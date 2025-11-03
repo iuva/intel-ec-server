@@ -181,12 +181,12 @@ async def report_vnc_connection(
                 }
             },
         },
-        404: {
+        400: {
             "description": "主机不存在或未启用",
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 404,
+                        "code": 53001,
                         "message": "主机不存在或未启用",
                         "error_code": "HOST_NOT_FOUND",
                     }

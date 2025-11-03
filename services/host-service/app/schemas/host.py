@@ -278,3 +278,24 @@ class AdminHostDeleteResponse(BaseModel):
     message: str = Field(default="主机删除成功", description="删除结果消息")
 
     model_config = {"from_attributes": True}
+
+
+class AdminHostUpdateApprovalRequest(BaseModel):
+    """管理后台主机停用/启用请求模式"""
+
+    host_id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
+    appr_state: int = Field(
+        ..., ge=0, le=1, description="审批状态（0=停用，1=启用）"
+    )
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostUpdateApprovalResponse(BaseModel):
+    """管理后台主机停用/启用响应模式"""
+
+    id: int = Field(description="主机ID")
+    appr_state: int = Field(description="更新后的审批状态（0=停用，1=启用）")
+    message: str = Field(default="操作成功", description="操作结果消息")
+
+    model_config = {"from_attributes": True}
