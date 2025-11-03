@@ -69,7 +69,10 @@ async def get_active_hosts(locale: str = Depends(get_locale)):
 
 
 @router.get("/ws/status/{host_id}")
-async def get_host_status(host_id: str):
+async def get_host_status(
+    host_id: str,
+    locale: str = Depends(get_locale),
+):
     """检查 Host 连接状态
 
     Args:
@@ -102,7 +105,8 @@ async def get_host_status(host_id: str):
 
     return SuccessResponse(
         data={"host_id": host_id, "connected": is_connected},
-        message="获取Host状态成功",
+        message_key="success.websocket.get_host_status",
+        locale=locale,
     )
 
 
@@ -110,7 +114,11 @@ async def get_host_status(host_id: str):
 
 
 @router.post("/ws/send/{host_id}")
-async def send_message_to_host(host_id: str, message: Dict):
+async def send_message_to_host(
+    host_id: str,
+    message: Dict,
+    locale: str = Depends(get_locale),
+):
     """发送消息给指定 Host
 
     Args:
@@ -150,8 +158,10 @@ async def send_message_to_host(host_id: str, message: Dict):
     if not message.get("type"):
         raise BusinessError(
             message="消息必须包含 type 字段",
+            message_key="error.websocket.invalid_message_format",
             error_code="INVALID_MESSAGE_FORMAT",
             code=400,
+            http_status_code=400,
         )
 
     ws_manager = get_agent_websocket_manager()
@@ -162,14 +172,26 @@ async def send_message_to_host(host_id: str, message: Dict):
     else:
         logger.warning(f"⚠️ 消息发送失败: {host_id} (Host未连接)")
 
-    return SuccessResponse(
-        data={"host_id": host_id, "success": success},
-        message="消息发送成功" if success else "消息发送失败（Host未连接）",
-    )
+    if success:
+        return SuccessResponse(
+            data={"host_id": host_id, "success": success},
+            message_key="success.websocket.message_sent",
+            locale=locale,
+        )
+    else:
+        return SuccessResponse(
+            data={"host_id": host_id, "success": success},
+            message_key="error.websocket.host_not_connected",
+            locale=locale,
+        )
 
 
 @router.post("/ws/send-to-hosts")
-async def send_message_to_hosts(host_ids: List[str], message: Dict):
+async def send_message_to_hosts(
+    host_ids: List[str],
+    message: Dict,
+    locale: str = Depends(get_locale),
+):
     """发送消息给指定的多个 Hosts（多播）
 
     Args:
@@ -212,8 +234,10 @@ async def send_message_to_hosts(host_ids: List[str], message: Dict):
     if not message.get("type"):
         raise BusinessError(
             message="消息必须包含 type 字段",
+            message_key="error.websocket.invalid_message_format",
             error_code="INVALID_MESSAGE_FORMAT",
             code=400,
+            http_status_code=400,
         )
 
     ws_manager = get_agent_websocket_manager()
@@ -227,12 +251,19 @@ async def send_message_to_hosts(host_ids: List[str], message: Dict):
             "success_count": success_count,
             "failed_count": len(host_ids) - success_count,
         },
-        message=f"消息发送完成 ({success_count}/{len(host_ids)}成功)",
+        message_key="success.websocket.broadcast_complete",
+        locale=locale,
+        success_count=success_count,
+        target_count=len(host_ids),
     )
 
 
 @router.post("/ws/broadcast")
-async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, description="排除的Host ID")):
+async def broadcast_message(
+    message: Dict,
+    exclude_host_id: str = Query(None, description="排除的Host ID"),
+    locale: str = Depends(get_locale),
+):
     """广播消息给所有连接的 Hosts
 
     Args:
@@ -272,8 +303,10 @@ async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, de
     if not message.get("type"):
         raise BusinessError(
             message="消息必须包含 type 字段",
+            message_key="error.websocket.invalid_message_format",
             error_code="INVALID_MESSAGE_FORMAT",
             code=400,
+            http_status_code=400,
         )
 
     ws_manager = get_agent_websocket_manager()
@@ -291,7 +324,10 @@ async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, de
             "failed_count": total_count - success_count,
             "exclude_host_id": exclude_host_id,
         },
-        message=f"广播完成 ({success_count}/{total_count}成功)",
+        message_key="success.websocket.broadcast_complete",
+        locale=locale,
+        success_count=success_count,
+        total_count=total_count,
     )
 
 
@@ -299,7 +335,11 @@ async def broadcast_message(message: Dict, exclude_host_id: str = Query(None, de
 
 
 @router.post("/ws/notify-offline/{host_id}")
-async def notify_host_offline(host_id: str, reason: str = Query(None, description="下线原因")):
+async def notify_host_offline(
+    host_id: str,
+    reason: str = Query(None, description="下线原因"),
+    locale: str = Depends(get_locale),
+):
     """通知指定 Host 下线
 
     服务端主动通知 Agent 其 Host 已下线，Agent 收到后会：
@@ -371,5 +411,6 @@ async def notify_host_offline(host_id: str, reason: str = Query(None, descriptio
 
     return SuccessResponse(
         data={"host_id": host_id, "success": success, "reason": reason or "未指定原因"},
-        message="Host下线通知已发送",
+        message_key="success.websocket.offline_notification_sent",
+        locale=locale,
     )

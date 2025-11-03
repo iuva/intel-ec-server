@@ -15,6 +15,7 @@ try:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
 except ImportError:
@@ -24,6 +25,7 @@ except ImportError:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
 
@@ -125,7 +127,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
             return self._unauthorized_response(
+                request=request,
                 message="缺少认证令牌",
+                message_key="error.auth.missing_token",
                 details={
                     "path": request.url.path,
                     "method": request.method,
@@ -144,7 +148,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
             return self._unauthorized_response(
+                request=request,
                 message="无效的认证令牌格式",
+                message_key="error.auth.invalid_token_format",
                 details={
                     "path": request.url.path,
                     "method": request.method,
@@ -180,7 +186,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
             return self._unauthorized_response(
+                request=request,
                 message="无效或过期的认证令牌",
+                message_key="error.auth.token_invalid_or_expired",
                 details={
                     "path": request.url.path,
                     "method": request.method,
@@ -202,8 +210,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
                 return self._create_error_response(
+                    request=request,
                     code=504,
                     message="认证服务响应超时，请稍后重试",
+                    message_key="error.auth.service_timeout",
                     error_code="GATEWAY_TIMEOUT",
                     details={
                         "path": request.url.path,
@@ -223,8 +233,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
                 return self._create_error_response(
+                    request=request,
                     code=503,
                     message="认证服务暂时不可用，请稍后重试",
+                    message_key="error.auth.service_unavailable",
                     error_code="SERVICE_UNAVAILABLE",
                     details={
                         "path": request.url.path,
@@ -244,8 +256,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
                 return self._create_error_response(
+                    request=request,
                     code=502,
                     message="认证服务请求失败",
+                    message_key="error.auth.service_error",
                     error_code="BAD_GATEWAY",
                     details={
                         "path": request.url.path,
@@ -266,8 +280,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
             return self._create_error_response(
+                request=request,
                 code=500,
                 message="认证过程中发生内部错误",
+                message_key="error.internal",
                 error_code="INTERNAL_ERROR",
                 details={
                     "path": request.url.path,
@@ -559,24 +575,39 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return None
 
     def _create_error_response(
-        self, code: int, message: str, error_code: str, details: Optional[Dict[str, Any]] = None
+        self,
+        request: Request,
+        code: int,
+        message: str,
+        error_code: str,
+        message_key: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
     ) -> JSONResponse:
-        """创建统一的错误响应
+        """创建统一的错误响应（支持多语言）
 
         Args:
+            request: 请求对象（用于获取语言偏好）
             code: HTTP 状态码
-            message: 错误消息
+            message: 错误消息（备用消息）
             error_code: 错误类型标识
+            message_key: 翻译键（可选）
             details: 错误详情（可选）
 
         Returns:
             JSON 响应
         """
+        # 获取语言偏好
+        accept_language = request.headers.get("Accept-Language")
+        locale = parse_accept_language(accept_language)
+
         error_response = ErrorResponse(
             code=code,
-            message=message,
+            message=message,  # 备用消息
+            message_key=message_key,
             error_code=error_code,
             details=details,
+            locale=locale,
+            **(details or {}),  # 传递格式化变量
         )
 
         logger.warning(
@@ -594,19 +625,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
             content=error_response.model_dump(),
         )
 
-    def _unauthorized_response(self, message: str, details: Optional[Dict[str, Any]] = None) -> JSONResponse:
-        """返回未授权响应（401）
+    def _unauthorized_response(
+        self,
+        request: Request,
+        message: str,
+        message_key: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> JSONResponse:
+        """返回未授权响应（401）（支持多语言）
 
         Args:
-            message: 错误消息
+            request: 请求对象（用于获取语言偏好）
+            message: 错误消息（备用消息）
+            message_key: 翻译键（可选）
             details: 错误详情（可选）
 
         Returns:
             JSON 响应
         """
         return self._create_error_response(
+            request=request,
             code=401,
             message=message,
+            message_key=message_key,
             error_code="UNAUTHORIZED",
             details=details,
         )

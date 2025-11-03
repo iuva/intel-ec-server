@@ -14,11 +14,13 @@ from starlette.status import HTTP_200_OK
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 
@@ -73,6 +75,7 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
 async def report_vnc_connection(
     request: VNCConnectionReport,
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
+    locale: str = Depends(get_locale),
 ):
     """上报 VNC 连接结果
 
@@ -141,7 +144,8 @@ async def report_vnc_connection(
 
     return SuccessResponse(
         data=vnc_response.model_dump(),
-        message="VNC连接结果上报成功",
+        message_key="success.vnc.report",
+        locale=locale,
     )
 
 
@@ -199,6 +203,7 @@ async def report_vnc_connection(
 async def get_vnc_connection(
     request: GetVNCConnectionRequest,
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
+    locale: str = Depends(get_locale),
 ):
     """获取 VNC 连接信息
 
@@ -257,5 +262,6 @@ async def get_vnc_connection(
 
     return SuccessResponse(
         data=vnc_connection_info.model_dump(),
-        message="获取 VNC 连接信息成功",
+        message_key="success.vnc.get_connection",
+        locale=locale,
     )

@@ -18,7 +18,15 @@
       "test_result_report": "Test case result reported successfully"
     },
     "websocket": {
-      "get_active_hosts": "Get active hosts successful"
+      "get_active_hosts": "Get active hosts successful",
+      "get_host_status": "Get host status successful",
+      "message_sent": "Message sent successfully",
+      "broadcast_complete": "Broadcast complete ({success_count}/{total_count} successful)",
+      "offline_notification_sent": "Host offline notification sent"
+    },
+    "vnc": {
+      "report": "VNC connection result reported successfully",
+      "get_connection": "Get VNC connection information successful"
     }
   },
   "error": {
@@ -39,6 +47,10 @@
       "not_connected": "Host not connected: {host_id}",
       "exec_log_not_found": "Execution log not found for host {host_id} test case {tc_id}"
     },
+    "websocket": {
+      "invalid_message_format": "Message must contain type field",
+      "host_not_connected": "Message sending failed (Host not connected)"
+    },
     "hardware": {
       "report_failed": "Hardware information reporting failed",
       "test_result_report_failed": "Test case result reporting failed"
@@ -48,11 +60,16 @@
       "invalid_credentials": "Invalid username or ***REMOVED***word",
       "token_expired": "Token verification failed or expired",
       "token_invalid": "Invalid token",
+      "token_invalid_or_expired": "Invalid or expired authentication token",
+      "missing_token": "Missing authentication token",
+      "invalid_token_format": "Invalid authentication token format",
       "permission_denied": "Insufficient permissions",
       "invalid_token_type": "Invalid token type",
       "refresh_error": "Token refresh failed",
       "user_disabled": "User account is disabled",
-      "service_error": "Authentication service temporarily unavailable",
+      "service_error": "Authentication service request failed",
+      "service_timeout": "Authentication service response timeout, please try again later",
+      "service_unavailable": "Authentication service temporarily unavailable, please try again later",
       "logout_error": "Logout failed"
     }
   }

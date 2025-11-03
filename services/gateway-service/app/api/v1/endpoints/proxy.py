@@ -17,6 +17,7 @@ try:
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
+    from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
     from shared.common.websocket_auth import verify_token_string
@@ -29,6 +30,7 @@ except ImportError:
     from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
 
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
+    from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
     from shared.common.websocket_auth import verify_token_string
@@ -88,11 +90,18 @@ async def websocket_proxy(
             )
             # ✅ 必须先 accept 才能发送错误消息
             await websocket.accept()
+            
+            # 获取语言偏好（从 WebSocket headers 或使用默认）
+            accept_language = websocket.headers.get("Accept-Language")
+            locale = parse_accept_language(accept_language)
+            
             await websocket.send_json(
                 {
                     "code": 401,
-                    "message": "缺少认证令牌",
+                    "message": t("error.auth.missing_token", locale=locale),
+                    "message_key": "error.auth.missing_token",
                     "error_code": "WEBSOCKET_MISSING_TOKEN",
+                    "locale": locale,
                 }
             )
             await websocket.close(code=1008, reason="缺少认证令牌")
@@ -113,11 +122,18 @@ async def websocket_proxy(
                 )
                 # ✅ 必须先 accept 才能发送错误消息
                 await websocket.accept()
+                
+                # 获取语言偏好（从 WebSocket headers 或使用默认）
+                accept_language = websocket.headers.get("Accept-Language")
+                locale = parse_accept_language(accept_language)
+                
                 await websocket.send_json(
                     {
                         "code": 403,
-                        "message": "WebSocket 认证失败，Token 无效或已过期",
+                        "message": t("error.auth.token_invalid_or_expired", locale=locale),
+                        "message_key": "error.auth.token_invalid_or_expired",
                         "error_code": "WEBSOCKET_AUTH_FAILED",
+                        "locale": locale,
                     }
                 )
                 await websocket.close(code=1008, reason="认证令牌无效或已过期")

@@ -13,6 +13,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 # 使用 try-except 方式处理路径导入
 try:
+    from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
     from shared.utils.token_extractor import get_token_extractor
@@ -21,6 +22,7 @@ try:
     from app.services.host_discovery_service import HostDiscoveryService
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
     from shared.utils.token_extractor import get_token_extractor
@@ -125,12 +127,18 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         is_valid, user_info = await extractor.extract_and_verify(request)
 
         if not is_valid or not user_info:
+            # 获取语言偏好
+            accept_language = request.headers.get("Accept-Language")
+            locale = parse_accept_language(accept_language)
+            
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
                     code=HTTP_401_UNAUTHORIZED,
                     message="缺少有效的认证令牌",
+                    message_key="error.auth.missing_token",
                     error_code="UNAUTHORIZED",
+                    locale=locale,
                 ).model_dump(),
             )
 
@@ -141,12 +149,19 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"获取当前用户失败: {str(e)}", exc_info=True)
+        
+        # 获取语言偏好
+        accept_language = request.headers.get("Accept-Language")
+        locale = parse_accept_language(accept_language)
+        
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
                 code=HTTP_401_UNAUTHORIZED,
                 message="认证失败",
+                message_key="error.auth.login_failed",
                 error_code="AUTHENTICATION_FAILED",
+                locale=locale,
             ).model_dump(),
         )
 
@@ -193,12 +208,18 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
                     "client": f"{request.client.host}:{request.client.port}" if request.client else "unknown",
                 },
             )
+            # 获取语言偏好
+            accept_language = request.headers.get("Accept-Language")
+            locale = parse_accept_language(accept_language)
+            
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
                     code=HTTP_401_UNAUTHORIZED,
                     message="缺少有效的认证令牌",
+                    message_key="error.auth.missing_token",
                     error_code="UNAUTHORIZED",
+                    locale=locale,
                 ).model_dump(),
             )
 
@@ -213,12 +234,18 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
                     "path": request.url.path,
                 },
             )
+            # 获取语言偏好
+            accept_language = request.headers.get("Accept-Language")
+            locale = parse_accept_language(accept_language)
+            
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
                     code=HTTP_401_UNAUTHORIZED,
                     message="Token 格式错误：缺少 host_id",
+                    message_key="error.auth.invalid_token_format",
                     error_code="INVALID_TOKEN_FORMAT",
+                    locale=locale,
                 ).model_dump(),
             )
 
@@ -251,11 +278,17 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
             f"获取当前 Agent 失败: {str(e)}",
             exc_info=True,
         )
+        # 获取语言偏好
+        accept_language = request.headers.get("Accept-Language")
+        locale = parse_accept_language(accept_language)
+        
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
                 code=HTTP_401_UNAUTHORIZED,
                 message="认证失败",
+                message_key="error.auth.login_failed",
                 error_code="AUTHENTICATION_FAILED",
+                locale=locale,
             ).model_dump(),
         )
