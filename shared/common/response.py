@@ -2,36 +2,68 @@
 统一响应格式模块
 
 提供标准化的API响应格式，包括成功响应、错误响应和分页响应
+支持多语言消息
 """
 
+import os
+import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+try:
+    from shared.common.i18n import get_i18n_manager, t
+except ImportError:
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+    from shared.common.i18n import get_i18n_manager, t
 
 
 class SuccessResponse(BaseModel):
     """成功响应模型
 
     用于所有成功的API响应，提供统一的响应格式
+    支持多语言消息（通过 message_key 自动翻译）
     """
 
     code: int = Field(default=200, description="响应码")
     message: str = Field(default="操作成功", description="响应消息")
+    message_key: Optional[str] = Field(default=None, description="翻译键（如果提供，将覆盖 message）")
     data: Any = Field(description="响应数据")
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="响应时间戳",
     )
+    locale: Optional[str] = Field(default=None, description="语言代码（用于翻译 message_key）")
 
     model_config = {"from_attributes": True}
+
+    def __init__(self, **data: Any) -> None:
+        """初始化成功响应，支持自动翻译"""
+        # 如果有 message_key，自动翻译
+        message_key = data.get("message_key")
+        locale = data.get("locale", "zh_CN")
+        
+        if message_key:
+            # 从 kwargs 中提取格式化变量（排除已定义的字段）
+            message_kwargs = {
+                k: v for k, v in data.items()
+                if k not in ("code", "message", "message_key", "data", "timestamp", "locale")
+            }
+            translated_message = t(message_key, locale=locale, **message_kwargs)
+            data["message"] = translated_message
+            # 移除 message_key，避免 Pydantic 验证错误
+            data.pop("message_key", None)
+        
+        super().__init__(**data)
 
 
 class ErrorResponse(BaseModel):
     """错误响应模型
 
     用于所有错误的API响应，提供统一的错误格式
+    支持多语言消息（通过 message_key 自动翻译）
     """
 
     code: int = Field(
@@ -42,6 +74,7 @@ class ErrorResponse(BaseModel):
         )
     )
     message: str = Field(description="错误消息")
+    message_key: Optional[str] = Field(default=None, description="翻译键（如果提供，将覆盖 message）")
     error_code: str = Field(description="错误类型标识")
     details: Optional[Dict[str, Any]] = Field(default=None, description="错误详情")
     timestamp: str = Field(
@@ -52,8 +85,28 @@ class ErrorResponse(BaseModel):
         default_factory=lambda: str(uuid.uuid4()),
         description="请求唯一标识符",
     )
+    locale: Optional[str] = Field(default=None, description="语言代码（用于翻译 message_key）")
 
     model_config = {"from_attributes": True}
+
+    def __init__(self, **data: Any) -> None:
+        """初始化错误响应，支持自动翻译"""
+        # 如果有 message_key，自动翻译
+        message_key = data.get("message_key")
+        locale = data.get("locale", "zh_CN")
+        
+        if message_key:
+            # 从 kwargs 中提取格式化变量（排除已定义的字段）
+            message_kwargs = {
+                k: v for k, v in data.items()
+                if k not in ("code", "message", "message_key", "error_code", "details", "timestamp", "request_id", "locale")
+            }
+            translated_message = t(message_key, locale=locale, **message_kwargs)
+            data["message"] = translated_message
+            # 移除 message_key，避免 Pydantic 验证错误
+            data.pop("message_key", None)
+        
+        super().__init__(**data)
 
 
 class PaginationInfo(BaseModel):
@@ -76,18 +129,40 @@ class PaginationResponse(BaseModel):
     """分页响应模型
 
     用于分页查询的API响应
+    支持多语言消息（通过 message_key 自动翻译）
     """
 
     code: int = Field(default=200, description="响应码")
     message: str = Field(default="操作成功", description="响应消息")
+    message_key: Optional[str] = Field(default=None, description="翻译键（如果提供，将覆盖 message）")
     data: List[Any] = Field(description="数据列表")
     pagination: PaginationInfo = Field(description="分页信息")
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="响应时间戳",
     )
+    locale: Optional[str] = Field(default=None, description="语言代码（用于翻译 message_key）")
 
     model_config = {"from_attributes": True}
+
+    def __init__(self, **data: Any) -> None:
+        """初始化分页响应，支持自动翻译"""
+        # 如果有 message_key，自动翻译
+        message_key = data.get("message_key")
+        locale = data.get("locale", "zh_CN")
+        
+        if message_key:
+            # 从 kwargs 中提取格式化变量（排除已定义的字段）
+            message_kwargs = {
+                k: v for k, v in data.items()
+                if k not in ("code", "message", "message_key", "data", "pagination", "timestamp", "locale")
+            }
+            translated_message = t(message_key, locale=locale, **message_kwargs)
+            data["message"] = translated_message
+            # 移除 message_key，避免 Pydantic 验证错误
+            data.pop("message_key", None)
+        
+        super().__init__(**data)
 
 
 def create_success_response(data: Any = None, message: str = "操作成功", code: int = 200) -> SuccessResponse:

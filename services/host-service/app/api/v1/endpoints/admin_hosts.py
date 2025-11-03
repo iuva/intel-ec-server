@@ -5,9 +5,8 @@
 
 import os
 import sys
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from starlette.status import HTTP_200_OK
 
 # 使用 try-except 方式处理路径导入
@@ -22,6 +21,8 @@ try:
     )
     from app.services.admin_host_service import AdminHostService
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 except ImportError:
@@ -36,6 +37,8 @@ except ImportError:
     )
     from app.services.admin_host_service import AdminHostService
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 
@@ -47,87 +50,43 @@ router = APIRouter()
 @router.get(
     "/list",
     response_model=SuccessResponse,
-    status_code=HTTP_200_OK,
     summary="查询主机列表",
-    description="""
-    管理后台主机列表查询接口，支持分页和多种搜索条件。
-
-    ## 功能说明
-    1. 支持分页查询（page, page_size）
-    2. 支持多条件搜索：
-       - MAC地址（mac）
-       - 主机账号（username，对应 host_acct）
-       - 主机状态（host_state）
-       - 唯一引导ID（mg_id）
-    3. 关联查询执行日志，获取最新执行用户名称
-    4. 支持排序：默认按创建时间倒序，可选择按申报时间排序
-
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - 需要管理员权限
-
-    ## 查询条件说明
-    - 所有搜索条件都是可选的（可以为空）
-    - 支持模糊匹配（LIKE查询）
-    - 多个条件之间是 AND 关系
-
-    ## 排序说明
-    - 默认排序：按创建时间（created_time）倒序
-    - 申报时间排序：传入 subm_time_sort 参数
-      - `0`: 申报时间正序（从早到晚）
-      - `1`: 申报时间倒序（从晚到早）
-    - 如果不传入 subm_time_sort，则按创建时间倒序
-
-    ## 返回数据说明
-    - `hardware_id`: MongoDB 硬件ID
-    - `host_acct`: 主机账号
-    - `mg_id`: 唯一引导ID
-    - `mac`: MAC地址
-    - `host_state`: 主机状态
-    - `user_name`: 执行用户名称（来自host_exec_log最新记录，如果存在）
-
-    ## 执行日志关联规则
-    - 查询条件：`case_state > 0 AND host_state > 0 AND del_flag = 0`
-    - 取最新一条记录的 `user_name`
-    - 如果没有匹配的执行日志，`user_name` 为 null
-    """,
+    description="分页查询主机列表，支持多种搜索条件和排序",
     responses={
         200: {
             "description": "查询成功",
-            "model": SuccessResponse,
-        },
-        401: {
-            "description": "认证失败",
+            "model": AdminHostListResponse,
         },
     },
 )
 @handle_api_errors
 async def list_hosts(
-    page: int = Query(1, ge=1, description="页码（从1开始）"),
-    page_size: int = Query(20, ge=1, le=100, description="每页大小（1-100）"),
-    mac: Optional[str] = Query(None, description="MAC地址（可选搜索条件）"),
-    username: Optional[str] = Query(None, description="主机账号（可选搜索条件）"),
-    host_state: Optional[int] = Query(None, description="主机状态（可选搜索条件）"),
-    mg_id: Optional[str] = Query(None, description="唯一引导ID（可选搜索条件）"),
-    subm_time_sort: Optional[int] = Query(
-        None, ge=0, le=1, description="申报时间排序字段（0=正序，1=倒序，不传则按创建时间倒序）"
-    ),
+    request: AdminHostListRequest = Depends(),
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """查询主机列表（管理后台）
 
+    支持分页、多条件搜索和排序功能。
+
+    ## 搜索条件（可选）
+    - `mac`: MAC地址
+    - `username`: 主机账号（host_acct）
+    - `host_state`: 主机状态
+    - `mg_id`: 唯一引导ID
+
+    ## 排序规则
+    - 默认：按创建时间倒序（created_time DESC）
+    - 如果传入 `subm_time_sort`：
+      - `0`: 申报时间正序（subm_time ASC）
+      - `1`: 申报时间倒序（subm_time DESC）
+
     Args:
-        page: 页码（从1开始）
-        page_size: 每页大小（1-100）
-        mac: MAC地址（可选）
-        username: 主机账号（可选）
-        host_state: 主机状态（可选）
-        mg_id: 唯一引导ID（可选）
-        subm_time_sort: 申报时间排序字段（0=正序，1=倒序，不传则按创建时间倒序）
+        request: 查询请求参数（分页、搜索条件、排序）
         admin_host_service: 管理后台主机服务实例
-        current_user: 当前登录用户信息
+        current_user: 当前用户信息
+        locale: 语言偏好
 
     Returns:
         SuccessResponse: 包含主机列表和分页信息
@@ -135,26 +94,15 @@ async def list_hosts(
     logger.info(
         "接收管理后台主机列表查询请求",
         extra={
-            "page": page,
-            "page_size": page_size,
-            "mac": mac,
-            "username": username,
-            "host_state": host_state,
-            "mg_id": mg_id,
-            "subm_time_sort": subm_time_sort,
+            "page": request.page,
+            "page_size": request.page_size,
+            "mac": request.mac,
+            "username": request.username,
+            "host_state": request.host_state,
+            "mg_id": request.mg_id,
+            "subm_time_sort": request.subm_time_sort,
             "user_id": current_user.get("user_id"),
         },
-    )
-
-    # 构建请求参数
-    request = AdminHostListRequest(
-        page=page,
-        page_size=page_size,
-        mac=mac,
-        username=username,
-        host_state=host_state,
-        mg_id=mg_id,
-        subm_time_sort=subm_time_sort,
     )
 
     # 调用服务层查询
@@ -183,7 +131,8 @@ async def list_hosts(
 
     return SuccessResponse(
         data=response_data.model_dump(),
-        message="查询主机列表成功",
+        message_key="success.host.list_query",
+        locale=locale,
     )
 
 
@@ -192,40 +141,52 @@ async def list_hosts(
     response_model=SuccessResponse,
     status_code=HTTP_200_OK,
     summary="删除主机",
-    description="""
-    管理后台主机删除接口，支持逻辑删除主机记录。
-
-    ## 功能说明
-    1. 根据主机ID逻辑删除 host_rec 表数据（设置 del_flag = 1）
-    2. 删除后同步通知外部API（预留 TODO，待实现）
-    3. 如果外部API通知失败，自动回滚删除操作
-    4. 返回删除失败的错误信息
-
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - 需要管理员权限
-
-    ## 删除逻辑
-    - 逻辑删除：设置 `del_flag = 1`，数据不会物理删除
-    - 外部API通知：删除成功后调用外部API通知（预留 TODO）
-    - 回滚机制：如果外部API通知失败，自动将 `del_flag` 改回 0
-
-    ## 错误处理
-    - 主机不存在：返回业务错误码 53001
-    - 主机已删除：返回业务错误码 400
-    - 外部API通知失败：返回业务错误码 500 并自动回滚
-    """,
+    description="逻辑删除主机（设置 del_flag=1），并通知外部API",
     responses={
         200: {
             "description": "删除成功",
-            "model": SuccessResponse,
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "主机删除成功",
+                        "data": {"id": 123, "message": "主机删除成功"},
+                    }
+                }
+            },
         },
         400: {
-            "description": "删除失败（主机不存在、已删除或无效）",
-        },
-        500: {
-            "description": "外部API通知失败，已自动回滚",
+            "description": "删除失败（业务错误）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                        "delete_failed": {
+                            "summary": "删除失败",
+                            "value": {
+                                "code": 53002,
+                                "message": "主机删除失败，记录可能已被删除（ID: 123）",
+                                "error_code": "HOST_DELETE_FAILED",
+                            },
+                        },
+                        "external_api_failed": {
+                            "summary": "外部API通知失败",
+                            "value": {
+                                "code": 53003,
+                                "message": "主机删除失败：外部API通知失败（ID: 123）",
+                                "error_code": "HOST_DELETE_EXTERNAL_API_FAILED",
+                            },
+                        },
+                    }
+                }
+            },
         },
     },
 )
@@ -234,19 +195,27 @@ async def delete_host(
     host_id: int,
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """删除主机（逻辑删除）
+
+    业务逻辑：
+    1. 逻辑删除 host_rec 表数据（设置 del_flag=1）
+    2. 删除后同步通知外部API（TODO: 需要实现）
+    3. 如果外部API通知失败，回滚数据删除操作
+    4. 如果回滚失败或通知失败，返回业务错误码
 
     Args:
         host_id: 主机ID（host_rec.id）
         admin_host_service: 管理后台主机服务实例
-        current_user: 当前登录用户信息
+        current_user: 当前用户信息
+        locale: 语言偏好
 
     Returns:
-        SuccessResponse: 包含删除结果信息
+        SuccessResponse: 删除成功响应
 
     Raises:
-        BusinessError: 主机不存在或删除失败时
+        BusinessError: 主机不存在、删除失败或外部API通知失败时
     """
     logger.info(
         "接收管理后台主机删除请求",
@@ -257,70 +226,47 @@ async def delete_host(
     )
 
     # 调用服务层删除
-    deleted_host_id = await admin_host_service.delete_host(host_id)
-
-    # 构建响应数据
-    response_data = AdminHostDeleteResponse(
-        id=deleted_host_id,
-        message="主机删除成功",
-    )
+    deleted_id = await admin_host_service.delete_host(host_id)
 
     logger.info(
         "管理后台主机删除完成",
         extra={
-            "host_id": deleted_host_id,
+            "host_id": deleted_id,
             "user_id": current_user.get("user_id"),
         },
     )
 
     return SuccessResponse(
-        data=response_data.model_dump(),
-        message="主机删除成功",
+        data=AdminHostDeleteResponse(id=deleted_id).model_dump(),
+        message_key="success.host.delete",
+        locale=locale,
     )
 
 
 @router.put(
     "/approval",
     response_model=SuccessResponse,
-    status_code=HTTP_200_OK,
-    summary="停用/启用主机",
-    description="""
-    管理后台主机停用/启用接口，支持更新主机审批状态。
-
-    ## 功能说明
-    1. 根据主机ID和审批状态参数更新 host_rec 表的 appr_state 字段
-    2. 支持停用（appr_state=0）和启用（appr_state=1）两种操作
-
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - 需要管理员权限
-
-    ## 审批状态说明
-    - `0`: 停用
-    - `1`: 启用
-
-    ## 业务逻辑
-    - 检查主机是否存在且未删除
-    - 如果是启用操作（appr_state=1），检查硬件审核状态：
-      - 查询 host_hw_rec 表中该 host_id 的最新一条数据
-      - 如果 sync_state in (1, 3)（待同步或异常），返回错误"需要先审核变化硬件"
-    - 如果当前状态已是目标状态，返回提示信息，不执行更新
-    - 执行状态更新并返回更新后的状态
-
-    ## 错误处理
-    - 主机不存在：返回业务错误码 53001
-    - 硬件需要审核：返回业务错误码 53012，错误信息"需要先审核变化硬件"
-    - 主机已删除：返回业务错误码 400
-    - 状态更新失败：返回业务错误码 400
-    """,
+    summary="更新主机审批状态",
+    description="更新主机审批状态（停用/启用），启用前需要检查硬件审核状态",
     responses={
         200: {
             "description": "更新成功",
-            "model": SuccessResponse,
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "主机审批状态更新成功",
+                        "data": {
+                            "id": 123,
+                            "appr_state": 1,
+                            "message": "主机审批状态更新成功",
+                        },
+                    }
+                }
+            },
         },
         400: {
-            "description": "更新失败（主机不存在、硬件需要审核、参数无效或主机已删除）",
+            "description": "更新失败（业务错误）",
             "content": {
                 "application/json": {
                     "examples": {
@@ -333,11 +279,19 @@ async def delete_host(
                             },
                         },
                         "hardware_audit_required": {
-                            "summary": "需要先审核变化硬件",
+                            "summary": "需要先审核硬件",
                             "value": {
                                 "code": 53012,
                                 "message": "需要先审核变化硬件",
                                 "error_code": "HARDWARE_AUDIT_REQUIRED",
+                            },
+                        },
+                        "update_failed": {
+                            "summary": "更新失败",
+                            "value": {
+                                "code": 53004,
+                                "message": "主机审批状态更新失败，记录可能已被删除（ID: 123）",
+                                "error_code": "HOST_UPDATE_APPROVAL_FAILED",
                             },
                         },
                     }
@@ -351,19 +305,28 @@ async def update_host_approval_state(
     request: AdminHostUpdateApprovalRequest,
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """更新主机审批状态（停用/启用）
+
+    业务逻辑：
+    1. 根据 host_id 更新 host_rec 表的 appr_state 字段
+    2. 如果是启用操作（appr_state=1），需要先检查硬件审核状态：
+       - 查询 host_hw_rec 表的最新一条记录
+       - 如果 sync_state 为 1（待同步）或 3（异常），返回错误
+    3. 如果主机已经是目标状态，返回友好提示
 
     Args:
         request: 包含主机ID和审批状态的请求对象
         admin_host_service: 管理后台主机服务实例
-        current_user: 当前登录用户信息
+        current_user: 当前用户信息
+        locale: 语言偏好
 
     Returns:
-        SuccessResponse: 包含更新结果信息
+        SuccessResponse: 更新成功响应
 
     Raises:
-        BusinessError: 主机不存在或更新失败时
+        BusinessError: 主机不存在、需要硬件审核或更新失败时
     """
     logger.info(
         "接收管理后台主机审批状态更新请求",
@@ -376,15 +339,7 @@ async def update_host_approval_state(
 
     # 调用服务层更新
     result = await admin_host_service.update_host_approval_state(
-        host_id=request.host_id,
-        appr_state=request.appr_state,
-    )
-
-    # 构建响应数据
-    response_data = AdminHostUpdateApprovalResponse(
-        id=result["id"],
-        appr_state=result["appr_state"],
-        message=result["message"],
+        request.host_id, request.appr_state
     )
 
     logger.info(
@@ -396,7 +351,24 @@ async def update_host_approval_state(
         },
     )
 
+    # 检查是否已经是目标状态
+    message_key = "success.host.update_approval"
+    state_name = None
+    if "已是" in result["message"] or "already" in result["message"].lower():
+        # 提取状态名
+        state_name = "启用" if request.appr_state == 1 else "停用"
+        message_key = "success.host.already_in_state"
+        translated_message = t(message_key, locale=locale, state_name=state_name)
+    else:
+        translated_message = t(message_key, locale=locale)
+
     return SuccessResponse(
-        data=response_data.model_dump(),
-        message=result["message"],
+        data=AdminHostUpdateApprovalResponse(
+            id=result["id"],
+            appr_state=result["appr_state"],
+            message=translated_message,
+        ).model_dump(),
+        message_key=message_key,
+        locale=locale,
+        state_name=state_name,
     )

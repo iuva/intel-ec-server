@@ -79,7 +79,13 @@ class AuthService:
 
             # 检查令牌类型
             if payload.get("type") != "refresh":
-                raise BusinessError(message="令牌类型错误", error_code="AUTH_INVALID_TOKEN_TYPE")
+                raise BusinessError(
+                    message="令牌类型错误",
+                    message_key="error.auth.invalid_token_type",
+                    error_code="AUTH_INVALID_TOKEN_TYPE",
+                    code=ServiceErrorCodes.AUTH_TOKEN_INVALID,
+                    http_status_code=400,
+                )
 
             # 检查 refresh_token 是否已被使用（在黑名单中）
             blacklist_key = f"refresh_token_blacklist:{refresh_data.refresh_token}"
@@ -241,7 +247,13 @@ class AuthService:
 
             # 检查令牌类型
             if payload.get("type") != "refresh":
-                raise BusinessError(message="令牌类型错误", error_code="AUTH_INVALID_TOKEN_TYPE")
+                raise BusinessError(
+                    message="令牌类型错误",
+                    message_key="error.auth.invalid_token_type",
+                    error_code="AUTH_INVALID_TOKEN_TYPE",
+                    code=ServiceErrorCodes.AUTH_TOKEN_INVALID,
+                    http_status_code=400,
+                )
 
             # 检查 refresh_token 是否已被使用（在黑名单中）
             blacklist_key = f"refresh_token_blacklist:{refresh_data.refresh_token}"
@@ -368,7 +380,13 @@ class AuthService:
                 },
                 exc_info=True,
             )
-            raise BusinessError(message="令牌续期失败", error_code="AUTH_REFRESH_ERROR")
+            raise BusinessError(
+                message="令牌续期失败",
+                message_key="error.auth.refresh_error",
+                error_code="AUTH_REFRESH_ERROR",
+                code=ServiceErrorCodes.AUTH_REFRESH_TOKEN_INVALID,
+                http_status_code=400,
+            )
 
     async def introspect_token(self, token: str) -> IntrospectResponse:
         """验证令牌
@@ -467,7 +485,13 @@ class AuthService:
                             "error_code": "AUTH_USER_DISABLED",
                         },
                     )
-                    raise BusinessError(message="用户账号已被禁用", error_code="AUTH_USER_DISABLED")
+                    raise BusinessError(
+                        message="用户账号已被禁用",
+                        message_key="error.auth.user_disabled",
+                        error_code="AUTH_USER_DISABLED",
+                        code=ServiceErrorCodes.AUTH_USER_INACTIVE,
+                        http_status_code=403,
+                    )
 
                 # 验证密码
                 if not verify_***REMOVED***word(login_data.***REMOVED***word, user.user_pwd):
@@ -535,7 +559,13 @@ class AuthService:
                 },
                 exc_info=True,
             )
-            raise BusinessError(message="登录服务暂时不可用", error_code="AUTH_SERVICE_ERROR")
+            raise BusinessError(
+                message="登录服务暂时不可用",
+                message_key="error.auth.service_error",
+                error_code="AUTH_SERVICE_ERROR",
+                code=ServiceErrorCodes.AUTH_OPERATION_FAILED,
+                http_status_code=503,
+            )
         except Exception as e:
             # 捕获所有其他异常，包括数据库连接异常
             logger.error(
@@ -548,7 +578,13 @@ class AuthService:
                 },
                 exc_info=True,
             )
-            raise BusinessError(message="服务器内部错误", error_code="INTERNAL_SERVER_ERROR")
+            raise BusinessError(
+                message="服务器内部错误",
+                message_key="error.internal",
+                error_code="INTERNAL_SERVER_ERROR",
+                code=500,
+                http_status_code=500,
+            )
 
     async def device_login(
         self, login_data: DeviceLoginRequest, current_user_id: Optional[int] = None
@@ -700,7 +736,13 @@ class AuthService:
                 },
                 exc_info=True,
             )
-            raise BusinessError(message="登录服务暂时不可用", error_code="AUTH_SERVICE_ERROR")
+            raise BusinessError(
+                message="登录服务暂时不可用",
+                message_key="error.auth.service_error",
+                error_code="AUTH_SERVICE_ERROR",
+                code=ServiceErrorCodes.AUTH_OPERATION_FAILED,
+                http_status_code=503,
+            )
 
     async def logout(self, token: str) -> bool:
         """用户注销
@@ -715,7 +757,13 @@ class AuthService:
             # 验证令牌
             payload = self.jwt_manager.verify_token(token)
             if not payload:
-                raise BusinessError(message="令牌无效", error_code="AUTH_INVALID_TOKEN")
+                raise BusinessError(
+                    message="令牌无效",
+                    message_key="error.auth.token_invalid",
+                    error_code="AUTH_INVALID_TOKEN",
+                    code=ServiceErrorCodes.AUTH_TOKEN_INVALID,
+                    http_status_code=401,
+                )
 
             # 将令牌加入黑名单
             blacklist_key = f"token_blacklist:{token}"
@@ -749,4 +797,10 @@ class AuthService:
                 extra={"operation": "logout", "error_type": type(e).__name__, "error_message": str(e)},
                 exc_info=True,
             )
-            raise BusinessError(message="注销失败", error_code="AUTH_LOGOUT_ERROR")
+            raise BusinessError(
+                message="注销失败",
+                message_key="error.auth.logout_error",
+                error_code="AUTH_LOGOUT_ERROR",
+                code=ServiceErrorCodes.AUTH_OPERATION_FAILED,
+                http_status_code=400,
+            )

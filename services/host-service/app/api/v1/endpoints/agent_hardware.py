@@ -20,6 +20,7 @@ try:
     )
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
 except ImportError:
@@ -32,6 +33,7 @@ except ImportError:
     )
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
 
@@ -199,6 +201,7 @@ async def report_hardware(
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_hardware_service: AgentHardwareService = Depends(get_agent_hardware_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """上报硬件信息
 
@@ -231,12 +234,10 @@ async def report_hardware(
             hardware_data=hardware_data,
         )
 
-        # 构建响应消息
-        message = result.get("message", "硬件信息上报成功")
-
         return SuccessResponse(
             data=result,
-            message=message,
+            message_key="success.hardware.report",
+            locale=locale,
         )
 
     except BusinessError as e:
@@ -249,13 +250,19 @@ async def report_hardware(
             },
         )
 
+        # 获取语言偏好（从异常或请求头）
+        exc_locale = getattr(e, "locale", None) or locale
+
         raise HTTPException(
-            status_code=e.code or HTTP_400_BAD_REQUEST,
+            status_code=e.http_status_code if hasattr(e, "http_status_code") else (e.code or HTTP_400_BAD_REQUEST),
             detail=ErrorResponse(
                 code=e.code or HTTP_400_BAD_REQUEST,
+                message_key=getattr(e, "message_key", None),
                 message=e.message,
                 error_code=e.error_code,
                 details=e.details,
+                locale=exc_locale,
+                **(e.details or {}),
             ).model_dump(),
         )
 
@@ -270,8 +277,9 @@ async def report_hardware(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
                 code=HTTP_500_INTERNAL_SERVER_ERROR,
-                message="硬件信息上报处理失败",
+                message_key="error.hardware.report_failed",
                 error_code="HARDWARE_REPORT_FAILED",
+                locale=locale,
             ).model_dump(),
         )
 
@@ -383,6 +391,7 @@ async def report_testcase_result(
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_hardware_service: AgentHardwareService = Depends(get_agent_hardware_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """上报测试用例执行结果
 
@@ -421,7 +430,8 @@ async def report_testcase_result(
 
         return SuccessResponse(
             data=result,
-            message="测试用例结果上报成功",
+            message_key="success.hardware.test_result_report",
+            locale=locale,
         )
 
     except BusinessError as e:
@@ -434,13 +444,19 @@ async def report_testcase_result(
             },
         )
 
+        # 获取语言偏好（从异常或请求头）
+        exc_locale = getattr(e, "locale", None) or locale
+
         raise HTTPException(
-            status_code=e.code or HTTP_400_BAD_REQUEST,
+            status_code=e.http_status_code if hasattr(e, "http_status_code") else (e.code or HTTP_400_BAD_REQUEST),
             detail=ErrorResponse(
                 code=e.code or HTTP_400_BAD_REQUEST,
+                message_key=getattr(e, "message_key", None),
                 message=e.message,
                 error_code=e.error_code,
                 details=e.details,
+                locale=exc_locale,
+                **(e.details or {}),
             ).model_dump(),
         )
 
@@ -455,7 +471,8 @@ async def report_testcase_result(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
                 code=HTTP_500_INTERNAL_SERVER_ERROR,
-                message="测试用例结果上报处理失败",
+                message_key="error.hardware.test_result_report_failed",
                 error_code="TESTCASE_REPORT_FAILED",
+                locale=locale,
             ).model_dump(),
         )

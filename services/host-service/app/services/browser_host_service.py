@@ -77,9 +77,11 @@ class BrowserHostService:
             if not host:
                 raise BusinessError(
                     message=f"主机不存在: {host_id}",
+                    message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_NOT_FOUND,
                     http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             logger.info(
@@ -141,9 +143,11 @@ class BrowserHostService:
             if not host:
                 raise BusinessError(
                     message=f"主机不存在: {host_id}",
+                    message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_NOT_FOUND,
                     http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             # 更新主机状态
@@ -212,9 +216,11 @@ class BrowserHostService:
             if not host:
                 raise BusinessError(
                     message=f"主机不存在: {host_id}",
+                    message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_NOT_FOUND,
                     http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             # 更新心跳时间

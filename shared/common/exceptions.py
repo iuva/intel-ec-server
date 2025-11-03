@@ -2,15 +2,25 @@
 异常处理模块
 
 提供统一的业务异常类和错误码定义
+支持多语言消息
 """
 
+import os
+import sys
 from typing import Any, Dict, Optional
+
+try:
+    from shared.common.i18n import t
+except ImportError:
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+    from shared.common.i18n import t
 
 
 class BusinessError(Exception):
     """业务异常基类
 
     用于所有业务逻辑相关的异常
+    支持多语言消息（通过 message_key 自动翻译）
     """
 
     def __init__(
@@ -20,18 +30,33 @@ class BusinessError(Exception):
         code: int = 400,
         http_status_code: Optional[int] = None,
         details: Optional[Dict[str, Any]] = None,
+        message_key: Optional[str] = None,
+        locale: Optional[str] = None,
     ) -> None:
         """初始化业务异常
 
         Args:
-            message: 错误消息
+            message: 错误消息（如果 message_key 提供，则 message 作为默认值）
             error_code: 错误类型标识（自定义错误码，可以是任意整数，如 53009）
             code: 自定义业务错误码（用于响应体）
             http_status_code: HTTP状态码（用于HTTP响应，必须是有效的HTTP状态码 100-599）
                              如果不提供，将使用 code 作为 HTTP 状态码
             details: 错误详情
+            message_key: 翻译键（如果提供，将自动翻译 message）
+            locale: 语言代码（用于翻译 message_key）
         """
-        self.message = message
+        self.message_key = message_key
+        self.locale = locale or "zh_CN"
+        
+        # 如果有 message_key，自动翻译
+        if message_key:
+            # 从 details 中提取格式化变量
+            message_kwargs = details or {}
+            translated_message = t(message_key, locale=self.locale, default=message, **message_kwargs)
+            self.message = translated_message
+        else:
+            self.message = message
+            
         self.error_code = error_code  # 错误码标识
         self.code = code  # 自定义错误码（在响应体中）
         # 确保 http_status_code 是有效的 HTTP 状态码

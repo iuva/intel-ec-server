@@ -539,9 +539,11 @@ class AgentHardwareService:
                 if not exec_log:
                     raise BusinessError(
                         message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
+                        message_key="error.host.exec_log_not_found",
                         error_code="EXEC_LOG_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                         http_status_code=400,
+                        details={"host_id": host_id, "tc_id": tc_id},
                     )
 
                 logger.info(

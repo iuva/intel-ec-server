@@ -237,9 +237,11 @@ class AdminHostService:
                 )
                 raise BusinessError(
                     message=f"主机不存在或已删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_NOT_FOUND,
                     http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             # 2. 执行逻辑删除（设置 del_flag = 1）
@@ -277,8 +279,11 @@ class AdminHostService:
                 )
                 raise BusinessError(
                     message=f"主机删除失败，记录可能已被删除（ID: {host_id}）",
+                    message_key="error.host.delete_failed",
                     error_code="HOST_DELETE_FAILED",
-                    code=400,
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             logger.info(
@@ -407,9 +412,11 @@ class AdminHostService:
                 )
                 raise BusinessError(
                     message=f"主机不存在或已删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_NOT_FOUND,
                     http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             # 2. 如果是启用操作，检查硬件审核状态
@@ -443,6 +450,7 @@ class AdminHostService:
                     )
                     raise BusinessError(
                         message="需要先审核变化硬件",
+                        message_key="error.host.hardware_audit_required",
                         error_code="HARDWARE_AUDIT_REQUIRED",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                         http_status_code=400,
@@ -459,10 +467,11 @@ class AdminHostService:
                         "target_appr_state": appr_state,
                     },
                 )
+                # 注意：这里返回的消息会在端点层被翻译
                 return {
                     "id": host_id,
                     "appr_state": appr_state,
-                    "message": f"主机已是{state_name}状态",
+                    "message": f"主机已是{state_name}状态",  # 端点层会使用 message_key 翻译
                 }
 
             # 4. 更新审批状态
@@ -502,8 +511,11 @@ class AdminHostService:
                 )
                 raise BusinessError(
                     message=f"主机审批状态更新失败，记录可能已被删除（ID: {host_id}）",
+                    message_key="error.host.update_failed",
                     error_code="HOST_UPDATE_APPROVAL_STATE_FAILED",
-                    code=400,
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"host_id": host_id},
                 )
 
             # 4. 刷新对象以获取最新数据

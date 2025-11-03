@@ -22,6 +22,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.exceptions import BusinessError
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
 except ImportError:
@@ -31,6 +32,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import BusinessError
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
 
@@ -70,7 +72,11 @@ async def admin_login(
             },
         )
 
-        return SuccessResponse(data=login_response.model_dump(), message="登录成功")
+        return SuccessResponse(
+            data=login_response.model_dump(),
+            message_key="success.login",
+            locale=locale,
+        )
 
     except BusinessError as e:
         logger.warning(f"管理员登录失败: {e.message}")
@@ -90,8 +96,10 @@ async def admin_login(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 code=HTTP_400_BAD_REQUEST,
+                message_key="error.auth.login_failed",
                 message="登录失败",
                 error_code="AUTH_LOGIN_ERROR",
+                locale=locale,
             ).model_dump(),
         )
 
@@ -101,6 +109,7 @@ async def device_login(
     login_data: DeviceLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
     current_user: Optional[dict] = Depends(get_current_user),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """设备登录（传统方式）
 
@@ -138,7 +147,11 @@ async def device_login(
             },
         )
 
-        return SuccessResponse(data=login_response.model_dump(), message="登录成功")
+        return SuccessResponse(
+            data=login_response.model_dump(),
+            message_key="success.login",
+            locale=locale,
+        )
 
     except BusinessError as e:
         logger.warning(f"设备登录失败: {e.message}")
@@ -158,8 +171,10 @@ async def device_login(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 code=HTTP_400_BAD_REQUEST,
+                message_key="error.auth.login_failed",
                 message="登录失败",
                 error_code="AUTH_LOGIN_ERROR",
+                locale=locale,
             ).model_dump(),
         )
 
@@ -168,6 +183,7 @@ async def device_login(
 async def refresh_token(
     refresh_data: RefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """刷新访问令牌
 
@@ -194,7 +210,11 @@ async def refresh_token(
             },
         )
 
-        return SuccessResponse(data=token_response.model_dump(), message="令牌刷新成功")
+        return SuccessResponse(
+            data=token_response.model_dump(),
+            message_key="success.operation",
+            locale=locale,
+        )
 
     except BusinessError as e:
         logger.warning(
@@ -222,8 +242,10 @@ async def refresh_token(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 code=HTTP_400_BAD_REQUEST,
+                message_key="error.auth.refresh_error",
                 message="令牌刷新失败",
                 error_code="AUTH_REFRESH_ERROR",
+                locale=locale,
             ).model_dump(),
         )
 
@@ -232,6 +254,7 @@ async def refresh_token(
 async def auto_refresh_tokens(
     refresh_data: AutoRefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """自动续期访问令牌和刷新令牌
 
@@ -256,7 +279,8 @@ async def auto_refresh_tokens(
 
         return SuccessResponse(
             data=token_response.model_dump(),
-            message="令牌续期成功",
+            message_key="success.operation",
+            locale=locale,
         )
 
     except BusinessError as e:
@@ -287,6 +311,7 @@ async def auto_refresh_tokens(
 async def introspect_token(
     introspect_data: IntrospectRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """验证令牌
 
@@ -301,7 +326,11 @@ async def introspect_token(
         # 验证令牌
         introspect_response = await auth_service.introspect_token(introspect_data.token)
 
-        return SuccessResponse(data=introspect_response.model_dump(), message="令牌验证完成")
+        return SuccessResponse(
+            data=introspect_response.model_dump(),
+            message_key="success.operation",
+            locale=locale,
+        )
 
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(f"令牌验证异常: {e!s}")
@@ -309,7 +338,8 @@ async def introspect_token(
         # 不抛出 HTTPException，保持响应格式一致性
         return SuccessResponse(
             data={"active": False, "username": None, "user_id": None, "exp": None, "token_type": None, "error": str(e)},
-            message="令牌验证失败或已过期",
+            message_key="error.auth.token_expired",
+            locale=locale,
         )
 
 
@@ -336,7 +366,11 @@ async def logout(
 
         logger.info("用户注销成功")
 
-        return SuccessResponse(data=None, message="注销成功")
+        return SuccessResponse(
+            data=None,
+            message_key="success.logout",
+            locale=locale,
+        )
 
     except BusinessError as e:
         logger.warning(f"注销失败: {e.message}")
@@ -356,7 +390,9 @@ async def logout(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 code=HTTP_400_BAD_REQUEST,
+                message_key="error.auth.logout_error",
                 message="注销失败",
                 error_code="AUTH_LOGOUT_ERROR",
+                locale=locale,
             ).model_dump(),
         )

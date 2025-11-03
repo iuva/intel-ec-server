@@ -7,16 +7,18 @@ import os
 import sys
 from typing import Dict, List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 
@@ -31,7 +33,7 @@ router = APIRouter()
 
 
 @router.get("/ws/hosts")
-async def get_active_hosts():
+async def get_active_hosts(locale: str = Depends(get_locale)):
     """获取所有活跃连接的 Host ID
 
     Returns:
@@ -61,7 +63,8 @@ async def get_active_hosts():
 
     return SuccessResponse(
         data={"hosts": hosts, "count": len(hosts)},
-        message="获取活跃Host成功",
+        message_key="success.websocket.get_active_hosts",
+        locale=locale,
     )
 
 
@@ -338,9 +341,11 @@ async def notify_host_offline(host_id: str, reason: str = Query(None, descriptio
         logger.warning(f"⚠️ Host 未连接，无法发送下线通知: {host_id}")
         raise BusinessError(
             message=f"Host 未连接: {host_id}",
+            message_key="error.host.not_connected",
             error_code="HOST_NOT_CONNECTED",
             code=ServiceErrorCodes.HOST_OPERATION_FAILED,
             http_status_code=400,
+            details={"host_id": host_id},
         )
 
     # 构建下线通知消息

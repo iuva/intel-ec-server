@@ -1,0 +1,55 @@
+{
+  "success": {
+    "operation": "操作成功",
+    "query": "查询成功",
+    "create": "创建成功",
+    "update": "更新成功",
+    "delete": "删除成功",
+    "login": "登录成功",
+    "logout": "登出成功",
+    "host": {
+      "list_query": "查询主机列表成功",
+      "delete": "主机删除成功",
+      "update_approval": "主机审批状态更新成功",
+      "already_in_state": "主机已是{state_name}状态"
+    },
+    "hardware": {
+      "report": "硬件信息上报成功",
+      "test_result_report": "测试用例结果上报成功"
+    },
+    "websocket": {
+      "get_active_hosts": "获取活跃Host成功"
+    }
+  },
+  "error": {
+    "internal": "服务器内部错误",
+    "validation": "请求参数验证失败",
+    "unauthorized": "未授权访问",
+    "forbidden": "权限不足",
+    "not_found": "资源不存在",
+    "host": {
+      "not_found": "主机不存在或已删除（ID: {host_id}）",
+      "delete_failed": "主机删除失败，记录可能已被删除（ID: {host_id}）",
+      "delete_failed_external_api": "主机删除失败：外部API通知失败（ID: {host_id}）",
+      "update_failed": "主机审批状态更新失败，记录可能已被删除（ID: {host_id}）",
+      "hardware_audit_required": "需要先审核变化硬件",
+      "list_query_failed": "查询主机列表失败",
+      "delete_operation_failed": "删除主机失败",
+      "update_approval_failed": "更新主机审批状态失败",
+      "not_connected": "Host 未连接: {host_id}",
+      "exec_log_not_found": "未找到主机 {host_id} 的测试用例 {tc_id} 执行记录"
+    },
+    "hardware": {
+      "report_failed": "硬件信息上报处理失败",
+      "test_result_report_failed": "测试用例结果上报处理失败"
+    },
+    "auth": {
+      "login_failed": "登录失败",
+      "invalid_credentials": "用户名或密码错误",
+      "token_expired": "令牌验证失败或已过期",
+      "token_invalid": "无效的令牌",
+      "permission_denied": "权限不足"
+    }
+  }
+}
+

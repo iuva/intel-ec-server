@@ -1,0 +1,60 @@
+{
+  "success": {
+    "operation": "Operation successful",
+    "query": "Query successful",
+    "create": "Create successful",
+    "update": "Update successful",
+    "delete": "Delete successful",
+    "login": "Login successful",
+    "logout": "Logout successful",
+    "host": {
+      "list_query": "Host list query successful",
+      "delete": "Host deleted successfully",
+      "update_approval": "Host approval status updated successfully",
+      "already_in_state": "Host is already {state_name}"
+    },
+    "hardware": {
+      "report": "Hardware information reported successfully",
+      "test_result_report": "Test case result reported successfully"
+    },
+    "websocket": {
+      "get_active_hosts": "Get active hosts successful"
+    }
+  },
+  "error": {
+    "internal": "Internal server error",
+    "validation": "Request parameter validation failed",
+    "unauthorized": "Unauthorized access",
+    "forbidden": "Insufficient permissions",
+    "not_found": "Resource not found",
+    "host": {
+      "not_found": "Host not found or deleted (ID: {host_id})",
+      "delete_failed": "Host deletion failed, record may have been deleted (ID: {host_id})",
+      "delete_failed_external_api": "Host deletion failed: External API notification failed (ID: {host_id})",
+      "update_failed": "Host approval status update failed, record may have been deleted (ID: {host_id})",
+      "hardware_audit_required": "Hardware changes need to be audited first",
+      "list_query_failed": "Failed to query host list",
+      "delete_operation_failed": "Failed to delete host",
+      "update_approval_failed": "Failed to update host approval status",
+      "not_connected": "Host not connected: {host_id}",
+      "exec_log_not_found": "Execution log not found for host {host_id} test case {tc_id}"
+    },
+    "hardware": {
+      "report_failed": "Hardware information reporting failed",
+      "test_result_report_failed": "Test case result reporting failed"
+    },
+    "auth": {
+      "login_failed": "Login failed",
+      "invalid_credentials": "Invalid username or ***REMOVED***word",
+      "token_expired": "Token verification failed or expired",
+      "token_invalid": "Invalid token",
+      "permission_denied": "Insufficient permissions",
+      "invalid_token_type": "Invalid token type",
+      "refresh_error": "Token refresh failed",
+      "user_disabled": "User account is disabled",
+      "service_error": "Authentication service temporarily unavailable",
+      "logout_error": "Logout failed"
+    }
+  }
+}
+

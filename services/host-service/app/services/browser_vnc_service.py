@@ -306,6 +306,7 @@ class BrowserVNCService:
                     )
                     raise BusinessError(
                         message="主机不存在或未启用",
+                        message_key="error.host.not_found",
                         error_code="HOST_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_NOT_FOUND,
                         http_status_code=400,
