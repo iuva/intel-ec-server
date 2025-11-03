@@ -122,9 +122,11 @@ class CaseTimeoutTaskService:
                 # 只在第一次检测时记录警告，避免重复日志
                 if not self._has_warned_missing_config:
                     logger.warning(
-                        "case_timeout 配置无效或未设置，跳过检测。请在 sys_conf 表中插入配置："
-                        "INSERT INTO sys_conf (conf_key, conf_val, conf_name, state_flag, del_flag) "
-                        "VALUES ('case_timeout', '30', 'Case超时时间(分钟)', 0, 0);",
+                        (
+                            "case_timeout 配置无效或未设置，跳过检测。请在 sys_conf 表中插入配置："
+                            "INSERT INTO sys_conf (conf_key, conf_val, conf_name, state_flag, del_flag) "
+                            "VALUES ('case_timeout', '30', 'Case超时时间(分钟)', 0, 0);"
+                        ),
                         extra={"timeout_minutes": timeout_minutes},
                     )
                     self._has_warned_missing_config = True
@@ -134,7 +136,7 @@ class CaseTimeoutTaskService:
                         extra={"timeout_minutes": timeout_minutes},
                     )
                 return
-            
+
             # 如果配置存在，重置警告标志（配置可能刚被添加）
             if self._has_warned_missing_config:
                 self._has_warned_missing_config = False
@@ -191,9 +193,7 @@ class CaseTimeoutTaskService:
                     continue
 
                 # 发送超时通知
-                success = await self._notify_case_timeout(
-                    ws_manager, host_id, exec_log, timeout_minutes
-                )
+                success = await self._notify_case_timeout(ws_manager, host_id, exec_log, timeout_minutes)
 
                 if success:
                     success_count += 1
@@ -253,9 +253,7 @@ class CaseTimeoutTaskService:
                     try:
                         timeout_minutes = int(cached_value)
                     except (ValueError, TypeError):
-                        logger.warning(
-                            "缓存中的 case_timeout 配置格式无效，将从数据库重新获取"
-                        )
+                        logger.warning("缓存中的 case_timeout 配置格式无效，将从数据库重新获取")
                         timeout_minutes = None
                 else:
                     logger.warning(
@@ -337,9 +335,7 @@ class CaseTimeoutTaskService:
             )
             return None
 
-    async def _query_timeout_cases(
-        self, timeout_minutes: int
-    ) -> List[HostExecLog]:
+    async def _query_timeout_cases(self, timeout_minutes: int) -> List[HostExecLog]:
         """查询超时的 host_exec_log 记录
 
         Args:
@@ -350,9 +346,7 @@ class CaseTimeoutTaskService:
         """
         try:
             # 计算超时时间点
-            timeout_threshold = datetime.now(timezone.utc) - timedelta(
-                minutes=timeout_minutes
-            )
+            timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
 
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
@@ -467,4 +461,3 @@ def get_case_timeout_task_service() -> CaseTimeoutTaskService:
         logger.info("Case 超时检测定时任务服务实例已创建")
 
     return _case_timeout_task_instance
-

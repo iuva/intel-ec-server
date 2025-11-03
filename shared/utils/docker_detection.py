@@ -86,14 +86,15 @@ def resolve_mariadb_host(default_in_docker: str = "mariadb") -> str:
         # 尝试检测 Docker 容器是否运行（通过 docker ps 或检查常见端口）
         # 如果检测到 Docker 数据库容器，使用 host.docker.internal
         # 否则使用 localhost
-        
+
         # 优先尝试使用 host.docker.internal（适用于 macOS/Windows）
         # 如果用户需要连接到 Docker 中的数据库，应该显式设置 MARIADB_HOST
         # 这里提供一个合理的默认值：如果可能，尝试 host.docker.internal
-        
+
         import platform
+
         system = platform.system().lower()
-        
+
         # 对于 macOS/Windows，如果数据库在 Docker 中，建议使用 host.docker.internal
         # 但这里我们保守一点，默认使用 localhost，让用户通过环境变量明确指定
         # 这样可以同时支持：
@@ -152,4 +153,3 @@ def resolve_nacos_host() -> str:
     else:
         # 本地环境，Nacos 在 Docker 中，使用 localhost（端口映射到宿主机）
         return "localhost"
-

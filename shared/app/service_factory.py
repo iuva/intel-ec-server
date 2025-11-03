@@ -356,6 +356,7 @@ class ServiceLifecycleManager:
                 if asyncio.iscoroutinefunction(handler):
                     # 检查函数签名，如果需要一个参数（app），则传递它
                     import inspect
+
                     sig = inspect.signature(handler)
                     params = list(sig.parameters.keys())
                     if len(params) > 0:
@@ -364,6 +365,7 @@ class ServiceLifecycleManager:
                         await handler()
                 else:
                     import inspect
+
                     sig = inspect.signature(handler)
                     params = list(sig.parameters.keys())
                     if len(params) > 0:

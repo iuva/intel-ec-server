@@ -16,7 +16,7 @@ from loguru import logger
 
 def _rename_old_log_files(log_dir: str, service_name: str) -> None:
     """重命名旧的日志文件，添加日期后缀
-    
+
     Args:
         log_dir: 日志目录
         service_name: 服务名称
@@ -32,13 +32,13 @@ def _rename_old_log_files(log_dir: str, service_name: str) -> None:
             # 获取文件的修改时间
             file_mtime = datetime.fromtimestamp(os.path.getmtime(log_file))
             today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            
+
             # 如果文件是昨天的或更早的，重命名它
             file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
             if file_date < today:
                 date_str = file_date.strftime("%Y-%m-%d")
                 new_name = os.path.join(log_dir, f"{service_name}-{date_str}.log")
-                
+
                 # 如果目标文件已存在，跳过（可能已经被处理过）
                 if not os.path.exists(new_name):
                     os.rename(log_file, new_name)
@@ -47,12 +47,12 @@ def _rename_old_log_files(log_dir: str, service_name: str) -> None:
         if os.path.exists(error_log_file):
             file_mtime = datetime.fromtimestamp(os.path.getmtime(error_log_file))
             today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            
+
             file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
             if file_date < today:
                 date_str = file_date.strftime("%Y-%m-%d")
                 new_name = os.path.join(log_dir, f"{service_name}_error-{date_str}.log")
-                
+
                 if not os.path.exists(new_name):
                     os.rename(error_log_file, new_name)
     except Exception:
@@ -190,7 +190,7 @@ def configure_logger(
         # 当天文件：service_name_error.log
         # 历史文件：service_name_error-YYYY-MM-DD.log
         error_log_file_path = os.path.join(log_dir, f"{service_name}_error.log")
-        
+
         handlers_config.append(
             {
                 "sink": error_log_file_path,

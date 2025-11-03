@@ -90,22 +90,10 @@ class AdminHostService:
             count_stmt = select(func.count(HostRec.id)).where(
                 and_(
                     HostRec.del_flag == 0,
-                    *(
-                        []
-                        if not request.mac
-                        else [HostRec.mac_addr.like(f"%{request.mac}%")]
-                    ),
-                    *(
-                        []
-                        if not request.username
-                        else [HostRec.host_acct.like(f"%{request.username}%")]
-                    ),
+                    *([] if not request.mac else [HostRec.mac_addr.like(f"%{request.mac}%")]),
+                    *([] if not request.username else [HostRec.host_acct.like(f"%{request.username}%")]),
                     *([] if request.host_state is None else [HostRec.host_state == request.host_state]),
-                    *(
-                        []
-                        if not request.mg_id
-                        else [HostRec.mg_id.like(f"%{request.mg_id}%")]
-                    ),
+                    *([] if not request.mg_id else [HostRec.mg_id.like(f"%{request.mg_id}%")]),
                 )
             )
 

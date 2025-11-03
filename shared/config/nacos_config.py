@@ -196,16 +196,14 @@ class NacosManager:
 
             # 获取实例列表
             hosts = instances.get("hosts", [])
-            
+
             if not hosts:
                 logger.warning(f"没有可用的服务实例: {service_name}")
                 return None
 
             # 简单负载均衡：选择第一个实例（也可以实现轮询等策略）
             instance = hosts[0]
-            logger.debug(
-                f"选择服务实例: {service_name} ({instance.get('ip')}:{instance.get('port')})"
-            )
+            logger.debug(f"选择服务实例: {service_name} ({instance.get('ip')}:{instance.get('port')})")
             return instance  # type: ignore[no-any-return]
 
         except Exception as e:

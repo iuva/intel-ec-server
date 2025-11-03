@@ -94,4 +94,3 @@ _AUTO_LOAD = os.getenv("AUTO_LOAD_DOTENV", "false").lower() == "true"
 
 if _AUTO_LOAD:
     ensure_env_loaded()
-
