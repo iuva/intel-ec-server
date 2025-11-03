@@ -67,6 +67,12 @@
 |------|------|
 | [18-websocket-usage.md](./18-websocket-usage.md) | **WebSocket 详细使用指南** - 连接建立、消息类型、心跳检测、完整示例 |
 
+### 📝 日志管理
+
+| 文档 | 说明 |
+|------|------|
+| [19-service-logs-guide.md](./19-service-logs-guide.md) | **服务日志查看指南** - 日志位置、查看方法、搜索技巧 |
+
 ---
 
 ### 📡 API 文档
@@ -157,6 +163,7 @@
 | **故障排除** | [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md) |
 | **部署运维** | [03-deployment-guide.md](./03-deployment-guide.md) |
 | **WebSocket** | [18-websocket-usage.md](./18-websocket-usage.md) |
+| **日志管理** | [19-service-logs-guide.md](./19-service-logs-guide.md) |
 
 ### 按难度级别
 
@@ -186,6 +193,7 @@ XX-topic-name.md
 - **12**: 安全和认证
 - **16-17**: 类型检查 (Pyright)
 - **18**: WebSocket 通信
+- **19**: 日志管理
 
 ---
 
@@ -197,6 +205,7 @@ XX-topic-name.md
   - ✅ 规范化API文档结构和命名
   - ✅ 更新文档索引和导航
   - ✅ 整理归档文档说明
+  - ✅ 新增服务日志查看指南（19-service-logs-guide.md）
 - **2025-10-31**: 添加本地启动指南和环境变量加载机制说明
 - **2025-10-16**: 文档结构整理，移动模块相关文档到 shared/ 目录
 - **2025-10-15**: 添加 API 响应格式修复记录

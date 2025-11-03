@@ -1,0 +1,174 @@
+"""管理后台主机管理服务
+
+提供管理后台使用的主机查询、搜索等核心业务逻辑。
+"""
+
+import os
+import sys
+from typing import List, Tuple
+
+from sqlalchemy import and_, func, select
+
+# 使用 try-except 方式处理路径导入
+try:
+    from app.models.host_exec_log import HostExecLog
+    from app.models.host_rec import HostRec
+    from app.schemas.host import AdminHostInfo, AdminHostListRequest
+    from shared.common.database import mariadb_manager
+    from shared.common.decorators import handle_service_errors
+    from shared.common.loguru_config import get_logger
+    from shared.utils.pagination import PaginationParams, PaginationResponse
+except ImportError:
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.models.host_exec_log import HostExecLog
+    from app.models.host_rec import HostRec
+    from app.schemas.host import AdminHostInfo, AdminHostListRequest
+    from shared.common.database import mariadb_manager
+    from shared.common.decorators import handle_service_errors
+    from shared.common.loguru_config import get_logger
+    from shared.utils.pagination import PaginationParams, PaginationResponse
+
+logger = get_logger(__name__)
+
+
+class AdminHostService:
+    """管理后台主机管理服务类
+
+    负责管理后台的主机查询、搜索等操作。
+    """
+
+    @handle_service_errors(
+        error_message="查询主机列表失败",
+        error_code="QUERY_HOST_LIST_FAILED",
+    )
+    async def list_hosts(
+        self,
+        request: AdminHostListRequest,
+    ) -> Tuple[List[AdminHostInfo], PaginationResponse]:
+        """查询主机列表（分页、搜索）
+
+        Args:
+            request: 查询请求参数
+
+        Returns:
+            Tuple[List[AdminHostInfo], PaginationResponse]: 主机列表和分页信息
+
+        Raises:
+            BusinessError: 查询失败时
+        """
+        logger.info(
+            "开始查询主机列表",
+            extra={
+                "page": request.page,
+                "page_size": request.page_size,
+                "mac": request.mac,
+                "username": request.username,
+                "host_state": request.host_state,
+                "mg_id": request.mg_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 构建基础查询 - 查询 host_rec 表
+            base_stmt = select(HostRec).where(HostRec.del_flag == 0)
+
+            # 添加搜索条件
+            if request.mac:
+                base_stmt = base_stmt.where(HostRec.mac_addr.like(f"%{request.mac}%"))
+
+            if request.username:
+                base_stmt = base_stmt.where(HostRec.host_acct.like(f"%{request.username}%"))
+
+            if request.host_state is not None:
+                base_stmt = base_stmt.where(HostRec.host_state == request.host_state)
+
+            if request.mg_id:
+                base_stmt = base_stmt.where(HostRec.mg_id.like(f"%{request.mg_id}%"))
+
+            # 1. 先查询总数
+            count_stmt = select(func.count(HostRec.id)).where(
+                and_(
+                    HostRec.del_flag == 0,
+                    *(
+                        []
+                        if not request.mac
+                        else [HostRec.mac_addr.like(f"%{request.mac}%")]
+                    ),
+                    *(
+                        []
+                        if not request.username
+                        else [HostRec.host_acct.like(f"%{request.username}%")]
+                    ),
+                    *([] if request.host_state is None else [HostRec.host_state == request.host_state]),
+                    *(
+                        []
+                        if not request.mg_id
+                        else [HostRec.mg_id.like(f"%{request.mg_id}%")]
+                    ),
+                )
+            )
+
+            count_result = await session.execute(count_stmt)
+            total = count_result.scalar() or 0
+
+            # 2. 分页查询主机记录
+            pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
+            stmt = base_stmt.order_by(HostRec.id.desc()).offset(pagination_params.offset).limit(pagination_params.limit)
+
+            result = await session.execute(stmt)
+            host_recs = result.scalars().all()
+
+            # 3. 为每个主机查询最新的执行日志记录（user_name）
+            host_info_list: List[AdminHostInfo] = []
+
+            for host_rec in host_recs:
+                # 查询该主机最新的执行日志
+                # 条件：case_state > 0 AND host_state > 0 AND del_flag = 0
+                log_stmt = (
+                    select(HostExecLog)
+                    .where(
+                        and_(
+                            HostExecLog.host_id == host_rec.id,
+                            HostExecLog.case_state > 0,
+                            HostExecLog.host_state > 0,
+                            HostExecLog.del_flag == 0,
+                        )
+                    )
+                    .order_by(HostExecLog.created_time.desc())
+                    .limit(1)
+                )
+
+                log_result = await session.execute(log_stmt)
+                latest_log = log_result.scalar_one_or_none()
+
+                # 构建主机信息
+                host_info = AdminHostInfo(
+                    hardware_id=host_rec.hardware_id,
+                    host_acct=host_rec.host_acct,
+                    mg_id=host_rec.mg_id,
+                    mac=host_rec.mac_addr,
+                    host_state=host_rec.host_state,
+                    user_name=latest_log.user_name if latest_log else None,
+                )
+
+                host_info_list.append(host_info)
+
+            # 4. 构建分页响应
+            pagination_response = PaginationResponse(
+                page=request.page,
+                page_size=request.page_size,
+                total=total,
+            )
+
+            logger.info(
+                "查询主机列表完成",
+                extra={
+                    "total": total,
+                    "returned_count": len(host_info_list),
+                    "page": request.page,
+                    "page_size": request.page_size,
+                },
+            )
+
+            return host_info_list, pagination_response

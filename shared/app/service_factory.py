@@ -336,7 +336,7 @@ class ServiceLifecycleManager:
         except Exception as e:
             logger.warning(f"Nacos 初始化失败: {e!s}, 继续运行...")
 
-    async def shutdown(self) -> None:
+    async def shutdown(self, app: Optional[FastAPI] = None) -> None:
         """
         执行服务关闭流程
 
@@ -345,6 +345,8 @@ class ServiceLifecycleManager:
         2. 停止Nacos心跳检测
         3. 关闭数据库连接
 
+        Args:
+            app: FastAPI 应用实例（可选，传递给关闭处理器）
         """
         logger.info(f"{self.config.service_name} 关闭中...")
 
@@ -352,9 +354,22 @@ class ServiceLifecycleManager:
             # 1. 执行自定义关闭处理器
             for handler in self.shutdown_handlers:
                 if asyncio.iscoroutinefunction(handler):
-                    await handler()
+                    # 检查函数签名，如果需要一个参数（app），则传递它
+                    import inspect
+                    sig = inspect.signature(handler)
+                    params = list(sig.parameters.keys())
+                    if len(params) > 0:
+                        await handler(app)
+                    else:
+                        await handler()
                 else:
-                    handler()
+                    import inspect
+                    sig = inspect.signature(handler)
+                    params = list(sig.parameters.keys())
+                    if len(params) > 0:
+                        handler(app)
+                    else:
+                        handler()
 
             # 2. 停止Nacos心跳检测
             if self.nacos_manager:
@@ -499,6 +514,6 @@ def create_service_lifespan(
         """生命周期处理"""
         await manager.startup(app)
         yield
-        await manager.shutdown()
+        await manager.shutdown(app)
 
     return lifespan

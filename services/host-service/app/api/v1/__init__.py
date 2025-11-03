@@ -1,6 +1,7 @@
 """API v1 路由配置"""
 
 from app.api.v1.endpoints import (
+    admin_hosts,
     agent_hardware,
     agent_websocket,
     agent_websocket_management,
@@ -21,3 +22,6 @@ api_router.include_router(agent_hardware.router, prefix="/agent", tags=["Agent-�
 # Agent WebSocket 路由
 api_router.include_router(agent_websocket.router, tags=["Agent-WebSocket连接"])
 api_router.include_router(agent_websocket_management.router, tags=["Agent-WebSocket管理"])
+
+# 管理后台路由
+api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["管理后台-主机管理"])

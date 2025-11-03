@@ -7,17 +7,65 @@
 import logging
 import os
 import sys
-from typing import Any, Optional
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 from loguru import logger
+
+
+def _rename_old_log_files(log_dir: str, service_name: str) -> None:
+    """重命名旧的日志文件，添加日期后缀
+    
+    Args:
+        log_dir: 日志目录
+        service_name: 服务名称
+    """
+    try:
+        from datetime import datetime
+
+        log_file = os.path.join(log_dir, f"{service_name}.log")
+        error_log_file = os.path.join(log_dir, f"{service_name}_error.log")
+
+        # 检查普通日志文件
+        if os.path.exists(log_file):
+            # 获取文件的修改时间
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(log_file))
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            # 如果文件是昨天的或更早的，重命名它
+            file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
+            if file_date < today:
+                date_str = file_date.strftime("%Y-%m-%d")
+                new_name = os.path.join(log_dir, f"{service_name}-{date_str}.log")
+                
+                # 如果目标文件已存在，跳过（可能已经被处理过）
+                if not os.path.exists(new_name):
+                    os.rename(log_file, new_name)
+
+        # 检查错误日志文件
+        if os.path.exists(error_log_file):
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(error_log_file))
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
+            if file_date < today:
+                date_str = file_date.strftime("%Y-%m-%d")
+                new_name = os.path.join(log_dir, f"{service_name}_error-{date_str}.log")
+                
+                if not os.path.exists(new_name):
+                    os.rename(error_log_file, new_name)
+    except Exception:
+        # 静默处理异常，避免影响服务启动
+        ***REMOVED***
 
 
 def configure_logger(
     service_name: str = "service",
     log_level: str = "INFO",
-    log_dir: str = "/app/logs",
-    rotation: str = "10 MB",
-    retention: str = "1 week",
+    log_dir: Optional[str] = None,
+    rotation: str = "00:00",  # 每天午夜轮转（按日期切片）
+    retention: str = "30 days",  # 保留30天日志
     compression: str = "zip",
     enable_console: bool = True,
     enable_file: bool = True,
@@ -29,15 +77,45 @@ def configure_logger(
     Args:
         service_name: 服务名称
         log_level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
-        log_dir: 日志目录
-        rotation: 日志轮转策略（如 "10 MB", "1 day"）
-        retention: 日志保留时间（如 "1 week", "30 days"）
+        log_dir: 日志目录（None时自动检测：Docker环境使用 /app/logs，本地环境使用 ./logs）
+        rotation: 日志轮转策略（默认 "00:00" 每天午夜轮转，也可使用 "10 MB" 按大小、"1 day" 按天）
+        retention: 日志保留时间（默认 "30 days" 保留30天，也可使用 "1 week"）
         compression: 日志压缩格式（如 "zip", "gz"）
         enable_console: 是否启用控制台输出
         enable_file: 是否启用文件输出
         enable_error_file: 是否启用错误日志文件
         json_format: 是否使用JSON格式
     """
+    # 自动检测日志目录
+    if log_dir is None:
+        # 检查是否在Docker环境中（/app目录存在且可写）
+        docker_log_dir = "/app/logs"
+        if os.path.exists("/app") and os.access("/app", os.W_OK):
+            log_dir = docker_log_dir
+        else:
+            # 本地环境：使用项目根目录下的 logs 目录
+            # 从当前文件位置向上查找项目根目录（包含 .git 或 docker-compose.yml）
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = current_dir
+            max_depth = 10
+            depth = 0
+            while depth < max_depth:
+                if os.path.exists(os.path.join(project_root, ".git")) or os.path.exists(
+                    os.path.join(project_root, "docker-compose.yml")
+                ):
+                    log_dir = os.path.join(project_root, "logs")
+                    break
+                parent_dir = os.path.dirname(project_root)
+                if parent_dir == project_root:
+                    # 已到根目录，使用当前目录下的logs
+                    log_dir = os.path.join(os.getcwd(), "logs")
+                    break
+                project_root = parent_dir
+                depth += 1
+            else:
+                # 如果找不到项目根，使用当前工作目录下的logs
+                log_dir = os.path.join(os.getcwd(), "logs")
+
     # 移除默认的日志处理器
     logger.remove()
 
@@ -80,9 +158,17 @@ def configure_logger(
 
     # 添加文件处理器（如果启用）
     if enable_file:
+        # 当天日志使用固定文件名，轮转后的旧日志才添加日期后缀
+        # 当天文件：service_name.log
+        # 历史文件：service_name-YYYY-MM-DD.log
+        log_file_path = os.path.join(log_dir, f"{service_name}.log")
+
+        # 在启动时检查并重命名旧的日志文件（如果存在且不是今天的）
+        _rename_old_log_files(log_dir, service_name)
+
         handlers_config.append(
             {
-                "sink": os.path.join(log_dir, f"{service_name}.log"),
+                "sink": log_file_path,
                 "format": (
                     "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
                     "{level: <8} | "
@@ -91,7 +177,7 @@ def configure_logger(
                     "{message}"
                 ),
                 "level": log_level,
-                "rotation": rotation,
+                "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
                 "retention": retention,
                 "compression": compression,
                 "encoding": "utf-8",
@@ -100,9 +186,14 @@ def configure_logger(
 
     # 添加错误文件处理器（如果启用）
     if enable_error_file:
+        # 当天错误日志使用固定文件名，轮转后的旧日志才添加日期后缀
+        # 当天文件：service_name_error.log
+        # 历史文件：service_name_error-YYYY-MM-DD.log
+        error_log_file_path = os.path.join(log_dir, f"{service_name}_error.log")
+        
         handlers_config.append(
             {
-                "sink": os.path.join(log_dir, f"{service_name}_error.log"),
+                "sink": error_log_file_path,
                 "format": (
                     "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
                     "{level: <8} | "
@@ -111,7 +202,7 @@ def configure_logger(
                     "{message}"
                 ),
                 "level": "ERROR",
-                "rotation": rotation,
+                "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
                 "retention": "1 month",
                 "compression": compression,
                 "encoding": "utf-8",
