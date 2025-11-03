@@ -7,7 +7,7 @@ import os
 import sys
 from typing import List, Tuple
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -16,6 +16,7 @@ try:
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
+    from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
@@ -25,6 +26,7 @@ except ImportError:
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
+    from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
@@ -185,3 +187,171 @@ class AdminHostService:
             )
 
             return host_info_list, pagination_response
+
+    @handle_service_errors(
+        error_message="删除主机失败",
+        error_code="DELETE_HOST_FAILED",
+    )
+    async def delete_host(self, host_id: int) -> int:
+        """删除主机（逻辑删除）
+
+        根据主机ID逻辑删除 host_rec 表数据。删除后需要同步通知外部API，
+        如果通知失败则回滚删除操作。
+
+        Args:
+            host_id: 主机ID（host_rec.id）
+
+        Returns:
+            int: 已删除的主机ID
+
+        Raises:
+            BusinessError: 主机不存在或删除失败时
+        """
+        logger.info(
+            "开始删除主机",
+            extra={
+                "host_id": host_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 检查主机是否存在且未删除
+            check_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只检查未删除的记录
+                )
+            )
+            check_result = await session.execute(check_stmt)
+            host_rec = check_result.scalar_one_or_none()
+
+            if not host_rec:
+                logger.warning(
+                    "主机不存在或已删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在或已删除（ID: {host_id}）",
+                    error_code="HOST_NOT_FOUND",
+                    code=404,
+                )
+
+            # 2. 执行逻辑删除（设置 del_flag = 1）
+            update_stmt = (
+                update(HostRec)
+                .where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                    )
+                )
+                .values(del_flag=1)  # 设置为已删除
+            )
+
+            logger.info(
+                "执行逻辑删除操作",
+                extra={
+                    "host_id": host_id,
+                    "operation": "UPDATE del_flag = 1",
+                },
+            )
+
+            # 执行更新
+            result = await session.execute(update_stmt)
+            await session.commit()
+
+            updated_count = result.rowcount
+
+            if updated_count == 0:
+                logger.warning(
+                    "逻辑删除失败，记录可能已被删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机删除失败，记录可能已被删除（ID: {host_id}）",
+                    error_code="HOST_DELETE_FAILED",
+                    code=400,
+                )
+
+            logger.info(
+                "主机逻辑删除完成",
+                extra={
+                    "host_id": host_id,
+                    "updated_count": updated_count,
+                },
+            )
+
+            # 3. 通知外部API（预留 TODO）
+            try:
+                # TODO: 调用外部API通知主机已删除
+                # 示例代码（待实现）:
+                # external_api_result = await self._notify_external_api_deletion(host_id, host_rec)
+                # if not external_api_result.get("success"):
+                #     raise Exception("外部API通知失败")
+
+                logger.info(
+                    "外部API通知（待实现）",
+                    extra={
+                        "host_id": host_id,
+                        "note": "TODO: 实现外部API通知逻辑",
+                    },
+                )
+
+            except Exception as e:
+                # 4. 如果外部API通知失败，回滚删除操作
+                logger.error(
+                    "外部API通知失败，开始回滚删除操作",
+                    extra={
+                        "host_id": host_id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+
+                # 回滚：将 del_flag 改回 0
+                rollback_stmt = (
+                    update(HostRec)
+                    .where(HostRec.id == host_id)
+                    .values(del_flag=0)  # 恢复为未删除状态
+                )
+
+                rollback_result = await session.execute(rollback_stmt)
+                await session.commit()
+
+                rollback_count = rollback_result.rowcount
+
+                logger.info(
+                    "删除操作已回滚",
+                    extra={
+                        "host_id": host_id,
+                        "rollback_count": rollback_count,
+                    },
+                )
+
+                # 抛出业务异常，返回删除失败
+                raise BusinessError(
+                    message=f"主机删除失败：外部API通知失败（ID: {host_id}）",
+                    error_code="HOST_DELETE_EXTERNAL_API_FAILED",
+                    code=500,
+                    details={
+                        "host_id": host_id,
+                        "external_api_error": str(e),
+                        "rollback_success": rollback_count > 0,
+                    },
+                )
+
+            # 5. 删除成功
+            logger.info(
+                "主机删除成功（包含外部API通知）",
+                extra={
+                    "host_id": host_id,
+                },
+            )
+
+            return host_id

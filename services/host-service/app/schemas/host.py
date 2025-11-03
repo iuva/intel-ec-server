@@ -261,3 +261,20 @@ class AdminHostListResponse(BaseModel):
     has_prev: bool = Field(description="是否有上一页")
 
     model_config = {"from_attributes": True}
+
+
+class AdminHostDeleteRequest(BaseModel):
+    """管理后台主机删除请求模式"""
+
+    id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostDeleteResponse(BaseModel):
+    """管理后台主机删除响应模式"""
+
+    id: int = Field(description="已删除的主机ID")
+    message: str = Field(default="主机删除成功", description="删除结果消息")
+
+    model_config = {"from_attributes": True}

@@ -13,7 +13,11 @@ from starlette.status import HTTP_200_OK
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
-    from app.schemas.host import AdminHostListRequest, AdminHostListResponse
+    from app.schemas.host import (
+        AdminHostDeleteResponse,
+        AdminHostListRequest,
+        AdminHostListResponse,
+    )
     from app.services.admin_host_service import AdminHostService
     from shared.common.decorators import handle_api_errors
     from shared.common.loguru_config import get_logger
@@ -21,7 +25,11 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
-    from app.schemas.host import AdminHostListRequest, AdminHostListResponse
+    from app.schemas.host import (
+        AdminHostDeleteResponse,
+        AdminHostListRequest,
+        AdminHostListResponse,
+    )
     from app.services.admin_host_service import AdminHostService
     from shared.common.decorators import handle_api_errors
     from shared.common.loguru_config import get_logger
@@ -172,4 +180,99 @@ async def list_hosts(
     return SuccessResponse(
         data=response_data.model_dump(),
         message="查询主机列表成功",
+    )
+
+
+@router.delete(
+    "/{host_id}",
+    response_model=SuccessResponse,
+    status_code=HTTP_200_OK,
+    summary="删除主机",
+    description="""
+    管理后台主机删除接口，支持逻辑删除主机记录。
+
+    ## 功能说明
+    1. 根据主机ID逻辑删除 host_rec 表数据（设置 del_flag = 1）
+    2. 删除后同步通知外部API（预留 TODO，待实现）
+    3. 如果外部API通知失败，自动回滚删除操作
+    4. 返回删除失败的错误信息
+
+    ## 认证要求
+    - 需要在 Authorization 头中提供有效的 JWT token
+    - Token 格式：`Bearer <token>`
+    - 需要管理员权限
+
+    ## 删除逻辑
+    - 逻辑删除：设置 `del_flag = 1`，数据不会物理删除
+    - 外部API通知：删除成功后调用外部API通知（预留 TODO）
+    - 回滚机制：如果外部API通知失败，自动将 `del_flag` 改回 0
+
+    ## 错误处理
+    - 主机不存在：返回 404 错误
+    - 主机已删除：返回 400 错误
+    - 外部API通知失败：返回 500 错误并自动回滚
+    """,
+    responses={
+        200: {
+            "description": "删除成功",
+            "model": SuccessResponse,
+        },
+        400: {
+            "description": "删除失败（主机已删除或无效）",
+        },
+        404: {
+            "description": "主机不存在",
+        },
+        500: {
+            "description": "外部API通知失败，已自动回滚",
+        },
+    },
+)
+@handle_api_errors
+async def delete_host(
+    host_id: int,
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+) -> SuccessResponse:
+    """删除主机（逻辑删除）
+
+    Args:
+        host_id: 主机ID（host_rec.id）
+        admin_host_service: 管理后台主机服务实例
+        current_user: 当前登录用户信息
+
+    Returns:
+        SuccessResponse: 包含删除结果信息
+
+    Raises:
+        BusinessError: 主机不存在或删除失败时
+    """
+    logger.info(
+        "接收管理后台主机删除请求",
+        extra={
+            "host_id": host_id,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层删除
+    deleted_host_id = await admin_host_service.delete_host(host_id)
+
+    # 构建响应数据
+    response_data = AdminHostDeleteResponse(
+        id=deleted_host_id,
+        message="主机删除成功",
+    )
+
+    logger.info(
+        "管理后台主机删除完成",
+        extra={
+            "host_id": deleted_host_id,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    return SuccessResponse(
+        data=response_data.model_dump(),
+        message="主机删除成功",
     )
