@@ -317,15 +317,30 @@ async def report_hardware(
             "model": SuccessResponse,
         },
         400: {
-            "description": "请求参数错误",
+            "description": "请求参数错误或业务逻辑错误（包括：请求参数验证失败、未找到执行日志记录等）",
             "content": {
                 "application/json": {
-                    "example": {
-                        "code": 400,
-                        "message": "请求参数验证失败",
-                        "error_code": "VALIDATION_ERROR",
-                        "details": None,
-                        "timestamp": "2025-10-30T10:00:00Z",
+                    "examples": {
+                        "validation_error": {
+                            "summary": "请求参数验证失败",
+                            "value": {
+                                "code": 400,
+                                "message": "请求参数验证失败",
+                                "error_code": "VALIDATION_ERROR",
+                                "details": None,
+                                "timestamp": "2025-10-30T10:00:00Z",
+                            },
+                        },
+                        "exec_log_not_found": {
+                            "summary": "未找到执行日志记录",
+                            "value": {
+                                "code": 53012,
+                                "message": "未找到主机的测试用例执行记录",
+                                "error_code": "EXEC_LOG_NOT_FOUND",
+                                "details": None,
+                                "timestamp": "2025-10-30T10:00:00Z",
+                            },
+                        },
                     }
                 }
             },
@@ -338,20 +353,6 @@ async def report_hardware(
                         "code": 401,
                         "message": "缺少有效的认证令牌",
                         "error_code": "UNAUTHORIZED",
-                        "details": None,
-                        "timestamp": "2025-10-30T10:00:00Z",
-                    }
-                }
-            },
-        },
-        400: {
-            "description": "未找到执行日志记录",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 53012,
-                        "message": "未找到主机的测试用例执行记录",
-                        "error_code": "EXEC_LOG_NOT_FOUND",
                         "details": None,
                         "timestamp": "2025-10-30T10:00:00Z",
                     }

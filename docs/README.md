@@ -27,6 +27,7 @@
 | 文档 | 说明 |
 |------|------|
 | [01-infrastructure-config.md](./01-infrastructure-config.md) | **基础设施配置指南** - MariaDB、Redis、Nacos、Jaeger 完整配置说明 |
+| [20-service-ip-port-config-explanation.md](./20-service-ip-port-config-explanation.md) | **SERVICE_IP 和 SERVICE_PORT 配置说明** - 服务注册配置原理、自动检测功能、Docker和本地环境兼容 |
 
 ---
 

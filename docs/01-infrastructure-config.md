@@ -163,6 +163,24 @@ NACOS_NAMESPACE=public
 NACOS_GROUP=DEFAULT_GROUP
 ```
 
+#### 4. SERVICE_IP 和 SERVICE_PORT 配置说明
+
+> **重要说明**: SERVICE_IP 和 SERVICE_PORT 用于**服务注册**（告诉 Nacos 自己的地址），而不是服务发现（从 Nacos 获取其他服务地址）。
+
+**详细说明**: 请参考 [SERVICE_IP 和 SERVICE_PORT 配置说明文档](./20-service-ip-port-config-explanation.md)
+
+**快速理解**:
+- ✅ **服务发现**：代码已经自动实现，从 Nacos 动态获取其他服务地址
+- ⚠️ **服务注册**：需要 SERVICE_IP 和 SERVICE_PORT，用于向 Nacos 注册自己的地址
+
+**自动检测功能**:
+- ✅ Docker 环境：代码会自动检测容器 IP（也可通过环境变量配置）
+- ✅ 本地环境：自动使用 127.0.0.1
+
+**推荐配置**:
+- Docker 环境：在 `docker-compose.yml` 中明确配置 SERVICE_IP（确保可靠性）
+- 本地启动：通常不需要配置 SERVICE_IP（自动使用 127.0.0.1）
+
 ## 📊 分布式追踪配置
 
 ### Jaeger 配置

@@ -302,11 +302,15 @@ async def delete_host(
 
     ## 业务逻辑
     - 检查主机是否存在且未删除
+    - 如果是启用操作（appr_state=1），检查硬件审核状态：
+      - 查询 host_hw_rec 表中该 host_id 的最新一条数据
+      - 如果 sync_state in (1, 3)（待同步或异常），返回错误"需要先审核变化硬件"
     - 如果当前状态已是目标状态，返回提示信息，不执行更新
     - 执行状态更新并返回更新后的状态
 
     ## 错误处理
     - 主机不存在：返回业务错误码 53001
+    - 硬件需要审核：返回业务错误码 53012，错误信息"需要先审核变化硬件"
     - 主机已删除：返回业务错误码 400
     - 状态更新失败：返回业务错误码 400
     """,
@@ -316,7 +320,29 @@ async def delete_host(
             "model": SuccessResponse,
         },
         400: {
-            "description": "更新失败（主机不存在、参数无效或主机已删除）",
+            "description": "更新失败（主机不存在、硬件需要审核、参数无效或主机已删除）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                        "hardware_audit_required": {
+                            "summary": "需要先审核变化硬件",
+                            "value": {
+                                "code": 53012,
+                                "message": "需要先审核变化硬件",
+                                "error_code": "HARDWARE_AUDIT_REQUIRED",
+                            },
+                        },
+                    }
+                }
+            },
         },
     },
 )

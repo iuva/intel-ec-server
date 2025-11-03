@@ -3,9 +3,12 @@
 自动检测是否运行在 Docker 容器内，用于配置数据库和服务连接地址。
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def is_running_in_docker() -> bool:
@@ -153,3 +156,81 @@ def resolve_nacos_host() -> str:
     else:
         # 本地环境，Nacos 在 Docker 中，使用 localhost（端口映射到宿主机）
         return "localhost"
+
+
+def resolve_service_ip() -> str:
+    """解析服务自身 IP 地址（用于向 Nacos 注册）
+
+    根据运行环境自动选择合适的主机地址：
+    - Docker 环境：自动获取容器 IP（优先从环境变量或网络接口）
+    - 本地环境：使用 127.0.0.1
+
+    Returns:
+        服务 IP 地址
+
+    Note:
+        优先级：
+        1. 环境变量 SERVICE_IP（如果设置了，直接使用）
+        2. Docker 环境：尝试从网络接口获取，失败则使用环境变量或默认值
+        3. 本地环境：127.0.0.1
+    """
+    # 如果环境变量已设置，直接使用（最高优先级）
+    env_ip = os.getenv("SERVICE_IP")
+    if env_ip:
+        return env_ip
+
+    # 检测是否在 Docker 容器内
+    if is_running_in_docker():
+        # Docker 环境：尝试从网络接口获取容器 IP
+        try:
+            import socket
+
+            # 方法1: 连接到外部地址以获取本地 IP（推荐方法）
+            # 连接到外部地址（如 8.8.8.8）以获取路由使用的本地 IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # 不需要真正连接，只是获取路由使用的本地 IP
+            try:
+                s.connect(("8.8.8.8", 80))
+                container_ip = s.getsockname()[0]
+                s.close()
+
+                # 验证 IP 是否为 Docker 网络 IP（172.20.0.x、172.17.x.x 或其他 Docker 网络）
+                # 这些是常见的 Docker 网络网段
+                if (
+                    container_ip.startswith("172.20.0.")
+                    or container_ip.startswith("172.17.")
+                    or container_ip.startswith("172.18.")
+                    or container_ip.startswith("172.19.")
+                    or container_ip.startswith("10.0.")
+                    or container_ip.startswith("192.168.")
+                ):
+                    logger.info(
+                        f"自动检测到容器 IP: {container_ip}",
+                        extra={"detection_method": "socket_connect"},
+                    )
+                    return container_ip
+            except Exception:
+                s.close()
+
+            # 方法2: 尝试从环境变量 HOSTNAME 获取（某些 Docker 配置会设置）
+            # 但这通常返回主机名而非 IP，所以不作为主要方法
+
+        except Exception as e:
+            # 如果获取失败，记录警告但继续使用默认值
+            logger.debug(f"自动检测容器 IP 失败: {str(e)}")
+
+        # Docker 环境：如果自动检测失败，建议通过环境变量配置
+        # 注意：在 Docker Compose 中，最可靠的方式是通过 ipv4_address 配置
+        # 并通过环境变量 SERVICE_IP 传递
+        logger.warning(
+            "无法自动检测 Docker 容器 IP，建议在 docker-compose.yml 中配置 SERVICE_IP 环境变量。"
+            "当前将使用 127.0.0.1（可能影响服务发现）",
+            extra={
+                "suggestion": "在 docker-compose.yml 中添加: SERVICE_IP: ${SERVICE_IP:-auto-detect-failed}"
+            },
+        )
+        # 返回一个合理的默认值（虽然不理想，但至少不会失败）
+        return "127.0.0.1"
+    else:
+        # 本地环境：使用 localhost
+        return "127.0.0.1"

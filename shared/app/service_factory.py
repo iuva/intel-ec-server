@@ -30,6 +30,7 @@ from shared.utils.docker_detection import (
     resolve_mariadb_host,
     resolve_nacos_host,
     resolve_redis_host,
+    resolve_service_ip,
 )
 
 logger = get_logger(__name__)
@@ -103,7 +104,10 @@ class ServiceConfig:
         """
         # 基础配置
         service_port = int(os.getenv(service_port_key, "8000"))
-        service_ip = os.getenv("SERVICE_IP", "127.0.0.1")
+        # 服务 IP 自动检测：优先使用环境变量，否则根据运行环境自动选择
+        # Docker 环境：尝试自动获取容器 IP
+        # 本地环境：使用 127.0.0.1
+        service_ip = os.getenv("SERVICE_IP") or resolve_service_ip()
 
         # Nacos 配置 - 智能解析主机地址
         nacos_host = resolve_nacos_host()

@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, select, update
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
     from shared.common.database import mariadb_manager
@@ -22,6 +23,7 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
     from shared.common.database import mariadb_manager
@@ -410,7 +412,43 @@ class AdminHostService:
                     http_status_code=400,
                 )
 
-            # 2. 检查当前状态是否已为目标状态
+            # 2. 如果是启用操作，检查硬件审核状态
+            if appr_state == 1:
+                # 查询 host_hw_rec 表中该 host_id 的最新一条数据
+                hw_check_stmt = (
+                    select(HostHwRec)
+                    .where(
+                        and_(
+                            HostHwRec.host_id == host_id,
+                            HostHwRec.del_flag == 0,
+                        )
+                    )
+                    .order_by(HostHwRec.created_time.desc())
+                    .limit(1)
+                )
+                hw_check_result = await session.execute(hw_check_stmt)
+                latest_hw_rec = hw_check_result.scalar_one_or_none()
+
+                # 如果存在硬件记录且同步状态为待同步(1)或异常(3)，需要先审核
+                if latest_hw_rec and latest_hw_rec.sync_state in (1, 3):
+                    sync_state_name = "待同步" if latest_hw_rec.sync_state == 1 else "异常"
+                    logger.warning(
+                        "主机启用失败，硬件审核状态不符合要求",
+                        extra={
+                            "host_id": host_id,
+                            "hw_rec_id": latest_hw_rec.id,
+                            "sync_state": latest_hw_rec.sync_state,
+                            "sync_state_name": sync_state_name,
+                        },
+                    )
+                    raise BusinessError(
+                        message="需要先审核变化硬件",
+                        error_code="HARDWARE_AUDIT_REQUIRED",
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=400,
+                    )
+
+            # 3. 检查当前状态是否已为目标状态
             if host_rec.appr_state == appr_state:
                 state_name = "启用" if appr_state == 1 else "停用"
                 logger.info(
@@ -427,7 +465,7 @@ class AdminHostService:
                     "message": f"主机已是{state_name}状态",
                 }
 
-            # 3. 更新审批状态
+            # 4. 更新审批状态
             update_stmt = (
                 update(HostRec)
                 .where(
