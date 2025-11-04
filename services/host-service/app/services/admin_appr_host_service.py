@@ -155,4 +155,3 @@ class AdminApprHostService:
             )
 
             return host_info_list, pagination_response
-

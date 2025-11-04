@@ -127,4 +127,3 @@ async def list_appr_hosts(
         message_key="success.host.appr_list_query",
         locale=locale,
     )
-
