@@ -605,14 +605,14 @@ class AgentHardwareService:
 
 
 # 全局服务实例（单例模式）
-_agent_hardware_service_instance: Optional[AgentHardwareService] = None
+_agent_report_service_instance: Optional[AgentHardwareService] = None
 
 
-def get_agent_hardware_service() -> AgentHardwareService:
+def get_agent_report_service() -> AgentHardwareService:
     """获取Agent硬件服务实例（单例模式）"""
-    global _agent_hardware_service_instance
+    global _agent_report_service_instance
 
-    if _agent_hardware_service_instance is None:
-        _agent_hardware_service_instance = AgentHardwareService()
+    if _agent_report_service_instance is None:
+        _agent_report_service_instance = AgentHardwareService()
 
-    return _agent_hardware_service_instance
+    return _agent_report_service_instance

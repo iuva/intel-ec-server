@@ -14,7 +14,7 @@ from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNA
 try:
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.testcase import TestCaseReportRequest
-    from app.services.agent_hardware_service import AgentHardwareService, get_agent_hardware_service
+    from app.services.agent_report_service import AgentHardwareService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
@@ -25,7 +25,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.testcase import TestCaseReportRequest
-    from app.services.agent_hardware_service import AgentHardwareService, get_agent_hardware_service
+    from app.services.agent_report_service import AgentHardwareService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
@@ -196,7 +196,7 @@ async def report_hardware(
         },
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
-    agent_hardware_service: AgentHardwareService = Depends(get_agent_hardware_service),
+    agent_report_service: AgentHardwareService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """上报硬件信息
@@ -204,7 +204,7 @@ async def report_hardware(
     Args:
         hardware_data: 硬件信息（动态JSON）
         agent_info: 当前Agent信息（从token中提取，包含host_id）
-        agent_hardware_service: Agent硬件服务实例
+        agent_report_service: Agent硬件服务实例
 
     Returns:
         SuccessResponse: 处理结果
@@ -225,7 +225,7 @@ async def report_hardware(
         )
 
         # 调用服务层处理硬件信息上报
-        result = await agent_hardware_service.report_hardware(
+        result = await agent_report_service.report_hardware(
             host_id=host_id,
             hardware_data=hardware_data,
         )
@@ -386,7 +386,7 @@ async def report_testcase_result(
         description="测试用例执行结果",
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
-    agent_hardware_service: AgentHardwareService = Depends(get_agent_hardware_service),
+    agent_report_service: AgentHardwareService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """上报测试用例执行结果
@@ -394,7 +394,7 @@ async def report_testcase_result(
     Args:
         report_data: 测试用例执行结果
         agent_info: 当前Agent信息（从token中提取，包含host_id）
-        agent_hardware_service: Agent硬件服务实例
+        agent_report_service: Agent硬件服务实例
 
     Returns:
         SuccessResponse: 处理结果
@@ -416,7 +416,7 @@ async def report_testcase_result(
         )
 
         # 调用服务层处理测试用例结果上报
-        result = await agent_hardware_service.report_testcase_result(
+        result = await agent_report_service.report_testcase_result(
             host_id=host_id,
             tc_id=report_data.tc_id,
             state=report_data.state,

@@ -2,7 +2,7 @@
 
 from app.api.v1.endpoints import (
     admin_hosts,
-    agent_hardware,
+    agent_report,
     agent_websocket,
     agent_websocket_management,
     browser_hosts,
@@ -17,7 +17,7 @@ api_router.include_router(browser_hosts.router, prefix="/hosts", tags=["浏览�
 api_router.include_router(browser_vnc.router, prefix="", tags=["浏览器插件-VNC连接管理"])
 
 # Agent HTTP API 路由
-api_router.include_router(agent_hardware.router, prefix="/agent", tags=["Agent-硬件信息上报"])
+api_router.include_router(agent_report.router, prefix="/agent", tags=["Agent-硬件信息上报"])
 
 # Agent WebSocket 路由
 api_router.include_router(agent_websocket.router, tags=["Agent-WebSocket连接"])

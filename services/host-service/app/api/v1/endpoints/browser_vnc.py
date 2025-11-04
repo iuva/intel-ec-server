@@ -185,7 +185,7 @@ async def report_vnc_connection(
                 }
             },
         },
-        400: {
+        404: {
             "description": "主机不存在或未启用",
             "content": {
                 "application/json": {

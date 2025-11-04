@@ -354,7 +354,7 @@ async def update_and_notify(
 
 ## 🔗 相关文档
 
-- [Agent硬件上报API文档](../../services/host-service/docs/AGENT_HARDWARE_REPORT_API.md)
+- [Agent硬件上报API文档](../../services/host-service/docs/agent_report_REPORT_API.md)
 - [雪花ID迁移文档](../../docs/SNOWFLAKE_ID_MIGRATION.md)
 - [项目README](../../README.md)
 
@@ -362,7 +362,7 @@ async def update_and_notify(
 
 ### 当前使用位置
 
-- `services/host-service/app/services/agent_hardware_service.py` - Agent硬件变更检测
+- `services/host-service/app/services/agent_report_service.py` - Agent硬件变更检测
 
 ### 计划集成
 
