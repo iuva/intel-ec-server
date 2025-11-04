@@ -14,12 +14,18 @@ try:
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
     from app.schemas.host import (
         AdminHostDeleteResponse,
+        AdminHostDetailRequest,
+        AdminHostDetailResponse,
         AdminHostDisableRequest,
         AdminHostDisableResponse,
+        AdminHostExecLogListRequest,
+        AdminHostExecLogListResponse,
         AdminHostForceOfflineRequest,
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
+        AdminHostUpdatePasswordRequest,
+        AdminHostUpdatePasswordResponse,
     )
     from app.services.admin_host_service import AdminHostService
 
@@ -32,12 +38,18 @@ except ImportError:
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
     from app.schemas.host import (
         AdminHostDeleteResponse,
+        AdminHostDetailRequest,
+        AdminHostDetailResponse,
         AdminHostDisableRequest,
         AdminHostDisableResponse,
+        AdminHostExecLogListRequest,
+        AdminHostExecLogListResponse,
         AdminHostForceOfflineRequest,
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
+        AdminHostUpdatePasswordRequest,
+        AdminHostUpdatePasswordResponse,
     )
     from app.services.admin_host_service import AdminHostService
 
@@ -474,5 +486,370 @@ async def force_offline_host(
             message=result["message"],
         ).model_dump(),
         message_key=message_key,
+        locale=locale,
+    )
+
+
+@router.get(
+    "/detail",
+    response_model=SuccessResponse,
+    summary="查询主机详情",
+    description="查询可用主机的详细信息（主体信息）",
+    responses={
+        200: {
+            "description": "查询成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "查询主机详情成功",
+                        "data": {
+                            "mg_id": "machine-guid-123",
+                            "mac": "00:11:22:33:44:55",
+                            "ip": "192.168.1.100",
+                            "username": "admin",
+                            "***REMOVED***word": "***REMOVED***",
+                            "port": 5900,
+                            "hw_info": {"cpu": "Intel i7", "memory": "16GB"},
+                            "appr_time": "2025-01-15T10:00:00Z",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "查询失败（业务错误）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def get_host_detail(
+    request: AdminHostDetailRequest = Depends(),
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """查询主机详情（主体信息）
+
+    业务逻辑：
+    1. 查询 host_rec 表的基础信息
+    2. 关联 host_hw_rec 表，获取 sync_state=2 的最新一条记录
+    3. 返回主机详情（包含硬件信息和审批时间）
+    4. 密码字段需要解密（AEC加密）
+
+    ## 返回字段
+    - `mg_id`: 唯一引导ID（host_rec 表 mg_id）
+    - `mac`: MAC地址（host_rec 表 mac_addr）
+    - `ip`: IP地址（host_rec 表 host_ip）
+    - `username`: 主机账号（host_rec 表 host_acct）
+    - `***REMOVED***word`: 主机密码（host_rec 表 host_pwd，已解密）
+    - `port`: 端口（host_rec 表 host_port）
+    - `hw_info`: 硬件信息（host_hw_rec 表 hw_info，sync_state=2的最新一条）
+    - `appr_time`: 审批时间（host_hw_rec 表 appr_time，sync_state=2的最新一条）
+
+    Args:
+        request: 包含主机ID的请求对象
+        admin_host_service: 管理后台主机服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 包含主机详情的响应
+
+    Raises:
+        BusinessError: 主机不存在时
+    """
+    logger.info(
+        "接收管理后台主机详情查询请求",
+        extra={
+            "host_id": request.host_id,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层查询
+    detail = await admin_host_service.get_host_detail(request.host_id)
+
+    logger.info(
+        "管理后台主机详情查询完成",
+        extra={
+            "host_id": request.host_id,
+            "has_hw_info": detail.get("hw_info") is not None,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    return SuccessResponse(
+        data=AdminHostDetailResponse(
+            mg_id=detail.get("mg_id"),
+            mac=detail.get("mac"),
+            ip=detail.get("ip"),
+            username=detail.get("username"),
+            ***REMOVED***word=detail.get("***REMOVED***word"),
+            port=detail.get("port"),
+            hw_info=detail.get("hw_info"),
+            appr_time=detail.get("appr_time"),
+        ).model_dump(),
+        message_key="success.host.detail_query",
+        locale=locale,
+    )
+
+
+@router.put(
+    "/***REMOVED***word",
+    response_model=SuccessResponse,
+    summary="修改主机密码",
+    description="修改主机密码（AES加密后存储）",
+    responses={
+        200: {
+            "description": "密码修改成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "密码修改成功",
+                        "data": {
+                            "id": 123,
+                            "message": "密码修改成功",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "密码修改失败（业务错误）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                        "***REMOVED***word_update_failed": {
+                            "summary": "密码修改失败",
+                            "value": {
+                                "code": 53006,
+                                "message": "主机密码修改失败，记录可能已被删除（ID: 123）",
+                                "error_code": "HOST_PASSWORD_UPDATE_FAILED",
+                            },
+                        },
+                        "***REMOVED***word_encrypt_failed": {
+                            "summary": "密码加密失败",
+                            "value": {
+                                "code": 53007,
+                                "message": "密码加密失败（ID: 123）",
+                                "error_code": "PASSWORD_ENCRYPT_FAILED",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def update_host_***REMOVED***word(
+    request: AdminHostUpdatePasswordRequest,
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """修改主机密码
+
+    业务逻辑：
+    1. 检查主机是否存在且未删除
+    2. 对接收到的明文密码进行 AES 加密
+    3. 更新 host_rec 表的 host_pwd 字段为加密后的密码
+
+    Args:
+        request: 包含主机ID和明文密码的请求对象
+        admin_host_service: 管理后台主机服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 密码修改成功响应
+
+    Raises:
+        BusinessError: 主机不存在、密码加密失败或更新失败时
+    """
+    logger.info(
+        "接收管理后台主机密码修改请求",
+        extra={
+            "host_id": request.host_id,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层修改密码
+    result = await admin_host_service.update_host_***REMOVED***word(request.host_id, request.***REMOVED***word)
+
+    logger.info(
+        "管理后台主机密码修改完成",
+        extra={
+            "host_id": result["id"],
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    return SuccessResponse(
+        data=AdminHostUpdatePasswordResponse(
+            id=result["id"],
+            message=result["message"],
+        ).model_dump(),
+        message_key="success.host.***REMOVED***word_update",
+        locale=locale,
+    )
+
+
+@router.get(
+    "/exec-logs",
+    response_model=SuccessResponse,
+    summary="查询主机执行日志列表",
+    description="分页查询主机执行日志列表（按创建时间倒序）",
+    responses={
+        200: {
+            "description": "查询成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "查询执行日志成功",
+                        "data": {
+                            "logs": [
+                                {
+                                    "exec_date": "2025-01-15",
+                                    "exec_time": "01:30:45",
+                                    "tc_id": "test_case_001",
+                                    "use_by": "user123",
+                                    "case_state": 2,
+                                    "result_msg": "执行成功",
+                                    "log_url": "http://example.com/logs/123.log",
+                                }
+                            ],
+                            "total": 100,
+                            "page": 1,
+                            "page_size": 20,
+                            "total_pages": 5,
+                            "has_next": True,
+                            "has_prev": False,
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "查询失败（业务错误）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def list_host_exec_logs(
+    request: AdminHostExecLogListRequest = Depends(),
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """查询主机执行日志列表（分页）
+
+    业务逻辑：
+    1. 根据 host_id 查询 host_exec_log 表
+    2. 条件：del_flag = 0
+    3. 按 created_time 倒序排序
+    4. 计算 exec_date（begin_time 的日期部分，格式 %Y-%m-%d）
+    5. 计算 exec_time（end_time - begin_time，格式 %H:%M:%S，如果 end_time 为空，使用当前时间）
+
+    ## 返回字段
+    - `exec_date`: 执行日期（格式：%Y-%m-%d）
+    - `exec_time`: 执行时长（格式：%H:%M:%S）
+    - `tc_id`: 执行测试ID（host_exec_log 表 tc_id）
+    - `use_by`: 使用人（host_exec_log 表 user_name）
+    - `case_state`: 执行状态（0-空闲, 1-启动, 2-成功, 3-失败）
+    - `result_msg`: 执行结果（host_exec_log 表 result_msg）
+    - `log_url`: 执行日志地址（host_exec_log 表 log_url）
+
+    Args:
+        request: 查询请求参数（host_id、分页参数）
+        admin_host_service: 管理后台主机服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 包含执行日志列表和分页信息
+
+    Raises:
+        BusinessError: 查询失败时
+    """
+    logger.info(
+        "接收管理后台主机执行日志列表查询请求",
+        extra={
+            "host_id": request.host_id,
+            "page": request.page,
+            "page_size": request.page_size,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层查询
+    logs, pagination = await admin_host_service.list_host_exec_logs(request)
+
+    # 构建响应数据
+    response_data = AdminHostExecLogListResponse(
+        logs=logs,
+        total=pagination.total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        total_pages=pagination.total_pages,
+        has_next=pagination.has_next,
+        has_prev=pagination.has_prev,
+    )
+
+    logger.info(
+        "管理后台主机执行日志列表查询完成",
+        extra={
+            "host_id": request.host_id,
+            "total": pagination.total,
+            "returned_count": len(logs),
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    return SuccessResponse(
+        data=response_data.model_dump(),
+        message_key="success.host.exec_log_list_query",
         locale=locale,
     )

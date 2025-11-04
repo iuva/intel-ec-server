@@ -1,7 +1,7 @@
 """主机相关的 Pydantic 模式"""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -309,5 +309,88 @@ class AdminHostForceOfflineResponse(BaseModel):
     host_state: int = Field(default=4, description="更新后的主机状态（4=离线）")
     websocket_notified: bool = Field(description="是否成功发送WebSocket通知")
     message: str = Field(default="主机已强制下线", description="操作结果消息")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostDetailRequest(BaseModel):
+    """管理后台主机详情查询请求模式"""
+
+    host_id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostDetailResponse(BaseModel):
+    """管理后台主机详情响应模式"""
+
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（host_rec 表 mg_id）")
+    mac: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
+    ip: Optional[str] = Field(default=None, description="IP地址（host_rec 表 host_ip）")
+    username: Optional[str] = Field(default=None, description="主机账号（host_rec 表 host_acct）")
+    ***REMOVED***word: Optional[str] = Field(default=None, description="主机密码（host_rec 表 host_pwd，已解密）")
+    port: Optional[int] = Field(default=None, description="端口（host_rec 表 host_port）")
+    hw_info: Optional[Dict[str, Any]] = Field(
+        default=None, description="硬件信息（host_hw_rec 表 hw_info，sync_state=2的最新一条）"
+    )
+    appr_time: Optional[datetime] = Field(
+        default=None, description="审批时间（host_hw_rec 表 appr_time，sync_state=2的最新一条）"
+    )
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostUpdatePasswordRequest(BaseModel):
+    """管理后台主机密码修改请求模式"""
+
+    host_id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
+    ***REMOVED***word: str = Field(..., min_length=1, description="新密码（明文，将进行AES加密后存储）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostUpdatePasswordResponse(BaseModel):
+    """管理后台主机密码修改响应模式"""
+
+    id: int = Field(description="主机ID")
+    message: str = Field(default="密码修改成功", description="操作结果消息")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostExecLogListRequest(BaseModel):
+    """管理后台主机执行日志列表查询请求模式"""
+
+    host_id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
+    page: int = Field(default=1, ge=1, description="页码（从1开始）")
+    page_size: int = Field(default=20, ge=1, le=100, description="每页大小（1-100）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostExecLogInfo(BaseModel):
+    """管理后台主机执行日志信息响应模式"""
+
+    exec_date: Optional[str] = Field(default=None, description="执行日期（格式：%Y-%m-%d）")
+    exec_time: Optional[str] = Field(default=None, description="执行时长（格式：%H:%M:%S）")
+    tc_id: Optional[str] = Field(default=None, description="执行测试ID（host_exec_log 表 tc_id）")
+    use_by: Optional[str] = Field(default=None, description="使用人（host_exec_log 表 user_name）")
+    case_state: Optional[int] = Field(default=None, description="执行状态（0-空闲, 1-启动, 2-成功, 3-失败）")
+    result_msg: Optional[str] = Field(default=None, description="执行结果（host_exec_log 表 result_msg）")
+    log_url: Optional[str] = Field(default=None, description="执行日志地址（host_exec_log 表 log_url）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostExecLogListResponse(BaseModel):
+    """管理后台主机执行日志列表响应模式"""
+
+    logs: List[AdminHostExecLogInfo] = Field(default_factory=list, description="执行日志列表")
+    total: int = Field(description="总记录数")
+    page: int = Field(description="当前页码")
+    page_size: int = Field(description="每页大小")
+    total_pages: int = Field(description="总页数")
+    has_next: bool = Field(description="是否有下一页")
+    has_prev: bool = Field(description="是否有上一页")
 
     model_config = {"from_attributes": True}

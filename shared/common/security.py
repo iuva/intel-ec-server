@@ -4,10 +4,15 @@
 提供JWT令牌管理、密码加密和验证等安全功能
 """
 
+import base64
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 from jose import jwt
 from ***REMOVED***lib.context import CryptContext
 
@@ -15,6 +20,25 @@ logger = logging.getLogger(__name__)
 
 # 密码加密上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# AES 加密配置
+AES_KEY_LENGTH = 32  # AES-256 需要 32 字节密钥
+AES_IV_LENGTH = 16  # AES 块大小
+AES_KEY = os.getenv("AES_ENCRYPTION_KEY", "default_aes_key_32_bytes_long_0123456789").encode()[:AES_KEY_LENGTH]
+
+# 如果密钥长度不足，使用 PBKDF2 派生
+if len(AES_KEY) < AES_KEY_LENGTH:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=AES_KEY_LENGTH,
+        salt=b"intel_ec_salt_2025",
+        iterations=100000,
+        backend=default_backend(),
+    )
+    AES_KEY = kdf.derive(AES_KEY)
 
 
 class JWTManager:
@@ -224,3 +248,83 @@ def get_***REMOVED***word_hash(***REMOVED***word: str) -> str:
         加密后的密码哈希
     """
     return hash_***REMOVED***word(***REMOVED***word)
+
+
+def aes_encrypt(plaintext: str) -> str:
+    """AES 加密函数
+
+    使用 AES-256-CBC 模式加密明文
+
+    Args:
+        plaintext: 明文字符串
+
+    Returns:
+        加密后的 Base64 编码字符串
+
+    Raises:
+        Exception: 加密失败时抛出异常
+    """
+    try:
+        # 生成随机 IV
+        iv = os.urandom(AES_IV_LENGTH)
+
+        # 创建加密器
+        cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+
+        # 添加 PKCS7 填充
+        padder = padding.PKCS7(128).padder()
+        padded_data = padder.update(plaintext.encode("utf-8"))
+        padded_data += padder.finalize()
+
+        # 加密
+        ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+
+        # 将 IV 和密文组合，然后 Base64 编码
+        encrypted_data = iv + ciphertext
+        return base64.b64encode(encrypted_data).decode("utf-8")
+
+    except Exception as e:
+        logger.error(f"AES 加密失败: {e!s}")
+        raise
+
+
+def aes_decrypt(ciphertext: str) -> Optional[str]:
+    """AES 解密函数
+
+    使用 AES-256-CBC 模式解密密文
+
+    Args:
+        ciphertext: Base64 编码的密文字符串
+
+    Returns:
+        解密后的明文字符串，解密失败返回 None
+
+    Raises:
+        Exception: 解密失败时抛出异常
+    """
+    try:
+        # Base64 解码
+        encrypted_data = base64.b64decode(ciphertext.encode("utf-8"))
+
+        # 提取 IV 和密文
+        iv = encrypted_data[:AES_IV_LENGTH]
+        ciphertext_bytes = encrypted_data[AES_IV_LENGTH:]
+
+        # 创建解密器
+        cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+
+        # 解密
+        padded_data = decryptor.update(ciphertext_bytes) + decryptor.finalize()
+
+        # 去除 PKCS7 填充
+        unpadder = padding.PKCS7(128).unpadder()
+        plaintext = unpadder.update(padded_data)
+        plaintext += unpadder.finalize()
+
+        return plaintext.decode("utf-8")
+
+    except Exception as e:
+        logger.error(f"AES 解密失败: {e!s}")
+        return None

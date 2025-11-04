@@ -5,33 +5,48 @@
 
 import os
 import sys
-from typing import List, Tuple
+from datetime import datetime, timezone
+from typing import List, Optional, Tuple
 
 from sqlalchemy import and_, func, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
-    from app.schemas.host import AdminHostInfo, AdminHostListRequest
+    from app.schemas.host import (
+        AdminHostExecLogListRequest,
+        AdminHostExecLogInfo,
+        AdminHostInfo,
+        AdminHostListRequest,
+    )
     from app.services.agent_websocket_manager import get_agent_websocket_manager
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.common.security import aes_encrypt, aes_decrypt
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
-    from app.schemas.host import AdminHostInfo, AdminHostListRequest
+    from app.schemas.host import (
+        AdminHostExecLogListRequest,
+        AdminHostExecLogInfo,
+        AdminHostInfo,
+        AdminHostListRequest,
+    )
     from app.services.agent_websocket_manager import get_agent_websocket_manager
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.common.security import aes_encrypt, aes_decrypt
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
 logger = get_logger(__name__)
@@ -719,3 +734,390 @@ class AdminHostService:
                 "websocket_notified": websocket_notified,
                 "message": "主机已强制下线",
             }
+
+    @handle_service_errors(
+        error_message="查询主机详情失败",
+        error_code="GET_HOST_DETAIL_FAILED",
+    )
+    async def get_host_detail(self, host_id: int) -> dict:
+        """查询主机详情（主体信息）
+
+        业务逻辑：
+        1. 查询 host_rec 表的基础信息
+        2. 关联 host_hw_rec 表，获取 sync_state=2 的最新一条记录
+        3. 返回主机详情（包含硬件信息和审批时间）
+        4. 密码字段需要解密（AEC加密）
+
+        Args:
+            host_id: 主机ID（host_rec.id）
+
+        Returns:
+            dict: 包含主机详情信息
+
+        Raises:
+            BusinessError: 主机不存在时
+        """
+        logger.info(
+            "开始查询主机详情",
+            extra={
+                "host_id": host_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 查询 host_rec 表基础信息
+            host_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只查询未删除的记录
+                )
+            )
+            host_result = await session.execute(host_stmt)
+            host_rec = host_result.scalar_one_or_none()
+
+            if not host_rec:
+                logger.warning(
+                    "主机不存在或已删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在或已删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
+                    error_code="HOST_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            # 2. 查询 host_hw_rec 表 sync_state=2 的最新一条记录
+            hw_stmt = (
+                select(HostHwRec)
+                .where(
+                    and_(
+                        HostHwRec.host_id == host_id,
+                        HostHwRec.sync_state == 2,  # sync_state = 2（通过）
+                        HostHwRec.del_flag == 0,
+                    )
+                )
+                .order_by(HostHwRec.created_time.desc())
+                .limit(1)
+            )
+            hw_result = await session.execute(hw_stmt)
+            hw_rec = hw_result.scalar_one_or_none()
+
+            # 3. 解密密码（AES加密）
+            ***REMOVED*** = None
+            if host_rec.host_pwd:
+                try:
+                    ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
+                    if ***REMOVED***:
+                        logger.debug(
+                            "密码解密成功",
+                            extra={
+                                "host_id": host_id,
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            "密码解密失败（返回None）",
+                            extra={
+                                "host_id": host_id,
+                                "note": "可能是密码格式不正确或加密方式不匹配",
+                            },
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "密码解密异常",
+                        extra={
+                            "host_id": host_id,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
+                    )
+                    # 解密失败时返回 None，而不是抛出异常
+                    ***REMOVED*** = None
+
+            # 4. 构建响应数据
+            detail = {
+                "mg_id": host_rec.mg_id,
+                "mac": host_rec.mac_addr,
+                "ip": host_rec.host_ip,
+                "username": host_rec.host_acct,
+                "***REMOVED***word": ***REMOVED***,
+                "port": host_rec.host_port,
+                "hw_info": hw_rec.hw_info if hw_rec else None,
+                "appr_time": hw_rec.appr_time if hw_rec else None,
+            }
+
+            logger.info(
+                "查询主机详情完成",
+                extra={
+                    "host_id": host_id,
+                    "has_hw_rec": hw_rec is not None,
+                    "has_***REMOVED***word": ***REMOVED*** is not None,
+                },
+            )
+
+            return detail
+
+    @handle_service_errors(
+        error_message="修改主机密码失败",
+        error_code="UPDATE_HOST_PASSWORD_FAILED",
+    )
+    async def update_host_***REMOVED***word(self, host_id: int, ***REMOVED***word: str) -> dict:
+        """修改主机密码
+
+        业务逻辑：
+        1. 检查主机是否存在且未删除
+        2. 对密码进行 AES 加密
+        3. 更新 host_rec 表的 host_pwd 字段
+
+        Args:
+            host_id: 主机ID（host_rec.id）
+            ***REMOVED***word: 明文密码（将进行AES加密）
+
+        Returns:
+            dict: 包含更新后的主机ID和操作结果消息
+
+        Raises:
+            BusinessError: 主机不存在或更新失败时
+        """
+        logger.info(
+            "开始修改主机密码",
+            extra={
+                "host_id": host_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 检查主机是否存在且未删除
+            check_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只检查未删除的记录
+                )
+            )
+            check_result = await session.execute(check_stmt)
+            host_rec = check_result.scalar_one_or_none()
+
+            if not host_rec:
+                logger.warning(
+                    "主机不存在或已删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在或已删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
+                    error_code="HOST_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            # 2. 对密码进行 AES 加密
+            try:
+                encrypted_***REMOVED***word = aes_encrypt(***REMOVED***word)
+                logger.debug(
+                    "密码加密成功",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+            except Exception as e:
+                logger.error(
+                    "密码加密失败",
+                    extra={
+                        "host_id": host_id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+                raise BusinessError(
+                    message=f"密码加密失败（ID: {host_id}）",
+                    message_key="error.host.***REMOVED***word_encrypt_failed",
+                    error_code="PASSWORD_ENCRYPT_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                    details={"host_id": host_id},
+                )
+
+            # 3. 更新主机密码
+            update_stmt = (
+                update(HostRec)
+                .where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                    )
+                )
+                .values(host_pwd=encrypted_***REMOVED***word)
+            )
+
+            logger.info(
+                "执行密码修改操作",
+                extra={
+                    "host_id": host_id,
+                    "operation": "UPDATE host_pwd",
+                },
+            )
+
+            # 执行更新
+            result = await session.execute(update_stmt)
+            await session.commit()
+
+            updated_count = result.rowcount
+
+            if updated_count == 0:
+                logger.warning(
+                    "主机密码修改失败，记录可能已被删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机密码修改失败，记录可能已被删除（ID: {host_id}）",
+                    message_key="error.host.***REMOVED***word_update_failed",
+                    error_code="HOST_PASSWORD_UPDATE_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            logger.info(
+                "主机密码修改成功",
+                extra={
+                    "host_id": host_id,
+                    "updated_count": updated_count,
+                },
+            )
+
+            return {
+                "id": host_id,
+                "message": "密码修改成功",
+            }
+
+    @handle_service_errors(
+        error_message="查询主机执行日志失败",
+        error_code="GET_HOST_EXEC_LOG_FAILED",
+    )
+    async def list_host_exec_logs(
+        self,
+        request: AdminHostExecLogListRequest,
+    ) -> Tuple[List[AdminHostExecLogInfo], PaginationResponse]:
+        """查询主机执行日志列表（分页）
+
+        业务逻辑：
+        1. 根据 host_id 查询 host_exec_log 表
+        2. 条件：del_flag = 0
+        3. 按 created_time 倒序排序
+        4. 计算 exec_date（begin_time 的日期部分，格式 %Y-%m-%d）
+        5. 计算 exec_time（end_time - begin_time，格式 %H:%M:%S，如果 end_time 为空，使用当前时间）
+
+        Args:
+            request: 查询请求参数（host_id、分页参数）
+
+        Returns:
+            Tuple[List[AdminHostExecLogInfo], PaginationResponse]: 执行日志列表和分页信息
+
+        Raises:
+            BusinessError: 查询失败时
+        """
+        logger.info(
+            "开始查询主机执行日志列表",
+            extra={
+                "host_id": request.host_id,
+                "page": request.page,
+                "page_size": request.page_size,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 构建查询条件
+            base_conditions = [
+                HostExecLog.host_id == request.host_id,
+                HostExecLog.del_flag == 0,
+            ]
+
+            # 1. 查询总数
+            count_stmt = select(func.count(HostExecLog.id)).where(and_(*base_conditions))
+            count_result = await session.execute(count_stmt)
+            total = count_result.scalar() or 0
+
+            # 2. 分页查询：按 created_time 倒序排序
+            pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
+
+            stmt = (
+                select(HostExecLog)
+                .where(and_(*base_conditions))
+                .order_by(HostExecLog.created_time.desc())
+                .offset(pagination_params.offset)
+                .limit(pagination_params.limit)
+            )
+
+            result = await session.execute(stmt)
+            exec_logs = result.scalars().all()
+
+            # 3. 构建响应数据
+            log_info_list: List[AdminHostExecLogInfo] = []
+            current_time = datetime.now(timezone.utc)
+
+            for log in exec_logs:
+                # 计算 exec_date（begin_time 的日期部分）
+                exec_date: Optional[str] = None
+                if log.begin_time:
+                    exec_date = log.begin_time.strftime("%Y-%m-%d")
+
+                # 计算 exec_time（end_time - begin_time，格式 %H:%M:%S）
+                exec_time: Optional[str] = None
+                if log.begin_time:
+                    # 如果 end_time 为空，使用当前时间
+                    end_time = log.end_time if log.end_time else current_time
+                    # 计算时间差
+                    time_diff = end_time - log.begin_time
+                    # 转换为秒
+                    total_seconds = int(time_diff.total_seconds())
+                    # 计算小时、分钟、秒
+                    hours = total_seconds // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    seconds = total_seconds % 60
+                    # 格式化为 %H:%M:%S
+                    exec_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                log_info = AdminHostExecLogInfo(
+                    exec_date=exec_date,
+                    exec_time=exec_time,
+                    tc_id=log.tc_id,
+                    use_by=log.user_name,
+                    case_state=log.case_state,
+                    result_msg=log.result_msg,
+                    log_url=log.log_url,
+                )
+                log_info_list.append(log_info)
+
+            # 4. 构建分页响应
+            pagination_response = PaginationResponse(
+                page=request.page,
+                page_size=request.page_size,
+                total=total,
+            )
+
+            logger.info(
+                "查询主机执行日志列表完成",
+                extra={
+                    "host_id": request.host_id,
+                    "total": total,
+                    "returned_count": len(log_info_list),
+                    "page": request.page,
+                    "page_size": request.page_size,
+                },
+            )
+
+            return log_info_list, pagination_response
