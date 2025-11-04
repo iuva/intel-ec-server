@@ -39,6 +39,7 @@ _browser_host_service_instance: Optional[BrowserHostService] = None
 _browser_vnc_service_instance: Optional[BrowserVNCService] = None
 _host_discovery_service_instance: Optional[HostDiscoveryService] = None
 _admin_host_service_instance: Optional[Any] = None
+_admin_appr_host_service_instance: Optional[Any] = None
 
 
 def get_host_service() -> BrowserHostService:
@@ -105,6 +106,26 @@ def get_admin_host_service() -> Any:
         _admin_host_service_instance = AdminHostService()
 
     return _admin_host_service_instance
+
+
+def get_admin_appr_host_service() -> Any:
+    """获取管理后台待审批主机服务实例（单例模式）
+
+    Returns:
+        AdminApprHostService: 管理后台待审批主机服务实例
+    """
+    global _admin_appr_host_service_instance
+
+    if _admin_appr_host_service_instance is None:
+        try:
+            from app.services.admin_appr_host_service import AdminApprHostService
+        except ImportError:
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+            from app.services.admin_appr_host_service import AdminApprHostService
+
+        _admin_appr_host_service_instance = AdminApprHostService()
+
+    return _admin_appr_host_service_instance
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:

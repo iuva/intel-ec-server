@@ -394,3 +394,47 @@ class AdminHostExecLogListResponse(BaseModel):
     has_prev: bool = Field(description="是否有上一页")
 
     model_config = {"from_attributes": True}
+
+
+class AdminApprHostListRequest(BaseModel):
+    """管理后台待审批主机列表查询请求模式"""
+
+    page: int = Field(default=1, ge=1, description="页码（从1开始）")
+    page_size: int = Field(default=20, ge=1, le=100, description="每页大小（1-100）")
+    mac: Optional[str] = Field(default=None, description="MAC地址（可选搜索条件，对应 host_rec.mac_addr）")
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件，对应 host_rec.mg_id）")
+    host_state: Optional[int] = Field(
+        default=None,
+        description="主机状态（可选搜索条件，对应 host_rec.host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
+    )
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostInfo(BaseModel):
+    """管理后台待审批主机信息响应模式"""
+
+    host_id: int = Field(description="主机ID（host_rec 表主键 id）")
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（host_rec 表 mg_id）")
+    mac_addr: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
+    host_state: Optional[int] = Field(
+        default=None,
+        description="主机状态（host_rec 表 host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
+    )
+    subm_time: Optional[datetime] = Field(default=None, description="申报时间（host_rec 表 subm_time）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostListResponse(BaseModel):
+    """管理后台待审批主机列表响应模式"""
+
+    hosts: List[AdminApprHostInfo] = Field(default_factory=list, description="待审批主机列表")
+    total: int = Field(description="总记录数")
+    page: int = Field(description="当前页码")
+    page_size: int = Field(description="每页大小")
+    total_pages: int = Field(description="总页数")
+    has_next: bool = Field(description="是否有下一页")
+    has_prev: bool = Field(description="是否有上一页")
+
+    model_config = {"from_attributes": True}
