@@ -536,7 +536,7 @@ except BusinessError as e:
 #### 在服务中使用
 
 ```python
-class AgentHardwareService:
+class AgentReportService:
     """Agent硬件信息上报服务"""
 
     def __init__(self):

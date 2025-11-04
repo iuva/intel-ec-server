@@ -1,6 +1,6 @@
-"""Agent 硬件信息上报服务
+"""Agent 信息上报服务
 
-处理 Agent 上报的硬件信息，包括：
+处理 Agent 上报的信息，包括：
 1. 硬件模板验证
 2. 版本号对比
 3. 硬件内容深度对比
@@ -39,8 +39,8 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-class AgentHardwareService:
-    """Agent 硬件信息上报服务"""
+class AgentReportService:
+    """Agent 信息上报服务"""
 
     # 硬件差异状态
     DIFF_STATE_VERSION = 1  # 版本号变化
@@ -605,14 +605,14 @@ class AgentHardwareService:
 
 
 # 全局服务实例（单例模式）
-_agent_report_service_instance: Optional[AgentHardwareService] = None
+_agent_report_service_instance: Optional[AgentReportService] = None
 
 
-def get_agent_report_service() -> AgentHardwareService:
+def get_agent_report_service() -> AgentReportService:
     """获取Agent硬件服务实例（单例模式）"""
     global _agent_report_service_instance
 
     if _agent_report_service_instance is None:
-        _agent_report_service_instance = AgentHardwareService()
+        _agent_report_service_instance = AgentReportService()
 
     return _agent_report_service_instance

@@ -1,6 +1,6 @@
-"""Agent 硬件信息上报 API 端点
+"""Agent 信息上报 API 端点
 
-提供 Agent 上报硬件信息的 HTTP API 接口。
+提供 Agent 上报信息的 HTTP API 接口。
 """
 
 import os
@@ -14,7 +14,7 @@ from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNA
 try:
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.testcase import TestCaseReportRequest
-    from app.services.agent_report_service import AgentHardwareService, get_agent_report_service
+    from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
@@ -25,7 +25,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.testcase import TestCaseReportRequest
-    from app.services.agent_report_service import AgentHardwareService, get_agent_report_service
+    from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
@@ -196,7 +196,7 @@ async def report_hardware(
         },
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
-    agent_report_service: AgentHardwareService = Depends(get_agent_report_service),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """上报硬件信息
@@ -386,7 +386,7 @@ async def report_testcase_result(
         description="测试用例执行结果",
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
-    agent_report_service: AgentHardwareService = Depends(get_agent_report_service),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """上报测试用例执行结果
