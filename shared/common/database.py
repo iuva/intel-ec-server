@@ -9,17 +9,10 @@ from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy import BigInteger, DateTime, SmallInteger, func
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,  # type: ignore[attr-defined]
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.orm import (
-    DeclarativeBase,  # type: ignore[attr-defined]
-    Mapped,
-    mapped_column,
-)
+from sqlalchemy.ext.asyncio import AsyncEngine  # type: ignore[attr-defined]
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase  # type: ignore[attr-defined]
+from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.common.cache import redis_manager
 

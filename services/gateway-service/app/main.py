@@ -20,9 +20,9 @@ try:
 
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
-    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.utils.service_discovery import init_service_discovery
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
@@ -34,9 +34,9 @@ except ImportError:
 
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
+    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
-    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.utils.service_discovery import init_service_discovery
 
 # 加载 .env 文件（如果存在）

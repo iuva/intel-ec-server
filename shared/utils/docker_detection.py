@@ -225,9 +225,7 @@ def resolve_service_ip() -> str:
         logger.warning(
             "无法自动检测 Docker 容器 IP，建议在 docker-compose.yml 中配置 SERVICE_IP 环境变量。"
             "当前将使用 127.0.0.1（可能影响服务发现）",
-            extra={
-                "suggestion": "在 docker-compose.yml 中添加: SERVICE_IP: ${SERVICE_IP:-auto-detect-failed}"
-            },
+            extra={"suggestion": "在 docker-compose.yml 中添加: SERVICE_IP: ${SERVICE_IP:-auto-detect-failed}"},
         )
         # 返回一个合理的默认值（虽然不理想，但至少不会失败）
         return "127.0.0.1"

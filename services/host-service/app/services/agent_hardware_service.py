@@ -18,6 +18,7 @@ try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
@@ -28,6 +29,7 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger

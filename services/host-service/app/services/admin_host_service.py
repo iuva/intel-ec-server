@@ -12,9 +12,10 @@ from sqlalchemy import and_, func, select, update
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.host_exec_log import HostExecLog
-    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
+
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -23,9 +24,10 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_exec_log import HostExecLog
-    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import AdminHostInfo, AdminHostListRequest
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
+
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -49,7 +51,13 @@ class AdminHostService:
         self,
         request: AdminHostListRequest,
     ) -> Tuple[List[AdminHostInfo], PaginationResponse]:
-        """查询主机列表（分页、搜索）
+        """查询可用主机列表（分页、搜索）
+
+        业务逻辑：
+        1. 查询 host_rec 表，条件：host_state < 5, appr_state = 1, del_flag = 0
+        2. 关联 host_exec_log 表，获取每个 host_id 的最新一条记录（按 created_time 倒序）
+        3. 支持按 use_by（user_name）过滤
+        4. 按 host_rec.created_time 倒序排序
 
         Args:
             request: 查询请求参数
@@ -61,7 +69,7 @@ class AdminHostService:
             BusinessError: 查询失败时
         """
         logger.info(
-            "开始查询主机列表",
+            "开始查询可用主机列表",
             extra={
                 "page": request.page,
                 "page_size": request.page_size,
@@ -69,106 +77,164 @@ class AdminHostService:
                 "username": request.username,
                 "host_state": request.host_state,
                 "mg_id": request.mg_id,
-                "subm_time_sort": request.subm_time_sort,
+                "use_by": request.use_by,
             },
         )
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 构建基础查询 - 查询 host_rec 表
-            base_stmt = select(HostRec).where(HostRec.del_flag == 0)
+            # 构建子查询：获取每个 host_id 的最新一条 host_exec_log 记录
+            # 方法：先获取每个 host_id 的最大 created_time，如果相同则取 id 最大的
+            max_time_subquery = (
+                select(
+                    HostExecLog.host_id,
+                    func.max(HostExecLog.created_time).label("max_created_time"),
+                )
+                .where(HostExecLog.del_flag == 0)
+                .group_by(HostExecLog.host_id)
+                .subquery()
+            )
+
+            # 获取每个 host_id 的最大 id（当 created_time 相同时）
+            max_id_subquery = (
+                select(
+                    HostExecLog.host_id,
+                    func.max(HostExecLog.id).label("max_id"),
+                )
+                .select_from(
+                    HostExecLog.join(
+                        max_time_subquery,
+                        and_(
+                            HostExecLog.host_id == max_time_subquery.c.host_id,
+                            HostExecLog.created_time == max_time_subquery.c.max_created_time,
+                            HostExecLog.del_flag == 0,
+                        ),
+                    )
+                )
+                .group_by(HostExecLog.host_id)
+                .subquery()
+            )
+
+            # 获取最新执行日志的完整记录（使用 id 确保唯一性）
+            latest_log_subquery = (
+                select(HostExecLog.host_id, HostExecLog.user_name)
+                .select_from(
+                    HostExecLog.join(
+                        max_id_subquery,
+                        HostExecLog.id == max_id_subquery.c.max_id,
+                    )
+                )
+                .subquery()
+            )
+
+            # 主查询：JOIN host_rec 和最新的 host_exec_log
+            # 基础条件：host_state < 5, appr_state = 1, del_flag = 0
+            base_conditions = [
+                HostRec.host_state < 5,
+                HostRec.appr_state == 1,
+                HostRec.del_flag == 0,
+            ]
 
             # 添加搜索条件
             if request.mac:
-                base_stmt = base_stmt.where(HostRec.mac_addr.like(f"%{request.mac}%"))
+                base_conditions.append(HostRec.mac_addr.like(f"%{request.mac}%"))
 
             if request.username:
-                base_stmt = base_stmt.where(HostRec.host_acct.like(f"%{request.username}%"))
+                base_conditions.append(HostRec.host_acct.like(f"%{request.username}%"))
 
             if request.host_state is not None:
-                base_stmt = base_stmt.where(HostRec.host_state == request.host_state)
+                base_conditions.append(HostRec.host_state == request.host_state)
 
             if request.mg_id:
-                base_stmt = base_stmt.where(HostRec.mg_id.like(f"%{request.mg_id}%"))
+                base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id}%"))
 
-            # 1. 先查询总数
-            count_stmt = select(func.count(HostRec.id)).where(
-                and_(
-                    HostRec.del_flag == 0,
-                    *([] if not request.mac else [HostRec.mac_addr.like(f"%{request.mac}%")]),
-                    *([] if not request.username else [HostRec.host_acct.like(f"%{request.username}%")]),
-                    *([] if request.host_state is None else [HostRec.host_state == request.host_state]),
-                    *([] if not request.mg_id else [HostRec.mg_id.like(f"%{request.mg_id}%")]),
+            # 如果指定了 use_by 过滤条件，需要重新构建子查询并添加过滤
+            if request.use_by:
+                # 重新获取最大 id，但这次要过滤 user_name
+                max_id_with_filter_subquery = (
+                    select(
+                        HostExecLog.host_id,
+                        func.max(HostExecLog.id).label("max_id"),
+                    )
+                    .select_from(
+                        HostExecLog.join(
+                            max_time_subquery,
+                            and_(
+                                HostExecLog.host_id == max_time_subquery.c.host_id,
+                                HostExecLog.created_time == max_time_subquery.c.max_created_time,
+                                HostExecLog.del_flag == 0,
+                                HostExecLog.user_name.like(f"%{request.use_by}%"),
+                            ),
+                        )
+                    )
+                    .group_by(HostExecLog.host_id)
+                    .subquery()
                 )
+
+                # 获取过滤后的最新执行日志
+                latest_log_subquery = (
+                    select(HostExecLog.host_id, HostExecLog.user_name)
+                    .select_from(
+                        HostExecLog.join(
+                            max_id_with_filter_subquery,
+                            HostExecLog.id == max_id_with_filter_subquery.c.max_id,
+                        )
+                    )
+                    .subquery()
+                )
+
+            # 构建主查询：LEFT JOIN 获取最新的执行日志
+            base_query = (
+                select(
+                    HostRec.id.label("host_id"),
+                    HostRec.host_acct.label("username"),
+                    HostRec.mg_id,
+                    HostRec.mac_addr.label("mac"),
+                    HostRec.host_state,
+                    HostRec.appr_state,
+                    latest_log_subquery.c.user_name.label("use_by"),
+                )
+                .outerjoin(
+                    latest_log_subquery,
+                    HostRec.id == latest_log_subquery.c.host_id,
+                )
+                .where(and_(*base_conditions))
             )
 
+            # 如果指定了 use_by，还需要在 WHERE 子句中过滤（因为可能有些主机没有执行日志）
+            if request.use_by:
+                base_query = base_query.where(latest_log_subquery.c.user_name.is_not(None))
+
+            # 1. 查询总数
+            count_stmt = select(func.count()).select_from(base_query.subquery())
             count_result = await session.execute(count_stmt)
             total = count_result.scalar() or 0
 
-            # 2. 分页查询主机记录 - 根据排序参数选择排序方式
+            # 2. 分页查询：按 created_time 倒序排序
             pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
 
-            # 默认按创建时间倒序，如果传入了申报时间排序参数，则按申报时间排序
-            if request.subm_time_sort is not None:
-                # 按申报时间排序
-                if request.subm_time_sort == 0:
-                    # 正序（从早到晚）
-                    stmt = (
-                        base_stmt.order_by(HostRec.subm_time.asc().nulls_last())
-                        .offset(pagination_params.offset)
-                        .limit(pagination_params.limit)
-                    )
-                else:
-                    # 倒序（从晚到早）
-                    stmt = (
-                        base_stmt.order_by(HostRec.subm_time.desc().nulls_last())
-                        .offset(pagination_params.offset)
-                        .limit(pagination_params.limit)
-                    )
-            else:
-                # 默认按创建时间倒序
-                stmt = (
-                    base_stmt.order_by(HostRec.created_time.desc())
-                    .offset(pagination_params.offset)
-                    .limit(pagination_params.limit)
-                )
+            # 添加排序和分页
+            stmt = (
+                base_query.order_by(HostRec.created_time.desc())
+                .offset(pagination_params.offset)
+                .limit(pagination_params.limit)
+            )
 
             result = await session.execute(stmt)
-            host_recs = result.scalars().all()
+            rows = result.all()
 
-            # 3. 为每个主机查询最新的执行日志记录（user_name）
+            # 3. 构建响应数据
             host_info_list: List[AdminHostInfo] = []
-
-            for host_rec in host_recs:
-                # 查询该主机最新的执行日志
-                # 条件：case_state > 0 AND host_state > 0 AND del_flag = 0
-                log_stmt = (
-                    select(HostExecLog)
-                    .where(
-                        and_(
-                            HostExecLog.host_id == host_rec.id,
-                            HostExecLog.case_state > 0,
-                            HostExecLog.host_state > 0,
-                            HostExecLog.del_flag == 0,
-                        )
-                    )
-                    .order_by(HostExecLog.created_time.desc())
-                    .limit(1)
-                )
-
-                log_result = await session.execute(log_stmt)
-                latest_log = log_result.scalar_one_or_none()
-
-                # 构建主机信息
+            for row in rows:
                 host_info = AdminHostInfo(
-                    hardware_id=host_rec.hardware_id,
-                    host_acct=host_rec.host_acct,
-                    mg_id=host_rec.mg_id,
-                    mac=host_rec.mac_addr,
-                    host_state=host_rec.host_state,
-                    user_name=latest_log.user_name if latest_log else None,
+                    host_id=row.host_id,
+                    username=row.username,
+                    mg_id=row.mg_id,
+                    mac=row.mac,
+                    use_by=row.use_by,
+                    host_state=row.host_state,
+                    appr_state=row.appr_state,
                 )
-
                 host_info_list.append(host_info)
 
             # 4. 构建分页响应
@@ -179,7 +245,7 @@ class AdminHostService:
             )
 
             logger.info(
-                "查询主机列表完成",
+                "查询可用主机列表完成",
                 extra={
                     "total": total,
                     "returned_count": len(host_info_list),
@@ -324,9 +390,7 @@ class AdminHostService:
 
                 # 回滚：将 del_flag 改回 0
                 rollback_stmt = (
-                    update(HostRec)
-                    .where(HostRec.id == host_id)
-                    .values(del_flag=0)  # 恢复为未删除状态
+                    update(HostRec).where(HostRec.id == host_id).values(del_flag=0)  # 恢复为未删除状态
                 )
 
                 rollback_result = await session.execute(rollback_stmt)
@@ -365,17 +429,16 @@ class AdminHostService:
             return host_id
 
     @handle_service_errors(
-        error_message="更新主机审批状态失败",
-        error_code="UPDATE_HOST_APPROVAL_STATE_FAILED",
+        error_message="停用主机失败",
+        error_code="DISABLE_HOST_FAILED",
     )
-    async def update_host_approval_state(self, host_id: int, appr_state: int) -> dict:
-        """更新主机审批状态（停用/启用）
+    async def disable_host(self, host_id: int) -> dict:
+        """停用主机
 
-        根据主机ID更新 host_rec 表的 appr_state 字段。
+        根据主机ID更新 host_rec 表的 appr_state 字段为 0（停用）。
 
         Args:
             host_id: 主机ID（host_rec.id）
-            appr_state: 审批状态（0=停用，1=启用）
 
         Returns:
             dict: 包含更新后的主机ID和审批状态
@@ -384,10 +447,9 @@ class AdminHostService:
             BusinessError: 主机不存在或更新失败时
         """
         logger.info(
-            "开始更新主机审批状态",
+            "开始停用主机",
             extra={
                 "host_id": host_id,
-                "appr_state": appr_state,
             },
         )
 
@@ -419,62 +481,22 @@ class AdminHostService:
                     details={"host_id": host_id},
                 )
 
-            # 2. 如果是启用操作，检查硬件审核状态
-            if appr_state == 1:
-                # 查询 host_hw_rec 表中该 host_id 的最新一条数据
-                hw_check_stmt = (
-                    select(HostHwRec)
-                    .where(
-                        and_(
-                            HostHwRec.host_id == host_id,
-                            HostHwRec.del_flag == 0,
-                        )
-                    )
-                    .order_by(HostHwRec.created_time.desc())
-                    .limit(1)
-                )
-                hw_check_result = await session.execute(hw_check_stmt)
-                latest_hw_rec = hw_check_result.scalar_one_or_none()
-
-                # 如果存在硬件记录且同步状态为待同步(1)或异常(3)，需要先审核
-                if latest_hw_rec and latest_hw_rec.sync_state in (1, 3):
-                    sync_state_name = "待同步" if latest_hw_rec.sync_state == 1 else "异常"
-                    logger.warning(
-                        "主机启用失败，硬件审核状态不符合要求",
-                        extra={
-                            "host_id": host_id,
-                            "hw_rec_id": latest_hw_rec.id,
-                            "sync_state": latest_hw_rec.sync_state,
-                            "sync_state_name": sync_state_name,
-                        },
-                    )
-                    raise BusinessError(
-                        message="需要先审核变化硬件",
-                        message_key="error.host.hardware_audit_required",
-                        error_code="HARDWARE_AUDIT_REQUIRED",
-                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                        http_status_code=400,
-                    )
-
-            # 3. 检查当前状态是否已为目标状态
-            if host_rec.appr_state == appr_state:
-                state_name = "启用" if appr_state == 1 else "停用"
+            # 2. 检查当前状态是否已经是停用状态
+            if host_rec.appr_state == 0:
                 logger.info(
-                    "主机审批状态已是目标状态，无需更新",
+                    "主机已是停用状态，无需更新",
                     extra={
                         "host_id": host_id,
                         "current_appr_state": host_rec.appr_state,
-                        "target_appr_state": appr_state,
                     },
                 )
-                # 注意：这里返回的消息会在端点层被翻译
                 return {
                     "id": host_id,
-                    "appr_state": appr_state,
-                    "message": f"主机已是{state_name}状态",  # 端点层会使用 message_key 翻译
+                    "appr_state": 0,
+                    "message": "主机已是停用状态",
                 }
 
-            # 4. 更新审批状态
+            # 3. 更新审批状态为停用
             update_stmt = (
                 update(HostRec)
                 .where(
@@ -483,16 +505,16 @@ class AdminHostService:
                         HostRec.del_flag == 0,  # 只更新未删除的记录
                     )
                 )
-                .values(appr_state=appr_state)
+                .values(appr_state=0)
             )
 
             logger.info(
-                "执行审批状态更新操作",
+                "执行停用操作",
                 extra={
                     "host_id": host_id,
                     "old_appr_state": host_rec.appr_state,
-                    "new_appr_state": appr_state,
-                    "operation": "UPDATE appr_state",
+                    "new_appr_state": 0,
+                    "operation": "UPDATE appr_state = 0",
                 },
             )
 
@@ -504,36 +526,196 @@ class AdminHostService:
 
             if updated_count == 0:
                 logger.warning(
-                    "审批状态更新失败，记录可能已被删除",
+                    "主机停用失败，记录可能已被删除",
                     extra={
                         "host_id": host_id,
                     },
                 )
                 raise BusinessError(
-                    message=f"主机审批状态更新失败，记录可能已被删除（ID: {host_id}）",
-                    message_key="error.host.update_failed",
-                    error_code="HOST_UPDATE_APPROVAL_STATE_FAILED",
+                    message=f"主机停用失败，记录可能已被删除（ID: {host_id}）",
+                    message_key="error.host.disable_failed",
+                    error_code="HOST_DISABLE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=400,
                     details={"host_id": host_id},
                 )
 
-            # 4. 刷新对象以获取最新数据
-            await session.refresh(host_rec)
-
-            state_name = "启用" if appr_state == 1 else "停用"
             logger.info(
-                "主机审批状态更新成功",
+                "主机停用成功",
                 extra={
                     "host_id": host_id,
                     "old_appr_state": host_rec.appr_state,
-                    "new_appr_state": appr_state,
+                    "new_appr_state": 0,
                     "updated_count": updated_count,
                 },
             )
 
             return {
                 "id": host_id,
-                "appr_state": appr_state,
-                "message": f"主机已{state_name}",
+                "appr_state": 0,
+                "message": "主机已停用",
+            }
+
+    @handle_service_errors(
+        error_message="强制下线主机失败",
+        error_code="FORCE_OFFLINE_HOST_FAILED",
+    )
+    async def force_offline_host(self, host_id: int) -> dict:
+        """强制下线主机
+
+        业务逻辑：
+        1. 更新 host_rec 表的 host_state 字段为 4（离线状态）
+        2. 通过 WebSocket 通知指定 host_id 的 Agent 强制下线
+
+        Args:
+            host_id: 主机ID（host_rec.id）
+
+        Returns:
+            dict: 包含更新后的主机ID、状态和WebSocket通知结果
+
+        Raises:
+            BusinessError: 主机不存在或更新失败时
+        """
+        logger.info(
+            "开始强制下线主机",
+            extra={
+                "host_id": host_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 检查主机是否存在且未删除
+            check_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只检查未删除的记录
+                )
+            )
+            check_result = await session.execute(check_stmt)
+            host_rec = check_result.scalar_one_or_none()
+
+            if not host_rec:
+                logger.warning(
+                    "主机不存在或已删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在或已删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
+                    error_code="HOST_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            # 2. 更新主机状态为离线（host_state = 4）
+            update_stmt = (
+                update(HostRec)
+                .where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                    )
+                )
+                .values(host_state=4)  # 4 = 离线状态
+            )
+
+            logger.info(
+                "执行强制下线操作",
+                extra={
+                    "host_id": host_id,
+                    "old_host_state": host_rec.host_state,
+                    "new_host_state": 4,
+                    "operation": "UPDATE host_state = 4",
+                },
+            )
+
+            # 执行更新
+            result = await session.execute(update_stmt)
+            await session.commit()
+
+            updated_count = result.rowcount
+
+            if updated_count == 0:
+                logger.warning(
+                    "主机强制下线失败，记录可能已被删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机强制下线失败，记录可能已被删除（ID: {host_id}）",
+                    message_key="error.host.force_offline_failed",
+                    error_code="HOST_FORCE_OFFLINE_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            # 3. 通过 WebSocket 通知 Agent 强制下线
+            websocket_notified = False
+            try:
+                ws_manager = get_agent_websocket_manager()
+                host_id_str = str(host_id)
+
+                # 构建强制下线通知消息
+                offline_message = {
+                    "type": "host_offline_notification",
+                    "host_id": host_id_str,
+                    "message": "主机已强制下线",
+                    "reason": "管理员强制下线",
+                    "force": True,  # 标记为强制下线
+                }
+
+                # 发送消息
+                websocket_notified = await ws_manager.send_to_host(host_id_str, offline_message)
+
+                if websocket_notified:
+                    logger.info(
+                        "WebSocket强制下线通知已发送",
+                        extra={
+                            "host_id": host_id_str,
+                            "message_type": "host_offline_notification",
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "WebSocket强制下线通知发送失败（Host未连接）",
+                        extra={
+                            "host_id": host_id_str,
+                            "message_type": "host_offline_notification",
+                        },
+                    )
+
+            except Exception as e:
+                # WebSocket通知失败不影响数据库更新，只记录警告
+                logger.warning(
+                    "WebSocket强制下线通知异常",
+                    extra={
+                        "host_id": host_id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+
+            logger.info(
+                "主机强制下线成功",
+                extra={
+                    "host_id": host_id,
+                    "old_host_state": host_rec.host_state,
+                    "new_host_state": 4,
+                    "updated_count": updated_count,
+                    "websocket_notified": websocket_notified,
+                },
+            )
+
+            return {
+                "id": host_id,
+                "host_state": 4,
+                "websocket_notified": websocket_notified,
+                "message": "主机已强制下线",
             }

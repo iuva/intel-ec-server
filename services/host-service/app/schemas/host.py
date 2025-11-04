@@ -222,16 +222,11 @@ class AdminHostListRequest(BaseModel):
 
     page: int = Field(default=1, ge=1, description="页码（从1开始）")
     page_size: int = Field(default=20, ge=1, le=100, description="每页大小（1-100）")
-    mac: Optional[str] = Field(default=None, description="MAC地址（可选搜索条件）")
-    username: Optional[str] = Field(default=None, description="主机账号（host_acct，可选搜索条件）")
-    host_state: Optional[int] = Field(default=None, description="主机状态（可选搜索条件）")
-    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件）")
-    subm_time_sort: Optional[int] = Field(
-        default=None,
-        ge=0,
-        le=1,
-        description="申报时间排序字段（0=正序，1=倒序，不传则按创建时间倒序）",
-    )
+    mac: Optional[str] = Field(default=None, description="MAC地址（可选搜索条件，对应 host_rec.mac_addr）")
+    username: Optional[str] = Field(default=None, description="主机账号（可选搜索条件，对应 host_rec.host_acct）")
+    host_state: Optional[int] = Field(default=None, description="主机状态（可选搜索条件，对应 host_rec.host_state）")
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件，对应 host_rec.mg_id）")
+    use_by: Optional[str] = Field(default=None, description="使用人（可选搜索条件，对应 host_exec_log.user_name）")
 
     model_config = {"from_attributes": True}
 
@@ -239,12 +234,13 @@ class AdminHostListRequest(BaseModel):
 class AdminHostInfo(BaseModel):
     """管理后台主机信息响应模式"""
 
-    hardware_id: Optional[str] = Field(description="MongoDB 硬件ID")
-    host_acct: Optional[str] = Field(description="主机账号")
-    mg_id: Optional[str] = Field(description="唯一引导ID")
-    mac: Optional[str] = Field(description="MAC地址")
-    host_state: Optional[int] = Field(description="主机状态")
-    user_name: Optional[str] = Field(default=None, description="执行用户名称（来自host_exec_log）")
+    host_id: int = Field(description="主机ID（host_rec 表主键 id）")
+    username: Optional[str] = Field(default=None, description="主机账号（host_rec 表 host_acct）")
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（host_rec 表 mg_id）")
+    mac: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
+    use_by: Optional[str] = Field(default=None, description="使用人（host_exec_log 表 user_name，最新一条）")
+    host_state: Optional[int] = Field(default=None, description="主机状态（host_rec 表 host_state）")
+    appr_state: Optional[int] = Field(default=None, description="审批状态（host_rec 表 appr_state）")
 
     model_config = {"from_attributes": True}
 
@@ -280,22 +276,38 @@ class AdminHostDeleteResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AdminHostUpdateApprovalRequest(BaseModel):
-    """管理后台主机停用/启用请求模式"""
+class AdminHostDisableRequest(BaseModel):
+    """管理后台主机停用请求模式"""
 
     host_id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
-    appr_state: int = Field(
-        ..., ge=0, le=1, description="审批状态（0=停用，1=启用）"
-    )
 
     model_config = {"from_attributes": True}
 
 
-class AdminHostUpdateApprovalResponse(BaseModel):
-    """管理后台主机停用/启用响应模式"""
+class AdminHostDisableResponse(BaseModel):
+    """管理后台主机停用响应模式"""
 
     id: int = Field(description="主机ID")
-    appr_state: int = Field(description="更新后的审批状态（0=停用，1=启用）")
-    message: str = Field(default="操作成功", description="操作结果消息")
+    appr_state: int = Field(default=0, description="更新后的审批状态（0=停用）")
+    message: str = Field(default="主机已停用", description="操作结果消息")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostForceOfflineRequest(BaseModel):
+    """管理后台主机强制下线请求模式"""
+
+    host_id: int = Field(..., ge=1, description="主机ID（host_rec.id）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostForceOfflineResponse(BaseModel):
+    """管理后台主机强制下线响应模式"""
+
+    id: int = Field(description="主机ID")
+    host_state: int = Field(default=4, description="更新后的主机状态（4=离线）")
+    websocket_notified: bool = Field(description="是否成功发送WebSocket通知")
+    message: str = Field(default="主机已强制下线", description="操作结果消息")
 
     model_config = {"from_attributes": True}

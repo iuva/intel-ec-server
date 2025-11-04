@@ -2,10 +2,11 @@
 """Host WebSocket 客户端"""
 
 import asyncio
-import websockets
 import json
-import time
 import sys
+import time
+
+import websockets
 
 # ✅ 修改为你的实际设备 token
 DEVICE_TOKEN = "YOUR_DEVICE_TOKEN_HERE"

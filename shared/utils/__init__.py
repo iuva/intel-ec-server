@@ -11,11 +11,7 @@ from shared.utils.pagination import (
     PaginationParams,
     PaginationResponse,
 )
-from shared.utils.service_discovery import (
-    ServiceDiscovery,
-    get_service_discovery,
-    init_service_discovery,
-)
+from shared.utils.service_discovery import ServiceDiscovery, get_service_discovery, init_service_discovery
 from shared.utils.template_validator import TemplateValidator
 from shared.utils.token_extractor import TokenExtractor, get_token_extractor
 

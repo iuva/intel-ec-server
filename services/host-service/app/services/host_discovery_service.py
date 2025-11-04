@@ -9,10 +9,9 @@
 from typing import List, Optional, cast
 
 import httpx
-from sqlalchemy import and_, select
-
 from app.models.host_rec import HostRec
 from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, HardwareHostData, QueryAvailableHostsRequest
+from sqlalchemy import and_, select
 
 # 使用 try-except 方式处理路径导入
 try:

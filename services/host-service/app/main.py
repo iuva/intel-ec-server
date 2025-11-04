@@ -7,14 +7,14 @@ Host Service 主应用入口
 import os
 import sys
 
+from app.api.v1 import api_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.api.v1 import api_router
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.services.case_timeout_task import get_case_timeout_task_service
+
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
@@ -24,6 +24,7 @@ except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from app.services.case_timeout_task import get_case_timeout_task_service
+
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware

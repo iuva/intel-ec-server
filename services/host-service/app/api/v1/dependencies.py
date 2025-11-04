@@ -6,29 +6,31 @@ Host Service API 依赖注入
 
 import os
 import sys
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
-from fastapi import Request, HTTPException
+from fastapi import HTTPException, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.services.browser_host_service import BrowserHostService
+    from app.services.browser_vnc_service import BrowserVNCService
+    from app.services.host_discovery_service import HostDiscoveryService
+
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
     from shared.utils.token_extractor import get_token_extractor
-    from app.services.browser_host_service import BrowserHostService
-    from app.services.browser_vnc_service import BrowserVNCService
-    from app.services.host_discovery_service import HostDiscoveryService
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.services.browser_host_service import BrowserHostService
+    from app.services.browser_vnc_service import BrowserVNCService
+    from app.services.host_discovery_service import HostDiscoveryService
+
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
     from shared.utils.token_extractor import get_token_extractor
-    from app.services.browser_host_service import BrowserHostService
-    from app.services.browser_vnc_service import BrowserVNCService
-    from app.services.host_discovery_service import HostDiscoveryService
 
 logger = get_logger(__name__)
 
@@ -130,7 +132,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             # 获取语言偏好
             accept_language = request.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
-            
+
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
@@ -149,11 +151,11 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"获取当前用户失败: {str(e)}", exc_info=True)
-        
+
         # 获取语言偏好
         accept_language = request.headers.get("Accept-Language")
         locale = parse_accept_language(accept_language)
-        
+
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
@@ -211,7 +213,7 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
             # 获取语言偏好
             accept_language = request.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
-            
+
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
@@ -237,7 +239,7 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
             # 获取语言偏好
             accept_language = request.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
-            
+
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
@@ -281,7 +283,7 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         # 获取语言偏好
         accept_language = request.headers.get("Accept-Language")
         locale = parse_accept_language(accept_language)
-        
+
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(

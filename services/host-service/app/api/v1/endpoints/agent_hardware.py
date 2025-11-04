@@ -14,10 +14,8 @@ from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNA
 try:
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.testcase import TestCaseReportRequest
-    from app.services.agent_hardware_service import (
-        AgentHardwareService,
-        get_agent_hardware_service,
-    )
+    from app.services.agent_hardware_service import AgentHardwareService, get_agent_hardware_service
+
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
     from shared.common.i18n_dependencies import get_locale
@@ -27,10 +25,8 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.testcase import TestCaseReportRequest
-    from app.services.agent_hardware_service import (
-        AgentHardwareService,
-        get_agent_hardware_service,
-    )
+    from app.services.agent_hardware_service import AgentHardwareService, get_agent_hardware_service
+
     from shared.common.decorators import handle_api_errors
     from shared.common.exceptions import BusinessError
     from shared.common.i18n_dependencies import get_locale

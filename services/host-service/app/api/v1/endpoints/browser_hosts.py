@@ -7,8 +7,6 @@ import os
 import sys
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, Query
-
 from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
     AvailableHostsListResponse,
@@ -18,6 +16,7 @@ from app.schemas.host import (
     RetryVNCListResponse,
 )
 from app.services.browser_host_service import BrowserHostService
+from fastapi import APIRouter, Body, Depends, Query
 
 # 使用 try-except 方式处理路径导入
 try:

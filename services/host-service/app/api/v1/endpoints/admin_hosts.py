@@ -14,14 +14,16 @@ try:
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
     from app.schemas.host import (
         AdminHostDeleteResponse,
+        AdminHostDisableRequest,
+        AdminHostDisableResponse,
+        AdminHostForceOfflineRequest,
+        AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
-        AdminHostUpdateApprovalRequest,
-        AdminHostUpdateApprovalResponse,
     )
     from app.services.admin_host_service import AdminHostService
+
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -30,14 +32,16 @@ except ImportError:
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
     from app.schemas.host import (
         AdminHostDeleteResponse,
+        AdminHostDisableRequest,
+        AdminHostDisableResponse,
+        AdminHostForceOfflineRequest,
+        AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
-        AdminHostUpdateApprovalRequest,
-        AdminHostUpdateApprovalResponse,
     )
     from app.services.admin_host_service import AdminHostService
+
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -50,8 +54,8 @@ router = APIRouter()
 @router.get(
     "/list",
     response_model=SuccessResponse,
-    summary="查询主机列表",
-    description="分页查询主机列表，支持多种搜索条件和排序",
+    summary="查询可用 host 主机列表",
+    description="分页查询可用主机列表，支持多种搜索条件",
     responses={
         200: {
             "description": "查询成功",
@@ -66,24 +70,31 @@ async def list_hosts(
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
-    """查询主机列表（管理后台）
+    """查询可用主机列表（管理后台）
 
-    支持分页、多条件搜索和排序功能。
+    业务逻辑：
+    - 查询 host_rec 表，条件：host_state < 5, appr_state = 1, del_flag = 0
+    - 关联 host_exec_log 表，获取每个 host_id 的最新一条记录（按 created_time 倒序）
+    - 按 host_rec.created_time 倒序排序
 
     ## 搜索条件（可选）
-    - `mac`: MAC地址
-    - `username`: 主机账号（host_acct）
-    - `host_state`: 主机状态
-    - `mg_id`: 唯一引导ID
+    - `mac`: MAC地址（对应 host_rec.mac_addr）
+    - `username`: 主机账号（对应 host_rec.host_acct）
+    - `host_state`: 主机状态（对应 host_rec.host_state）
+    - `mg_id`: 唯一引导ID（对应 host_rec.mg_id）
+    - `use_by`: 使用人（对应 host_exec_log.user_name）
 
-    ## 排序规则
-    - 默认：按创建时间倒序（created_time DESC）
-    - 如果传入 `subm_time_sort`：
-      - `0`: 申报时间正序（subm_time ASC）
-      - `1`: 申报时间倒序（subm_time DESC）
+    ## 返回字段
+    - `host_id`: 主机ID（host_rec 表主键 id）
+    - `username`: 主机账号（host_rec 表 host_acct）
+    - `mg_id`: 唯一引导ID（host_rec 表 mg_id）
+    - `mac`: MAC地址（host_rec 表 mac_addr）
+    - `use_by`: 使用人（host_exec_log 表 user_name，最新一条）
+    - `host_state`: 主机状态（host_rec 表 host_state）
+    - `appr_state`: 审批状态（host_rec 表 appr_state）
 
     Args:
-        request: 查询请求参数（分页、搜索条件、排序）
+        request: 查询请求参数（分页、搜索条件）
         admin_host_service: 管理后台主机服务实例
         current_user: 当前用户信息
         locale: 语言偏好
@@ -92,7 +103,7 @@ async def list_hosts(
         SuccessResponse: 包含主机列表和分页信息
     """
     logger.info(
-        "接收管理后台主机列表查询请求",
+        "接收管理后台可用主机列表查询请求",
         extra={
             "page": request.page,
             "page_size": request.page_size,
@@ -100,7 +111,7 @@ async def list_hosts(
             "username": request.username,
             "host_state": request.host_state,
             "mg_id": request.mg_id,
-            "subm_time_sort": request.subm_time_sort,
+            "use_by": request.use_by,
             "user_id": current_user.get("user_id"),
         },
     )
@@ -120,7 +131,7 @@ async def list_hosts(
     )
 
     logger.info(
-        "管理后台主机列表查询完成",
+        "管理后台可用主机列表查询完成",
         extra={
             "total": pagination.total,
             "returned_count": len(hosts),
@@ -244,29 +255,29 @@ async def delete_host(
 
 
 @router.put(
-    "/approval",
+    "/disable",
     response_model=SuccessResponse,
-    summary="更新主机审批状态",
-    description="更新主机审批状态（停用/启用），启用前需要检查硬件审核状态",
+    summary="停用主机",
+    description="停用主机（设置 appr_state=0）",
     responses={
         200: {
-            "description": "更新成功",
+            "description": "停用成功",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "message": "主机审批状态更新成功",
+                        "message": "主机停用成功",
                         "data": {
                             "id": 123,
-                            "appr_state": 1,
-                            "message": "主机审批状态更新成功",
+                            "appr_state": 0,
+                            "message": "主机已停用",
                         },
                     }
                 }
             },
         },
         400: {
-            "description": "更新失败（业务错误）",
+            "description": "停用失败（业务错误）",
             "content": {
                 "application/json": {
                     "examples": {
@@ -278,20 +289,12 @@ async def delete_host(
                                 "error_code": "HOST_NOT_FOUND",
                             },
                         },
-                        "hardware_audit_required": {
-                            "summary": "需要先审核硬件",
-                            "value": {
-                                "code": 53012,
-                                "message": "需要先审核变化硬件",
-                                "error_code": "HARDWARE_AUDIT_REQUIRED",
-                            },
-                        },
-                        "update_failed": {
-                            "summary": "更新失败",
+                        "disable_failed": {
+                            "summary": "停用失败",
                             "value": {
                                 "code": 53004,
-                                "message": "主机审批状态更新失败，记录可能已被删除（ID: 123）",
-                                "error_code": "HOST_UPDATE_APPROVAL_FAILED",
+                                "message": "主机停用失败，记录可能已被删除（ID: 123）",
+                                "error_code": "HOST_DISABLE_FAILED",
                             },
                         },
                     }
@@ -301,49 +304,43 @@ async def delete_host(
     },
 )
 @handle_api_errors
-async def update_host_approval_state(
-    request: AdminHostUpdateApprovalRequest,
+async def disable_host(
+    request: AdminHostDisableRequest,
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
-    """更新主机审批状态（停用/启用）
+    """停用主机
 
     业务逻辑：
-    1. 根据 host_id 更新 host_rec 表的 appr_state 字段
-    2. 如果是启用操作（appr_state=1），需要先检查硬件审核状态：
-       - 查询 host_hw_rec 表的最新一条记录
-       - 如果 sync_state 为 1（待同步）或 3（异常），返回错误
-    3. 如果主机已经是目标状态，返回友好提示
+    1. 根据 host_id 更新 host_rec 表的 appr_state 字段为 0（停用）
+    2. 如果主机已经是停用状态，返回友好提示
 
     Args:
-        request: 包含主机ID和审批状态的请求对象
+        request: 包含主机ID的请求对象
         admin_host_service: 管理后台主机服务实例
         current_user: 当前用户信息
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 更新成功响应
+        SuccessResponse: 停用成功响应
 
     Raises:
-        BusinessError: 主机不存在、需要硬件审核或更新失败时
+        BusinessError: 主机不存在或停用失败时
     """
     logger.info(
-        "接收管理后台主机审批状态更新请求",
+        "接收管理后台主机停用请求",
         extra={
             "host_id": request.host_id,
-            "appr_state": request.appr_state,
             "user_id": current_user.get("user_id"),
         },
     )
 
-    # 调用服务层更新
-    result = await admin_host_service.update_host_approval_state(
-        request.host_id, request.appr_state
-    )
+    # 调用服务层停用
+    result = await admin_host_service.disable_host(request.host_id)
 
     logger.info(
-        "管理后台主机审批状态更新完成",
+        "管理后台主机停用完成",
         extra={
             "host_id": result["id"],
             "appr_state": result["appr_state"],
@@ -351,24 +348,131 @@ async def update_host_approval_state(
         },
     )
 
-    # 检查是否已经是目标状态
-    message_key = "success.host.update_approval"
-    state_name = None
-    if "已是" in result["message"] or "already" in result["message"].lower():
-        # 提取状态名
-        state_name = "启用" if request.appr_state == 1 else "停用"
-        message_key = "success.host.already_in_state"
-        translated_message = t(message_key, locale=locale, state_name=state_name)
-    else:
-        translated_message = t(message_key, locale=locale)
+    # 检查是否已经是停用状态
+    message_key = "success.host.disable"
+    if "已是" in result["message"]:
+        message_key = "success.host.already_disabled"
 
     return SuccessResponse(
-        data=AdminHostUpdateApprovalResponse(
+        data=AdminHostDisableResponse(
             id=result["id"],
             appr_state=result["appr_state"],
-            message=translated_message,
+            message=result["message"],
         ).model_dump(),
         message_key=message_key,
         locale=locale,
-        state_name=state_name,
+    )
+
+
+@router.post(
+    "/force-offline",
+    response_model=SuccessResponse,
+    summary="强制下线主机",
+    description="强制下线主机（设置 host_state=4），并通知WebSocket",
+    responses={
+        200: {
+            "description": "强制下线成功",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "主机强制下线成功",
+                        "data": {
+                            "id": 123,
+                            "host_state": 4,
+                            "websocket_notified": True,
+                            "message": "主机已强制下线",
+                        },
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "强制下线失败（业务错误）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                        "force_offline_failed": {
+                            "summary": "强制下线失败",
+                            "value": {
+                                "code": 53005,
+                                "message": "主机强制下线失败，记录可能已被删除（ID: 123）",
+                                "error_code": "HOST_FORCE_OFFLINE_FAILED",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def force_offline_host(
+    request: AdminHostForceOfflineRequest,
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """强制下线主机
+
+    业务逻辑：
+    1. 更新 host_rec 表的 host_state 字段为 4（离线状态）
+    2. 通过 WebSocket 通知指定 host_id 的 Agent 强制下线
+    3. 如果 WebSocket 通知失败，不影响数据库更新，只记录警告
+
+    Args:
+        request: 包含主机ID的请求对象
+        admin_host_service: 管理后台主机服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 强制下线成功响应，包含WebSocket通知结果
+
+    Raises:
+        BusinessError: 主机不存在或更新失败时
+    """
+    logger.info(
+        "接收管理后台主机强制下线请求",
+        extra={
+            "host_id": request.host_id,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层强制下线
+    result = await admin_host_service.force_offline_host(request.host_id)
+
+    logger.info(
+        "管理后台主机强制下线完成",
+        extra={
+            "host_id": result["id"],
+            "host_state": result["host_state"],
+            "websocket_notified": result["websocket_notified"],
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 根据WebSocket通知结果选择消息键
+    message_key = "success.host.force_offline"
+    if not result["websocket_notified"]:
+        message_key = "success.host.force_offline_no_websocket"
+
+    return SuccessResponse(
+        data=AdminHostForceOfflineResponse(
+            id=result["id"],
+            host_state=result["host_state"],
+            websocket_notified=result["websocket_notified"],
+            message=result["message"],
+        ).model_dump(),
+        message_key=message_key,
+        locale=locale,
     )

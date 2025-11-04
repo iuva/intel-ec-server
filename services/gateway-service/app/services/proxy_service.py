@@ -8,9 +8,9 @@ import asyncio
 import contextlib
 import os
 import sys
-import websockets
 from typing import Any, Dict, Optional
 
+import websockets
 from fastapi import Request, WebSocket, WebSocketDisconnect
 
 # 使用 try-except 方式处理路径导入

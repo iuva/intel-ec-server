@@ -44,18 +44,19 @@ class SuccessResponse(BaseModel):
         # 如果有 message_key，自动翻译
         message_key = data.get("message_key")
         locale = data.get("locale", "zh_CN")
-        
+
         if message_key:
             # 从 kwargs 中提取格式化变量（排除已定义的字段）
             message_kwargs = {
-                k: v for k, v in data.items()
+                k: v
+                for k, v in data.items()
                 if k not in ("code", "message", "message_key", "data", "timestamp", "locale")
             }
             translated_message = t(message_key, locale=locale, **message_kwargs)
             data["message"] = translated_message
             # 移除 message_key，避免 Pydantic 验证错误
             data.pop("message_key", None)
-        
+
         super().__init__(**data)
 
 
@@ -94,18 +95,20 @@ class ErrorResponse(BaseModel):
         # 如果有 message_key，自动翻译
         message_key = data.get("message_key")
         locale = data.get("locale", "zh_CN")
-        
+
         if message_key:
             # 从 kwargs 中提取格式化变量（排除已定义的字段）
             message_kwargs = {
-                k: v for k, v in data.items()
-                if k not in ("code", "message", "message_key", "error_code", "details", "timestamp", "request_id", "locale")
+                k: v
+                for k, v in data.items()
+                if k
+                not in ("code", "message", "message_key", "error_code", "details", "timestamp", "request_id", "locale")
             }
             translated_message = t(message_key, locale=locale, **message_kwargs)
             data["message"] = translated_message
             # 移除 message_key，避免 Pydantic 验证错误
             data.pop("message_key", None)
-        
+
         super().__init__(**data)
 
 
@@ -150,18 +153,19 @@ class PaginationResponse(BaseModel):
         # 如果有 message_key，自动翻译
         message_key = data.get("message_key")
         locale = data.get("locale", "zh_CN")
-        
+
         if message_key:
             # 从 kwargs 中提取格式化变量（排除已定义的字段）
             message_kwargs = {
-                k: v for k, v in data.items()
+                k: v
+                for k, v in data.items()
                 if k not in ("code", "message", "message_key", "data", "pagination", "timestamp", "locale")
             }
             translated_message = t(message_key, locale=locale, **message_kwargs)
             data["message"] = translated_message
             # 移除 message_key，避免 Pydantic 验证错误
             data.pop("message_key", None)
-        
+
         super().__init__(**data)
 
 

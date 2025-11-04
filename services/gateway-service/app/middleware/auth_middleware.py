@@ -6,8 +6,9 @@
 
 import os
 import sys
-import httpx
 from typing import Any, Dict, Optional
+
+import httpx
 
 # 使用 try-except 方式处理路径导入
 try:

@@ -4,9 +4,9 @@
 提供通用的请求代理功能，将请求转发到后端微服务
 """
 
+import json
 import os
 import sys
-import json
 from typing import Any, Union
 
 # 使用 try-except 方式处理路径导入
@@ -90,11 +90,11 @@ async def websocket_proxy(
             )
             # ✅ 必须先 accept 才能发送错误消息
             await websocket.accept()
-            
+
             # 获取语言偏好（从 WebSocket headers 或使用默认）
             accept_language = websocket.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
-            
+
             await websocket.send_json(
                 {
                     "code": 401,
@@ -122,11 +122,11 @@ async def websocket_proxy(
                 )
                 # ✅ 必须先 accept 才能发送错误消息
                 await websocket.accept()
-                
+
                 # 获取语言偏好（从 WebSocket headers 或使用默认）
                 accept_language = websocket.headers.get("Accept-Language")
                 locale = parse_accept_language(accept_language)
-                
+
                 await websocket.send_json(
                     {
                         "code": 403,

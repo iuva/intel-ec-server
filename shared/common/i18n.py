@@ -65,9 +65,7 @@ class I18nManager:
             else:
                 logger.warning(f"语言文件不存在: {locale_file}")
 
-    def translate(
-        self, key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs: Any
-    ) -> str:
+    def translate(self, key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs: Any) -> str:
         """翻译消息键
 
         Args:
@@ -227,11 +225,11 @@ def parse_accept_language(accept_language: Optional[str]) -> str:
     for lang, _ in languages:
         # 标准化语言代码（zh-CN -> zh_CN）
         normalized = lang.replace("-", "_")
-        
+
         # 完整匹配
         if normalized in SUPPORTED_LOCALES:
             return normalized
-        
+
         # 部分匹配（zh -> zh_CN, en -> en_US）
         lang_code = normalized.split("_")[0].lower()
         if lang_code == "zh":
@@ -241,4 +239,3 @@ def parse_accept_language(accept_language: Optional[str]) -> str:
 
     # 默认语言
     return DEFAULT_LOCALE
-

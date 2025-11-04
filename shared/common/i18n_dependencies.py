@@ -73,9 +73,9 @@ def translate(key: str, locale: Optional[str] = None, default: Optional[str] = N
             return SuccessResponse(message=message, data=users)
         ```
     """
+
     # 这里返回一个闭包函数，实际使用时需要传入 locale
     def _translate(k: str, loc: Optional[str] = locale, **kw):
         return t(k, locale=loc, default=default, **kw)
 
     return _translate
-

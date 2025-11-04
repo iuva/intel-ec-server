@@ -57,11 +57,11 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
                     "method": request.method,
                 },
             )
-            
+
             # 获取语言偏好（从请求头或异常中的 locale）
             accept_language = request.headers.get("Accept-Language")
             locale = exc.locale or parse_accept_language(accept_language)
-            
+
             # 如果有 message_key，使用它创建响应；否则使用 message
             if exc.message_key:
                 error_response = ErrorResponse(
@@ -80,7 +80,7 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
                     details=exc.details,
                     locale=locale,
                 )
-            
+
             # 使用 http_status_code 作为 HTTP 状态码（必须是有效的 100-599）
             # 响应体中的 code 是自定义错误码（可能是 53009 这样的值）
             return JSONResponse(status_code=exc.http_status_code, content=error_response.model_dump())
@@ -91,11 +91,11 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
                 extra={"error": str(exc), "path": request.url.path, "method": request.method},
                 exc_info=True,
             )
-            
+
             # 获取语言偏好
             accept_language = request.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
-            
+
             error_response = ErrorResponse(
                 code=500,
                 message_key="error.internal",

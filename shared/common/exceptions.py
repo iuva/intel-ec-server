@@ -47,7 +47,7 @@ class BusinessError(Exception):
         """
         self.message_key = message_key
         self.locale = locale or "zh_CN"
-        
+
         # 如果有 message_key，自动翻译
         if message_key:
             # 从 details 中提取格式化变量
@@ -56,7 +56,7 @@ class BusinessError(Exception):
             self.message = translated_message
         else:
             self.message = message
-            
+
         self.error_code = error_code  # 错误码标识
         self.code = code  # 自定义错误码（在响应体中）
         # 确保 http_status_code 是有效的 HTTP 状态码
