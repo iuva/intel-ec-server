@@ -11,27 +11,37 @@ from sqlalchemy import and_, func, select
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import (
+        AdminApprHostDetailResponse,
+        AdminApprHostHwInfo,
         AdminApprHostListRequest,
         AdminApprHostInfo,
     )
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.common.security import aes_decrypt
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import (
+        AdminApprHostDetailResponse,
+        AdminApprHostHwInfo,
         AdminApprHostListRequest,
         AdminApprHostInfo,
     )
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.common.security import aes_decrypt
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
 logger = get_logger(__name__)
@@ -155,3 +165,139 @@ class AdminApprHostService:
             )
 
             return host_info_list, pagination_response
+
+    @handle_service_errors(
+        error_message="查询待审批主机详情失败",
+        error_code="QUERY_APPR_HOST_DETAIL_FAILED",
+    )
+    async def get_appr_host_detail(self, host_id: int) -> AdminApprHostDetailResponse:
+        """查询待审批主机详情
+
+        业务逻辑：
+        1. 查询 host_rec 表 id = host_id 的数据
+        2. 关联 host_hw_rec 表，查询 sync_state = 1 的数据
+        3. 按 host_hw_rec.created_time 倒序排序
+        4. 密码字段需要 AES 解密
+
+        Args:
+            host_id: 主机ID（host_rec.id）
+
+        Returns:
+            AdminApprHostDetailResponse: 待审批主机详情信息
+
+        Raises:
+            BusinessError: 主机不存在时
+        """
+        logger.info(
+            "开始查询待审批主机详情",
+            extra={
+                "host_id": host_id,
+            },
+        )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 1. 查询 host_rec 表基础信息
+            host_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只查询未删除的记录
+                )
+            )
+            host_result = await session.execute(host_stmt)
+            host_rec = host_result.scalar_one_or_none()
+
+            if not host_rec:
+                logger.warning(
+                    "主机不存在或已删除",
+                    extra={
+                        "host_id": host_id,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机不存在或已删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
+                    error_code="HOST_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            # 2. 查询 host_hw_rec 表 sync_state=1 的所有记录（按 created_time 倒序）
+            hw_stmt = (
+                select(HostHwRec)
+                .where(
+                    and_(
+                        HostHwRec.host_id == host_id,
+                        HostHwRec.sync_state == 1,  # sync_state = 1（待同步）
+                        HostHwRec.del_flag == 0,
+                    )
+                )
+                .order_by(HostHwRec.created_time.desc())
+            )
+            hw_result = await session.execute(hw_stmt)
+            hw_recs = hw_result.scalars().all()
+
+            # 3. 解密密码（AES加密）
+            ***REMOVED*** = None
+            if host_rec.host_pwd:
+                try:
+                    ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
+                    if ***REMOVED***:
+                        logger.debug(
+                            "密码解密成功",
+                            extra={
+                                "host_id": host_id,
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            "密码解密失败（返回None）",
+                            extra={
+                                "host_id": host_id,
+                                "note": "可能是密码格式不正确或加密方式不匹配",
+                            },
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "密码解密异常",
+                        extra={
+                            "host_id": host_id,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
+                    )
+                    # 解密失败时返回 None，而不是抛出异常
+                    ***REMOVED*** = None
+
+            # 4. 构建硬件信息列表
+            hw_list: List[AdminApprHostHwInfo] = []
+            for hw_rec in hw_recs:
+                hw_info = AdminApprHostHwInfo(
+                    created_time=hw_rec.created_time,
+                    hw_info=hw_rec.hw_info,
+                )
+                hw_list.append(hw_info)
+
+            # 5. 构建响应数据
+            detail = AdminApprHostDetailResponse(
+                mg_id=host_rec.mg_id,
+                mac=host_rec.mac_addr,
+                ip=host_rec.host_ip,
+                username=host_rec.host_acct,
+                ***REMOVED***word=***REMOVED***,
+                port=host_rec.host_port,
+                host_state=host_rec.host_state,
+                hw_list=hw_list,
+            )
+
+            logger.info(
+                "查询待审批主机详情完成",
+                extra={
+                    "host_id": host_id,
+                    "hw_list_count": len(hw_list),
+                    "has_***REMOVED***word": ***REMOVED*** is not None,
+                },
+            )
+
+            return detail

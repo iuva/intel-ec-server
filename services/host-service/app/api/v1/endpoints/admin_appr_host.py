@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends
 try:
     from app.api.v1.dependencies import get_admin_appr_host_service, get_current_user
     from app.schemas.host import (
+        AdminApprHostDetailRequest,
+        AdminApprHostDetailResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
     )
@@ -25,6 +27,8 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_admin_appr_host_service, get_current_user
     from app.schemas.host import (
+        AdminApprHostDetailRequest,
+        AdminApprHostDetailResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
     )
@@ -125,5 +129,99 @@ async def list_appr_hosts(
     return SuccessResponse(
         data=response_data.model_dump(),
         message_key="success.host.appr_list_query",
+        locale=locale,
+    )
+
+
+@router.get(
+    "/detail",
+    response_model=SuccessResponse,
+    summary="查询待审批 host 主机详情",
+    description="查询待审批主机的详细信息",
+    responses={
+        200: {
+            "description": "查询成功",
+            "model": AdminApprHostDetailResponse,
+        },
+        400: {
+            "description": "查询失败（业务错误）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "host_not_found": {
+                            "summary": "主机不存在",
+                            "value": {
+                                "code": 53001,
+                                "message": "主机不存在或已删除（ID: 123）",
+                                "error_code": "HOST_NOT_FOUND",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def get_appr_host_detail(
+    request: AdminApprHostDetailRequest = Depends(),
+    admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """查询待审批主机详情（管理后台）
+
+    业务逻辑：
+    - 查询 host_rec 表 id = host_id 的数据
+    - 关联 host_hw_rec 表，查询 sync_state = 1 的数据
+    - 按 host_hw_rec.created_time 倒序排序
+    - 密码字段需要 AES 解密
+
+    ## 返回字段
+    - `mg_id`: 唯一引导ID（host_rec 表 mg_id）
+    - `mac`: MAC地址（host_rec 表 mac_addr）
+    - `ip`: IP地址（host_rec 表 host_ip）
+    - `username`: 主机账号（host_rec 表 host_acct）
+    - `***REMOVED***word`: 主机密码（host_rec 表 host_pwd，已解密）
+    - `port`: 端口（host_rec 表 host_port）
+    - `host_state`: 主机状态（host_rec 表 host_state）
+    - `hw_list`: 硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）
+      - `created_time`: 创建时间（host_hw_rec 表 created_time）
+      - `hw_info`: 硬件信息（host_hw_rec 表 hw_info）
+
+    Args:
+        request: 包含主机ID的请求对象
+        admin_appr_host_service: 管理后台待审批主机服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 包含待审批主机详情的响应
+
+    Raises:
+        BusinessError: 主机不存在时
+    """
+    logger.info(
+        "接收管理后台待审批主机详情查询请求",
+        extra={
+            "host_id": request.host_id,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层查询
+    detail = await admin_appr_host_service.get_appr_host_detail(request.host_id)
+
+    logger.info(
+        "管理后台待审批主机详情查询完成",
+        extra={
+            "host_id": request.host_id,
+            "hw_list_count": len(detail.hw_list),
+        },
+    )
+
+    return SuccessResponse(
+        data=detail.model_dump(),
+        message_key="success.host.appr_detail_query",
         locale=locale,
     )

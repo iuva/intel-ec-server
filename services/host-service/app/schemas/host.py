@@ -438,3 +438,38 @@ class AdminApprHostListResponse(BaseModel):
     has_prev: bool = Field(description="是否有上一页")
 
     model_config = {"from_attributes": True}
+
+
+class AdminApprHostDetailRequest(BaseModel):
+    """管理后台待审批主机详情查询请求模式"""
+
+    host_id: int = Field(..., ge=1, description="主机ID（host_rec 表主键 id）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostHwInfo(BaseModel):
+    """管理后台待审批主机硬件信息响应模式"""
+
+    created_time: Optional[datetime] = Field(default=None, description="创建时间（host_hw_rec 表 created_time）")
+    hw_info: Optional[Dict[str, Any]] = Field(default=None, description="硬件信息（host_hw_rec 表 hw_info）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostDetailResponse(BaseModel):
+    """管理后台待审批主机详情响应模式"""
+
+    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（host_rec 表 mg_id）")
+    mac: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
+    ip: Optional[str] = Field(default=None, description="IP地址（host_rec 表 host_ip）")
+    username: Optional[str] = Field(default=None, description="主机账号（host_rec 表 host_acct）")
+    ***REMOVED***word: Optional[str] = Field(default=None, description="主机密码（host_rec 表 host_pwd，已解密）")
+    port: Optional[int] = Field(default=None, description="端口（host_rec 表 host_port）")
+    host_state: Optional[int] = Field(
+        default=None,
+        description="主机状态（host_rec 表 host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
+    )
+    hw_list: List[AdminApprHostHwInfo] = Field(default_factory=list, description="硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）")
+
+    model_config = {"from_attributes": True}
