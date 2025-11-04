@@ -450,13 +450,14 @@ class AdminHostService:
     async def disable_host(self, host_id: int) -> dict:
         """停用主机
 
-        根据主机ID更新 host_rec 表的 appr_state 字段为 0（停用）。
+        根据主机ID更新 host_rec 表的 appr_state 字段为 0（停用），
+        同时设置 host_state 为 7（手动停用）。
 
         Args:
             host_id: 主机ID（host_rec.id）
 
         Returns:
-            dict: 包含更新后的主机ID和审批状态
+            dict: 包含更新后的主机ID、审批状态和主机状态
 
         Raises:
             BusinessError: 主机不存在或更新失败时
@@ -497,21 +498,23 @@ class AdminHostService:
                 )
 
             # 2. 检查当前状态是否已经是停用状态
-            if host_rec.appr_state == 0:
+            if host_rec.appr_state == 0 and host_rec.host_state == 7:
                 logger.info(
                     "主机已是停用状态，无需更新",
                     extra={
                         "host_id": host_id,
                         "current_appr_state": host_rec.appr_state,
+                        "current_host_state": host_rec.host_state,
                     },
                 )
                 return {
                     "id": host_id,
                     "appr_state": 0,
+                    "host_state": 7,
                     "message": "主机已是停用状态",
                 }
 
-            # 3. 更新审批状态为停用
+            # 3. 更新审批状态为停用，同时设置 host_state 为 7（手动停用）
             update_stmt = (
                 update(HostRec)
                 .where(
@@ -520,7 +523,7 @@ class AdminHostService:
                         HostRec.del_flag == 0,  # 只更新未删除的记录
                     )
                 )
-                .values(appr_state=0)
+                .values(appr_state=0, host_state=7)
             )
 
             logger.info(
@@ -529,7 +532,9 @@ class AdminHostService:
                     "host_id": host_id,
                     "old_appr_state": host_rec.appr_state,
                     "new_appr_state": 0,
-                    "operation": "UPDATE appr_state = 0",
+                    "old_host_state": host_rec.host_state,
+                    "new_host_state": 7,
+                    "operation": "UPDATE appr_state = 0, host_state = 7",
                 },
             )
 
@@ -561,6 +566,8 @@ class AdminHostService:
                     "host_id": host_id,
                     "old_appr_state": host_rec.appr_state,
                     "new_appr_state": 0,
+                    "old_host_state": host_rec.host_state,
+                    "new_host_state": 7,
                     "updated_count": updated_count,
                 },
             )
@@ -568,6 +575,7 @@ class AdminHostService:
             return {
                 "id": host_id,
                 "appr_state": 0,
+                "host_state": 7,
                 "message": "主机已停用",
             }
 
