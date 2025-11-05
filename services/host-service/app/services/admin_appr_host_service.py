@@ -14,6 +14,7 @@ from sqlalchemy import and_, func, select, update
 try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
+    from app.models.sys_conf import SysConf
     from app.schemas.host import (
         AdminApprHostApproveRequest,
         AdminApprHostApproveResponse,
@@ -21,6 +22,8 @@ try:
         AdminApprHostHwInfo,
         AdminApprHostListRequest,
         AdminApprHostInfo,
+        AdminMaintainEmailRequest,
+        AdminMaintainEmailResponse,
     )
 
     from shared.common.database import mariadb_manager
@@ -33,6 +36,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
+    from app.models.sys_conf import SysConf
     from app.schemas.host import (
         AdminApprHostApproveRequest,
         AdminApprHostApproveResponse,
@@ -40,6 +44,8 @@ except ImportError:
         AdminApprHostHwInfo,
         AdminApprHostListRequest,
         AdminApprHostInfo,
+        AdminMaintainEmailRequest,
+        AdminMaintainEmailResponse,
     )
 
     from shared.common.database import mariadb_manager
@@ -588,4 +594,151 @@ class AdminApprHostService:
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
                     details={"diff_type": request.diff_type, "host_ids": request.host_ids},
+                )
+
+    @handle_service_errors(
+        error_message="设置维护通知邮箱失败",
+        error_code="SET_MAINTAIN_EMAIL_FAILED",
+    )
+    async def set_maintain_email(
+        self, request: AdminMaintainEmailRequest, operator_id: int
+    ) -> AdminMaintainEmailResponse:
+        """设置维护通知邮箱（管理后台）
+
+        业务逻辑：
+        1. 格式化邮箱：去除空格，全角逗号转为半角逗号
+        2. 查询 sys_conf 表，conf_key = "email"
+        3. 如果不存在则插入，如果存在则更新 conf_val
+
+        Args:
+            request: 维护通知邮箱设置请求参数
+            operator_id: 操作人ID（从 token 中获取）
+
+        Returns:
+            AdminMaintainEmailResponse: 包含设置结果
+
+        Raises:
+            BusinessError: 参数验证失败或数据库操作失败时
+        """
+        logger.info(
+            "开始设置维护通知邮箱",
+            extra={
+                "email": request.email,
+                "operator_id": operator_id,
+            },
+        )
+
+        # 1. 格式化邮箱：去除空格，全角逗号转为半角逗号
+        formatted_email = request.email.strip()
+        # 去除所有空格
+        formatted_email = "".join(formatted_email.split())
+        # 全角逗号（，）转为半角逗号（,）
+        formatted_email = formatted_email.replace("，", ",")
+        # 去除多余逗号（连续逗号）
+        while ",," in formatted_email:
+            formatted_email = formatted_email.replace(",,", ",")
+        # 去除首尾逗号
+        formatted_email = formatted_email.strip(",")
+
+        if not formatted_email:
+            raise BusinessError(
+                message="邮箱地址不能为空",
+                message_key="error.email.empty",
+                error_code="EMAIL_EMPTY",
+                code=ServiceErrorCodes.VALIDATION_ERROR,
+                http_status_code=400,
+            )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            try:
+                # 2. 查询 sys_conf 表，conf_key = "email"
+                stmt = select(SysConf).where(
+                    and_(
+                        SysConf.conf_key == "email",
+                        SysConf.del_flag == 0,
+                    )
+                )
+                result = await session.execute(stmt)
+                sys_conf = result.scalar_one_or_none()
+
+                if sys_conf:
+                    # 3. 如果存在则更新
+                    update_stmt = (
+                        update(SysConf)
+                        .where(SysConf.id == sys_conf.id)
+                        .values(
+                            conf_val=formatted_email,
+                            updated_by=operator_id,
+                        )
+                    )
+                    await session.execute(update_stmt)
+                    logger.info(
+                        "维护通知邮箱已更新",
+                        extra={
+                            "conf_id": sys_conf.id,
+                            "old_email": sys_conf.conf_val,
+                            "new_email": formatted_email,
+                            "operator_id": operator_id,
+                        },
+                    )
+                else:
+                    # 4. 如果不存在则插入
+                    new_sys_conf = SysConf(
+                        conf_key="email",
+                        conf_val=formatted_email,
+                        conf_name="维护通知邮箱",
+                        state_flag=0,  # 启用状态
+                        created_by=operator_id,
+                        updated_by=operator_id,
+                    )
+                    session.add(new_sys_conf)
+                    logger.info(
+                        "维护通知邮箱已创建",
+                        extra={
+                            "conf_key": "email",
+                            "conf_val": formatted_email,
+                            "operator_id": operator_id,
+                        },
+                    )
+
+                # 提交事务
+                await session.commit()
+
+                logger.info(
+                    "设置维护通知邮箱完成",
+                    extra={
+                        "conf_key": "email",
+                        "conf_val": formatted_email,
+                        "operator_id": operator_id,
+                        "operation": "updated" if sys_conf else "created",
+                    },
+                )
+
+                return AdminMaintainEmailResponse(
+                    conf_key="email",
+                    conf_val=formatted_email,
+                    message="维护通知邮箱设置成功",
+                )
+
+            except Exception as e:
+                # 回滚事务
+                await session.rollback()
+                logger.error(
+                    "设置维护通知邮箱事务回滚",
+                    extra={
+                        "email": formatted_email,
+                        "operator_id": operator_id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+                raise BusinessError(
+                    message=f"设置维护通知邮箱失败: {str(e)}",
+                    message_key="error.email.set_failed",
+                    error_code="SET_MAINTAIN_EMAIL_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                    details={"email": formatted_email},
                 )

@@ -18,6 +18,8 @@ try:
         AdminApprHostDetailResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
+        AdminMaintainEmailRequest,
+        AdminMaintainEmailResponse,
     )
     from app.services.admin_appr_host_service import AdminApprHostService
 
@@ -35,6 +37,8 @@ except ImportError:
         AdminApprHostDetailResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
+        AdminMaintainEmailRequest,
+        AdminMaintainEmailResponse,
     )
     from app.services.admin_appr_host_service import AdminApprHostService
 
@@ -360,5 +364,123 @@ async def approve_hosts(
     return SuccessResponse(
         data=result.model_dump(),
         message_key="success.host.approve_completed",
+        locale=locale,
+    )
+
+
+@router.post(
+    "/maintain-email",
+    response_model=SuccessResponse,
+    summary="设置维护通知邮箱",
+    description="设置维护通知邮箱，多个邮箱以半角逗号分割",
+    responses={
+        200: {
+            "description": "设置成功",
+            "model": AdminMaintainEmailResponse,
+        },
+        400: {
+            "description": "请求参数错误",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "email_empty": {
+                            "summary": "邮箱地址为空",
+                            "value": {
+                                "code": 400,
+                                "message": "邮箱地址不能为空",
+                                "error_code": "EMAIL_EMPTY",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "服务器内部错误",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "set_failed": {
+                            "summary": "设置失败",
+                            "value": {
+                                "code": 500,
+                                "message": "设置维护通知邮箱失败: 数据库操作异常",
+                                "error_code": "SET_MAINTAIN_EMAIL_FAILED",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def set_maintain_email(
+    request: AdminMaintainEmailRequest,
+    admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """设置维护通知邮箱（管理后台）
+
+    业务逻辑：
+    1. 格式化邮箱：去除空格，全角逗号转为半角逗号
+    2. 查询 sys_conf 表，conf_key = "email"
+    3. 如果不存在则插入，如果存在则更新 conf_val
+
+    ## 请求参数
+    - `email`: 邮箱地址（多个邮箱以半角逗号分割）
+
+    ## 返回字段
+    - `conf_key`: 配置键（固定为 "email"）
+    - `conf_val`: 配置值（格式化后的邮箱地址）
+    - `message`: 操作结果消息
+
+    Args:
+        request: 维护通知邮箱设置请求参数
+        admin_appr_host_service: 管理后台待审批主机服务实例
+        current_user: 当前用户信息（包含 user_id）
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 包含设置结果
+
+    Raises:
+        BusinessError: 参数验证失败或数据库操作失败时
+    """
+    logger.info(
+        "接收管理后台维护通知邮箱设置请求",
+        extra={
+            "email": request.email,
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 获取当前用户ID
+    operator_id = current_user.get("user_id")
+    if not operator_id:
+        logger.warning(
+            "无法获取当前用户ID",
+            extra={
+                "current_user": current_user,
+            },
+        )
+        operator_id = 0  # 如果无法获取用户ID，使用默认值
+
+    # 调用服务层处理
+    result = await admin_appr_host_service.set_maintain_email(request, operator_id)
+
+    logger.info(
+        "管理后台维护通知邮箱设置完成",
+        extra={
+            "conf_key": result.conf_key,
+            "conf_val": result.conf_val,
+            "operator_id": operator_id,
+        },
+    )
+
+    return SuccessResponse(
+        data=result.model_dump(),
+        message_key="success.email.set_completed",
         locale=locale,
     )

@@ -509,3 +509,21 @@ class AdminApprHostApproveResponse(BaseModel):
     )
 
     model_config = {"from_attributes": True}
+
+
+class AdminMaintainEmailRequest(BaseModel):
+    """管理后台维护通知邮箱设置请求模式"""
+
+    email: str = Field(..., description="邮箱地址（多个邮箱以半角逗号分割）")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminMaintainEmailResponse(BaseModel):
+    """管理后台维护通知邮箱设置响应模式"""
+
+    conf_key: str = Field(description="配置键（固定为 'email'）")
+    conf_val: str = Field(description="配置值（格式化后的邮箱地址）")
+    message: str = Field(default="维护通知邮箱设置成功", description="操作结果消息")
+
+    model_config = {"from_attributes": True}
