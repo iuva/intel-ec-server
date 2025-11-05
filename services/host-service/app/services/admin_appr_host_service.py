@@ -5,15 +5,18 @@
 
 import os
 import sys
-from typing import List, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Tuple
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import (
+        AdminApprHostApproveRequest,
+        AdminApprHostApproveResponse,
         AdminApprHostDetailResponse,
         AdminApprHostHwInfo,
         AdminApprHostListRequest,
@@ -31,6 +34,8 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import (
+        AdminApprHostApproveRequest,
+        AdminApprHostApproveResponse,
         AdminApprHostDetailResponse,
         AdminApprHostHwInfo,
         AdminApprHostListRequest,
@@ -354,3 +359,233 @@ class AdminApprHostService:
             )
 
             return detail
+
+    @handle_service_errors(
+        error_message="同意启用主机失败",
+        error_code="APPROVE_HOST_FAILED",
+    )
+    async def approve_hosts(
+        self, request: AdminApprHostApproveRequest, appr_by: int
+    ) -> AdminApprHostApproveResponse:
+        """同意启用主机（管理后台）
+
+        业务逻辑（diff_type = 2 时）：
+        1. 根据传入的 host_ids，查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
+        2. 最新一条数据：sync_state = 2, appr_time = now(), appr_by = appr_by
+        3. 其他数据：sync_state = 4
+        4. 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = host_hw_rec 最新一条数据的 id, subm_time = now()
+        5. TODO: 调用外部 API 同步 host_hw_rec 最新数据的 hw_info
+
+        Args:
+            request: 同意启用请求参数（diff_type, host_ids）
+            appr_by: 审批人ID（从 token 中获取）
+
+        Returns:
+            AdminApprHostApproveResponse: 包含处理结果和统计信息
+
+        Raises:
+            BusinessError: 参数验证失败或业务逻辑错误时
+        """
+        logger.info(
+            "开始同意启用主机",
+            extra={
+                "diff_type": request.diff_type,
+                "host_ids": request.host_ids,
+                "appr_by": appr_by,
+            },
+        )
+
+        # 参数验证
+        if request.diff_type == 2:
+            if not request.host_ids or len(request.host_ids) == 0:
+                raise BusinessError(
+                    message="当 diff_type=2 时，host_ids 为必填参数",
+                    message_key="error.host.appr_host_ids_required",
+                    error_code="HOST_IDS_REQUIRED",
+                    code=ServiceErrorCodes.VALIDATION_ERROR,
+                    http_status_code=400,
+                )
+
+        # 如果 diff_type = 1，暂时不支持（后续可扩展）
+        if request.diff_type == 1:
+            raise BusinessError(
+                message="diff_type=1（版本号变化）暂不支持",
+                message_key="error.host.diff_type_not_supported",
+                error_code="DIFF_TYPE_NOT_SUPPORTED",
+                code=ServiceErrorCodes.VALIDATION_ERROR,
+                http_status_code=400,
+            )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            try:
+                success_count = 0
+                failed_count = 0
+                results: List[Dict[str, Any]] = []
+
+                now = datetime.now(timezone.utc)
+
+                # 处理每个主机
+                for host_id in request.host_ids or []:
+                    try:
+                        # 1. 验证主机是否存在且未删除
+                        host_stmt = select(HostRec).where(
+                            and_(
+                                HostRec.id == host_id,
+                                HostRec.del_flag == 0,
+                            )
+                        )
+                        host_result = await session.execute(host_stmt)
+                        host_rec = host_result.scalar_one_or_none()
+
+                        if not host_rec:
+                            results.append(
+                                {
+                                    "host_id": host_id,
+                                    "success": False,
+                                    "message": f"主机不存在或已删除（ID: {host_id}）",
+                                }
+                            )
+                            failed_count += 1
+                            continue
+
+                        # 2. 查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
+                        hw_rec_stmt = (
+                            select(HostHwRec)
+                            .where(
+                                and_(
+                                    HostHwRec.host_id == host_id,
+                                    HostHwRec.sync_state == 1,
+                                    HostHwRec.del_flag == 0,
+                                )
+                            )
+                            .order_by(HostHwRec.created_time.desc(), HostHwRec.id.desc())
+                        )
+                        hw_rec_result = await session.execute(hw_rec_stmt)
+                        hw_recs = hw_rec_result.scalars().all()
+
+                        if not hw_recs:
+                            results.append(
+                                {
+                                    "host_id": host_id,
+                                    "success": False,
+                                    "message": f"未找到待审批的硬件记录（ID: {host_id}）",
+                                }
+                            )
+                            failed_count += 1
+                            continue
+
+                        # 3. 获取最新一条数据
+                        latest_hw_rec = hw_recs[0]
+                        latest_hw_id = latest_hw_rec.id
+
+                        # 4. 更新最新一条数据：sync_state = 2, appr_time = now(), appr_by = appr_by
+                        update_latest_stmt = (
+                            update(HostHwRec)
+                            .where(HostHwRec.id == latest_hw_id)
+                            .values(
+                                sync_state=2,
+                                appr_time=now,
+                                appr_by=appr_by,
+                            )
+                        )
+                        await session.execute(update_latest_stmt)
+
+                        # 5. 更新其他数据：sync_state = 4
+                        if len(hw_recs) > 1:
+                            other_hw_ids = [hw.id for hw in hw_recs[1:]]
+                            update_other_stmt = (
+                                update(HostHwRec)
+                                .where(HostHwRec.id.in_(other_hw_ids))
+                                .values(sync_state=4)
+                            )
+                            await session.execute(update_other_stmt)
+
+                        # 6. 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = latest_hw_id, subm_time = now()
+                        update_host_stmt = (
+                            update(HostRec)
+                            .where(HostRec.id == host_id)
+                            .values(
+                                appr_state=1,
+                                host_state=0,
+                                hw_id=latest_hw_id,
+                                subm_time=now,
+                            )
+                        )
+                        await session.execute(update_host_stmt)
+
+                        # 7. TODO: 调用外部 API 同步 host_hw_rec 最新数据的 hw_info
+                        # TODO: 实现外部 API 调用逻辑
+                        # 示例：await external_api.sync_hardware_info(latest_hw_rec.hw_info)
+
+                        results.append(
+                            {
+                                "host_id": host_id,
+                                "success": True,
+                                "message": "主机启用成功",
+                                "hw_id": latest_hw_id,
+                            }
+                        )
+                        success_count += 1
+
+                    except Exception as e:
+                        logger.error(
+                            f"处理主机 {host_id} 时发生异常",
+                            extra={
+                                "host_id": host_id,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                            },
+                            exc_info=True,
+                        )
+                        results.append(
+                            {
+                                "host_id": host_id,
+                                "success": False,
+                                "message": f"处理失败: {str(e)}",
+                            }
+                        )
+                        failed_count += 1
+                        continue
+
+                # 提交事务
+                await session.commit()
+
+                logger.info(
+                    "同意启用主机处理完成",
+                    extra={
+                        "diff_type": request.diff_type,
+                        "total_count": len(request.host_ids or []),
+                        "success_count": success_count,
+                        "failed_count": failed_count,
+                        "appr_by": appr_by,
+                    },
+                )
+
+                return AdminApprHostApproveResponse(
+                    success_count=success_count,
+                    failed_count=failed_count,
+                    results=results,
+                )
+
+            except Exception as e:
+                # 回滚事务
+                await session.rollback()
+                logger.error(
+                    "同意启用主机事务回滚",
+                    extra={
+                        "diff_type": request.diff_type,
+                        "host_ids": request.host_ids,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+                raise BusinessError(
+                    message=f"同意启用主机失败: {str(e)}",
+                    message_key="error.host.approve_failed",
+                    error_code="APPROVE_HOST_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                    details={"diff_type": request.diff_type, "host_ids": request.host_ids},
+                )

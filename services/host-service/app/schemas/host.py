@@ -477,3 +477,28 @@ class AdminApprHostDetailResponse(BaseModel):
     hw_list: List[AdminApprHostHwInfo] = Field(default_factory=list, description="硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）")
 
     model_config = {"from_attributes": True}
+
+
+class AdminApprHostApproveRequest(BaseModel):
+    """管理后台待审批主机同意启用请求模式"""
+
+    diff_type: int = Field(..., ge=1, le=2, description="变更类型（1-版本号变化, 2-内容变化）")
+    host_ids: Optional[List[int]] = Field(
+        default=None,
+        description="主机ID列表（host_rec 表主键数组；当 diff_type=2 时必填）",
+    )
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostApproveResponse(BaseModel):
+    """管理后台待审批主机同意启用响应模式"""
+
+    success_count: int = Field(description="成功处理的主机数量")
+    failed_count: int = Field(description="失败的主机数量")
+    results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="处理结果详情（包含成功和失败的记录）",
+    )
+
+    model_config = {"from_attributes": True}
