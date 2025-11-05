@@ -527,3 +527,38 @@ class AdminMaintainEmailResponse(BaseModel):
     message: str = Field(default="维护通知邮箱设置成功", description="操作结果消息")
 
     model_config = {"from_attributes": True}
+
+
+class AdminOtaConfigInfo(BaseModel):
+    """管理后台 OTA 配置信息"""
+
+    id: int = Field(description="配置ID（主键）")
+    conf_ver: Optional[str] = Field(default=None, description="配置版本号")
+    conf_name: Optional[str] = Field(default=None, description="配置名称")
+    conf_val: Optional[str] = Field(default=None, description="配置值")
+    conf_json: Optional[Dict[str, Any]] = Field(default=None, description="配置 JSON")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminOtaListResponse(BaseModel):
+    """管理后台 OTA 配置列表响应模式"""
+
+    ota_configs: List[AdminOtaConfigInfo] = Field(description="OTA 配置列表")
+    total: int = Field(description="配置总数")
+
+    model_config = {"from_attributes": True}
+
+
+class FileUploadResponse(BaseModel):
+    """文件上传响应模式"""
+
+    file_id: str = Field(description="文件唯一标识")
+    filename: str = Field(description="原始文件名")
+    saved_filename: str = Field(description="保存的文件名")
+    file_url: str = Field(description="文件访问 URL")
+    file_size: int = Field(description="文件大小（字节）")
+    content_type: str = Field(description="文件 MIME 类型")
+    upload_time: str = Field(description="上传时间")
+
+    model_config = {"from_attributes": True}

@@ -6,10 +6,14 @@ Host Service API 依赖注入
 
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from fastapi import HTTPException, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
+
+if TYPE_CHECKING:
+    from app.services.admin_ota_service import AdminOtaService
+    from app.services.file_manage_service import FileManageService
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -40,6 +44,8 @@ _browser_vnc_service_instance: Optional[BrowserVNCService] = None
 _host_discovery_service_instance: Optional[HostDiscoveryService] = None
 _admin_host_service_instance: Optional[Any] = None
 _admin_appr_host_service_instance: Optional[Any] = None
+_admin_ota_service_instance: Optional["AdminOtaService"] = None
+_file_manage_service_instance: Optional["FileManageService"] = None
 
 
 def get_host_service() -> BrowserHostService:
@@ -126,6 +132,46 @@ def get_admin_appr_host_service() -> Any:
         _admin_appr_host_service_instance = AdminApprHostService()
 
     return _admin_appr_host_service_instance
+
+
+def get_admin_ota_service() -> "AdminOtaService":
+    """获取管理后台 OTA 服务实例（单例模式）
+
+    Returns:
+        AdminOtaService: 管理后台 OTA 服务实例
+    """
+    global _admin_ota_service_instance
+
+    if _admin_ota_service_instance is None:
+        try:
+            from app.services.admin_ota_service import AdminOtaService
+        except ImportError:
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+            from app.services.admin_ota_service import AdminOtaService
+
+        _admin_ota_service_instance = AdminOtaService()
+
+    return _admin_ota_service_instance
+
+
+def get_file_manage_service() -> "FileManageService":
+    """获取文件管理服务实例（单例模式）
+
+    Returns:
+        FileManageService: 文件管理服务实例
+    """
+    global _file_manage_service_instance
+
+    if _file_manage_service_instance is None:
+        try:
+            from app.services.file_manage_service import FileManageService
+        except ImportError:
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+            from app.services.file_manage_service import FileManageService
+
+        _file_manage_service_instance = FileManageService()
+
+    return _file_manage_service_instance
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:

@@ -3,11 +3,13 @@
 from app.api.v1.endpoints import (
     admin_appr_host,
     admin_hosts,
+    admin_ota,
     agent_report,
     agent_websocket,
     agent_websocket_management,
     browser_hosts,
     browser_vnc,
+    file_manage,
 )
 from fastapi import APIRouter
 
@@ -27,3 +29,6 @@ api_router.include_router(agent_websocket_management.router, tags=["Agent-WebSoc
 # 管理后台路由
 api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["管理后台-可用主机管理"])
 api_router.include_router(admin_appr_host.router, prefix="/admin/appr-host", tags=["管理后台-待审批主机管理"])
+api_router.include_router(admin_ota.router, prefix="/admin/ota", tags=["管理后台-OTA管理"])
+# 文件管理路由
+api_router.include_router(file_manage.router, prefix="/file", tags=["文件管理"])

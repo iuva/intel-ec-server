@@ -56,16 +56,26 @@ COPY shared/ /app/shared/
 # 复制服务代码
 COPY services/host-service/app/ /app/app/
 
-# 创建日志目录
-RUN mkdir -p /app/logs && \
-    chmod 755 /app/logs
+# 创建非root用户（在创建目录之前）
+RUN useradd -m -u 1000 appuser
 
-# 创建非root用户
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+# 创建日志目录和文件上传目录
+# 注意：
+# 1. 目录必须存在才能进行卷挂载
+# 2. 卷挂载会覆盖目录内容，但目录本身会被保留
+# 3. 卷挂载后，目录的所有权可能改变，应用启动时会自动检查和修复
+RUN mkdir -p /app/logs /app/uploads && \
+    chown -R appuser:appuser /app && \
+    chmod 755 /app/logs && \
+    chmod 755 /app/uploads
 
 # 切换到非root用户
 USER appuser
+
+# 注意：当 Docker 卷挂载到 /app/uploads 时：
+# - 卷中的文件会覆盖镜像中的目录内容
+# - 目录权限由卷的权限决定
+# - 应用启动时（FileManageService.__init__）会自动检查并修复权限
 
 # 暴露端口
 EXPOSE 8003

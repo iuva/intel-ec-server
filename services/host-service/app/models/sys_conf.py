@@ -1,9 +1,8 @@
 """系统配置数据模型"""
 
-from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, SmallInteger, func
+from sqlalchemy import JSON, VARCHAR, BigInteger, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入

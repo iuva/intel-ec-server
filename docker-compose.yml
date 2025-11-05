@@ -343,8 +343,13 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 文件上传配置
+      FILE_UPLOAD_DIR: ${FILE_UPLOAD_DIR:-/app/uploads}
     ports:
       - "8003:8003"
+    volumes:
+      # 文件上传目录挂载（确保 Docker 启动时文件不丢失）
+      - host_service_uploads:/app/uploads
     networks:
       intel-network:
         ipv4_address: 172.20.0.103
@@ -356,7 +361,13 @@ services:
       jaeger:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -386,4 +397,7 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  # Host Service 文件上传目录（确保文件不丢失）
+  host_service_uploads:
     driver: local
