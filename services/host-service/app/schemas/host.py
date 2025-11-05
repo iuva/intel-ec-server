@@ -562,3 +562,26 @@ class FileUploadResponse(BaseModel):
     upload_time: str = Field(description="上传时间")
 
     model_config = {"from_attributes": True}
+
+
+class AdminOtaDeployRequest(BaseModel):
+    """管理后台 OTA 下发请求模式"""
+
+    id: int = Field(..., description="配置ID（主键）", gt=0)
+    conf_ver: str = Field(..., description="配置版本号", min_length=1)
+    conf_name: str = Field(..., description="配置名称", min_length=1)
+    conf_val: str = Field(..., description="配置值", min_length=1)
+
+    model_config = {"from_attributes": True}
+
+
+class AdminOtaDeployResponse(BaseModel):
+    """管理后台 OTA 下发响应模式"""
+
+    id: int = Field(description="配置ID（主键）")
+    conf_ver: str = Field(description="配置版本号")
+    conf_name: str = Field(description="配置名称")
+    conf_val: str = Field(description="配置值")
+    broadcast_count: int = Field(description="广播消息成功发送的主机数量")
+
+    model_config = {"from_attributes": True}

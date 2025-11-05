@@ -11,7 +11,12 @@ from fastapi import APIRouter, Depends
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_admin_ota_service, get_current_user
-    from app.schemas.host import AdminOtaConfigInfo, AdminOtaListResponse
+    from app.schemas.host import (
+        AdminOtaConfigInfo,
+        AdminOtaDeployRequest,
+        AdminOtaDeployResponse,
+        AdminOtaListResponse,
+    )
     from app.services.admin_ota_service import AdminOtaService
 
     from shared.common.decorators import handle_api_errors
@@ -21,7 +26,12 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_admin_ota_service, get_current_user
-    from app.schemas.host import AdminOtaConfigInfo, AdminOtaListResponse
+    from app.schemas.host import (
+        AdminOtaConfigInfo,
+        AdminOtaDeployRequest,
+        AdminOtaDeployResponse,
+        AdminOtaListResponse,
+    )
     from app.services.admin_ota_service import AdminOtaService
 
     from shared.common.decorators import handle_api_errors
@@ -108,4 +118,109 @@ async def list_ota_configs(
     return SuccessResponse(
         data=response_data.model_dump(),
         message="查询 OTA 配置列表成功",
+    )
+
+
+@router.post(
+    "/deploy",
+    response_model=SuccessResponse,
+    summary="下发 OTA 配置",
+    description="下发 OTA 配置到所有连接的 Host，更新 sys_conf 表并广播消息",
+    responses={
+        200: {
+            "description": "下发成功",
+            "model": AdminOtaDeployResponse,
+        },
+        404: {
+            "description": "OTA 配置不存在",
+        },
+    },
+)
+@handle_api_errors
+async def deploy_ota_config(
+    deploy_data: AdminOtaDeployRequest,
+    admin_ota_service: AdminOtaService = Depends(get_admin_ota_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """下发 OTA 配置（管理后台）
+
+    业务逻辑：
+    1. 更新 sys_conf 表：根据 id 更新 conf_ver, conf_name, conf_val
+    2. 通过 websocket 广播消息：conf_ver 和 conf_val 到所有 host
+    3. 注册回调处理器：当 host websocket 回调通知时，在 host_upd 表新增记录
+
+    ## 请求参数
+    - `id`: 配置ID（主键，必填）
+    - `conf_ver`: 配置版本号（必填）
+    - `conf_name`: 配置名称（必填）
+    - `conf_val`: 配置值（必填）
+
+    ## 返回字段
+    - `id`: 配置ID（主键）
+    - `conf_ver`: 配置版本号
+    - `conf_name`: 配置名称
+    - `conf_val`: 配置值
+    - `broadcast_count`: 广播消息成功发送的主机数量
+
+    Args:
+        deploy_data: OTA 下发请求数据
+        admin_ota_service: 管理后台 OTA 服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 包含下发结果
+    """
+    logger.info(
+        "下发 OTA 配置",
+        extra={
+            "operation": "deploy_ota_config",
+            "config_id": deploy_data.id,
+            "conf_ver": deploy_data.conf_ver,
+            "conf_name": deploy_data.conf_name,
+            "user_id": current_user.get("user_id"),
+            "username": current_user.get("username"),
+        },
+    )
+
+    # 获取操作人ID（从当前用户信息中获取）
+    operator_id = None
+    user_id = current_user.get("user_id")
+    if user_id:
+        try:
+            operator_id = int(user_id)
+        except (ValueError, TypeError):
+            logger.warning(f"无法解析用户ID为整数: {user_id}")
+
+    # 调用服务层下发 OTA 配置
+    deploy_result = await admin_ota_service.deploy_ota_config(
+        config_id=deploy_data.id,
+        conf_ver=deploy_data.conf_ver,
+        conf_name=deploy_data.conf_name,
+        conf_val=deploy_data.conf_val,
+        operator_id=operator_id,
+    )
+
+    # 构建响应数据
+    response_data = AdminOtaDeployResponse(
+        id=deploy_result["id"],
+        conf_ver=deploy_result["conf_ver"],
+        conf_name=deploy_result["conf_name"],
+        conf_val=deploy_result["conf_val"],
+        broadcast_count=deploy_result["broadcast_count"],
+    )
+
+    logger.info(
+        "OTA 配置下发成功",
+        extra={
+            "operation": "deploy_ota_config",
+            "config_id": deploy_result["id"],
+            "broadcast_count": deploy_result["broadcast_count"],
+        },
+    )
+
+    return SuccessResponse(
+        data=response_data.model_dump(),
+        message="OTA 配置下发成功",
     )
