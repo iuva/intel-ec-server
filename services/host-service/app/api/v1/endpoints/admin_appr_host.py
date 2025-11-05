@@ -259,14 +259,6 @@ async def get_appr_host_detail(
                                 "error_code": "HOST_IDS_REQUIRED",
                             },
                         },
-                        "diff_type_not_supported": {
-                            "summary": "diff_type 不支持",
-                            "value": {
-                                "code": 400,
-                                "message": "diff_type=1（版本号变化）暂不支持",
-                                "error_code": "DIFF_TYPE_NOT_SUPPORTED",
-                            },
-                        },
                     }
                 }
             },
@@ -299,21 +291,29 @@ async def approve_hosts(
 ) -> SuccessResponse:
     """同意启用待审批主机（管理后台）
 
-    业务逻辑（diff_type = 2 时）：
-    - 查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
-    - 最新一条数据：sync_state = 2, appr_time = now(), appr_by = token 中的 id
-    - 其他数据：sync_state = 4
-    - 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = host_hw_rec 最新一条数据的 id, subm_time = now()
-    - TODO: 调用外部 API 同步 host_hw_rec 最新数据的 hw_info
+    业务逻辑：
+    - **diff_type = 1**（版本号变化）：
+      - 如果传入了 host_ids，逻辑与 diff_type = 2 相同
+      - 如果未传入 host_ids，自动查询所有 host_hw_rec 表 sync_state = 1, diff_state = 1 数据的 host_id
+    - **diff_type = 2**（内容变化）：
+      - 查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
+      - 最新一条数据：sync_state = 2, appr_time = now(), appr_by = token 中的 id
+      - 其他数据：sync_state = 4
+      - 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = host_hw_rec 最新一条数据的 id, subm_time = now()
+    - **邮件通知**（所有数据处理完毕后）：
+      - 查询 sys_conf 表 conf_key = "email" 的 conf_val
+      - 如果配置不为空，为每个邮箱发送通知邮件
+      - 邮件内容包含：审批人信息（user_name, user_account）、变更的主机信息（hardware_id, host_ip）
+      - 邮件发送失败不影响全局事务
 
     ## 请求参数
     - `diff_type`: 变更类型（1-版本号变化, 2-内容变化）
-    - `host_ids`: 主机ID列表（当 diff_type=2 时必填）
+    - `host_ids`: 主机ID列表（当 diff_type=2 时必填；当 diff_type=1 时可选，不传则自动查询）
 
     ## 返回字段
     - `success_count`: 成功处理的主机数量
     - `failed_count`: 失败的主机数量
-    - `results`: 处理结果详情（包含成功和失败的记录）
+    - `results`: 处理结果详情（包含成功和失败的记录，以及邮件通知错误信息）
 
     Args:
         request: 同意启用请求参数
@@ -348,8 +348,8 @@ async def approve_hosts(
         )
         appr_by = 0  # 如果无法获取用户ID，使用默认值
 
-    # 调用服务层处理
-    result = await admin_appr_host_service.approve_hosts(request, appr_by)
+    # 调用服务层处理（传入 locale 参数）
+    result = await admin_appr_host_service.approve_hosts(request, appr_by, locale=locale)
 
     logger.info(
         "管理后台同意启用主机处理完成",

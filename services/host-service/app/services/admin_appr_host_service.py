@@ -15,20 +15,20 @@ try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.schemas.host import (
-        AdminApprHostApproveRequest,
-        AdminApprHostApproveResponse,
-        AdminApprHostDetailResponse,
-        AdminApprHostHwInfo,
-        AdminApprHostListRequest,
-        AdminApprHostInfo,
-        AdminMaintainEmailRequest,
-        AdminMaintainEmailResponse,
-    )
+    from app.models.sys_user import SysUser
+    from app.schemas.host import (AdminApprHostApproveRequest,
+                                  AdminApprHostApproveResponse,
+                                  AdminApprHostDetailResponse,
+                                  AdminApprHostHwInfo, AdminApprHostInfo,
+                                  AdminApprHostListRequest,
+                                  AdminMaintainEmailRequest,
+                                  AdminMaintainEmailResponse)
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
+    from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
     from shared.utils.pagination import PaginationParams, PaginationResponse
@@ -37,25 +37,90 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.schemas.host import (
-        AdminApprHostApproveRequest,
-        AdminApprHostApproveResponse,
-        AdminApprHostDetailResponse,
-        AdminApprHostHwInfo,
-        AdminApprHostListRequest,
-        AdminApprHostInfo,
-        AdminMaintainEmailRequest,
-        AdminMaintainEmailResponse,
-    )
+    from app.schemas.host import (AdminApprHostApproveRequest,
+                                  AdminApprHostApproveResponse,
+                                  AdminApprHostDetailResponse,
+                                  AdminApprHostHwInfo, AdminApprHostInfo,
+                                  AdminApprHostListRequest,
+                                  AdminMaintainEmailRequest,
+                                  AdminMaintainEmailResponse)
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
+    from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
 logger = get_logger(__name__)
+
+# 邮件内容模板常量
+EMAIL_HOST_APPROVE_CONTENT_TEMPLATE = """尊敬的维护人员：
+
+变更的 Host 已通过硬件变更审核。
+
+审批人信息：
+- 用户名称：{user_name}
+- 登录账号：{user_account}
+
+变更的主机信息：
+{host_table}
+
+请及时关注相关变更。
+
+此邮件由系统自动发送，请勿回复。
+"""
+
+
+def _build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
+    """构建主机信息表格（HTML格式）
+
+    Args:
+        hardware_ids: Hardware ID 列表
+        host_ips: Host IP 列表
+
+    Returns:
+        HTML 表格字符串
+    """
+    if not hardware_ids and not host_ips:
+        return "无变更的主机信息"
+
+    # 确保两个列表长度一致（用空字符串填充）
+    max_len = max(len(hardware_ids), len(host_ips))
+    hardware_ids_padded = hardware_ids + [""] * (max_len - len(hardware_ids))
+    host_ips_padded = host_ips + [""] * (max_len - len(host_ips))
+
+    # 构建 HTML 表格
+    table_rows = []
+    cell_style = "padding: 8px; border: 1px solid #ddd;"
+    header_style = "padding: 8px; border: 1px solid #ddd; background-color: #f2f2f2; text-align: left;"
+
+    for i in range(max_len):
+        hw_id = hardware_ids_padded[i] if i < len(hardware_ids) else ""
+        host_ip = host_ips_padded[i] if i < len(host_ips) else ""
+        row_html = (
+            f"<tr><td style='{cell_style}'>{hw_id}</td>"
+            f"<td style='{cell_style}'>{host_ip}</td></tr>"
+        )
+        table_rows.append(row_html)
+
+    table_html = f"""
+<table style='border-collapse: collapse; width: 100%; margin: 10px 0;'>
+    <thead>
+        <tr>
+            <th style='{header_style}'>Hardware ID</th>
+            <th style='{header_style}'>Host IP</th>
+        </tr>
+    </thead>
+    <tbody>
+        {''.join(table_rows)}
+    </tbody>
+</table>
+"""
+
+    return table_html
 
 
 class AdminApprHostService:
@@ -371,7 +436,7 @@ class AdminApprHostService:
         error_code="APPROVE_HOST_FAILED",
     )
     async def approve_hosts(
-        self, request: AdminApprHostApproveRequest, appr_by: int
+        self, request: AdminApprHostApproveRequest, appr_by: int, locale: str = "zh_CN"
     ) -> AdminApprHostApproveResponse:
         """同意启用主机（管理后台）
 
@@ -401,8 +466,11 @@ class AdminApprHostService:
             },
         )
 
-        # 参数验证
+        # 参数验证和 host_ids 处理
+        host_ids_to_process: List[int] = []
+
         if request.diff_type == 2:
+            # diff_type = 2 时，host_ids 为必填
             if not request.host_ids or len(request.host_ids) == 0:
                 raise BusinessError(
                     message="当 diff_type=2 时，host_ids 为必填参数",
@@ -411,11 +479,44 @@ class AdminApprHostService:
                     code=ServiceErrorCodes.VALIDATION_ERROR,
                     http_status_code=400,
                 )
+            host_ids_to_process = request.host_ids
 
-        # 如果 diff_type = 1，暂时不支持（后续可扩展）
-        if request.diff_type == 1:
+        elif request.diff_type == 1:
+            # diff_type = 1 时，如果传入了 host_ids，逻辑与 diff_type = 2 相同
+            if request.host_ids and len(request.host_ids) > 0:
+                host_ids_to_process = request.host_ids
+            else:
+                # 如果未传入 host_ids，需要查询所有 host_hw_rec 表 sync_state = 1, diff_state = 1 数据的 host_id
+                session_factory = mariadb_manager.get_session()
+                async with session_factory() as temp_session:
+                    hw_query_stmt = (
+                        select(HostHwRec.host_id)
+                        .where(
+                            and_(
+                                HostHwRec.sync_state == 1,
+                                HostHwRec.diff_state == 1,
+                                HostHwRec.del_flag == 0,
+                            )
+                        )
+                        .distinct()
+                    )
+                    hw_query_result = await temp_session.execute(hw_query_stmt)
+                    host_ids_raw = hw_query_result.scalars().all()
+                    host_ids_to_process = [hid for hid in set(host_ids_raw) if hid is not None]
+
+                if not host_ids_to_process:
+                    logger.info(
+                        "未找到符合条件的主机（diff_type=1, sync_state=1, diff_state=1）",
+                        extra={"diff_type": request.diff_type},
+                    )
+                    return AdminApprHostApproveResponse(
+                        success_count=0,
+                        failed_count=0,
+                        results=[],
+                    )
+        else:
             raise BusinessError(
-                message="diff_type=1（版本号变化）暂不支持",
+                message=f"不支持的 diff_type: {request.diff_type}",
                 message_key="error.host.diff_type_not_supported",
                 error_code="DIFF_TYPE_NOT_SUPPORTED",
                 code=ServiceErrorCodes.VALIDATION_ERROR,
@@ -432,7 +533,7 @@ class AdminApprHostService:
                 now = datetime.now(timezone.utc)
 
                 # 处理每个主机
-                for host_id in request.host_ids or []:
+                for host_id in host_ids_to_process:
                     try:
                         # 1. 验证主机是否存在且未删除
                         host_stmt = select(HostRec).where(
@@ -561,18 +662,152 @@ class AdminApprHostService:
                     "同意启用主机处理完成",
                     extra={
                         "diff_type": request.diff_type,
-                        "total_count": len(request.host_ids or []),
+                        "total_count": len(host_ids_to_process),
                         "success_count": success_count,
                         "failed_count": failed_count,
                         "appr_by": appr_by,
                     },
                 )
 
-                return AdminApprHostApproveResponse(
+                # 邮件通知逻辑（在所有数据处理完毕后）
+                email_notification_errors: List[str] = []
+                try:
+                    # 1. 查询 sys_conf 表 conf_key = "email" 的 conf_val
+                    email_conf_stmt = select(SysConf).where(
+                        and_(
+                            SysConf.conf_key == "email",
+                            SysConf.del_flag == 0,
+                            SysConf.state_flag == 0,  # 启用状态
+                        )
+                    )
+                    email_conf_result = await session.execute(email_conf_stmt)
+                    email_conf = email_conf_result.scalar_one_or_none()
+
+                    if email_conf and email_conf.conf_val:
+                        email_str = email_conf.conf_val.strip()
+                        if email_str:
+                            # 2. 分割邮箱地址（支持逗号分隔）
+                            email_list = [e.strip() for e in email_str.split(",") if e.strip()]
+
+                            if email_list:
+                                # 3. 查询 host_rec 表 id in (host_ids) 的数据，获取 hardware_id 和 host_ip
+                                successful_host_ids = [
+                                    r["host_id"]
+                                    for r in results
+                                    if r.get("success", False) and r.get("host_id")
+                                ]
+
+                                if successful_host_ids:
+                                    host_info_stmt = select(HostRec).where(
+                                        and_(
+                                            HostRec.id.in_(successful_host_ids),
+                                            HostRec.del_flag == 0,
+                                        )
+                                    )
+                                    host_info_result = await session.execute(host_info_stmt)
+                                    host_recs = host_info_result.scalars().all()
+
+                                    # 4. 查询 sys_user 表 id = appr_by 的数据，获取 user_name 和 user_account
+                                    user_stmt = select(SysUser).where(
+                                        and_(
+                                            SysUser.id == appr_by,
+                                            SysUser.del_flag == 0,
+                                        )
+                                    )
+                                    user_result = await session.execute(user_stmt)
+                                    sys_user = user_result.scalar_one_or_none()
+
+                                    user_name = sys_user.user_name if sys_user else ""
+                                    user_account = sys_user.user_account if sys_user else ""
+
+                                    # 5. 构建邮件内容
+                                    hardware_ids = [
+                                        h.hardware_id for h in host_recs if h.hardware_id
+                                    ]
+                                    host_ips = [h.host_ip for h in host_recs if h.host_ip]
+
+                                    # 构建主机信息表格
+                                    host_table = _build_host_table(hardware_ids, host_ips)
+
+                                    # 使用多语言支持（从参数传入）
+                                    subject = t(
+                                        "email.host.approve.subject",
+                                        locale=locale,
+                                        default="变更 Host 通过硬件变更审核",
+                                    )
+
+                                    # 构建邮件正文（使用常量模板）
+                                    content = t(
+                                        "email.host.approve.content",
+                                        locale=locale,
+                                        default=EMAIL_HOST_APPROVE_CONTENT_TEMPLATE,
+                                        user_name=user_name,
+                                        user_account=user_account,
+                                        host_table=host_table,
+                                    )
+
+                                    # 6. 发送邮件（失败不影响全局事务）
+                                    try:
+                                        email_result = await send_email(
+                                            to_emails=email_list,
+                                            subject=subject,
+                                            content=content,
+                                            locale=locale,
+                                        )
+                                        if email_result.get("failed_count", 0) > 0:
+                                            email_notification_errors.extend(email_result.get("errors", []))
+                                        logger.info(
+                                            "邮件通知发送完成",
+                                            extra={
+                                                "sent_count": email_result.get("sent_count", 0),
+                                                "failed_count": email_result.get("failed_count", 0),
+                                                "recipient_count": len(email_list),
+                                            },
+                                        )
+                                    except Exception as email_error:
+                                        error_msg = f"邮件发送异常: {str(email_error)}"
+                                        email_notification_errors.append(error_msg)
+                                        logger.warning(
+                                            "邮件发送异常（不影响事务）",
+                                            extra={
+                                                "error": str(email_error),
+                                                "error_type": type(email_error).__name__,
+                                            },
+                                            exc_info=True,
+                                        )
+
+                except Exception as email_query_error:
+                    # 邮件查询或发送失败不影响全局事务
+                    error_msg = f"邮件通知处理异常: {str(email_query_error)}"
+                    email_notification_errors.append(error_msg)
+                    logger.warning(
+                        "邮件通知处理异常（不影响事务）",
+                        extra={
+                            "error": str(email_query_error),
+                            "error_type": type(email_query_error).__name__,
+                        },
+                        exc_info=True,
+                    )
+
+                # 构建响应，包含邮件通知错误信息（如果有）
+                response_data = AdminApprHostApproveResponse(
                     success_count=success_count,
                     failed_count=failed_count,
                     results=results,
                 )
+
+                # 如果有邮件通知错误，添加到响应中（不影响成功状态）
+                if email_notification_errors:
+                    # 在 results 中添加邮件通知错误信息
+                    response_data.results.append(
+                        {
+                            "type": "email_notification",
+                            "success": False,
+                            "message": "; ".join(email_notification_errors),
+                        }
+                    )
+
+                return response_data
 
             except Exception as e:
                 # 回滚事务
