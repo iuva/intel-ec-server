@@ -547,9 +547,9 @@ async def get_host_detail(
 
     业务逻辑：
     1. 查询 host_rec 表的基础信息
-    2. 关联 host_hw_rec 表，获取 sync_state=2 的最新一条记录
-    3. 返回主机详情（包含硬件信息和审批时间）
-    4. 密码字段需要解密（AEC加密）
+    2. 关联 host_hw_rec 表，获取 sync_state=2 的列表数据，按 updated_time 倒序排序
+    3. 返回主机详情（包含硬件信息列表）
+    4. 密码字段需要解密（AES加密）
 
     ## 返回字段
     - `mg_id`: 唯一引导ID（host_rec 表 mg_id）
@@ -558,8 +558,9 @@ async def get_host_detail(
     - `username`: 主机账号（host_rec 表 host_acct）
     - `***REMOVED***word`: 主机密码（host_rec 表 host_pwd，已解密）
     - `port`: 端口（host_rec 表 host_port）
-    - `hw_info`: 硬件信息（host_hw_rec 表 hw_info，sync_state=2的最新一条）
-    - `appr_time`: 审批时间（host_hw_rec 表 appr_time，sync_state=2的最新一条）
+    - `hw_list`: 硬件信息列表（host_hw_rec 表 sync_state=2 的记录，按 updated_time 倒序）
+      - `hw_info`: 硬件信息（host_hw_rec 表 hw_info）
+      - `appr_time`: 审批时间（host_hw_rec 表 appr_time）
 
     Args:
         request: 包含主机ID的请求对象
@@ -588,7 +589,7 @@ async def get_host_detail(
         "管理后台主机详情查询完成",
         extra={
             "host_id": request.host_id,
-            "has_hw_info": detail.get("hw_info") is not None,
+            "hw_list_count": len(detail.get("hw_list", [])),
             "user_id": current_user.get("user_id"),
         },
     )
@@ -601,8 +602,7 @@ async def get_host_detail(
             username=detail.get("username"),
             ***REMOVED***word=detail.get("***REMOVED***word"),
             port=detail.get("port"),
-            hw_info=detail.get("hw_info"),
-            appr_time=detail.get("appr_time"),
+            hw_list=detail.get("hw_list", []),
         ).model_dump(),
         message_key="success.host.detail_query",
         locale=locale,

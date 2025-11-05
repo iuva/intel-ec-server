@@ -752,15 +752,15 @@ class AdminHostService:
 
         业务逻辑：
         1. 查询 host_rec 表的基础信息
-        2. 关联 host_hw_rec 表，获取 sync_state=2 的最新一条记录
-        3. 返回主机详情（包含硬件信息和审批时间）
-        4. 密码字段需要解密（AEC加密）
+        2. 关联 host_hw_rec 表，获取 sync_state=2 的列表数据，按 updated_time 倒序排序
+        3. 返回主机详情（包含硬件信息列表）
+        4. 密码字段需要解密（AES加密）
 
         Args:
             host_id: 主机ID（host_rec.id）
 
         Returns:
-            dict: 包含主机详情信息
+            dict: 包含主机详情信息，包含 hw_list 字段（硬件信息列表）
 
         Raises:
             BusinessError: 主机不存在时
@@ -800,7 +800,7 @@ class AdminHostService:
                     details={"host_id": host_id},
                 )
 
-            # 2. 查询 host_hw_rec 表 sync_state=2 的最新一条记录
+            # 2. 查询 host_hw_rec 表 sync_state=2 的列表数据，按 updated_time 倒序排序
             hw_stmt = (
                 select(HostHwRec)
                 .where(
@@ -810,11 +810,10 @@ class AdminHostService:
                         HostHwRec.del_flag == 0,
                     )
                 )
-                .order_by(HostHwRec.created_time.desc())
-                .limit(1)
+                .order_by(HostHwRec.updated_time.desc())
             )
             hw_result = await session.execute(hw_stmt)
-            hw_rec = hw_result.scalar_one_or_none()
+            hw_recs = hw_result.scalars().all()
 
             # 3. 解密密码（AES加密）
             ***REMOVED*** = None
@@ -848,7 +847,17 @@ class AdminHostService:
                     # 解密失败时返回 None，而不是抛出异常
                     ***REMOVED*** = None
 
-            # 4. 构建响应数据
+            # 4. 构建硬件信息列表
+            hw_list = []
+            for hw_rec in hw_recs:
+                hw_list.append(
+                    {
+                        "hw_info": hw_rec.hw_info,
+                        "appr_time": hw_rec.appr_time,
+                    }
+                )
+
+            # 5. 构建响应数据
             detail = {
                 "mg_id": host_rec.mg_id,
                 "mac": host_rec.mac_addr,
@@ -856,8 +865,7 @@ class AdminHostService:
                 "username": host_rec.host_acct,
                 "***REMOVED***word": ***REMOVED***,
                 "port": host_rec.host_port,
-                "hw_info": hw_rec.hw_info if hw_rec else None,
-                "appr_time": hw_rec.appr_time if hw_rec else None,
+                "hw_list": hw_list,
             }
 
             logger.info(

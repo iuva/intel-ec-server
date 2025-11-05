@@ -321,6 +321,15 @@ class AdminHostDetailRequest(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminHostHwDetailInfo(BaseModel):
+    """管理后台主机硬件详情信息响应模式"""
+
+    hw_info: Optional[Dict[str, Any]] = Field(default=None, description="硬件信息（host_hw_rec 表 hw_info）")
+    appr_time: Optional[datetime] = Field(default=None, description="审批时间（host_hw_rec 表 appr_time）")
+
+    model_config = {"from_attributes": True}
+
+
 class AdminHostDetailResponse(BaseModel):
     """管理后台主机详情响应模式"""
 
@@ -330,11 +339,9 @@ class AdminHostDetailResponse(BaseModel):
     username: Optional[str] = Field(default=None, description="主机账号（host_rec 表 host_acct）")
     ***REMOVED***word: Optional[str] = Field(default=None, description="主机密码（host_rec 表 host_pwd，已解密）")
     port: Optional[int] = Field(default=None, description="端口（host_rec 表 host_port）")
-    hw_info: Optional[Dict[str, Any]] = Field(
-        default=None, description="硬件信息（host_hw_rec 表 hw_info，sync_state=2的最新一条）"
-    )
-    appr_time: Optional[datetime] = Field(
-        default=None, description="审批时间（host_hw_rec 表 appr_time，sync_state=2的最新一条）"
+    hw_list: List[AdminHostHwDetailInfo] = Field(
+        default_factory=list,
+        description="硬件信息列表（host_hw_rec 表 sync_state=2 的记录，按 updated_time 倒序）",
     )
 
     model_config = {"from_attributes": True}
