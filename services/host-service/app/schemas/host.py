@@ -422,6 +422,10 @@ class AdminApprHostInfo(BaseModel):
         description="主机状态（host_rec 表 host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
     )
     subm_time: Optional[datetime] = Field(default=None, description="申报时间（host_rec 表 subm_time）")
+    diff_state: Optional[int] = Field(
+        default=None,
+        description="参数状态（host_hw_rec 表 diff_state，最新一条记录；1-版本号变化, 2-内容更改, 3-异常）",
+    )
 
     model_config = {"from_attributes": True}
 

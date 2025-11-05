@@ -25,5 +25,5 @@ api_router.include_router(agent_websocket.router, tags=["Agent-WebSocket连接"]
 api_router.include_router(agent_websocket_management.router, tags=["Agent-WebSocket管理"])
 
 # 管理后台路由
-api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["管理后台-主机管理"])
+api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["管理后台-可用主机管理"])
 api_router.include_router(admin_appr_host.router, prefix="/admin/appr-host", tags=["管理后台-待审批主机管理"])

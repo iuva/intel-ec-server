@@ -80,6 +80,7 @@ async def list_appr_hosts(
     - `mac_addr`: MAC地址（host_rec 表 mac_addr）
     - `host_state`: 主机状态（host_rec 表 host_state）
     - `subm_time`: 申报时间（host_rec 表 subm_time）
+    - `diff_state`: 参数状态（host_hw_rec 表 diff_state，最新一条记录；1-版本号变化, 2-内容更改, 3-异常）
 
     Args:
         request: 查询请求参数（分页、搜索条件）

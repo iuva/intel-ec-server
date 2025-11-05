@@ -110,12 +110,59 @@ class AdminApprHostService:
             if request.host_state is not None:
                 base_conditions.append(HostRec.host_state == request.host_state)
 
+            # 构建子查询：获取每个 host_id 对应的最新 host_hw_rec 记录的 diff_state
+            # 1. 获取每个 host_id 的最大 created_time
+            max_time_subquery = (
+                select(
+                    HostHwRec.host_id,
+                    func.max(HostHwRec.created_time).label("max_created_time"),
+                )
+                .where(HostHwRec.del_flag == 0)
+                .group_by(HostHwRec.host_id)
+                .subquery()
+            )
+
+            # 2. 获取每个 host_id 的最大 id（当 created_time 相同时，确保唯一性）
+            max_id_subquery = (
+                select(
+                    HostHwRec.host_id,
+                    func.max(HostHwRec.id).label("max_id"),
+                )
+                .select_from(
+                    HostHwRec.join(
+                        max_time_subquery,
+                        and_(
+                            HostHwRec.host_id == max_time_subquery.c.host_id,
+                            HostHwRec.created_time == max_time_subquery.c.max_created_time,
+                            HostHwRec.del_flag == 0,
+                        ),
+                    )
+                )
+                .group_by(HostHwRec.host_id)
+                .subquery()
+            )
+
+            # 3. 获取最新硬件记录的 diff_state
+            latest_hw_subquery = (
+                select(
+                    HostHwRec.host_id,
+                    HostHwRec.diff_state,
+                )
+                .select_from(
+                    HostHwRec.join(
+                        max_id_subquery,
+                        HostHwRec.id == max_id_subquery.c.max_id,
+                    )
+                )
+                .subquery()
+            )
+
             # 1. 查询总数
             count_stmt = select(func.count(HostRec.id)).where(and_(*base_conditions))
             count_result = await session.execute(count_stmt)
             total = count_result.scalar() or 0
 
-            # 2. 分页查询：按 created_time 倒序排序
+            # 2. 分页查询：按 created_time 倒序排序，LEFT JOIN 获取 diff_state
             pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
 
             stmt = (
@@ -125,6 +172,11 @@ class AdminApprHostService:
                     HostRec.mac_addr,
                     HostRec.host_state,
                     HostRec.subm_time,
+                    latest_hw_subquery.c.diff_state,
+                )
+                .outerjoin(
+                    latest_hw_subquery,
+                    HostRec.id == latest_hw_subquery.c.host_id,
                 )
                 .where(and_(*base_conditions))
                 .order_by(HostRec.created_time.desc())
@@ -144,6 +196,7 @@ class AdminApprHostService:
                     mac_addr=row.mac_addr,
                     host_state=row.host_state,
                     subm_time=row.subm_time,
+                    diff_state=row.diff_state,
                 )
                 host_info_list.append(host_info)
 
