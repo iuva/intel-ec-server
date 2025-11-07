@@ -47,9 +47,11 @@ class HostRec(Base):
     )
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
-        comment="主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中."
-        "offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动. "
-        "disable: 7, 手动停用. updating: 8, 更新中.}",
+        comment=(
+            "主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中."
+            "offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动. "
+            "disable: 7, 手动停用. updating: 8, 更新中.}"
+        ),
     )
 
     # 时间字段

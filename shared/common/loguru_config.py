@@ -7,9 +7,7 @@
 import logging
 import os
 import sys
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from loguru import logger
 

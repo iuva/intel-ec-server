@@ -14,7 +14,7 @@ try:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Request, WebSocket
     from fastapi.responses import JSONResponse
-    from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
+    from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.i18n import parse_accept_language, t
@@ -27,7 +27,7 @@ except ImportError:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Request, WebSocket
     from fastapi.responses import JSONResponse
-    from starlette.status import HTTP_404_NOT_FOUND, HTTP_500_INTERNAL_SERVER_ERROR
+    from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.i18n import parse_accept_language, t

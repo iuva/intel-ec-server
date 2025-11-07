@@ -11,7 +11,8 @@
       "list_query": "Host list query successful",
       "delete": "Host deleted successfully",
       "update_approval": "Host approval status updated successfully",
-      "already_in_state": "Host is already {state_name}"
+      "already_in_state": "Host is already {state_name}",
+      "approved": "Host approved successfully"
     },
     "hardware": {
       "report": "Hardware information reported successfully",
@@ -27,6 +28,13 @@
     "vnc": {
       "report": "VNC connection result reported successfully",
       "get_connection": "Get VNC connection information successful"
+    },
+    "ota": {
+      "list_query": "OTA configuration list query successful",
+      "deploy": "OTA configuration deployed successfully"
+    },
+    "file": {
+      "upload": "File uploaded successfully"
     }
   },
   "error": {
@@ -45,7 +53,12 @@
       "delete_operation_failed": "Failed to delete host",
       "update_approval_failed": "Failed to update host approval status",
       "not_connected": "Host not connected: {host_id}",
-      "exec_log_not_found": "Execution log not found for host {host_id} test case {tc_id}"
+      "exec_log_not_found": "Execution log not found for host {host_id} test case {tc_id}",
+      "hardware_not_found": "Hardware record not found for approval (ID: {host_id})",
+      "appr_host_ids_required": "host_ids is required when diff_type=2",
+      "diff_type_not_supported": "Unsupported diff_type: {diff_type}",
+      "process_failed": "Processing failed: {error}",
+      "approve_failed": "Host approval failed: {error}"
     },
     "websocket": {
       "invalid_message_format": "Message must contain type field",
@@ -71,6 +84,10 @@
       "service_timeout": "Authentication service response timeout, please try again later",
       "service_unavailable": "Authentication service temporarily unavailable, please try again later",
       "logout_error": "Logout failed"
+    },
+    "email": {
+      "empty": "Email address cannot be empty",
+      "set_failed": "Failed to set maintenance notification email: {error}"
     }
   }
 }

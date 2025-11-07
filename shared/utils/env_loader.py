@@ -11,8 +11,9 @@ try:
     from dotenv import load_dotenv
 except ImportError:
     # 如果没有安装 python-dotenv，提供空函数
-    def load_dotenv(*args, **kwargs):  # type: ignore
-        ***REMOVED***
+    def load_dotenv(*args, **kwargs) -> bool:
+        """Fallback function when python-dotenv is not installed"""
+        return False
 
 
 def load_env_file(env_file: Optional[str] = None) -> bool:

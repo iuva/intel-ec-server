@@ -11,13 +11,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field
 
 try:
-    from shared.common.i18n import get_i18n_manager, t
+    from shared.common.i18n import t
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-    from shared.common.i18n import get_i18n_manager, t
+    from shared.common.i18n import t
 
 
 class SuccessResponse(BaseModel):

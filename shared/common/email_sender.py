@@ -115,4 +115,3 @@ async def send_email(
         "failed_count": failed_count,
         "errors": errors,
     }
-

@@ -117,7 +117,8 @@ async def list_ota_configs(
 
     return SuccessResponse(
         data=response_data.model_dump(),
-        message="查询 OTA 配置列表成功",
+        message_key="success.ota.list_query",
+        locale=locale,
     )
 
 
@@ -222,5 +223,6 @@ async def deploy_ota_config(
 
     return SuccessResponse(
         data=response_data.model_dump(),
-        message="OTA 配置下发成功",
+        message_key="success.ota.deploy",
+        locale=locale,
     )

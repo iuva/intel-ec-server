@@ -121,7 +121,8 @@ async def upload_file(
 
     return SuccessResponse(
         data=response_data.model_dump(),
-        message="文件上传成功",
+        message_key="success.file.upload",
+        locale=locale,
     )
 
 

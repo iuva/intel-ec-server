@@ -11,7 +11,8 @@
       "list_query": "查询主机列表成功",
       "delete": "主机删除成功",
       "update_approval": "主机审批状态更新成功",
-      "already_in_state": "主机已是{state_name}状态"
+      "already_in_state": "主机已是{state_name}状态",
+      "approved": "主机启用成功"
     },
     "hardware": {
       "report": "硬件信息上报成功",
@@ -27,6 +28,13 @@
     "vnc": {
       "report": "VNC连接结果上报成功",
       "get_connection": "获取 VNC 连接信息成功"
+    },
+    "ota": {
+      "list_query": "查询 OTA 配置列表成功",
+      "deploy": "OTA 配置下发成功"
+    },
+    "file": {
+      "upload": "文件上传成功"
     }
   },
   "error": {
@@ -45,7 +53,12 @@
       "delete_operation_failed": "删除主机失败",
       "update_approval_failed": "更新主机审批状态失败",
       "not_connected": "Host 未连接: {host_id}",
-      "exec_log_not_found": "未找到主机 {host_id} 的测试用例 {tc_id} 执行记录"
+      "exec_log_not_found": "未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
+      "hardware_not_found": "未找到待审批的硬件记录（ID: {host_id}）",
+      "appr_host_ids_required": "当 diff_type=2 时，host_ids 为必填参数",
+      "diff_type_not_supported": "不支持的 diff_type: {diff_type}",
+      "process_failed": "处理失败: {error}",
+      "approve_failed": "同意启用主机失败: {error}"
     },
     "websocket": {
       "invalid_message_format": "消息必须包含 type 字段",
@@ -66,7 +79,15 @@
       "permission_denied": "权限不足",
       "service_timeout": "认证服务响应超时，请稍后重试",
       "service_unavailable": "认证服务暂时不可用，请稍后重试",
-      "service_error": "认证服务请求失败"
+      "service_error": "认证服务请求失败",
+      "invalid_token_type": "无效的令牌类型",
+      "refresh_error": "令牌刷新失败",
+      "user_disabled": "用户账号已被禁用",
+      "logout_error": "登出失败"
+    },
+    "email": {
+      "empty": "邮箱地址不能为空",
+      "set_failed": "设置维护通知邮箱失败: {error}"
     }
   }
 }

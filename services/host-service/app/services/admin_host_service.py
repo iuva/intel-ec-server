@@ -28,6 +28,7 @@ try:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_encrypt, aes_decrypt
+    from shared.utils.host_validators import validate_host_exists
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -47,6 +48,7 @@ except ImportError:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_encrypt, aes_decrypt
+    from shared.utils.host_validators import validate_host_exists
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
 logger = get_logger(__name__)
@@ -299,31 +301,8 @@ class AdminHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除
-            check_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只检查未删除的记录
-                )
-            )
-            check_result = await session.execute(check_stmt)
-            host_rec = check_result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机不存在或已删除",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在或已删除（ID: {host_id}）",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 1. 检查主机是否存在且未删除（使用工具函数）
+            await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
             # 2. 执行逻辑删除（设置 del_flag = 1）
             update_stmt = (
@@ -471,31 +450,8 @@ class AdminHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除
-            check_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只检查未删除的记录
-                )
-            )
-            check_result = await session.execute(check_stmt)
-            host_rec = check_result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机不存在或已删除",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在或已删除（ID: {host_id}）",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 1. 检查主机是否存在且未删除（使用工具函数）
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
             # 2. 检查当前状态是否已经是停用状态
             if host_rec.appr_state == 0 and host_rec.host_state == 7:
@@ -608,31 +564,8 @@ class AdminHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除
-            check_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只检查未删除的记录
-                )
-            )
-            check_result = await session.execute(check_stmt)
-            host_rec = check_result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机不存在或已删除",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在或已删除（ID: {host_id}）",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 1. 检查主机是否存在且未删除（使用工具函数）
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
             # 2. 更新主机状态为离线（host_state = 4）
             update_stmt = (
@@ -774,31 +707,8 @@ class AdminHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 查询 host_rec 表基础信息
-            host_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只查询未删除的记录
-                )
-            )
-            host_result = await session.execute(host_stmt)
-            host_rec = host_result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机不存在或已删除",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在或已删除（ID: {host_id}）",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 1. 验证主机是否存在且未删除（使用工具函数）
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
             # 2. 查询 host_hw_rec 表 sync_state=2 的列表数据，按 updated_time 倒序排序
             hw_stmt = (
@@ -910,31 +820,8 @@ class AdminHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除
-            check_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只检查未删除的记录
-                )
-            )
-            check_result = await session.execute(check_stmt)
-            host_rec = check_result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机不存在或已删除",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在或已删除（ID: {host_id}）",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 1. 检查主机是否存在且未删除（使用工具函数）
+            await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
             # 2. 对密码进行 AES 加密
             try:

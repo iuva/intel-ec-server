@@ -27,9 +27,9 @@ from sqlalchemy import select
 try:
     from shared.common.cache import get_cache, set_cache
     from shared.common.database import mariadb_manager
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
-    from shared.common.security import JWTManager, hash_***REMOVED***word, verify_***REMOVED***word
+    from shared.common.security import JWTManager, verify_***REMOVED***word
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     import sys
@@ -37,9 +37,9 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.cache import get_cache, set_cache
     from shared.common.database import mariadb_manager
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
-    from shared.common.security import JWTManager, hash_***REMOVED***word, verify_***REMOVED***word
+    from shared.common.security import JWTManager, verify_***REMOVED***word
 
 logger = get_logger(__name__)
 

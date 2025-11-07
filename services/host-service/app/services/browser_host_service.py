@@ -15,8 +15,9 @@ from sqlalchemy import and_, select, update
 try:
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
+    from shared.utils.host_validators import validate_host_exists
 except ImportError:
     import os
     import sys
@@ -24,8 +25,9 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
+    from shared.utils.host_validators import validate_host_exists
 
 logger = get_logger(__name__)
 
@@ -63,25 +65,8 @@ class BrowserHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id_int,
-                    HostRec.del_flag == 0,
-                )
-            )
-
-            result = await session.execute(stmt)
-            host = result.scalar_one_or_none()
-
-            if not host:
-                raise BusinessError(
-                    message=f"主机不存在: {host_id}",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 使用工具函数验证主机存在
+            host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
             logger.info(
                 "查询主机信息成功",
@@ -129,25 +114,8 @@ class BrowserHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id_int,
-                    HostRec.del_flag == 0,
-                )
-            )
-
-            result = await session.execute(stmt)
-            host = result.scalar_one_or_none()
-
-            if not host:
-                raise BusinessError(
-                    message=f"主机不存在: {host_id}",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 使用工具函数验证主机存在
+            host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
             # 更新主机状态
             if status_update.host_state is not None:
@@ -202,25 +170,8 @@ class BrowserHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id_int,
-                    HostRec.del_flag == 0,
-                )
-            )
-
-            result = await session.execute(stmt)
-            host = result.scalar_one_or_none()
-
-            if not host:
-                raise BusinessError(
-                    message=f"主机不存在: {host_id}",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 使用工具函数验证主机存在
+            host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
             # 更新心跳时间
             host.updated_at = datetime.now(timezone.utc)
@@ -382,7 +333,8 @@ class BrowserHostService:
 
         except Exception as e:
             logger.error(
-                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={e!s}",
+                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, "
+                f"错误类型={type(e).__name__}, 错误消息={e!s}",
                 extra={
                     "host_id": host_id,
                     "tcp_state": tcp_state,

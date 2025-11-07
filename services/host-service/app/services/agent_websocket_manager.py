@@ -231,7 +231,8 @@ class AgentWebSocketManager:
 
             message_type = message.get("type", "unknown")
             logger.info(
-                f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | 内容: {json.dumps(message, ensure_ascii=False)}",
+                f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | "
+                f"内容: {json.dumps(message, ensure_ascii=False)}",
             )
 
             websocket = self.active_connections[host_id]
@@ -293,7 +294,8 @@ class AgentWebSocketManager:
 
         message_json = json.dumps(message, ensure_ascii=False)
         logger.info(
-            f"📢 开始广播消息 | 类型: {message_type} | 目标数量: {len(target_hosts)} | 排除: {exclude} | 内容: {message_json}",
+            f"📢 开始广播消息 | 类型: {message_type} | 目标数量: {len(target_hosts)} | "
+        f"排除: {exclude} | 内容: {message_json}",
         )
 
         success_count = 0

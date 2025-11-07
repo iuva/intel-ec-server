@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, desc, func, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -31,6 +31,7 @@ try:
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
+    from shared.utils.host_validators import validate_host_exists
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -52,6 +53,7 @@ except ImportError:
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
+    from shared.utils.host_validators import validate_host_exists
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
 logger = get_logger(__name__)
@@ -299,7 +301,7 @@ class AdminApprHostService:
         error_message="查询待审批主机详情失败",
         error_code="QUERY_APPR_HOST_DETAIL_FAILED",
     )
-    async def get_appr_host_detail(self, host_id: int) -> AdminApprHostDetailResponse:
+    async def get_appr_host_detail(self, host_id: int, locale: str = "zh_CN") -> AdminApprHostDetailResponse:
         """查询待审批主机详情
 
         业务逻辑：
@@ -326,31 +328,8 @@ class AdminApprHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 查询 host_rec 表基础信息
-            host_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只查询未删除的记录
-                )
-            )
-            host_result = await session.execute(host_stmt)
-            host_rec = host_result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机不存在或已删除",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在或已删除（ID: {host_id}）",
-                    message_key="error.host.not_found",
-                    error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_NOT_FOUND,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
+            # 1. 验证主机是否存在且未删除（使用工具函数）
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
 
             # 2. 查询 host_hw_rec 表 sync_state=1 的所有记录（按 created_time 倒序）
             hw_stmt = (
@@ -516,7 +495,12 @@ class AdminApprHostService:
                     )
         else:
             raise BusinessError(
-                message=f"不支持的 diff_type: {request.diff_type}",
+                message=t(
+                    "error.host.diff_type_not_supported",
+                    locale=locale,
+                    diff_type=request.diff_type,
+                    default=f"不支持的 diff_type: {request.diff_type}",
+                ),
                 message_key="error.host.diff_type_not_supported",
                 error_code="DIFF_TYPE_NOT_SUPPORTED",
                 code=ServiceErrorCodes.VALIDATION_ERROR,
@@ -532,94 +516,93 @@ class AdminApprHostService:
 
                 now = datetime.now(timezone.utc)
 
+                # 优化：批量查询所有主机信息（避免 N+1 查询）
+                host_stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id.in_(host_ids_to_process),
+                        HostRec.del_flag == 0,
+                    )
+                )
+                host_result = await session.execute(host_stmt)
+                host_recs_map = {host.id: host for host in host_result.scalars().all()}
+
+                # 优化：批量查询所有硬件记录（避免 N+1 查询）
+                # 查询所有符合条件的硬件记录（包括最新和其他）
+                hw_rec_stmt = select(HostHwRec).where(
+                    and_(
+                        HostHwRec.host_id.in_(host_ids_to_process),
+                        HostHwRec.sync_state == 1,
+                        HostHwRec.del_flag == 0,
+                    )
+                ).order_by(HostHwRec.host_id, desc(HostHwRec.created_time), desc(HostHwRec.id))
+                hw_rec_result = await session.execute(hw_rec_stmt)
+                all_hw_recs = hw_rec_result.scalars().all()
+
+                # 按 host_id 组织硬件记录
+                hw_recs_by_host: Dict[int, List[HostHwRec]] = {}
+                for hw_rec in all_hw_recs:
+                    if hw_rec.host_id not in hw_recs_by_host:
+                        hw_recs_by_host[hw_rec.host_id] = []
+                    hw_recs_by_host[hw_rec.host_id].append(hw_rec)
+
+                # 准备批量更新的数据
+                latest_hw_ids_to_update: List[int] = []
+                other_hw_ids_to_update: List[int] = []
+                host_updates: Dict[int, Dict[str, Any]] = {}
+
                 # 处理每个主机
                 for host_id in host_ids_to_process:
                     try:
                         # 1. 验证主机是否存在且未删除
-                        host_stmt = select(HostRec).where(
-                            and_(
-                                HostRec.id == host_id,
-                                HostRec.del_flag == 0,
-                            )
-                        )
-                        host_result = await session.execute(host_stmt)
-                        host_rec = host_result.scalar_one_or_none()
-
+                        host_rec = host_recs_map.get(host_id)
                         if not host_rec:
                             results.append(
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": f"主机不存在或已删除（ID: {host_id}）",
+                                    "message": t("error.host.not_found", locale=locale, host_id=host_id),
                                 }
                             )
                             failed_count += 1
                             continue
 
-                        # 2. 查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
-                        hw_rec_stmt = (
-                            select(HostHwRec)
-                            .where(
-                                and_(
-                                    HostHwRec.host_id == host_id,
-                                    HostHwRec.sync_state == 1,
-                                    HostHwRec.del_flag == 0,
-                                )
-                            )
-                            .order_by(HostHwRec.created_time.desc(), HostHwRec.id.desc())
-                        )
-                        hw_rec_result = await session.execute(hw_rec_stmt)
-                        hw_recs = hw_rec_result.scalars().all()
+                        # 2. 获取该主机的硬件记录
+                        hw_recs = hw_recs_by_host.get(host_id, [])
 
                         if not hw_recs:
                             results.append(
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": f"未找到待审批的硬件记录（ID: {host_id}）",
+                                    "message": t(
+                                        "error.host.hardware_not_found",
+                                        locale=locale,
+                                        host_id=host_id,
+                                        default=f"未找到待审批的硬件记录（ID: {host_id}）",
+                                    ),
                                 }
                             )
                             failed_count += 1
                             continue
 
-                        # 3. 获取最新一条数据
+                        # 3. 获取最新一条数据（已按时间倒序排列）
                         latest_hw_rec = hw_recs[0]
                         latest_hw_id = latest_hw_rec.id
 
-                        # 4. 更新最新一条数据：sync_state = 2, appr_time = now(), appr_by = appr_by
-                        update_latest_stmt = (
-                            update(HostHwRec)
-                            .where(HostHwRec.id == latest_hw_id)
-                            .values(
-                                sync_state=2,
-                                appr_time=now,
-                                appr_by=appr_by,
-                            )
-                        )
-                        await session.execute(update_latest_stmt)
+                        # 4. 收集需要更新的数据
+                        latest_hw_ids_to_update.append(latest_hw_id)
 
-                        # 5. 更新其他数据：sync_state = 4
+                        # 5. 收集其他需要更新的硬件记录ID
                         if len(hw_recs) > 1:
-                            other_hw_ids = [hw.id for hw in hw_recs[1:]]
-                            update_other_stmt = (
-                                update(HostHwRec)
-                                .where(HostHwRec.id.in_(other_hw_ids))
-                                .values(sync_state=4)
-                            )
-                            await session.execute(update_other_stmt)
+                            other_hw_ids_to_update.extend([hw.id for hw in hw_recs[1:]])
 
-                        # 6. 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = latest_hw_id, subm_time = now()
-                        update_host_stmt = (
-                            update(HostRec)
-                            .where(HostRec.id == host_id)
-                            .values(
-                                appr_state=1,
-                                host_state=0,
-                                hw_id=latest_hw_id,
-                                subm_time=now,
-                            )
-                        )
-                        await session.execute(update_host_stmt)
+                        # 6. 收集主机更新信息
+                        host_updates[host_id] = {
+                            "appr_state": 1,
+                            "host_state": 0,
+                            "hw_id": latest_hw_id,
+                            "subm_time": now,
+                        }
 
                         # 7. TODO: 调用外部 API 同步 host_hw_rec 最新数据的 hw_info
                         # TODO: 实现外部 API 调用逻辑
@@ -629,7 +612,7 @@ class AdminApprHostService:
                             {
                                 "host_id": host_id,
                                 "success": True,
-                                "message": "主机启用成功",
+                                "message": t("success.host.approved", locale=locale, default="主机启用成功"),
                                 "hw_id": latest_hw_id,
                             }
                         )
@@ -649,11 +632,49 @@ class AdminApprHostService:
                             {
                                 "host_id": host_id,
                                 "success": False,
-                                "message": f"处理失败: {str(e)}",
+                                "message": t(
+                                    "error.host.process_failed",
+                                    locale=locale,
+                                    host_id=host_id,
+                                    error=str(e),
+                                    default=f"处理失败: {str(e)}",
+                                ),
                             }
                         )
                         failed_count += 1
                         continue
+
+                # 批量更新操作
+                if latest_hw_ids_to_update:
+                    # 批量更新最新硬件记录
+                    update_latest_stmt = (
+                        update(HostHwRec)
+                        .where(HostHwRec.id.in_(latest_hw_ids_to_update))
+                        .values(
+                            sync_state=2,
+                            appr_time=now,
+                            appr_by=appr_by,
+                        )
+                    )
+                    await session.execute(update_latest_stmt)
+
+                if other_hw_ids_to_update:
+                    # 批量更新其他硬件记录
+                    update_other_stmt = (
+                        update(HostHwRec)
+                        .where(HostHwRec.id.in_(other_hw_ids_to_update))
+                        .values(sync_state=4)
+                    )
+                    await session.execute(update_other_stmt)
+
+                # 批量更新主机记录
+                for host_id, update_values in host_updates.items():
+                    update_host_stmt = (
+                        update(HostRec)
+                        .where(HostRec.id == host_id)
+                        .values(**update_values)
+                    )
+                    await session.execute(update_host_stmt)
 
                 # 提交事务
                 await session.commit()

@@ -6,7 +6,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +92,6 @@ def resolve_mariadb_host(default_in_docker: str = "mariadb") -> str:
         # 优先尝试使用 host.docker.internal（适用于 macOS/Windows）
         # 如果用户需要连接到 Docker 中的数据库，应该显式设置 MARIADB_HOST
         # 这里提供一个合理的默认值：如果可能，尝试 host.docker.internal
-
-        import platform
-
-        system = platform.system().lower()
 
         # 对于 macOS/Windows，如果数据库在 Docker 中，建议使用 host.docker.internal
         # 但这里我们保守一点，默认使用 localhost，让用户通过环境变量明确指定
@@ -223,8 +218,10 @@ def resolve_service_ip() -> str:
         # 注意：在 Docker Compose 中，最可靠的方式是通过 ipv4_address 配置
         # 并通过环境变量 SERVICE_IP 传递
         logger.warning(
-            "无法自动检测 Docker 容器 IP，建议在 docker-compose.yml 中配置 SERVICE_IP 环境变量。"
-            "当前将使用 127.0.0.1（可能影响服务发现）",
+            (
+                "无法自动检测 Docker 容器 IP，建议在 docker-compose.yml 中配置 SERVICE_IP 环境变量。"
+                "当前将使用 127.0.0.1（可能影响服务发现）"
+            ),
             extra={"suggestion": "在 docker-compose.yml 中添加: SERVICE_IP: ${SERVICE_IP:-auto-detect-failed}"},
         )
         # 返回一个合理的默认值（虽然不理想，但至少不会失败）

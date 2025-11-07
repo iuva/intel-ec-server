@@ -412,7 +412,11 @@ class AdminApprHostListRequest(BaseModel):
     mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件，对应 host_rec.mg_id）")
     host_state: Optional[int] = Field(
         default=None,
-        description="主机状态（可选搜索条件，对应 host_rec.host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
+        description=(
+            "主机状态（可选搜索条件，对应 host_rec.host_state；"
+            "0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, "
+            "5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）"
+        ),
     )
 
     model_config = {"from_attributes": True}
@@ -426,7 +430,11 @@ class AdminApprHostInfo(BaseModel):
     mac_addr: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
     host_state: Optional[int] = Field(
         default=None,
-        description="主机状态（host_rec 表 host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
+        description=(
+            "主机状态（host_rec 表 host_state；"
+            "0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, "
+            "5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）"
+        ),
     )
     subm_time: Optional[datetime] = Field(default=None, description="申报时间（host_rec 表 subm_time）")
     diff_state: Optional[int] = Field(
@@ -479,9 +487,16 @@ class AdminApprHostDetailResponse(BaseModel):
     port: Optional[int] = Field(default=None, description="端口（host_rec 表 host_port）")
     host_state: Optional[int] = Field(
         default=None,
-        description="主机状态（host_rec 表 host_state；0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）",
+        description=(
+            "主机状态（host_rec 表 host_state；"
+            "0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线, "
+            "5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）"
+        ),
     )
-    hw_list: List[AdminApprHostHwInfo] = Field(default_factory=list, description="硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）")
+    hw_list: List[AdminApprHostHwInfo] = Field(
+        default_factory=list,
+        description="硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）",
+    )
 
     model_config = {"from_attributes": True}
 

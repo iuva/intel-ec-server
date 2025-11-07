@@ -45,6 +45,7 @@ router = APIRouter()
 async def admin_login(
     login_data: AdminLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """管理员登录（传统方式）
 
@@ -347,6 +348,7 @@ async def introspect_token(
 async def logout(
     logout_data: LogoutRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """用户注销
 

@@ -670,6 +670,103 @@ class UserService:
 | `has_next` | `property → bool` | 是否有下一页 |
 | `has_prev` | `property → bool` | 是否有上一页 |
 
+### 4. Host Validators - 主机验证工具函数
+
+**位置**: `shared/utils/host_validators.py`
+
+**功能**: 提供主机存在性验证和查询构建功能，减少代码重复
+
+**使用场景**:
+- 主机操作前的存在性验证
+- 主机查询条件构建
+- 减少重复的主机验证代码
+
+#### 基础使用
+
+```python
+from shared.utils.host_validators import validate_host_exists, build_host_query
+from app.models.host_rec import HostRec
+
+# 验证主机是否存在（不存在时抛出异常）
+async with session_factory() as session:
+    host_rec = await validate_host_exists(session, HostRec, host_id=123, locale="zh_CN")
+    # 如果主机不存在，会抛出 BusinessError
+
+# 验证主机是否存在（不存在时返回 None）
+async with session_factory() as session:
+    host_rec = await validate_host_exists(
+        session, 
+        HostRec, 
+        host_id=123, 
+        locale="zh_CN",
+        raise_on_not_found=False
+    )
+    if not host_rec:
+        # 处理主机不存在的情况
+        ***REMOVED***
+
+# 构建主机查询语句
+stmt = build_host_query(
+    HostRec,
+    host_id=123,
+    host_state=0,
+    appr_state=1,
+    include_deleted=False
+)
+result = await session.execute(stmt)
+hosts = result.scalars().all()
+```
+
+#### 在服务中使用
+
+```python
+from shared.utils.host_validators import validate_host_exists
+from app.models.host_rec import HostRec
+
+class AdminHostService:
+    """管理后台主机管理服务"""
+
+    async def delete_host(self, host_id: int) -> int:
+        """删除主机（逻辑删除）"""
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 使用工具函数验证主机存在
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
+            
+            # 执行删除操作
+            # ...
+```
+
+**API参考**:
+
+#### validate_host_exists函数
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `session` | `AsyncSession` | 数据库会话 |
+| `host_model` | `Type[T]` | 主机模型类（如 HostRec） |
+| `host_id` | `int` | 主机ID |
+| `locale` | `str` | 语言代码（默认："zh_CN"） |
+| `raise_on_not_found` | `bool` | 如果主机不存在是否抛出异常（默认：True） |
+
+**返回值**: `Optional[T]` - 主机记录，如果不存在且不抛出异常则返回 None
+
+**抛出异常**: `BusinessError` - 如果主机不存在且 `raise_on_not_found=True`
+
+#### build_host_query函数
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `host_model` | `Type[T]` | 主机模型类（如 HostRec） |
+| `host_id` | `Optional[int]` | 主机ID（可选） |
+| `include_deleted` | `bool` | 是否包含已删除的记录（默认：False） |
+| `host_state` | `Optional[int]` | 主机状态（可选） |
+| `appr_state` | `Optional[int]` | 审批状态（可选） |
+| `mg_id` | `Optional[str]` | 唯一引导ID（可选，支持模糊匹配） |
+| `mac_addr` | `Optional[str]` | MAC地址（可选，支持模糊匹配） |
+
+**返回值**: `Select` - SQLAlchemy Select 语句
+
 ## 📈 代码复用效果
 
 通过使用共享工具类，我们实现了：
@@ -678,6 +775,19 @@ class UserService:
 - ✅ **维护成本降低**: 修改逻辑只需更新工具类
 - ✅ **一致性保障**: 统一的业务逻辑实现
 - ✅ **测试覆盖**: 工具类更容易编写单元测试
+
+### 主机验证工具效果
+
+通过提取主机验证逻辑，我们实现了：
+
+- ✅ **代码行数减少**: 5处重复的主机验证代码（每处约25行）被替换为1行工具函数调用
+- ✅ **代码可读性提升**: 从25行重复代码简化为1行清晰的函数调用
+- ✅ **错误处理统一**: 所有主机验证使用相同的错误消息和国际化支持
+- ✅ **类型安全**: 使用泛型类型变量，确保类型安全
+
+**使用位置**:
+- `services/host-service/app/services/admin_host_service.py` - 4处替换
+- `services/host-service/app/services/admin_appr_host_service.py` - 1处替换
 
 ---
 

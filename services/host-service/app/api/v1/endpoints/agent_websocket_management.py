@@ -314,7 +314,8 @@ async def broadcast_message(
     total_count = ws_manager.get_connection_count()
 
     logger.info(
-        f"广播消息完成: 目标 {total_count} 个Host, 成功 {success_count} 个, 排除: {exclude_host_id or '无'}, 类型: {message.get('type')}"
+        f"广播消息完成: 目标 {total_count} 个Host, 成功 {success_count} 个, "
+        f"排除: {exclude_host_id or '无'}, 类型: {message.get('type')}"
     )
 
     return SuccessResponse(

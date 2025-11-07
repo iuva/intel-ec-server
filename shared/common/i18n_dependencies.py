@@ -11,10 +11,10 @@ from typing import Optional
 from fastapi import Header, Request
 
 try:
-    from shared.common.i18n import get_i18n_manager, parse_accept_language, t
+    from shared.common.i18n import parse_accept_language, t
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-    from shared.common.i18n import get_i18n_manager, parse_accept_language, t
+    from shared.common.i18n import parse_accept_language, t
 
 
 def get_locale(

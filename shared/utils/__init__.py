@@ -15,6 +15,14 @@ from shared.utils.service_discovery import ServiceDiscovery, get_service_discove
 from shared.utils.template_validator import TemplateValidator
 from shared.utils.token_extractor import TokenExtractor, get_token_extractor
 
+# 主机验证和查询工具（延迟导入，避免循环依赖）
+try:
+    from shared.utils.host_validators import build_host_query, validate_host_exists
+except ImportError:
+    # 如果导入失败，提供占位符（避免循环导入）
+    validate_host_exists = None  # type: ignore[assignment, misc]
+    build_host_query = None  # type: ignore[assignment, misc]
+
 __all__ = [
     # JSON 对比工具
     "JSONComparator",
@@ -32,4 +40,7 @@ __all__ = [
     # Token 提取工具
     "TokenExtractor",
     "get_token_extractor",
+    # 主机验证工具
+    "validate_host_exists",
+    "build_host_query",
 ]

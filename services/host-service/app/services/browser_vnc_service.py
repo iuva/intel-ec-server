@@ -8,10 +8,11 @@
 from datetime import datetime, timezone
 from typing import Optional, cast
 
+from sqlalchemy import and_, select, update
+
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import VNCConnectionReport
-from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -19,6 +20,7 @@ try:
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.utils.host_validators import validate_host_exists
 except ImportError:
     import os
     import sys
@@ -28,6 +30,7 @@ except ImportError:
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.utils.host_validators import validate_host_exists
 
 logger = get_logger(__name__)
 
@@ -88,29 +91,8 @@ class BrowserVNCService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 验证主机是否存在
-            stmt = select(HostRec).where(
-                HostRec.id == host_id_int,
-                HostRec.del_flag == 0,
-            )
-            result = await session.execute(stmt)
-            host_rec = result.scalar_one_or_none()
-
-            if not host_rec:
-                logger.warning(
-                    "主机记录不存在",
-                    extra={
-                        "operation": "report_vnc_connection",
-                        "host_id": vnc_report.host_id,
-                        "user_id": vnc_report.user_id,
-                        "error_code": "HOST_NOT_FOUND",
-                    },
-                )
-                raise BusinessError(
-                    message=f"主机不存在: {vnc_report.host_id}",
-                    error_code="HOST_NOT_FOUND",
-                    code=400,
-                )
+            # 1. 使用工具函数验证主机存在且未删除
+            host_rec = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
             # 记录更新前的状态
             old_host_state = host_rec.host_state
@@ -223,7 +205,10 @@ class BrowserVNCService:
                 "host_id": vnc_report.host_id,
                 "connection_status": vnc_report.connection_status,
                 "connection_time": vnc_report.connection_time,
-                "message": f"VNC连接结果上报成功，主机已锁定{f'，执行日志已{exec_log_action}' if exec_log_action else ''}",
+                "message": (
+                    f"VNC连接结果上报成功，主机已锁定"
+                    f"{f'，执行日志已{exec_log_action}' if exec_log_action else ''}"
+                ),
             }
 
     @handle_service_errors(
@@ -282,31 +267,23 @@ class BrowserVNCService:
             # 查询主机记录
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
-                # 查询条件：ID 匹配、已启用、未删除
-                stmt = select(HostRec).where(
-                    and_(
-                        HostRec.id == host_id,  # 主机ID 匹配
-                        HostRec.appr_state == 1,  # 启用状态
-                        HostRec.del_flag == 0,  # 未删除
-                    )
-                )
+                # 使用工具函数验证主机存在且未删除
+                host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
-                result = await session.execute(stmt)
-                host_rec = result.scalar_one_or_none()
-
-                # 检查主机是否存在
-                if not host_rec:
+                # 检查主机是否已启用（appr_state == 1）
+                if host_rec.appr_state != 1:
                     logger.warning(
-                        "主机不存在或无效",
+                        "主机未启用",
                         extra={
                             "host_rec_id": host_rec_id,
-                            "error": "host not found or inactive",
+                            "appr_state": host_rec.appr_state,
+                            "error": "host not enabled",
                         },
                     )
                     raise BusinessError(
-                        message="主机不存在或未启用",
-                        message_key="error.host.not_found",
-                        error_code="HOST_NOT_FOUND",
+                        message="主机未启用",
+                        message_key="error.host.not_enabled",
+                        error_code="HOST_NOT_ENABLED",
                         code=ServiceErrorCodes.HOST_NOT_FOUND,
                         http_status_code=400,
                     )
