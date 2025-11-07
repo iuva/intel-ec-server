@@ -174,6 +174,7 @@ async def device_login(
 async def admin_login(
     login_data: AdminLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """管理员登录（传统方式）
 
