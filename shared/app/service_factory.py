@@ -50,6 +50,9 @@ class ServiceConfig:
         redis_url: Redis连接URL
         jwt_secret_key: JWT密钥
         jaeger_endpoint: Jaeger端点
+        enable_nacos: 是否启用Nacos服务发现
+        enable_jaeger: 是否启用Jaeger追踪
+        enable_prometheus: 是否启用Prometheus监控
     """
 
     def __init__(
@@ -63,6 +66,9 @@ class ServiceConfig:
         jwt_secret_key: Optional[str] = None,
         jaeger_endpoint: Optional[str] = None,
         hardware_api_url: Optional[str] = None,
+        enable_nacos: bool = True,
+        enable_jaeger: bool = True,
+        enable_prometheus: bool = True,
     ):
         """
         初始化服务配置
@@ -77,6 +83,9 @@ class ServiceConfig:
             jwt_secret_key: JWT 密钥
             jaeger_endpoint: Jaeger 端点
             hardware_api_url: 硬件接口基础 URL
+            enable_nacos: 是否启用Nacos服务发现（默认：True）
+            enable_jaeger: 是否启用Jaeger追踪（默认：True）
+            enable_prometheus: 是否启用Prometheus监控（默认：True）
         """
         self.service_name = service_name
         self.service_port = service_port
@@ -88,6 +97,11 @@ class ServiceConfig:
 
         self.jaeger_endpoint = jaeger_endpoint
         self.hardware_api_url = hardware_api_url
+
+        # 组件开关配置
+        self.enable_nacos = enable_nacos
+        self.enable_jaeger = enable_jaeger
+        self.enable_prometheus = enable_prometheus
 
     @staticmethod
     def from_env(service_name: str, service_port_key: str = "SERVICE_PORT") -> "ServiceConfig":
@@ -152,6 +166,19 @@ class ServiceConfig:
         # 外部服务 API 配置
         hardware_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
 
+        # 组件开关配置（支持环境变量，默认启用）
+        # 环境变量值：true/True/1/yes/Yes 表示启用，其他值表示禁用
+        def parse_bool_env(env_key: str, default: bool = True) -> bool:
+            """解析布尔环境变量"""
+            value = os.getenv(env_key)
+            if value is None:
+                return default
+            return value.lower() in ("true", "1", "yes", "on", "enabled")
+
+        enable_nacos = parse_bool_env("ENABLE_NACOS", default=True)
+        enable_jaeger = parse_bool_env("ENABLE_JAEGER", default=True)
+        enable_prometheus = parse_bool_env("ENABLE_PROMETHEUS", default=True)
+
         return ServiceConfig(
             service_name=service_name,
             service_port=service_port,
@@ -162,6 +189,9 @@ class ServiceConfig:
             jwt_secret_key=jwt_secret_key,
             jaeger_endpoint=jaeger_endpoint,
             hardware_api_url=hardware_api_url,
+            enable_nacos=enable_nacos,
+            enable_jaeger=enable_jaeger,
+            enable_prometheus=enable_prometheus,
         )
 
 
@@ -226,42 +256,54 @@ class ServiceLifecycleManager:
             )
             logger.info("数据库连接初始化成功")
 
-            # 2. 初始化Jaeger追踪
-            if self.config.jaeger_endpoint:
+            # 2. 初始化Jaeger追踪（根据开关）
+            if self.config.enable_jaeger and self.config.jaeger_endpoint:
                 logger.info("初始化Jaeger追踪...")
-                init_jaeger(
-                    service_name=self.config.service_name,
-                    jaeger_endpoint=self.config.jaeger_endpoint,
-                    environment=os.getenv("ENVIRONMENT", "production"),
-                    service_version="1.0.0",
-                )
-                # ❌ 注意：不要在这里调用 auto_instrument_app(app)
-                # 因为应用已经在处理请求，无法再添加中间件
-                # auto_instrument_app(app)
-                logger.info("Jaeger 追踪初始化成功")
+                try:
+                    init_jaeger(
+                        service_name=self.config.service_name,
+                        jaeger_endpoint=self.config.jaeger_endpoint,
+                        environment=os.getenv("ENVIRONMENT", "production"),
+                        service_version="1.0.0",
+                    )
+                    # ❌ 注意：不要在这里调用 auto_instrument_app(app)
+                    # 因为应用已经在处理请求，无法再添加中间件
+                    # auto_instrument_app(app)
+                    logger.info("Jaeger 追踪初始化成功")
+                except Exception as e:
+                    logger.warning(f"Jaeger 追踪初始化失败: {e!s}, 继续运行...")
 
-            # 3. 初始化监控指标
-            logger.info("初始化监控指标...")
-            init_metrics(
-                service_name=self.config.service_name,
-                service_version="1.0.0",
-                environment=os.getenv("ENVIRONMENT", "production"),
-            )
-
-            logger.info("监控指标初始化成功")
+            # 3. 初始化监控指标（根据开关）
+            if self.config.enable_prometheus:
+                logger.info("初始化监控指标...")
+                try:
+                    init_metrics(
+                        service_name=self.config.service_name,
+                        service_version="1.0.0",
+                        environment=os.getenv("ENVIRONMENT", "production"),
+                    )
+                    logger.info("监控指标初始化成功")
+                except Exception as e:
+                    logger.warning(f"监控指标初始化失败: {e!s}, 继续运行...")
 
             # ❌ 不要在这里注册异常处理器！
             # 异常处理器必须在 FastAPI app 创建时就注册（在 main.py 中）
             # 在 lifespan 启动时注册会导致重复注册，破坏路由表
             # 参考: services/*/app/main.py - app.add_middleware(UnifiedExceptionMiddleware)
 
-            # 5. 初始化Nacos服务注册
-            logger.info("初始化Nacos服务发现...")
-            await self._init_nacos(app)
-            logger.info("Nacos 初始化完成")
+            # 5. 初始化Nacos服务注册（根据开关）
+            if self.config.enable_nacos:
+                logger.info("初始化Nacos服务发现...")
+                await self._init_nacos(app)
+                logger.info("Nacos 初始化完成")
 
-            # 6. 设置 Nacos 管理器到服务发现实例
-            if hasattr(app.state, "service_discovery") and app.state.service_discovery and self.nacos_manager:
+            # 6. 设置 Nacos 管理器到服务发现实例（仅在启用Nacos时）
+            if (
+                self.config.enable_nacos
+                and hasattr(app.state, "service_discovery")
+                and app.state.service_discovery
+                and self.nacos_manager
+            ):
                 app.state.service_discovery.set_nacos_manager(self.nacos_manager)
                 logger.info("✅ 服务发现已连接到 Nacos")
 
@@ -371,8 +413,8 @@ class ServiceLifecycleManager:
                     else:
                         handler()
 
-            # 2. 停止Nacos心跳检测
-            if self.nacos_manager:
+            # 2. 停止Nacos心跳检测（仅在启用Nacos时）
+            if self.config.enable_nacos and self.nacos_manager:
                 self.nacos_manager.stop_heartbeat()
                 logger.info("Nacos 心跳检测已停止")
 

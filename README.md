@@ -249,6 +249,60 @@ POST /api/v1/host/ws/send
 
 ### Environment Variables
 
+## 📝 最近修复记录
+
+### 2025-11-11 - 修复Gateway未传递X-User-Info header问题
+
+**问题**: Host服务返回401错误 "缺少 X-User-Info header，请求可能未通过 Gateway 认证"
+
+**根本原因**: 
+1. Gateway的`AuthMiddleware`成功验证JWT token后，将用户信息存储在`request.state.user`
+2. 但在转发请求到下游服务时，**没有将用户信息添加到请求头中**
+3. Host服务的`get_current_user`依赖期望从`X-User-Info` header获取用户信息
+
+**修复方案**:
+1. ✅ `services/gateway-service/app/api/v1/endpoints/proxy.py` - 在转发请求前，从`request.state.user`获取用户信息
+2. ✅ 将用户信息序列化为JSON字符串，添加到请求headers中作为`X-User-Info`
+3. ✅ 添加详细的调试日志，记录用户信息和header状态
+
+**验证结果**:
+- ✅ 下游服务能够正确接收`X-User-Info` header
+- ✅ Host服务的`get_current_user`依赖正常工作
+- ✅ API请求不再返回401错误
+
+**代码变更**:
+```python
+# 在转发请求前添加用户信息到请求头
+user_info = getattr(request.state, "user", None)
+if user_info:
+    headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
+    logger.debug("添加用户信息到请求头", extra={...})
+```
+
+---
+
+### 2025-11-10 - 修复 `KeyError: '"user_id"'` 错误
+
+**问题**: host-service 在处理 X-User-Info header 时出现 `KeyError` 异常
+
+**根本原因**: 
+1. Loguru 在记录日志时，会尝试使用 `extra` 字典中的 key 作为格式化变量
+2. 当 `extra` 中包含复杂对象（如字典）时，会导致序列化失败
+
+**修复方案**:
+1. ✅ `shared/common/i18n.py` - 过滤翻译函数的 kwargs，只保留基本类型
+2. ✅ `shared/common/response.py` - 过滤 ErrorResponse 初始化的参数
+3. ✅ `services/host-service/app/api/v1/dependencies.py` - 确保所有 logger.info/error 的 `extra` 只包含基本类型
+
+**验证结果**:
+- ✅ 无 KeyError 错误
+- ✅ 日志正常记录
+- ✅ API 返回正确的错误响应
+
+---
+
+### 环境变量
+
 ```bash
 # Python environment configuration
 # Used to ensure pyright and runtime can correctly locate shared modules

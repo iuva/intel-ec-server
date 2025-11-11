@@ -148,6 +148,7 @@ def configure_logger(
                 f"<cyan>{service_name}</cyan> | "
                 "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
                 "<level>{message}</level>"
+                "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
             ),
             "level": log_level,
             "colorize": True,
@@ -173,6 +174,7 @@ def configure_logger(
                     f"{service_name} | "
                     "{name}:{function}:{line} | "
                     "{message}"
+                    "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
                 ),
                 "level": log_level,
                 "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
@@ -198,6 +200,7 @@ def configure_logger(
                     f"{service_name} | "
                     "{name}:{function}:{line} | "
                     "{message}"
+                    "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
                 ),
                 "level": "ERROR",
                 "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
