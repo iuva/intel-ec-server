@@ -354,6 +354,20 @@ async def proxy_request(
                 del headers[key]
                 logger.debug(f"移除Content-Length头部: {key}")
 
+        # ✅ 添加用户信息到请求头（从request.state.user获取）
+        user_info = getattr(request.state, "user", None)
+        if user_info:
+            # 将用户信息序列化为JSON并添加到请求头
+            headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
+            logger.debug(
+                "添加用户信息到请求头",
+                extra={
+                    "user_id": user_info.get("user_id"),
+                    "username": user_info.get("username"),
+                    "user_type": user_info.get("user_type"),
+                },
+            )
+
         # 记录请求日志
         logger.info(
             f"代理请求: {method} /{service_name}/{subpath}",
@@ -361,7 +375,8 @@ async def proxy_request(
                 "service_name": service_name,
                 "method": method,
                 "path": subpath,
-                "user": getattr(request.state, "user", None),
+                "user": user_info,
+                "has_user_info_header": "X-User-Info" in headers,
             },
         )
 

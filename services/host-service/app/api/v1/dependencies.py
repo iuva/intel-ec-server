@@ -24,7 +24,6 @@ try:
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
-    from shared.utils.token_extractor import get_token_extractor
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.services.browser_host_service import BrowserHostService
@@ -34,7 +33,6 @@ except ImportError:
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
-    from shared.utils.token_extractor import get_token_extractor
 
 logger = get_logger(__name__)
 
@@ -175,27 +173,70 @@ def get_file_manage_service() -> "FileManageService":
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:
-    """获取当前用户信息（从 token 中提取）
+    """获取当前用户信息（从 Gateway 传递的 header 中获取）
 
-    从请求的 Authorization 头中提取并验证 JWT token，
-    返回用户信息。
+    ✅ 注意：认证已在 Gateway 中完成，这里只需要从 Gateway 传递的 header 中获取用户信息。
+    不再需要验证 token，因为 Gateway 已经验证过了。
 
     Args:
         request: FastAPI 请求对象
 
     Returns:
-        dict: 用户信息
+        dict: 用户信息，包含：
+            - user_id: 用户ID
+            - username: 用户名
+            - user_type: 用户类型（admin/device/user）
+            - active: 是否激活
 
     Raises:
-        HTTPException: token 缺失、无效或验证失败时抛出 401
+        HTTPException: 缺少用户信息时抛出 401
     """
     try:
-        from shared.utils.token_extractor import get_token_extractor
+        import json
 
-        extractor = get_token_extractor()
-        is_valid, user_info = await extractor.extract_and_verify(request)
+        # ✅ 从 Gateway 传递的 header 中获取用户信息
+        # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
+        user_info_header = request.headers.get("X-User-Info")
 
-        if not is_valid or not user_info:
+        # 打印 X-User-Info header 信息（用于调试）
+        if user_info_header:
+            header_preview = (
+                user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
+            )
+            logger.info(
+                "接收 X-User-Info header",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "has_x_user_info": True,
+                    "x_user_info_preview": header_preview,
+                    "x_user_info_length": len(user_info_header),
+                    "x_user_info_full": user_info_header,
+                },
+            )
+        else:
+            logger.warning(
+                f"未接收到 X-User-Info header | path={request.url.path} | method={request.method}",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "has_x_user_info": False,
+                    "all_headers": dict(request.headers),
+                },
+            )
+
+        if not user_info_header:
+            # 如果没有 X-User-Info header，说明请求可能不是通过 Gateway 转发的
+            # 或者 Gateway 认证中间件没有设置用户信息
+            logger.warning(
+                "缺少 X-User-Info header，请求可能未通过 Gateway 认证",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "client_host": request.client.host if request.client else "unknown",
+                },
+            )
+
             # 获取语言偏好
             accept_language = request.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
@@ -204,12 +245,136 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
                     code=HTTP_401_UNAUTHORIZED,
-                    message="缺少有效的认证令牌",
-                    message_key="error.auth.missing_token",
+                    message="缺少用户认证信息",
+                    message_key="error.auth.missing_user_info",
                     error_code="UNAUTHORIZED",
+                    locale=locale,
+                    details={
+                        "hint": "请求必须通过 Gateway 转发，Gateway 会在认证后传递用户信息",
+                    },
+                ).model_dump(),
+            )
+
+        # 解析用户信息 JSON
+        try:
+            # 先验证 JSON 格式
+            if not user_info_header or not user_info_header.strip():
+                raise ValueError("X-User-Info header 为空")
+
+            user_info = json.loads(user_info_header)
+
+            # 验证 user_info 是字典类型
+            if not isinstance(user_info, dict):
+                raise ValueError(
+                    f"X-User-Info 解析后不是字典类型，而是: {type(user_info).__name__}"
+                )
+
+            # 记录解析后的用户信息键（用于调试）
+            user_info_keys = list(user_info.keys()) if isinstance(user_info, dict) else []
+            logger.info(
+                "解析 X-User-Info header 成功（原始内容已记录）",
+                extra={
+                    "user_info_keys": user_info_keys,
+                    "user_info_type": type(user_info).__name__,
+                    "raw_header": user_info_header,
+                    "path": request.url.path,
+                },
+            )
+
+            # 打印解析后的用户信息（用于调试）- 使用 .get() 避免 KeyError
+            user_id = user_info.get("user_id")
+            username = user_info.get("username")
+            user_type = user_info.get("user_type")
+            active = user_info.get("active")
+
+            logger.info(
+                (
+                    f"解析 X-User-Info header 成功 | user_id={user_id} | "
+                    f"username={username} | user_type={user_type} | active={active} | "
+                    f"path={request.url.path}"
+                ),
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "user_id": user_id,
+                    "username": username,
+                    "user_type": user_type,
+                    "active": active,
+                },
+            )
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            header_length = len(user_info_header) if user_info_header else 0
+            header_preview = (
+                user_info_header[:200] + "..."
+                if user_info_header and len(user_info_header) > 200
+                else user_info_header
+            )
+            logger.opt(exception=e).error(
+                (
+                    "解析 X-User-Info header 失败 | path={} | error={} | error_type={} | "
+                    "header_length={} | header_preview={}"
+                ).format(
+                    request.url.path,
+                    str(e),
+                    type(e).__name__,
+                    header_length,
+                    header_preview,
+                ),
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "header_value_preview": header_preview,
+                    "header_length": header_length,
+                    "header_full": user_info_header,
+                    "path": request.url.path,
+                    "method": request.method,
+                },
+            )
+
+            # 获取语言偏好
+            accept_language = request.headers.get("Accept-Language")
+            locale = parse_accept_language(accept_language)
+
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=ErrorResponse(
+                    code=HTTP_401_UNAUTHORIZED,
+                    message="用户信息格式错误",
+                    message_key="error.auth.invalid_user_info",
+                    error_code="INVALID_USER_INFO",
                     locale=locale,
                 ).model_dump(),
             )
+
+        # 验证用户信息是否包含必要字段
+        if not user_info.get("user_id"):
+            logger.warning(
+                "用户信息缺少 user_id 字段",
+                extra={
+                    "user_info_keys": str(list(user_info.keys())),
+                    "path": request.url.path,
+                },
+            )
+            # 即使缺少 user_id，也返回用户信息，让业务层处理
+            # 因为某些场景下可能允许匿名访问
+
+        user_id = user_info.get("user_id")
+        username = user_info.get("username")
+        user_type = user_info.get("user_type")
+        active = user_info.get("active")
+
+        logger.info(
+            (
+                f"从 Gateway 获取用户信息成功 | user_id={user_id} | "
+                f"username={username} | user_type={user_type} | active={active}"
+            ),
+            extra={
+                "user_id": user_id,
+                "username": username,
+                "user_type": user_type,
+                "active": active,
+            },
+        )
 
         return user_info
 
@@ -217,7 +382,25 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         raise
 
     except Exception as e:
-        logger.error(f"获取当前用户失败: {str(e)}", exc_info=True)
+        x_user_info_header = request.headers.get("X-User-Info")
+        header_info = (
+            "有 X-User-Info header" if x_user_info_header else "无 X-User-Info header"
+        )
+
+        logger.opt(exception=e).error(
+            (
+                f"获取当前用户失败 | path={request.url.path} | method={request.method} | "
+                f"error_type={type(e).__name__} | error={str(e)} | {header_info}"
+            ),
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "has_x_user_info": x_user_info_header is not None,
+                "x_user_info_header": x_user_info_header,
+            },
+        )
 
         # 获取语言偏好
         accept_language = request.headers.get("Accept-Language")
@@ -227,33 +410,33 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
                 code=HTTP_401_UNAUTHORIZED,
-                message="认证失败",
-                message_key="error.auth.login_failed",
-                error_code="AUTHENTICATION_FAILED",
+                message="获取用户信息失败",
+                message_key="error.auth.get_user_failed",
+                error_code="GET_USER_FAILED",
                 locale=locale,
             ).model_dump(),
         )
 
 
 async def get_current_agent(request: Request) -> Dict[str, Any]:
-    """获取当前 Agent 信息（从 token 中提取）
+    """获取当前 Agent 信息（从 Gateway 传递的 header 中获取）
 
-    从请求的 Authorization 头中提取并验证 JWT token，
-    调用 auth-service 验证后返回 Agent 信息。
+    ✅ 注意：认证已在 Gateway 中完成，这里只需要从 Gateway 传递的 header 中获取用户信息。
+    不再需要验证 token，因为 Gateway 已经验证过了。
 
     Args:
         request: FastAPI 请求对象
 
     Returns:
         dict: Agent 信息，包含：
-            - host_id: 主机ID（来自 token 的 user_id/sub 字段）
+            - host_id: 主机ID（来自 user_id 字段）
             - username: Agent 用户名
             - user_type: 用户类型（应为 "device"）
-            - permissions: 权限列表
+            - permissions: 权限列表（如果有）
             - mg_id: 管理组ID（如果有）
 
     Raises:
-        HTTPException: token 缺失、无效或验证失败时抛出 401
+        HTTPException: 缺少用户信息时抛出 401
 
     Example:
         >>> @router.post("/hardware/report")
@@ -263,15 +446,51 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         >>>     host_id = agent_info["host_id"]
     """
     try:
-        # 获取 Token 提取器
-        extractor = get_token_extractor()
+        import json
 
-        # 提取并验证 token
-        is_valid, user_info = await extractor.extract_and_verify(request)
+        # ✅ 从 Gateway 传递的 header 中获取用户信息
+        # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
+        user_info_header = request.headers.get("X-User-Info")
 
-        if not is_valid or not user_info:
+        # 打印 X-User-Info header 信息（用于调试）
+        if user_info_header:
+            client_info = (
+                f"{request.client.host}:{request.client.port}" if request.client else "unknown"
+            )
+            header_preview = (
+                user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
+            )
+            logger.info(
+                (
+                    f"Agent 接收 X-User-Info header | path={request.url.path} | "
+                    f"method={request.method} | header_length={len(user_info_header)} | "
+                    f"header_preview={header_preview} | client={client_info}"
+                ),
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "has_x_user_info": True,
+                    "x_user_info_preview": header_preview,
+                    "x_user_info_length": len(user_info_header),
+                    "x_user_info_full": user_info_header,
+                    "client": client_info,
+                },
+            )
+        else:
+            client_info = f"{request.client.host}:{request.client.port}" if request.client else "unknown"
             logger.warning(
-                "Agent token 验证失败",
+                f"Agent 未接收到 X-User-Info header | path={request.url.path} | client={client_info}",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "has_x_user_info": False,
+                    "client": client_info,
+                },
+            )
+
+        if not user_info_header:
+            logger.warning(
+                "Agent 请求缺少 X-User-Info header，请求可能未通过 Gateway 认证",
                 extra={
                     "path": request.url.path,
                     "client": f"{request.client.host}:{request.client.port}" if request.client else "unknown",
@@ -285,19 +504,69 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
                     code=HTTP_401_UNAUTHORIZED,
-                    message="缺少有效的认证令牌",
-                    message_key="error.auth.missing_token",
+                    message="缺少用户认证信息",
+                    message_key="error.auth.missing_user_info",
                     error_code="UNAUTHORIZED",
+                    locale=locale,
+                    details={
+                        "hint": "请求必须通过 Gateway 转发，Gateway 会在认证后传递用户信息",
+                    },
+                ).model_dump(),
+            )
+
+        # 解析用户信息 JSON
+        try:
+            user_info = json.loads(user_info_header)
+
+            # 打印解析后的 Agent 用户信息（用于调试）
+            user_id = user_info.get("user_id")
+            username = user_info.get("username")
+            user_type = user_info.get("user_type")
+
+            logger.info(
+                (
+                    f"解析 Agent X-User-Info header 成功 | user_id={user_id} | "
+                    f"username={username} | user_type={user_type} | path={request.url.path}"
+                ),
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "user_info": user_info,
+                    "user_id": user_id,
+                    "username": username,
+                    "user_type": user_type,
+                },
+            )
+        except json.JSONDecodeError as e:
+            logger.error(
+                "解析 Agent X-User-Info header 失败",
+                extra={
+                    "error": str(e),
+                    "header_value_preview": user_info_header[:100] if len(user_info_header) > 100 else user_info_header,
+                },
+            )
+
+            # 获取语言偏好
+            accept_language = request.headers.get("Accept-Language")
+            locale = parse_accept_language(accept_language)
+
+            raise HTTPException(
+                status_code=HTTP_401_UNAUTHORIZED,
+                detail=ErrorResponse(
+                    code=HTTP_401_UNAUTHORIZED,
+                    message="用户信息格式错误",
+                    message_key="error.auth.invalid_user_info",
+                    error_code="INVALID_USER_INFO",
                     locale=locale,
                 ).model_dump(),
             )
 
-        # 提取 host_id（来自 user_id/sub 字段，这是设备登录时存储的 host_rec.id）
+        # 提取 host_id（来自 user_id 字段，这是设备登录时存储的 host_rec.id）
         host_id = user_info.get("user_id")
 
         if not host_id:
             logger.error(
-                "Token 中缺少 host_id",
+                "用户信息中缺少 user_id (host_id)",
                 extra={
                     "user_info": user_info,
                     "path": request.url.path,
@@ -311,9 +580,9 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail=ErrorResponse(
                     code=HTTP_401_UNAUTHORIZED,
-                    message="Token 格式错误：缺少 host_id",
-                    message_key="error.auth.invalid_token_format",
-                    error_code="INVALID_TOKEN_FORMAT",
+                    message="用户信息格式错误：缺少 user_id",
+                    message_key="error.auth.invalid_user_info",
+                    error_code="INVALID_USER_INFO",
                     locale=locale,
                 ).model_dump(),
             )
@@ -327,8 +596,8 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
             "mg_id": user_info.get("mg_id"),
         }
 
-        logger.info(
-            "Agent 认证成功",
+        logger.debug(
+            "从 Gateway 获取 Agent 信息成功",
             extra={
                 "host_id": agent_info["host_id"],
                 "username": agent_info["username"],

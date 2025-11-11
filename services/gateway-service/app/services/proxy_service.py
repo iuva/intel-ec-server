@@ -20,6 +20,7 @@ try:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient
     from shared.common.loguru_config import get_logger
+    from shared.utils.service_discovery import ServiceDiscovery
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -29,6 +30,7 @@ except ImportError:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient
     from shared.common.loguru_config import get_logger
+    from shared.utils.service_discovery import ServiceDiscovery
 
     # 导入 httpx 异常类
     try:
@@ -81,13 +83,14 @@ class ProxyService:
         )
 
         # 使用共享的 HTTP 客户端
+        # ✅ 恢复正常超时时间，异步版本
         self.http_client = AsyncHTTPClient(
-            timeout=30.0,
-            connect_timeout=10.0,
+            timeout=15.0,  # 恢复正常超时时间
+            connect_timeout=5.0,  # 恢复正常连接超时
             max_keepalive_connections=20,
             max_connections=100,
-            max_retries=3,
-            retry_delay=1.0,
+            max_retries=0,  # 禁用重试
+            retry_delay=0.0,  # 重试延迟设为 0
         )
 
         # 健康检查专用客户端（缓存以避免重复创建）
@@ -131,9 +134,14 @@ class ProxyService:
                 )
                 raise ServiceNotFoundError(service_name) from e
         else:
-            # 无服务发现时抛出异常
-            logger.error(f"服务发现未配置，无法获取服务地址: {service_name}")
-            raise ServiceNotFoundError(service_name)
+            # ✅ 修复：无服务发现时使用后备地址（本地开发环境）
+            fallback_discovery = ServiceDiscovery()
+            fallback_url = fallback_discovery._get_fallback_url(full_service_name)
+            logger.warning(
+                f"服务发现未配置，使用后备地址: {service_name} -> {fallback_url}",
+                extra={"service_name": service_name, "fallback_url": fallback_url},
+            )
+            return fallback_url
 
     def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
         """清理请求头 - 移除可能导致问题的头部
@@ -292,22 +300,29 @@ class ProxyService:
         try:
             # 获取服务 URL（异步）
             service_url = await self.get_service_url(service_name)
-
+            # logger.info(f"获取服务 URL: {service_url}")
             # 构建完整 URL
             full_url = self._build_service_url(service_url, path, service_name)
-
-            # 记录请求日志
-            logger.debug(
-                "转发请求到后端服务",
+            # logger.info(f"构建完整 URL: {full_url}")
+            # 记录请求日志（包含完整 URL）
+            logger.info(
+                f"转发请求到后端服务: {method} {full_url}",
                 extra={
                     "service_name": service_name,
                     "method": method,
                     "path": path,
+                    "full_url": full_url,
+                    "service_url": service_url,
                 },
             )
 
             # 清理请求头
             clean_headers = self._clean_headers(headers)
+
+            logger.debug(
+                f"清理后的请求头: {list(clean_headers.keys())}",
+                extra={"headers_count": len(clean_headers)},
+            )
 
             # 准备请求参数
             request_kwargs: Dict[str, Any] = {
@@ -318,19 +333,86 @@ class ProxyService:
             # 根据请求体类型设置不同的参数
             if raw_body is not None:
                 request_kwargs["data"] = raw_body
+                # 确保有 Content-Type 头
+                if "Content-Type" not in clean_headers:
+                    clean_headers["Content-Type"] = "application/json"
+                logger.debug(f"使用原始请求体，Content-Type: {clean_headers.get('Content-Type')}")
             elif body is not None:
                 request_kwargs["json"] = body
+                # json 参数会自动设置 Content-Type
+                logger.debug("使用 JSON 请求体")
+            else:
+                logger.debug("无请求体")
 
             # 使用异步 HTTP 客户端发送请求
-            return await self.http_client.request(
-                method=method,
-                url=full_url,
-                retry=True,  # 启用自动重试
-                **request_kwargs,
+            # ✅ 禁用重试：网关调用接口失败时不进行重试，直接返回错误
+            logger.info(
+                f"开始发送 HTTP 请求: {method} {full_url}",
+                extra={
+                    "method": method,
+                    "url": full_url,
+                    "has_json": "json" in request_kwargs,
+                    "has_data": "data" in request_kwargs,
+                    "timeout": 15.0,
+                    "connect_timeout": 5.0,
+                },
             )
+
+            try:
+                # ✅ 修复：使用共享的 AsyncHTTPClient
+                # 现在 AsyncHTTPClient 不会抛出异常，而是返回所有状态码的响应
+                logger.debug(f"使用 AsyncHTTPClient 发送请求: {method} {full_url}")
+
+                response = await self.http_client.request(
+                    method=method,
+                    url=full_url,
+                    retry=False,  # 禁用自动重试
+                    **request_kwargs,
+                )
+
+                status_code = response.get("status_code", 0)
+                logger.info(
+                    f"HTTP 请求完成: {method} {full_url} -> {status_code}",
+                    extra={
+                        "status_code": status_code,
+                        "has_body": response.get("body") is not None,
+                        "body_type": type(response.get("body")).__name__ if response.get("body") else None,
+                        "body_preview": str(response.get("body"))[:200] if response.get("body") else None,
+                    },
+                )
+
+                # ✅ 修复：检查响应状态码，如果是错误状态码（4xx, 5xx），处理后端错误
+                if 400 <= status_code < 600:
+                    # 使用新的方法处理响应字典中的错误
+                    await self._handle_backend_http_error_from_response(
+                        service_name, method, path, response
+                    )
+                    # _handle_backend_http_error_from_response 内部会抛出 BusinessError，不会返回
+                    # 防御性编程：如果异常处理出错，抛出运行时错误
+                    raise RuntimeError("不应该到达这里")
+
+                return response
+            except Exception as http_error:
+                logger.error(http_error)
+                # 添加详细的连接错误日志
+                logger.error(
+                    f"HTTP 请求异常: {method} {full_url}",
+                    extra={
+                        "method": method,
+                        "url": full_url,
+                        "error_type": type(http_error).__name__,
+                        "error_message": str(http_error),
+                    },
+                    exc_info=True,
+                )
+                raise
 
         except ServiceNotFoundError:
             # 重新抛出服务不存在异常
+            raise
+
+        except BusinessError:
+            # ✅ 重新抛出业务异常（来自后端服务的错误，应该直接透传）
             raise
 
         except HTTPStatusError as e:
@@ -599,6 +681,160 @@ class ProxyService:
                     # websockets.WebSocketClientProtocol
                     await destination.close()
 
+    async def _handle_backend_http_error_from_response(
+        self,
+        service_name: str,
+        method: str,
+        path: str,
+        response: Dict[str, Any],
+    ) -> None:
+        """从响应字典处理后端 HTTP 错误
+
+        Args:
+            service_name: 服务名称
+            method: HTTP 方法
+            path: 请求路径
+            response: HTTP 响应字典（包含 status_code, headers, body）
+
+        Raises:
+            BusinessError: 业务异常
+        """
+        status_code = response.get("status_code", 500)
+        response_body = response.get("body", {})
+
+        # ✅ 添加详细日志用于调试
+        logger.debug(
+            f"处理后端错误响应: {service_name}",
+            extra={
+                "status_code": status_code,
+                "response_body_type": type(response_body).__name__,
+                "response_body_is_empty": (
+                    not response_body or (isinstance(response_body, str) and not response_body.strip())
+                ),
+                "response_body_preview": str(response_body)[:200] if response_body else None,
+            },
+        )
+
+        # ✅ 修复：处理 502 错误（Bad Gateway）的特殊情况
+        # 502 通常表示网关无法连接到后端服务，响应体可能为空或无效
+        if status_code == 502:
+            # 检查响应体是否为空或无效
+            if not response_body or (isinstance(response_body, str) and not response_body.strip()):
+                # 502 且响应体为空，说明无法连接到后端服务
+                error_message = "后端服务不可用或连接失败"
+                error_code = "SERVICE_UNAVAILABLE"
+                error_details = {"service_name": service_name, "status_code": 502}
+                backend_error_code = status_code  # 502
+                message_key = None
+                locale = None
+            else:
+                # 502 但有响应体，尝试解析
+                response_data_502: Any = response_body
+                if isinstance(response_body, str):
+                    try:
+                        import json
+                        response_data_502 = json.loads(response_body)
+                    except (json.JSONDecodeError, TypeError):
+                        response_data_502 = {"message": response_body}
+
+                # 分析错误响应格式（支持 FastAPI 的 detail 格式）
+                if isinstance(response_data_502, dict):
+                    if "detail" in response_data_502 and isinstance(response_data_502["detail"], dict):
+                        error_detail_502 = response_data_502["detail"]
+                    else:
+                        error_detail_502 = response_data_502
+                else:
+                    error_detail_502 = {"message": str(response_data_502)}
+
+                error_message = error_detail_502.get("message", "后端服务不可用或连接失败")
+                error_code = error_detail_502.get("error_code", "SERVICE_UNAVAILABLE")
+                error_details_raw_502 = error_detail_502.get("details", {})
+                # ✅ 提取 message_key 和 locale（用于多语言支持）
+                message_key = error_detail_502.get("message_key")
+                locale = error_detail_502.get("locale")
+                # 确保 error_details 是字典类型
+                if isinstance(error_details_raw_502, dict):
+                    error_details_502: Dict[str, Any] = error_details_raw_502
+                else:
+                    error_details_502 = {
+                        "value": str(error_details_raw_502),
+                        "service_name": service_name,
+                        "status_code": 502,
+                    }
+                error_details = error_details_502
+                # 保留后端服务的自定义错误码（code），而不是用 HTTP 状态码覆盖
+                backend_error_code_raw = error_detail_502.get("code")
+                backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
+        else:
+            # 其他错误状态码（4xx, 5xx）
+            # 解析响应体
+            response_data: Any = response_body
+
+            # 尝试解析 JSON 响应体
+            if isinstance(response_body, str):
+                try:
+                    import json
+                    response_data = json.loads(response_body)
+                except (json.JSONDecodeError, TypeError):
+                    response_data = {"message": response_body}
+
+            # 分析错误响应格式
+            if isinstance(response_data, dict):
+                # FastAPI 标准错误格式
+                if "detail" in response_data and isinstance(response_data["detail"], dict):
+                    error_detail = response_data["detail"]
+                else:
+                    error_detail = response_data
+            else:
+                error_detail = {"message": str(response_data)}
+
+            # ✅ 提取关键错误信息，包括多语言支持字段
+            error_message = error_detail.get("message", f"后端服务错误: {status_code}")
+            error_code = error_detail.get("error_code", f"BACKEND_{status_code}")
+            error_details_raw = error_detail.get("details", {})
+            # ✅ 提取 message_key 和 locale（用于多语言支持）
+            message_key = error_detail.get("message_key")
+            locale = error_detail.get("locale")
+
+            # ✅ 保留后端服务的自定义错误码（code），而不是用 HTTP 状态码覆盖
+            backend_error_code_raw = error_detail.get("code")
+            backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
+
+            # 确保 error_details 是字典类型
+            if isinstance(error_details_raw, dict):
+                error_details: Dict[str, Any] = error_details_raw
+            else:
+                error_details = {"value": str(error_details_raw)}
+
+        # 记录详细错误日志
+        logger.warning(
+            "后端服务返回业务错误",
+            extra={
+                "service_name": service_name,
+                "method": method,
+                "path": path,
+                "status_code": status_code,
+                "error_code": error_code,
+                "error_message": error_message,
+                "error_details": error_details,
+                "backend_error_code": backend_error_code,
+                "message_key": message_key,
+                "locale": locale,
+            },
+        )
+
+        # ✅ 直接透传后端服务的错误信息，包括 code、message、error_code、message_key 和 locale
+        # 使用后端服务的 HTTP 状态码（如 401），而不是 502
+        raise BusinessError(
+            message=error_message,
+            code=backend_error_code,  # 使用后端的自定义错误码
+            error_code=error_code,
+            http_status_code=status_code,  # ✅ 使用后端服务的 HTTP 状态码（如 401）
+            message_key=message_key,  # ✅ 透传 message_key 以支持多语言
+            locale=locale,  # ✅ 透传 locale 以支持多语言
+            details=error_details,
+        )
+
     async def _handle_backend_http_error(
         self,
         service_name: str,
@@ -613,12 +849,85 @@ class ProxyService:
         status_code = http_error.response.status_code
 
         # 尝试解析响应体
+        # 注意：httpx 响应体只能读取一次，使用 content 属性可以多次访问
         try:
-            response_data = http_error.response.json()
-        except Exception:
-            # 如果不是JSON，尝试获取文本内容
-            response_text = http_error.response.text
-            response_data = {"message": response_text or "后端服务返回了无效响应"}
+            # 读取原始内容（content 属性可以多次访问）
+            response_content = http_error.response.content
+
+            # 添加详细日志用于调试
+            logger.debug(
+                f"解析后端响应: status_code={status_code}, content_length={len(response_content) if response_content else 0}",
+                extra={
+                    "service_name": service_name,
+                    "status_code": status_code,
+                    "content_length": len(response_content) if response_content else 0,
+                    "has_content": bool(response_content),
+                },
+            )
+
+            if not response_content:
+                # 502 状态码且响应体为空，可能是连接问题
+                if status_code == 502:
+                    response_data = {
+                        "message": "后端服务不可用或连接失败",
+                        "error_code": "SERVICE_UNAVAILABLE",
+                    }
+                else:
+                    response_data = {"message": f"后端服务返回了空响应（状态码: {status_code}）"}
+            else:
+                # 尝试解析为 JSON
+                try:
+                    import json
+
+                    response_text = response_content.decode("utf-8")
+                    response_data = json.loads(response_text)
+
+                    logger.debug(
+                        "成功解析 JSON 响应",
+                        extra={
+                            "service_name": service_name,
+                            "status_code": status_code,
+                            "response_keys": list(response_data.keys()) if isinstance(response_data, dict) else None,
+                        },
+                    )
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    # 如果不是 JSON，使用文本内容
+                    try:
+                        response_text = response_content.decode("utf-8", errors="ignore")
+                        response_data = {"message": response_text}
+
+                        logger.warning(
+                            "响应不是 JSON 格式，使用文本内容",
+                            extra={
+                                "service_name": service_name,
+                                "status_code": status_code,
+                                "response_preview": response_text[:200] if len(response_text) > 200 else response_text,
+                            },
+                        )
+                    except Exception as decode_error:
+                        logger.error(
+                            f"解码响应内容失败: {str(decode_error)}",
+                            extra={
+                                "service_name": service_name,
+                                "status_code": status_code,
+                                "decode_error": str(decode_error),
+                            },
+                            exc_info=True,
+                        )
+                        response_data = {"message": f"后端服务返回了无效响应（状态码: {status_code}）"}
+        except Exception as e:
+            # 如果所有解析都失败，使用默认错误信息
+            logger.error(
+                f"解析后端响应失败: {str(e)}",
+                extra={
+                    "service_name": service_name,
+                    "status_code": status_code,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
+            response_data = {"message": f"后端服务返回了无效响应（状态码: {status_code}）"}
 
         # 分析错误响应格式
         if isinstance(response_data, dict):
@@ -745,13 +1054,17 @@ async def get_proxy_service(request: Request) -> ProxyService:
     global _proxy_service_instance
 
     if _proxy_service_instance is None:
-        # 获取服务发现实例（如果存在）
+        # 获取服务发现实例（如果存在且不为 None）
         service_discovery = None
         if hasattr(request.app.state, "service_discovery"):
             service_discovery = request.app.state.service_discovery
-            logger.info("✅ 代理服务使用 Nacos 服务发现")
-        else:
-            logger.warning("⚠️ 代理服务未找到服务发现实例，使用静态配置")
+            # ✅ 修复：只有当 service_discovery 不为 None 且已连接 Nacos 时才认为使用了 Nacos
+            if service_discovery is not None and service_discovery.nacos_manager is not None:
+                logger.info("✅ 代理服务使用 Nacos 服务发现")
+            # else:
+            #     logger.info("⚠️ 代理服务使用后备地址（Nacos 未启用或未连接）")
+        # else:
+        #     logger.info("⚠️ 代理服务使用后备地址（服务发现未配置）")
 
         _proxy_service_instance = ProxyService(service_discovery=service_discovery)
 
@@ -772,13 +1085,17 @@ async def get_proxy_service_ws(websocket: WebSocket) -> ProxyService:
     global _proxy_service_instance
 
     if _proxy_service_instance is None:
-        # 获取服务发现实例（如果存在）
+        # 获取服务发现实例（如果存在且不为 None）
         service_discovery = None
         if hasattr(websocket.app.state, "service_discovery"):
             service_discovery = websocket.app.state.service_discovery
-            logger.info("✅ 代理服务（WebSocket）使用 Nacos 服务发现")
+            # ✅ 修复：只有当 service_discovery 不为 None 且已连接 Nacos 时才认为使用了 Nacos
+            if service_discovery is not None and service_discovery.nacos_manager is not None:
+                logger.info("✅ 代理服务（WebSocket）使用 Nacos 服务发现")
+            else:
+                logger.info("⚠️ 代理服务（WebSocket）使用后备地址（Nacos 未启用或未连接）")
         else:
-            logger.warning("⚠️ 代理服务（WebSocket）未找到服务发现实例，使用静态配置")
+            logger.info("⚠️ 代理服务（WebSocket）使用后备地址（服务发现未配置）")
 
         _proxy_service_instance = ProxyService(service_discovery=service_discovery)
 

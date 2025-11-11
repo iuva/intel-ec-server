@@ -48,9 +48,15 @@ class ServiceDiscovery:
         self._cache: Dict[str, Dict[str, Any]] = {}
 
         # 后备静态服务地址（环境变量优先）
+        # ✅ 修复：本地开发环境使用 127.0.0.1，Docker 环境使用服务名
+        # 检查是否在 Docker 环境中（通过检查环境变量或文件系统）
+        is_docker = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
+        auth_host = os.getenv("SERVICE_HOST_AUTH", "127.0.0.1" if not is_docker else "auth-service")
+        host_host = os.getenv("SERVICE_HOST_HOST", "127.0.0.1" if not is_docker else "host-service")
+
         self._fallback_urls = {
-            "auth-service": os.getenv("SERVICE_HOST_AUTH", "auth-service"),
-            "host-service": os.getenv("SERVICE_HOST_HOST", "host-service"),
+            "auth-service": auth_host,
+            "host-service": host_host,
         }
 
         logger.info(
@@ -192,13 +198,22 @@ class ServiceDiscovery:
         """获取后备 URL
 
         Args:
-            service_name: 服务名称
+            service_name: 服务名称（可能是短名称如 "host" 或完整名称如 "host-service"）
 
         Returns:
             服务 URL
         """
+        # 短名称到完整服务名的映射
+        short_to_full = {
+            "auth": "auth-service",
+            "host": "host-service",
+        }
+        
+        # 如果传入的是短名称，先映射为完整服务名
+        full_service_name = short_to_full.get(service_name, service_name)
+        
         # 获取后备主机名
-        fallback_host = self._fallback_urls.get(service_name, service_name)
+        fallback_host = self._fallback_urls.get(full_service_name, full_service_name)
 
         # 推断端口
         port_map = {
@@ -206,7 +221,7 @@ class ServiceDiscovery:
             "host-service": 8003,
         }
 
-        port = port_map.get(service_name, 8000)
+        port = port_map.get(full_service_name, 8000)
 
         return f"http://{fallback_host}:{port}"
 

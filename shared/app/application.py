@@ -221,6 +221,7 @@ def create_fastapi_app(
     jaeger_endpoint: Optional[str] = None,
     log_level: str = "INFO",
     enable_docs: bool = True,
+    enable_prometheus: bool = True,
     cors_origins: Optional[List[str]] = None,
     trusted_hosts: Optional[List[str]] = None,
     startup_handlers: Optional[List[Callable]] = None,
@@ -238,6 +239,7 @@ def create_fastapi_app(
         jaeger_endpoint: Jaeger端点
         log_level: 日志级别
         enable_docs: 是否启用API文档
+        enable_prometheus: 是否启用Prometheus监控（默认：True）
         cors_origins: CORS允许的源
         trusted_hosts: 信任的主机列表
         startup_handlers: 启动处理器列表
@@ -249,12 +251,13 @@ def create_fastapi_app(
     # 配置日志
     configure_logger(service_name=service_name, log_level=log_level)
 
-    # 初始化监控指标
-    init_metrics(
-        service_name=service_name,
-        service_version=service_version,
-        environment="development",
-    )
+    # 初始化监控指标（根据开关）
+    if enable_prometheus:
+        init_metrics(
+            service_name=service_name,
+            service_version=service_version,
+            environment="development",
+        )
 
     # 创建FastAPI应用
     app = FastAPI(
@@ -288,27 +291,29 @@ def create_fastapi_app(
             allow_headers=["*"],
         )
 
-    # 添加请求日志中间件
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next: Any) -> Any:
-        """记录HTTP请求"""
-        start_time = time.time()
+    # 添加请求日志中间件（仅在启用Prometheus时）
+    if enable_prometheus:
 
-        # 处理请求
-        response = await call_next(request)
+        @app.middleware("http")
+        async def log_requests(request: Request, call_next: Any) -> Any:
+            """记录HTTP请求"""
+            start_time = time.time()
 
-        # 计算耗时
-        duration = time.time() - start_time
+            # 处理请求
+            response = await call_next(request)
 
-        # 记录指标
-        metrics_collector.record_http_request(
-            method=request.method,
-            endpoint=request.url.path,
-            status=response.status_code,
-            duration=duration,
-        )
+            # 计算耗时
+            duration = time.time() - start_time
 
-        return response
+            # 记录指标
+            metrics_collector.record_http_request(
+                method=request.method,
+                endpoint=request.url.path,
+                status=response.status_code,
+                duration=duration,
+            )
+
+            return response
 
     # 注册异常处理器
     exception_handlers = create_exception_handlers()
@@ -339,11 +344,13 @@ def create_fastapi_app(
 
         return create_success_response(data=health_status)
 
-    # 监控指标端点
-    @app.get("/metrics", tags=["监控"])
-    async def metrics() -> Response:
-        """Prometheus监控指标"""
-        return get_metrics_response()
+    # 监控指标端点（仅在启用Prometheus时）
+    if enable_prometheus:
+
+        @app.get("/metrics", tags=["监控"])
+        async def metrics() -> Response:
+            """Prometheus监控指标"""
+            return get_metrics_response()
 
     # 根路径端点
     @app.get("/", tags=["根路径"])
@@ -355,7 +362,7 @@ def create_fastapi_app(
                 "version": service_version,
                 "docs": "/docs" if enable_docs else "disabled",
                 "health": "/health",
-                "metrics": "/metrics",
+                "metrics": "/metrics" if enable_prometheus else "disabled",
             },
             message=f"{service_name} 服务运行正常",
         )

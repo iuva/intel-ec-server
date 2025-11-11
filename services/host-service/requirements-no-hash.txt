@@ -17,7 +17,7 @@ redis==5.2.1
 # 认证和安全
 python-jose[cryptography]==3.3.0
 ***REMOVED***lib[bcrypt]==1.7.4
-bcrypt==4.2.1
+bcrypt==3.2.2
 PyJWT==2.8.0
 
 # 数据验证

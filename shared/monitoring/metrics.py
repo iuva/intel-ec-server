@@ -20,6 +20,7 @@ from prometheus_client import (
     ProcessCollector,
     generate_latest,
 )
+from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -463,7 +464,6 @@ def get_metrics_middleware(service_name: str) -> Callable:
     Returns:
         Prometheus指标收集中间件类
     """
-    from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
 
     return PrometheusMetricsMiddleware
 

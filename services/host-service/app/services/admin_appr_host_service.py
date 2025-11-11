@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from sqlalchemy import and_, desc, func, select, update
+from sqlalchemy.orm import aliased
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -167,135 +168,195 @@ class AdminApprHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            # 构建基础查询条件
-            # host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
-            base_conditions = [
-                HostRec.host_state > 4,
-                HostRec.host_state < 8,
-                HostRec.appr_state != 1,
-                HostRec.del_flag == 0,
-            ]
-
-            # 添加搜索条件
-            if request.mac:
-                base_conditions.append(HostRec.mac_addr.like(f"%{request.mac}%"))
-
-            if request.mg_id:
-                base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id}%"))
-
-            if request.host_state is not None:
-                base_conditions.append(HostRec.host_state == request.host_state)
-
-            # 构建子查询：获取每个 host_id 对应的最新 host_hw_rec 记录的 diff_state
-            # 1. 获取每个 host_id 的最大 created_time
-            max_time_subquery = (
-                select(
-                    HostHwRec.host_id,
-                    func.max(HostHwRec.created_time).label("max_created_time"),
-                )
-                .where(HostHwRec.del_flag == 0)
-                .group_by(HostHwRec.host_id)
-                .subquery()
-            )
-
-            # 2. 获取每个 host_id 的最大 id（当 created_time 相同时，确保唯一性）
-            max_id_subquery = (
-                select(
-                    HostHwRec.host_id,
-                    func.max(HostHwRec.id).label("max_id"),
-                )
-                .select_from(
-                    HostHwRec.join(
-                        max_time_subquery,
-                        and_(
-                            HostHwRec.host_id == max_time_subquery.c.host_id,
-                            HostHwRec.created_time == max_time_subquery.c.max_created_time,
-                            HostHwRec.del_flag == 0,
-                        ),
-                    )
-                )
-                .group_by(HostHwRec.host_id)
-                .subquery()
-            )
-
-            # 3. 获取最新硬件记录的 diff_state
-            latest_hw_subquery = (
-                select(
-                    HostHwRec.host_id,
-                    HostHwRec.diff_state,
-                )
-                .select_from(
-                    HostHwRec.join(
-                        max_id_subquery,
-                        HostHwRec.id == max_id_subquery.c.max_id,
-                    )
-                )
-                .subquery()
-            )
-
-            # 1. 查询总数
-            count_stmt = select(func.count(HostRec.id)).where(and_(*base_conditions))
-            count_result = await session.execute(count_stmt)
-            total = count_result.scalar() or 0
-
-            # 2. 分页查询：按 created_time 倒序排序，LEFT JOIN 获取 diff_state
-            pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
-
-            stmt = (
-                select(
-                    HostRec.id.label("host_id"),
-                    HostRec.mg_id,
-                    HostRec.mac_addr,
-                    HostRec.host_state,
-                    HostRec.subm_time,
-                    latest_hw_subquery.c.diff_state,
-                )
-                .outerjoin(
-                    latest_hw_subquery,
-                    HostRec.id == latest_hw_subquery.c.host_id,
-                )
-                .where(and_(*base_conditions))
-                .order_by(HostRec.created_time.desc())
-                .offset(pagination_params.offset)
-                .limit(pagination_params.limit)
-            )
-
-            result = await session.execute(stmt)
-            rows = result.all()
-
-            # 3. 构建响应数据
-            host_info_list: List[AdminApprHostInfo] = []
-            for row in rows:
-                host_info = AdminApprHostInfo(
-                    host_id=row.host_id,
-                    mg_id=row.mg_id,
-                    mac_addr=row.mac_addr,
-                    host_state=row.host_state,
-                    subm_time=row.subm_time,
-                    diff_state=row.diff_state,
-                )
-                host_info_list.append(host_info)
-
-            # 4. 构建分页响应
-            pagination_response = PaginationResponse(
-                page=request.page,
-                page_size=request.page_size,
-                total=total,
-            )
-
-            logger.info(
-                "查询待审批主机列表完成",
+        try:
+            session_factory = mariadb_manager.get_session()
+            logger.debug("获取数据库会话工厂成功")
+        except Exception as e:
+            logger.error(
+                "获取数据库会话工厂失败",
                 extra={
-                    "total": total,
-                    "returned_count": len(host_info_list),
-                    "page": request.page,
-                    "page_size": request.page_size,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
                 },
+                exc_info=True,
             )
+            raise
 
-            return host_info_list, pagination_response
+        try:
+            async with session_factory() as session:
+                logger.debug("数据库会话创建成功")
+                
+                # 构建基础查询条件
+                # host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
+                base_conditions = [
+                    HostRec.host_state > 4,
+                    HostRec.host_state < 8,
+                    HostRec.appr_state != 1,
+                    HostRec.del_flag == 0,
+                ]
+
+                # 添加搜索条件
+                if request.mac:
+                    base_conditions.append(HostRec.mac_addr.like(f"%{request.mac}%"))
+
+                if request.mg_id:
+                    base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id}%"))
+
+                if request.host_state is not None:
+                    base_conditions.append(HostRec.host_state == request.host_state)
+
+                # 构建子查询：获取每个 host_id 对应的最新 host_hw_rec 记录的 diff_state
+                # 1. 获取每个 host_id 的最大 created_time
+                max_time_subquery = (
+                    select(
+                        HostHwRec.host_id,
+                        func.max(HostHwRec.created_time).label("max_created_time"),
+                    )
+                    .where(HostHwRec.del_flag == 0)
+                    .group_by(HostHwRec.host_id)
+                    .subquery()
+                )
+
+                # 2. 获取每个 host_id 的最大 id（当 created_time 相同时，确保唯一性）
+                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+                # 使用 select_from() 配合 join() 在表对象上
+                max_id_subquery = (
+                    select(
+                        HostHwRec.host_id,
+                        func.max(HostHwRec.id).label("max_id"),
+                    )
+                    .select_from(
+                        HostHwRec.__table__.join(
+                            max_time_subquery,
+                            and_(
+                                HostHwRec.host_id == max_time_subquery.c.host_id,
+                                HostHwRec.created_time == max_time_subquery.c.max_created_time,
+                                HostHwRec.del_flag == 0,
+                            ),
+                        )
+                    )
+                    .group_by(HostHwRec.host_id)
+                    .subquery()
+                )
+
+                # 3. 获取最新硬件记录的 diff_state
+                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+                # 使用 select_from() 配合 join() 在表对象上
+                latest_hw_subquery = (
+                    select(
+                        HostHwRec.host_id,
+                        HostHwRec.diff_state,
+                    )
+                    .select_from(
+                        HostHwRec.__table__.join(
+                            max_id_subquery,
+                            HostHwRec.id == max_id_subquery.c.max_id,
+                        )
+                    )
+                    .subquery()
+                )
+
+                # 1. 查询总数
+                count_stmt = select(func.count(HostRec.id)).where(and_(*base_conditions))
+                count_result = await session.execute(count_stmt)
+                total = count_result.scalar() or 0
+
+                # 2. 分页查询：按 created_time 倒序排序，LEFT JOIN 获取 diff_state
+                pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
+
+                stmt = (
+                    select(
+                        HostRec.id.label("host_id"),
+                        HostRec.mg_id,
+                        HostRec.mac_addr,
+                        HostRec.host_state,
+                        HostRec.subm_time,
+                        latest_hw_subquery.c.diff_state,
+                    )
+                    .outerjoin(
+                        latest_hw_subquery,
+                        HostRec.id == latest_hw_subquery.c.host_id,
+                    )
+                    .where(and_(*base_conditions))
+                    .order_by(HostRec.created_time.desc())
+                    .offset(pagination_params.offset)
+                    .limit(pagination_params.limit)
+                )
+
+                try:
+                    result = await session.execute(stmt)
+                    rows = result.all()
+                except Exception as e:
+                    logger.error(
+                        "执行查询失败",
+                        extra={
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                            "sql_preview": str(stmt)[:500] if hasattr(stmt, '__str__') else "N/A",
+                        },
+                        exc_info=True,
+                    )
+                    raise
+
+                # 3. 构建响应数据
+                host_info_list: List[AdminApprHostInfo] = []
+                for row in rows:
+                    try:
+                        # 安全获取 diff_state，因为 LEFT JOIN 可能返回 None
+                        diff_state = getattr(row, 'diff_state', None)
+                        
+                        host_info = AdminApprHostInfo(
+                            host_id=row.host_id,
+                            mg_id=row.mg_id,
+                            mac_addr=row.mac_addr,
+                            host_state=row.host_state,
+                            subm_time=row.subm_time,
+                            diff_state=diff_state,
+                        )
+                        host_info_list.append(host_info)
+                    except Exception as e:
+                        logger.error(
+                            "构建 AdminApprHostInfo 对象失败",
+                            extra={
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                                "row_host_id": getattr(row, 'host_id', None),
+                                "row_mg_id": getattr(row, 'mg_id', None),
+                                "row_keys": [key for key in dir(row) if not key.startswith('_')],
+                            },
+                            exc_info=True,
+                        )
+                        raise
+
+                # 4. 构建分页响应
+                pagination_response = PaginationResponse(
+                    page=request.page,
+                    page_size=request.page_size,
+                    total=total,
+                )
+
+                logger.info(
+                    "查询待审批主机列表完成",
+                    extra={
+                        "total": total,
+                        "returned_count": len(host_info_list),
+                        "page": request.page,
+                        "page_size": request.page_size,
+                    },
+                )
+
+                return host_info_list, pagination_response
+        except Exception as e:
+            logger.error(
+                f"数据库操作失败: {type(e).__name__}: {str(e)}",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "function": "list_appr_hosts",
+                },
+                exc_info=True,
+            )
+            raise
 
     @handle_service_errors(
         error_message="查询待审批主机详情失败",

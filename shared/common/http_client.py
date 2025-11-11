@@ -162,51 +162,83 @@ class AsyncHTTPClient:
 
             response = await self.client.request(method, url, **kwargs)
             status_code = response.status_code
-            response.raise_for_status()
-
             duration = time.time() - start_time
             duration_ms = int(duration * 1000)
 
+            # ✅ 修复：不调用 raise_for_status()，返回所有状态码的响应
+            # 这样网关可以正确处理错误响应并透传给客户端
+
             # 解析响应体
             content_type = response.headers.get("content-type", "")
-            body = response.json() if "application/json" in content_type else response.text
+            try:
+                if "application/json" in content_type:
+                    try:
+                        body = response.json()
+                    except Exception as json_error:
+                        # JSON 解析失败，使用文本
+                        logger.warning(
+                            f"JSON 解析失败，使用文本: {method} {url}",
+                            extra={
+                                "method": method,
+                                "url": url,
+                                "status_code": status_code,
+                                "content_type": content_type,
+                                "error": str(json_error),
+                            },
+                        )
+                        body = response.text
+                else:
+                    body = response.text
+            except Exception as parse_error:
+                # 如果解析失败，使用原始文本
+                logger.warning(
+                    f"响应体解析失败: {method} {url}",
+                    extra={
+                        "method": method,
+                        "url": url,
+                        "status_code": status_code,
+                        "content_type": content_type,
+                        "error": str(parse_error),
+                    },
+                )
+                # 尝试获取原始文本
+                try:
+                    body = response.text
+                except Exception:
+                    # 如果连文本都获取不到，使用空字符串
+                    body = ""
 
-            result = {"status_code": response.status_code, "headers": dict(response.headers), "body": body}
+            result = {"status_code": status_code, "headers": dict(response.headers), "body": body}
 
-            # 记录成功指标
-            self._record_metrics(method, url, status_code, duration, success=True)
-
-            logger.info(
-                f"HTTP 请求成功: {method} {url}",
-                extra={
-                    "method": method,
-                    "url": url,
-                    "status_code": response.status_code,
-                    "duration_ms": duration_ms,
-                    "response_size": len(response.content),
-                },
-            )
+            # 根据状态码记录指标
+            if 200 <= status_code < 400:
+                # 成功响应
+                self._record_metrics(method, url, status_code, duration, success=True)
+                logger.info(
+                    f"HTTP 请求成功: {method} {url}",
+                    extra={
+                        "method": method,
+                        "url": url,
+                        "status_code": status_code,
+                        "duration_ms": duration_ms,
+                        "response_size": len(response.content),
+                    },
+                )
+            else:
+                # 错误响应（4xx, 5xx）
+                self._record_metrics(method, url, status_code, duration, success=False)
+                logger.warning(
+                    f"HTTP 请求返回错误状态: {method} {url}",
+                    extra={
+                        "method": method,
+                        "url": url,
+                        "status_code": status_code,
+                        "duration_ms": duration_ms,
+                        "response_size": len(response.content),
+                    },
+                )
 
             return result
-
-        except HTTPStatusError as e:
-            duration = time.time() - start_time
-            status_code = e.response.status_code
-
-            # 记录失败指标
-            self._record_metrics(method, url, status_code, duration, success=False)
-
-            logger.warning(
-                f"HTTP 请求返回错误状态: {method} {url}",
-                extra={
-                    "method": method,
-                    "url": url,
-                    "status_code": status_code,
-                    "error_message": str(e),
-                    "duration_ms": int(duration * 1000),
-                },
-            )
-            raise
 
         except RequestError as e:
             duration = time.time() - start_time
@@ -224,7 +256,34 @@ class AsyncHTTPClient:
                     "duration_ms": int(duration * 1000),
                 },
             )
-            raise
+            # ✅ 修复：返回错误响应字典而不是抛出异常，让网关可以处理
+            # RequestError 是 httpx 的基础异常类，包括 ConnectError, TimeoutException 等
+            # 检查具体的错误类型
+            from httpx import ConnectError, TimeoutException
+
+            if isinstance(e, ConnectError):
+                status_code = 502
+                error_code = "CONNECTION_ERROR"
+                message = "无法连接到后端服务"
+            elif isinstance(e, TimeoutException):
+                status_code = 504
+                error_code = "TIMEOUT_ERROR"
+                message = "后端服务响应超时"
+            else:
+                status_code = 502
+                error_code = "NETWORK_ERROR"
+                message = "网络错误"
+
+            return {
+                "status_code": status_code,
+                "headers": {},
+                "body": {
+                    "code": status_code,
+                    "message": message,
+                    "error_code": error_code,
+                    "details": {"url": url, "error": str(e)},
+                },
+            }
 
         except Exception as e:
             duration = time.time() - start_time

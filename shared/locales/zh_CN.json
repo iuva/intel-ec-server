@@ -9,6 +9,7 @@
     "logout": "登出成功",
     "host": {
       "list_query": "查询主机列表成功",
+      "appr_list_query": "查询待审批主机列表成功",
       "delete": "主机删除成功",
       "update_approval": "主机审批状态更新成功",
       "already_in_state": "主机已是{state_name}状态",
@@ -58,7 +59,12 @@
       "appr_host_ids_required": "当 diff_type=2 时，host_ids 为必填参数",
       "diff_type_not_supported": "不支持的 diff_type: {diff_type}",
       "process_failed": "处理失败: {error}",
-      "approve_failed": "同意启用主机失败: {error}"
+      "approve_failed": "同意启用主机失败: {error}",
+      "not_enabled": "主机未启用（ID: {host_id}）",
+      "disable_failed": "主机停用失败，记录可能已被删除（ID: {host_id}）",
+      "***REMOVED***word_encrypt_failed": "密码加密失败（ID: {host_id}）",
+      "***REMOVED***word_update_failed": "密码更新失败（ID: {host_id}）",
+      "force_offline_failed": "主机强制下线失败，记录可能已被删除（ID: {host_id}）"
     },
     "websocket": {
       "invalid_message_format": "消息必须包含 type 字段",
@@ -83,11 +89,20 @@
       "invalid_token_type": "无效的令牌类型",
       "refresh_error": "令牌刷新失败",
       "user_disabled": "用户账号已被禁用",
-      "logout_error": "登出失败"
+      "logout_error": "登出失败",
+      "missing_user_info": "缺少用户认证信息",
+      "invalid_user_info": "用户信息格式错误",
+      "get_user_failed": "获取用户信息失败"
     },
     "email": {
       "empty": "邮箱地址不能为空",
       "set_failed": "设置维护通知邮箱失败: {error}"
+    },
+    "service": {
+      "bad_gateway": "后端服务返回了无效响应",
+      "unavailable": "后端服务暂时不可用",
+      "timeout": "后端服务响应超时",
+      "error": "后端服务错误"
     }
   }
 }

@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 try:
     from shared.common.i18n import t
@@ -46,11 +46,13 @@ class SuccessResponse(BaseModel):
         locale = data.get("locale", "zh_CN")
 
         if message_key:
-            # 从 kwargs 中提取格式化变量（排除已定义的字段）
+            # 从 kwargs 中提取格式化变量（排除已定义的字段和复杂类型）
+            # 只传递基本类型（str, int, float, bool, None）给翻译函数，避免传递字典等复杂类型
             message_kwargs = {
                 k: v
                 for k, v in data.items()
                 if k not in ("code", "message", "message_key", "data", "timestamp", "locale")
+                and isinstance(v, (str, int, float, bool, type(None)))
             }
             translated_message = t(message_key, locale=locale, **message_kwargs)
             data["message"] = translated_message
@@ -58,6 +60,35 @@ class SuccessResponse(BaseModel):
             data.pop("message_key", None)
 
         super().__init__(**data)
+
+    @model_serializer
+    def serialize_model(self) -> Dict[str, Any]:
+        """序列化模型，排除 message_key 字段"""
+        data = {
+            "code": self.code,
+            "message": self.message,
+            "data": self.data,
+            "timestamp": self.timestamp,
+        }
+        # 只添加非 None 的 locale
+        if self.locale is not None:
+            data["locale"] = self.locale
+        return data
+
+    def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
+        """序列化模型
+
+        注意：默认排除 message_key 字段（因为 message 已经翻译），但保留 locale 字段
+        如果需要排除这些字段，可以在调用时传递 exclude 参数
+        """
+        # ✅ 排除 message_key（因为 message 已经翻译），但保留 locale
+        exclude = kwargs.pop("exclude", set())
+        if not isinstance(exclude, set):
+            exclude = set(exclude) if exclude else set()
+        # 排除 message_key（因为 message 已经翻译）
+        exclude.add("message_key")
+        # 保留 locale 字段，以便客户端知道使用的语言
+        return super().model_dump(exclude=exclude, exclude_none=True, **kwargs)
 
 
 class ErrorResponse(BaseModel):
@@ -97,19 +128,38 @@ class ErrorResponse(BaseModel):
         locale = data.get("locale", "zh_CN")
 
         if message_key:
-            # 从 kwargs 中提取格式化变量（排除已定义的字段）
+            # 从 kwargs 中提取格式化变量（排除已定义的字段和复杂类型）
+            # 只传递基本类型（str, int, float, bool, None）给翻译函数，避免传递字典等复杂类型
             message_kwargs = {
                 k: v
                 for k, v in data.items()
                 if k
                 not in ("code", "message", "message_key", "error_code", "details", "timestamp", "request_id", "locale")
+                and isinstance(v, (str, int, float, bool, type(None)))
             }
             translated_message = t(message_key, locale=locale, **message_kwargs)
             data["message"] = translated_message
-            # 移除 message_key，避免 Pydantic 验证错误
-            data.pop("message_key", None)
+            # ✅ 修复：保留 message_key 和 locale 字段，不删除它们
+            # 这样可以在响应中包含多语言信息，供客户端使用
+            # data.pop("message_key", None)  # 不再删除
+            # data.pop("locale", None)  # 不再删除
 
         super().__init__(**data)
+
+    def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
+        """序列化模型
+        
+        注意：默认排除 message_key 字段（因为 message 已经翻译），但保留 locale 字段
+        如果需要排除这些字段，可以在调用时传递 exclude 参数
+        """
+        # ✅ 修复：排除 message_key（因为 message 已经翻译），但保留 locale
+        exclude = kwargs.pop("exclude", set())
+        if not isinstance(exclude, set):
+            exclude = set(exclude) if exclude else set()
+        # 排除 message_key（因为 message 已经翻译）
+        exclude.add("message_key")
+        # 保留 locale 字段，以便客户端知道使用的语言
+        return super().model_dump(exclude=exclude, exclude_none=True, **kwargs)
 
 
 class PaginationInfo(BaseModel):

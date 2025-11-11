@@ -9,6 +9,7 @@
     "logout": "Logout successful",
     "host": {
       "list_query": "Host list query successful",
+      "appr_list_query": "Pending approval host list query successful",
       "delete": "Host deleted successfully",
       "update_approval": "Host approval status updated successfully",
       "already_in_state": "Host is already {state_name}",
@@ -58,7 +59,12 @@
       "appr_host_ids_required": "host_ids is required when diff_type=2",
       "diff_type_not_supported": "Unsupported diff_type: {diff_type}",
       "process_failed": "Processing failed: {error}",
-      "approve_failed": "Host approval failed: {error}"
+      "approve_failed": "Host approval failed: {error}",
+      "not_enabled": "Host not enabled (ID: {host_id})",
+      "disable_failed": "Host disable failed, record may have been deleted (ID: {host_id})",
+      "***REMOVED***word_encrypt_failed": "Password encryption failed (ID: {host_id})",
+      "***REMOVED***word_update_failed": "Password update failed (ID: {host_id})",
+      "force_offline_failed": "Host force offline failed, record may have been deleted (ID: {host_id})"
     },
     "websocket": {
       "invalid_message_format": "Message must contain type field",
@@ -83,11 +89,20 @@
       "service_error": "Authentication service request failed",
       "service_timeout": "Authentication service response timeout, please try again later",
       "service_unavailable": "Authentication service temporarily unavailable, please try again later",
-      "logout_error": "Logout failed"
+      "logout_error": "Logout failed",
+      "missing_user_info": "Missing user authentication information",
+      "invalid_user_info": "Invalid user information format",
+      "get_user_failed": "Failed to get user information"
     },
     "email": {
       "empty": "Email address cannot be empty",
       "set_failed": "Failed to set maintenance notification email: {error}"
+    },
+    "service": {
+      "bad_gateway": "Backend service returned invalid response",
+      "unavailable": "Backend service temporarily unavailable",
+      "timeout": "Backend service response timeout",
+      "error": "Backend service error"
     }
   }
 }

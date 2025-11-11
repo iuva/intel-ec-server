@@ -16,7 +16,7 @@ hiredis==2.3.2
 # 认证和安全
 python-jose[cryptography]==3.3.0
 ***REMOVED***lib[bcrypt]==1.7.4
-bcrypt==4.2.0
+bcrypt==3.2.2
 
 # 数据验证
 pydantic==2.10.6

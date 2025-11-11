@@ -60,9 +60,17 @@ config = ServiceConfig.from_env(
     service_port_key="GATEWAY_SERVICE_PORT",
 )
 
-# 初始化服务发现（在 create_service_lifespan 之前）
-# 注意：Nacos 管理器将在 lifespan 中初始化，这里只初始化服务发现实例
-service_discovery = init_service_discovery(cache_ttl=30)
+# ✅ 修复：根据 Nacos 开关配置初始化服务发现
+# 如果 Nacos 关闭，不创建服务发现实例，直接使用后备地址
+if config.enable_nacos:
+    # 初始化服务发现（在 create_service_lifespan 之前）
+    # 注意：Nacos 管理器将在 lifespan 中初始化，这里只初始化服务发现实例
+    service_discovery = init_service_discovery(cache_ttl=30)
+    logger.info("✅ 服务发现已初始化（Nacos 已启用）")
+else:
+    # Nacos 关闭，不创建服务发现实例，使用后备地址
+    service_discovery = None
+    # logger.info("⚠️ 服务发现未初始化（Nacos 已关闭，将使用后备地址）")
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -88,8 +96,10 @@ app.add_middleware(
 # 添加认证中间件
 app.add_middleware(AuthMiddleware)
 
-# 添加 Prometheus 指标收集中间件
-app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
+# 添加 Prometheus 指标收集中间件（根据配置开关）
+if config.enable_prometheus:
+    app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
+    logger.info("✅ Prometheus 指标收集中间件已启用")
 
 # ✅ 立即添加统一异常处理中间件（必须在应用启动前添加）
 app.add_middleware(UnifiedExceptionMiddleware)
@@ -101,8 +111,10 @@ app.add_middleware(UnifiedExceptionMiddleware)
 # 添加健康检查路由
 include_health_routes(app)
 
-# 添加公共 metrics 路由（用于 Prometheus 采集指标）
-app.include_router(metrics_router)
+# 添加公共 metrics 路由（用于 Prometheus 采集指标，仅在启用时）
+if config.enable_prometheus:
+    app.include_router(metrics_router)
+    logger.info("✅ Prometheus metrics 路由已启用")
 
 # 包含 API 路由
 app.include_router(api_router, prefix="/api/v1")

@@ -181,12 +181,14 @@ services:
       SERVICE_PORT: 8000
       GATEWAY_SERVICE_PORT: 8000
       SERVICE_IP: 172.20.0.100
-      # MariaDB配置（外部服务）
-      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
-      MARIADB_PORT: ${MARIADB_PORT:-3306}
-      MARIADB_USER: ${MARIADB_USER:-intel_user}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      SERVICE_HOST_AUTH: auth-service
+      SERVICE_HOST_HOST: host-service
+      # MariaDB配置（使用Docker网络服务名）
+      MARIADB_HOST: intel-mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: intel_user
+      MARIADB_PASSWORD: intel_***REMOVED***
+      MARIADB_DATABASE: intel_cw
       # Redis配置（外部服务）
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
@@ -205,6 +207,10 @@ services:
       # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
       # 原因：这些环境变量会被 OpenTelemetry 自动检测
       # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
+      # 组件开关配置（从 .env 文件读取）
+      ENABLE_NACOS: ${ENABLE_NACOS:-true}
+      ENABLE_JAEGER: ${ENABLE_JAEGER:-true}
+      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-true}
       # 应用配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
@@ -217,10 +223,10 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      nacos:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
+    #   nacos:
+    #     condition: service_healthy
+    #   jaeger:
+    #     condition: service_healthy
     healthcheck:
       test:
         [
@@ -249,12 +255,12 @@ services:
       SERVICE_PORT: 8001
       AUTH_SERVICE_PORT: 8001
       SERVICE_IP: 172.20.0.101
-      # MariaDB配置（外部服务）
-      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
-      MARIADB_PORT: ${MARIADB_PORT:-3306}
-      MARIADB_USER: ${MARIADB_USER:-intel_user}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      # MariaDB配置（使用Docker网络服务名）
+      MARIADB_HOST: intel-mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: intel_user
+      MARIADB_PASSWORD: intel_***REMOVED***
+      MARIADB_DATABASE: intel_cw
       # Redis配置（外部服务）
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
@@ -273,6 +279,10 @@ services:
       # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
       # 原因：这些环境变量会被 OpenTelemetry 自动检测
       # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
+      # 组件开关配置（从 .env 文件读取）
+      ENABLE_NACOS: ${ENABLE_NACOS:-true}
+      ENABLE_JAEGER: ${ENABLE_JAEGER:-true}
+      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-true}
       # JWT配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       JWT_ALGORITHM: HS256
@@ -289,10 +299,10 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      nacos:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
+    #   nacos:
+    #     condition: service_healthy
+    #   jaeger:
+    #     condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -315,12 +325,12 @@ services:
       SERVICE_PORT: 8003
       HOST_SERVICE_PORT: 8003
       SERVICE_IP: 172.20.0.103
-      # MariaDB配置（外部服务）
-      MARIADB_HOST: ${MARIADB_HOST:-mariadb}
-      MARIADB_PORT: ${MARIADB_PORT:-3306}
-      MARIADB_USER: ${MARIADB_USER:-intel_user}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+      # MariaDB配置（使用Docker网络服务名）
+      MARIADB_HOST: intel-mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: intel_user
+      MARIADB_PASSWORD: intel_***REMOVED***
+      MARIADB_DATABASE: intel_cw
       # Redis配置（外部服务）
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
@@ -339,6 +349,10 @@ services:
       # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
       # 原因：这些环境变量会被 OpenTelemetry 自动检测
       # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
+      # 组件开关配置（从 .env 文件读取）
+      ENABLE_NACOS: ${ENABLE_NACOS:-true}
+      ENABLE_JAEGER: ${ENABLE_JAEGER:-true}
+      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-true}
       # 应用配置
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
@@ -356,10 +370,10 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      nacos:
-        condition: service_healthy
-      jaeger:
-        condition: service_healthy
+      # nacos:
+      #   condition: service_healthy
+      # jaeger:
+      #   condition: service_healthy
     healthcheck:
       test:
         [

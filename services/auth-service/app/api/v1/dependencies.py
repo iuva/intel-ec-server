@@ -100,5 +100,13 @@ async def get_current_user(request: Request) -> Optional[dict]:
         }
 
     except Exception as e:
-        logger.error(f"获取当前用户失败: {e!s}")
+        logger.error(
+            "获取当前用户失败",
+            extra={
+                "operation": "get_current_user",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         return None

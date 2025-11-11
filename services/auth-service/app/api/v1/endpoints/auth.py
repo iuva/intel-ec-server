@@ -80,7 +80,16 @@ async def admin_login(
         )
 
     except BusinessError as e:
-        logger.warning(f"管理员登录失败: {e.message}")
+        logger.warning(
+            "管理员登录失败",
+            extra={
+                "operation": "admin_login",
+                "username": login_data.username,
+                "error_code": e.error_code,
+                "error_message": e.message,
+                "details": e.details,
+            },
+        )
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
@@ -92,7 +101,16 @@ async def admin_login(
         )
 
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"管理员登录异常: {e!s}")
+        logger.error(
+            "管理员登录异常",
+            extra={
+                "operation": "admin_login",
+                "username": login_data.username,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -155,7 +173,17 @@ async def device_login(
         )
 
     except BusinessError as e:
-        logger.warning(f"设备登录失败: {e.message}")
+        logger.warning(
+            "设备登录失败",
+            extra={
+                "operation": "device_login",
+                "mg_id": login_data.mg_id,
+                "host_ip": login_data.host_ip,
+                "error_code": e.error_code,
+                "error_message": e.message,
+                "details": e.details,
+            },
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -167,7 +195,17 @@ async def device_login(
         )
 
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"设备登录异常: {e!s}")
+        logger.error(
+            "设备登录异常",
+            extra={
+                "operation": "device_login",
+                "mg_id": login_data.mg_id,
+                "host_ip": login_data.host_ip,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -238,7 +276,15 @@ async def refresh_token(
         )
 
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"令牌刷新异常: {e!s}")
+        logger.error(
+            "令牌刷新异常",
+            extra={
+                "operation": "refresh_token",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -276,7 +322,13 @@ async def auto_refresh_tokens(
         # 自动续期令牌
         token_response = await auth_service.auto_refresh_tokens(refresh_data)
 
-        logger.info("令牌自动续期成功", extra={"auto_renew": refresh_data.auto_renew})
+        logger.info(
+            "令牌自动续期成功",
+            extra={
+                "operation": "auto_refresh_token",
+                "auto_renew": refresh_data.auto_renew,
+            },
+        )
 
         return SuccessResponse(
             data=token_response.model_dump(),
@@ -285,7 +337,16 @@ async def auto_refresh_tokens(
         )
 
     except BusinessError as e:
-        logger.warning(f"令牌续期失败: {e.message}")
+        logger.warning(
+            "令牌续期失败",
+            extra={
+                "operation": "auto_refresh_token",
+                "auto_renew": refresh_data.auto_renew,
+                "error_code": e.error_code,
+                "error_message": e.message,
+                "details": e.details,
+            },
+        )
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED,
             detail=ErrorResponse(
@@ -297,7 +358,16 @@ async def auto_refresh_tokens(
         )
 
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"令牌续期异常: {e!s}")
+        logger.error(
+            "令牌续期异常",
+            extra={
+                "operation": "auto_refresh_token",
+                "auto_renew": refresh_data.auto_renew,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -334,7 +404,15 @@ async def introspect_token(
         )
 
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"令牌验证异常: {e!s}")
+        logger.error(
+            "令牌验证异常",
+            extra={
+                "operation": "introspect",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         # ✅ 正确：直接返回标准的成功响应，active=false 表示令牌无效
         # 不抛出 HTTPException，保持响应格式一致性
         return SuccessResponse(
@@ -366,7 +444,12 @@ async def logout(
         # 执行注销
         await auth_service.logout(logout_data.token)
 
-        logger.info("用户注销成功")
+        logger.info(
+            "用户注销成功",
+            extra={
+                "operation": "logout",
+            },
+        )
 
         return SuccessResponse(
             data=None,
@@ -375,7 +458,15 @@ async def logout(
         )
 
     except BusinessError as e:
-        logger.warning(f"注销失败: {e.message}")
+        logger.warning(
+            "注销失败",
+            extra={
+                "operation": "logout",
+                "error_code": e.error_code,
+                "error_message": e.message,
+                "details": e.details,
+            },
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
@@ -387,7 +478,15 @@ async def logout(
         )
 
     except (ValueError, KeyError, AttributeError) as e:
-        logger.error(f"注销异常: {e!s}")
+        logger.error(
+            "注销异常",
+            extra={
+                "operation": "logout",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+            },
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(

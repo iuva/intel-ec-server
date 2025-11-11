@@ -87,9 +87,45 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             响应对象
         """
-        # 获取 Authorization 头（用于日志记录）
+        # 获取 Authorization 头（使用多种方式确保兼容性）
+        # Starlette 的 headers 对象是大小写不敏感的，但为了确保兼容性，使用多种方式提取
+        auth_header = None
+
+        # 方式1: 标准方式（Starlette headers 是大小写不敏感的）
         auth_header = request.headers.get("Authorization")
+
+        # 方式2: 如果方式1失败，尝试使用小写键名
+        if not auth_header:
+            auth_header = request.headers.get("authorization")
+
+        # 方式3: 如果还是找不到，尝试遍历所有 headers 查找（处理特殊情况）
+        if not auth_header:
+            for key, value in request.headers.items():
+                if key.lower() == "authorization":
+                    auth_header = value
+                    logger.debug(
+                        "从 headers 遍历中找到 Authorization 头",
+                        extra={
+                            "header_key": key,
+                            "header_value": value,
+                            "header_value_preview": value[:20] + "..." if len(value) > 20 else value},
+                    )
+                    break
+
         has_token = bool(auth_header)
+
+        # 调试日志：记录所有 header 键（仅当找不到 Authorization 时，用于调试）
+        if not auth_header:
+            all_header_keys = list(request.headers.keys())
+            logger.warning(
+                "未找到 Authorization 头，记录所有 header 键用于调试",
+                extra={
+                    "all_header_keys": all_header_keys,
+                    "header_count": len(all_header_keys),
+                    "path": request.url.path,
+                    "method": request.method,
+                },
+            )
 
         # 检查是否为公开路径
         is_public = self._is_public_path(request.url.path)
