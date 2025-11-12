@@ -357,6 +357,8 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
       DEBUG: ${DEBUG:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 硬件接口 Mock 配置（开发环境使用）
+      USE_HARDWARE_MOCK: ${USE_HARDWARE_MOCK:-false}
       # 文件上传配置
       FILE_UPLOAD_DIR: ${FILE_UPLOAD_DIR:-/app/uploads}
     ports:

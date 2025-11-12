@@ -244,7 +244,7 @@ class AdminHostService:
             host_info_list: List[AdminHostInfo] = []
             for row in rows:
                 host_info = AdminHostInfo(
-                    host_id=row.host_id,
+                    host_id=str(row.host_id),  # ✅ 转换为字符串避免精度丢失
                     username=row.username,
                     mg_id=row.mg_id,
                     mac=row.mac,
@@ -277,7 +277,7 @@ class AdminHostService:
         error_message="删除主机失败",
         error_code="DELETE_HOST_FAILED",
     )
-    async def delete_host(self, host_id: int) -> int:
+    async def delete_host(self, host_id: int) -> str:
         """删除主机（逻辑删除）
 
         根据主机ID逻辑删除 host_rec 表数据。删除后需要同步通知外部API，
@@ -287,7 +287,7 @@ class AdminHostService:
             host_id: 主机ID（host_rec.id）
 
         Returns:
-            int: 已删除的主机ID
+            str: 已删除的主机ID（字符串格式，避免精度丢失）
 
         Raises:
             BusinessError: 主机不存在或删除失败时
@@ -420,7 +420,7 @@ class AdminHostService:
                 },
             )
 
-            return host_id
+            return str(host_id)  # ✅ 转换为字符串避免精度丢失
 
     @handle_service_errors(
         error_message="停用主机失败",
@@ -529,7 +529,7 @@ class AdminHostService:
             )
 
             return {
-                "id": host_id,
+                "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
                 "appr_state": 0,
                 "host_state": 7,
                 "message": "主机已停用",
@@ -670,7 +670,7 @@ class AdminHostService:
             )
 
             return {
-                "id": host_id,
+                "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
                 "host_state": 4,
                 "websocket_notified": websocket_notified,
                 "message": "主机已强制下线",
@@ -902,7 +902,7 @@ class AdminHostService:
             )
 
             return {
-                "id": host_id,
+                "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
                 "message": "密码修改成功",
             }
 

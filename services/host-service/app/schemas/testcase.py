@@ -29,7 +29,7 @@ class TestCaseReportRequest(BaseModel):
 class TestCaseReportResponse(BaseModel):
     """测试用例执行结果上报响应"""
 
-    host_id: int = Field(..., description="主机ID")
+    host_id: str = Field(..., description="主机ID")
     tc_id: str = Field(..., description="测试用例ID")
     case_state: int = Field(..., description="case执行状态;0-空闲 1-启动 2-成功 3-失败")
     result_msg: Optional[str] = Field(None, description="结果消息")

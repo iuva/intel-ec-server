@@ -87,7 +87,7 @@ class AdminOtaService:
             ota_configs = []
             for row in rows:
                 ota_config = {
-                    "id": row.id,
+                    "id": str(row.id),  # ✅ 转换为字符串避免精度丢失
                     "conf_ver": row.conf_ver,
                     "conf_name": row.conf_name,
                     "conf_val": row.conf_val,
@@ -227,7 +227,7 @@ class AdminOtaService:
         )
 
         return {
-            "id": config_id,
+            "id": str(config_id),  # ✅ 转换为字符串避免精度丢失
             "conf_ver": conf_ver,
             "conf_name": conf_name,
             "conf_val": conf_val,

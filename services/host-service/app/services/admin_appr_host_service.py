@@ -318,7 +318,7 @@ class AdminApprHostService:
                         diff_state = getattr(row, "diff_state", None)
 
                         host_info = AdminApprHostInfo(
-                            host_id=row.host_id,
+                            host_id=str(row.host_id),  # ✅ 转换为字符串避免精度丢失
                             mg_id=row.mg_id,
                             mac_addr=row.mac_addr,
                             host_state=row.host_state,

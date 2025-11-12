@@ -19,7 +19,7 @@ class UserBase(BaseModel):
 class UserResponse(UserBase):
     """用户响应"""
 
-    id: int = Field(description="用户ID")
+    id: str = Field(description="用户ID")
     is_active: bool = Field(description="是否激活")
     is_superuser: bool = Field(description="是否超级用户")
     created_time: datetime = Field(description="创建时间")
@@ -29,7 +29,7 @@ class UserResponse(UserBase):
         "from_attributes": True,
         "json_schema_extra": {
             "example": {
-                "id": 1,
+                "id": "1",
                 "username": "admin",
                 "email": "admin@example.com",
                 "is_active": True,

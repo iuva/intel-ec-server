@@ -573,7 +573,7 @@ class AgentReportService:
                 )
 
                 return {
-                    "host_id": host_id,
+                    "host_id": str(host_id),  # ✅ 转换为字符串避免精度丢失
                     "tc_id": tc_id,
                     "case_state": state,
                     "result_msg": result_msg,

@@ -96,7 +96,7 @@ class HostDiscoveryService:
 
         # 缓存在本次查询中已处理的 host_rec_id，确保不重复
         # 这个缓存仅在单次请求中有效，不会跨越请求
-        seen_ids: set[int] = set()
+        seen_ids: set[str] = set()
         all_available_hosts: List[AvailableHostInfo] = []
 
         # 外部接口分页参数
@@ -154,15 +154,31 @@ class HostDiscoveryService:
             # 步骤 5: 添加新数据，同时跳过在 last_id 之后的数据
             for host in available_hosts:
                 # 如果指定了 last_id，跳过所有 ID 小于等于 last_id 的记录
-                if request.last_id is not None and host.host_rec_id <= request.last_id:
-                    logger.debug(
-                        "跳过已处理的记录",
-                        extra={
-                            "host_rec_id": host.host_rec_id,
-                            "last_id": request.last_id,
-                        },
-                    )
-                    continue
+                # 注意：由于 ID 是字符串，需要转换为整数进行比较
+                if request.last_id is not None:
+                    try:
+                        host_id_int = int(host.host_rec_id)
+                        last_id_int = int(request.last_id)
+                        if host_id_int <= last_id_int:
+                            logger.debug(
+                                "跳过已处理的记录",
+                                extra={
+                                    "host_rec_id": host.host_rec_id,
+                                    "last_id": request.last_id,
+                                },
+                            )
+                            continue
+                    except (ValueError, TypeError):
+                        # 如果转换失败，使用字符串比较（降级方案）
+                        if host.host_rec_id <= request.last_id:
+                            logger.debug(
+                                "跳过已处理的记录（字符串比较）",
+                                extra={
+                                    "host_rec_id": host.host_rec_id,
+                                    "last_id": request.last_id,
+                                },
+                            )
+                            continue
 
                 # 检查是否已经添加过（本次查询中的去重）
                 if host.host_rec_id in seen_ids:
@@ -201,7 +217,7 @@ class HostDiscoveryService:
         has_next = len(all_available_hosts) > request.page_size
 
         # 确定下一页的 last_id
-        last_id: Optional[int] = None
+        last_id: Optional[str] = None
         if paginated_hosts:
             last_id = paginated_hosts[-1].host_rec_id
 
@@ -225,6 +241,97 @@ class HostDiscoveryService:
             last_id=last_id,
         )
 
+    def _get_mock_hardware_hosts(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[HardwareHostData]:
+        """获取 Mock 硬件主机数据
+
+        Args:
+            skip: 跳过条数
+            limit: 返回数量
+
+        Returns:
+            Mock 硬件主机列表
+        """
+        # Mock 数据：基于用户提供的格式
+        mock_data = [
+            {
+                "hardware_id": "abc123",
+                "name": "Test Server Config",
+                "dmr_config": {
+                    "revision": 1,
+                    "mainboard": {
+                        "plt_meta_data": {
+                            "platform": "DMR",
+                            "label_plt_cfg": "config_label",
+                        },
+                        "board": {
+                            "board_meta_data": {
+                                "board_name": "SHMRCDMR",
+                                "host_name": "test-host",
+                                "host_ip": "10.239.168.169",
+                            },
+                        },
+                    },
+                },
+                "updated_at": "2025-09-17T10:00:00Z",
+                "updated_by": "user@intel.com",
+                "tags": ["test", "dmr"],
+            },
+            {
+                "hardware_id": "def456",
+                "name": "Test Server Config 2",
+                "dmr_config": {
+                    "revision": 1,
+                    "mainboard": {
+                        "plt_meta_data": {
+                            "platform": "DMR",
+                            "label_plt_cfg": "config_label_2",
+                        },
+                        "board": {
+                            "board_meta_data": {
+                                "board_name": "SHMRCDMR",
+                                "host_name": "test-host-2",
+                                "host_ip": "10.239.168.170",
+                            },
+                        },
+                    },
+                },
+                "updated_at": "2025-09-17T11:00:00Z",
+                "updated_by": "user2@intel.com",
+                "tags": ["test", "dmr", "production"],
+            },
+            {
+                "hardware_id": "ghi789",
+                "name": "Test Server Config 3",
+                "dmr_config": {
+                    "revision": 2,
+                    "mainboard": {
+                        "plt_meta_data": {
+                            "platform": "DMR",
+                            "label_plt_cfg": "config_label_3",
+                        },
+                        "board": {
+                            "board_meta_data": {
+                                "board_name": "SHMRCDMR",
+                                "host_name": "test-host-3",
+                                "host_ip": "10.239.168.171",
+                            },
+                        },
+                    },
+                },
+                "updated_at": "2025-09-17T12:00:00Z",
+                "updated_by": "user3@intel.com",
+                "tags": ["test"],
+            },
+        ]
+
+        # 应用分页
+        paginated_data = mock_data[skip:skip + limit]
+        return [HardwareHostData(**item) for item in paginated_data]
+
     async def _fetch_hardware_hosts(
         self,
         tc_id: str,
@@ -244,6 +351,22 @@ class HostDiscoveryService:
         Raises:
             BusinessError: 当接口调用失败时
         """
+        # ✅ 检查是否使用 Mock 数据（通过环境变量控制）
+        import os
+
+        use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
+
+        if use_mock:
+            logger.info(
+                "使用 Mock 硬件接口数据",
+                extra={
+                    "tc_id": tc_id,
+                    "skip": skip,
+                    "limit": limit,
+                },
+            )
+            return self._get_mock_hardware_hosts(skip=skip, limit=limit)
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 url = f"{self.hardware_api_url}/api/v1/hardware/hosts"
@@ -356,7 +479,7 @@ class HostDiscoveryService:
             # 转换为响应格式
             available_hosts: List[AvailableHostInfo] = [
                 AvailableHostInfo(
-                    host_rec_id=host_rec.id,
+                    host_rec_id=str(host_rec.id),  # ✅ 转换为字符串避免精度丢失
                     hardware_id=cast(str, host_rec.hardware_id),
                     user_name=host_rec.host_acct or "",
                     host_ip=cast(str, host_rec.host_ip),

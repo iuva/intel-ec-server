@@ -411,7 +411,8 @@ class AuthService:
 
             # 提取 user_id（sub 字段）
             sub = payload.get("sub")
-            user_id = int(sub) if sub and str(sub).isdigit() else None
+            # ✅ 转换为字符串避免精度丢失
+            user_id = str(sub) if sub else None
 
             return IntrospectResponse(
                 active=True,

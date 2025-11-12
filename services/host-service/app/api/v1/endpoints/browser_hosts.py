@@ -76,7 +76,7 @@ async def query_available_hosts(
     cycle_name: str = Query(..., description="测试周期名称"),
     user_name: str = Query(..., description="用户名"),
     page_size: int = Query(20, ge=1, le=100, description="每页大小"),
-    last_id: Optional[int] = Query(None, description="上一页最后一条记录的 id"),
+    last_id: Optional[str] = Query(None, description="上一页最后一条记录的 id（字符串格式）"),
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
 ):
     """查询可用的主机列表 - 游标分页
@@ -135,7 +135,7 @@ async def query_available_hosts(
             cycle_name=cycle_name,
             user_name=user_name,
             page_size=page_size,
-            last_id=last_id,
+            last_id=last_id,  # last_id 已经是字符串类型
         )
     )
 

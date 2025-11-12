@@ -817,10 +817,37 @@ class ProxyService:
 
             # 分析错误响应格式
             if isinstance(response_data, dict):
-                # FastAPI 标准错误格式
-                if "detail" in response_data and isinstance(response_data["detail"], dict):
-                    error_detail = response_data["detail"]
+                # ✅ 优先检查是否为统一错误响应格式（ErrorResponse）
+                if "error_code" in response_data and "message" in response_data:
+                    # 统一错误响应格式
+                    error_detail = response_data
+                # FastAPI 标准错误格式（detail 可能是字典或列表）
+                elif "detail" in response_data:
+                    detail_value = response_data["detail"]
+                    # ✅ 处理 FastAPI 验证错误格式（detail 是列表）
+                    if isinstance(detail_value, list):
+                        # FastAPI 默认验证错误格式：{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}
+                        # 转换为统一格式
+                        field_errors: Dict[str, str] = {}
+                        for error in detail_value:
+                            if isinstance(error, dict):
+                                field_path = ".".join(str(loc) for loc in error.get("loc", []))
+                                field_errors[field_path] = error.get("msg", "Unknown error")
+
+                        error_detail = {
+                            "message": "请求参数验证失败",
+                            "error_code": "VALIDATION_ERROR",
+                            "code": 422,
+                            "details": {"errors": field_errors},
+                        }
+                    elif isinstance(detail_value, dict):
+                        # detail 是字典，可能是嵌套的错误响应
+                        error_detail = detail_value
+                    else:
+                        # detail 是其他类型，使用原始响应
+                        error_detail = response_data
                 else:
+                    # 没有 detail 字段，使用原始响应
                     error_detail = response_data
             else:
                 error_detail = {"message": str(response_data)}
@@ -980,10 +1007,37 @@ class ProxyService:
 
         # 分析错误响应格式
         if isinstance(response_data, dict):
-            # FastAPI 标准错误格式
-            if "detail" in response_data and isinstance(response_data["detail"], dict):
-                error_detail = response_data["detail"]
+            # ✅ 优先检查是否为统一错误响应格式（ErrorResponse）
+            if "error_code" in response_data and "message" in response_data:
+                # 统一错误响应格式
+                error_detail = response_data
+            # FastAPI 标准错误格式（detail 可能是字典或列表）
+            elif "detail" in response_data:
+                detail_value = response_data["detail"]
+                # ✅ 处理 FastAPI 验证错误格式（detail 是列表）
+                if isinstance(detail_value, list):
+                    # FastAPI 默认验证错误格式：{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}
+                    # 转换为统一格式
+                    field_errors: Dict[str, str] = {}
+                    for error in detail_value:
+                        if isinstance(error, dict):
+                            field_path = ".".join(str(loc) for loc in error.get("loc", []))
+                            field_errors[field_path] = error.get("msg", "Unknown error")
+
+                    error_detail = {
+                        "message": "请求参数验证失败",
+                        "error_code": "VALIDATION_ERROR",
+                        "code": 422,
+                        "details": {"errors": field_errors},
+                    }
+                elif isinstance(detail_value, dict):
+                    # detail 是字典，可能是嵌套的错误响应
+                    error_detail = detail_value
+                else:
+                    # detail 是其他类型，使用原始响应
+                    error_detail = response_data
             else:
+                # 没有 detail 字段，使用原始响应
                 error_detail = response_data
         else:
             error_detail = {"message": str(response_data)}
@@ -992,6 +1046,9 @@ class ProxyService:
         error_message = error_detail.get("message", f"后端服务错误: {status_code}")
         error_code = error_detail.get("error_code", f"BACKEND_{status_code}")
         error_details_raw = error_detail.get("details", {})
+        # ✅ 提取 message_key 和 locale（用于多语言支持）
+        message_key = error_detail.get("message_key")
+        locale = error_detail.get("locale")
         # 保留后端服务的自定义错误码（code），而不是用 HTTP 状态码覆盖
         backend_error_code_raw = error_detail.get("code")
         backend_error_code = backend_error_code_raw if isinstance(backend_error_code_raw, int) else status_code
@@ -1014,6 +1071,8 @@ class ProxyService:
                 "error_message": error_message,
                 "error_details": error_details,
                 "backend_error_code": backend_error_code,
+                "message_key": message_key,
+                "locale": locale,
             },
         )
 
@@ -1023,7 +1082,9 @@ class ProxyService:
             message=error_message,
             code=backend_error_code,  # 使用后端的自定义错误码
             error_code=error_code,
-            http_status_code=status_code,  # HTTP 状态码保持为 502
+            http_status_code=status_code,  # HTTP 状态码保持为原始状态码
+            message_key=message_key,  # ✅ 透传 message_key 以支持多语言
+            locale=locale,  # ✅ 透传 locale 以支持多语言
             details=error_details,
         )
 

@@ -440,7 +440,7 @@ class BrowserHostService:
             # 4. 构建返回结果
             retry_vnc_list = [
                 RetryVNCHostInfo(
-                    host_id=host[0],
+                    host_id=str(host[0]),  # ✅ 转换为字符串避免精度丢失
                     host_ip=host[1] or "",  # 防止 None 值
                     user_name=host[2] or "",  # host_acct 重命名为 user_name
                 )

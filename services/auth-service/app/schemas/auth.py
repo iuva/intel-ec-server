@@ -80,7 +80,7 @@ class IntrospectResponse(BaseModel):
 
     active: bool = Field(description="令牌是否有效")
     username: Optional[str] = Field(default=None, description="用户名")
-    user_id: Optional[int] = Field(default=None, description="用户ID")
+    user_id: Optional[str] = Field(default=None, description="用户ID")
     exp: Optional[int] = Field(default=None, description="过期时间戳")
     token_type: Optional[str] = Field(default=None, description="令牌类型")
     # 新增字段：支持设备登录的额外信息
@@ -94,7 +94,7 @@ class IntrospectResponse(BaseModel):
             "example": {
                 "active": True,
                 "username": "admin",
-                "user_id": 1,
+                "user_id": "1",
                 "exp": 1640995200,
                 "token_type": "access",
             }

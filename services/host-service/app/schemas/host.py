@@ -97,10 +97,55 @@ class QueryAvailableHostsRequest(BaseModel):
     cycle_name: str = Field(description="测试周期名称")
     user_name: str = Field(description="用户名")
     page_size: int = Field(default=20, ge=1, le=100, description="每页数量（1-100）")
-    last_id: Optional[int] = Field(
+    last_id: Optional[str] = Field(
         default=None,
         description="上一页最后一条记录的 id。首次请求为 null，后续请求需要传入上一页最后一条记录的 host_rec_id",
     )
+
+    model_config = {"from_attributes": True}
+
+
+class DMRBoardMetaData(BaseModel):
+    """DMR 板卡元数据"""
+
+    board_name: Optional[str] = Field(default=None, description="板卡名称")
+    host_name: Optional[str] = Field(default=None, description="主机名称")
+    host_ip: Optional[str] = Field(default=None, description="主机IP")
+
+    model_config = {"from_attributes": True}
+
+
+class DMRBoard(BaseModel):
+    """DMR 板卡配置"""
+
+    board_meta_data: Optional[DMRBoardMetaData] = Field(default=None, description="板卡元数据")
+
+    model_config = {"from_attributes": True}
+
+
+class DMRPlatformMetaData(BaseModel):
+    """DMR 平台元数据"""
+
+    platform: Optional[str] = Field(default=None, description="平台类型")
+    label_plt_cfg: Optional[str] = Field(default=None, description="平台配置标签")
+
+    model_config = {"from_attributes": True}
+
+
+class DMRMainboard(BaseModel):
+    """DMR 主板配置"""
+
+    plt_meta_data: Optional[DMRPlatformMetaData] = Field(default=None, description="平台元数据")
+    board: Optional[DMRBoard] = Field(default=None, description="板卡配置")
+
+    model_config = {"from_attributes": True}
+
+
+class DMRConfig(BaseModel):
+    """DMR 配置"""
+
+    revision: Optional[int] = Field(default=None, description="版本号")
+    mainboard: Optional[DMRMainboard] = Field(default=None, description="主板配置")
 
     model_config = {"from_attributes": True}
 
@@ -109,8 +154,20 @@ class HardwareHostData(BaseModel):
     """外部硬件接口返回的主机数据"""
 
     hardware_id: str = Field(description="硬件ID")
-    ip: str = Field(description="IP地址")
-    hostname: str = Field(description="主机名称")
+    name: Optional[str] = Field(default=None, description="主机配置名称")
+    dmr_config: Optional[DMRConfig] = Field(default=None, description="DMR配置")
+    updated_at: Optional[str] = Field(default=None, description="更新时间（ISO格式字符串）")
+    updated_by: Optional[str] = Field(default=None, description="更新人")
+    tags: Optional[List[str]] = Field(default=None, description="标签列表")
+    # 兼容旧字段
+    ip: Optional[str] = Field(
+        default=None,
+        description="IP地址（兼容字段，优先使用 dmr_config.mainboard.board.board_meta_data.host_ip）",
+    )
+    hostname: Optional[str] = Field(
+        default=None,
+        description="主机名称（兼容字段，优先使用 dmr_config.mainboard.board.board_meta_data.host_name）",
+    )
     query: Optional[str] = Field(default=None, description="查询条件")
 
     model_config = {"from_attributes": True}
@@ -119,7 +176,7 @@ class HardwareHostData(BaseModel):
 class AvailableHostInfo(BaseModel):
     """可用主机信息"""
 
-    host_rec_id: int = Field(description="主机记录ID (host_rec.id)")
+    host_rec_id: str = Field(description="主机记录ID (host_rec.id)")
     hardware_id: str = Field(description="硬件ID")
     user_name: str = Field(description="用户名 (host_acct)")
     host_ip: str = Field(description="主机IP")
@@ -144,7 +201,7 @@ class AvailableHostsListResponse(BaseModel):
     total: int = Field(description="本次查询发现的可用主机总数")
     page_size: int = Field(description="每页大小")
     has_next: bool = Field(description="是否有下一页")
-    last_id: Optional[int] = Field(default=None, description="当前页最后一条记录的 id，用于请求下一页")
+    last_id: Optional[str] = Field(default=None, description="当前页最后一条记录的 id，用于请求下一页")
 
     model_config = {"from_attributes": True}
 
@@ -179,7 +236,7 @@ class GetRetryVNCListRequest(BaseModel):
 class RetryVNCHostInfo(BaseModel):
     """重试 VNC 主机信息"""
 
-    host_id: int = Field(description="主机ID (host_rec.id)")
+    host_id: str = Field(description="主机ID (host_rec.id)")
     host_ip: str = Field(description="主机IP")
     user_name: str = Field(description="主机账号 (host_acct)")
 
@@ -234,7 +291,7 @@ class AdminHostListRequest(BaseModel):
 class AdminHostInfo(BaseModel):
     """管理后台主机信息响应模式"""
 
-    host_id: int = Field(description="主机ID（host_rec 表主键 id）")
+    host_id: str = Field(description="主机ID（host_rec 表主键 id）")
     username: Optional[str] = Field(default=None, description="主机账号（host_rec 表 host_acct）")
     mg_id: Optional[str] = Field(default=None, description="唯一引导ID（host_rec 表 mg_id）")
     mac: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
@@ -270,7 +327,7 @@ class AdminHostDeleteRequest(BaseModel):
 class AdminHostDeleteResponse(BaseModel):
     """管理后台主机删除响应模式"""
 
-    id: int = Field(description="已删除的主机ID")
+    id: str = Field(description="已删除的主机ID")
     message: str = Field(default="主机删除成功", description="删除结果消息")
 
     model_config = {"from_attributes": True}
@@ -287,7 +344,7 @@ class AdminHostDisableRequest(BaseModel):
 class AdminHostDisableResponse(BaseModel):
     """管理后台主机停用响应模式"""
 
-    id: int = Field(description="主机ID")
+    id: str = Field(description="主机ID")
     appr_state: int = Field(default=0, description="更新后的审批状态（0=停用）")
     message: str = Field(default="主机已停用", description="操作结果消息")
 
@@ -305,7 +362,7 @@ class AdminHostForceOfflineRequest(BaseModel):
 class AdminHostForceOfflineResponse(BaseModel):
     """管理后台主机强制下线响应模式"""
 
-    id: int = Field(description="主机ID")
+    id: str = Field(description="主机ID")
     host_state: int = Field(default=4, description="更新后的主机状态（4=离线）")
     websocket_notified: bool = Field(description="是否成功发送WebSocket通知")
     message: str = Field(default="主机已强制下线", description="操作结果消息")
@@ -359,7 +416,7 @@ class AdminHostUpdatePasswordRequest(BaseModel):
 class AdminHostUpdatePasswordResponse(BaseModel):
     """管理后台主机密码修改响应模式"""
 
-    id: int = Field(description="主机ID")
+    id: str = Field(description="主机ID")
     message: str = Field(default="密码修改成功", description="操作结果消息")
 
     model_config = {"from_attributes": True}
@@ -425,7 +482,7 @@ class AdminApprHostListRequest(BaseModel):
 class AdminApprHostInfo(BaseModel):
     """管理后台待审批主机信息响应模式"""
 
-    host_id: int = Field(description="主机ID（host_rec 表主键 id）")
+    host_id: str = Field(description="主机ID（host_rec 表主键 id）")
     mg_id: Optional[str] = Field(default=None, description="唯一引导ID（host_rec 表 mg_id）")
     mac_addr: Optional[str] = Field(default=None, description="MAC地址（host_rec 表 mac_addr）")
     host_state: Optional[int] = Field(
@@ -546,7 +603,7 @@ class AdminMaintainEmailResponse(BaseModel):
 class AdminOtaConfigInfo(BaseModel):
     """管理后台 OTA 配置信息"""
 
-    id: int = Field(description="配置ID（主键）")
+    id: str = Field(description="配置ID（主键）")
     conf_ver: Optional[str] = Field(default=None, description="配置版本号")
     conf_name: Optional[str] = Field(default=None, description="配置名称")
     conf_val: Optional[str] = Field(default=None, description="配置值")
@@ -592,7 +649,7 @@ class AdminOtaDeployRequest(BaseModel):
 class AdminOtaDeployResponse(BaseModel):
     """管理后台 OTA 下发响应模式"""
 
-    id: int = Field(description="配置ID（主键）")
+    id: str = Field(description="配置ID（主键）")
     conf_ver: str = Field(description="配置版本号")
     conf_name: str = Field(description="配置名称")
     conf_val: str = Field(description="配置值")
