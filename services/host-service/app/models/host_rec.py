@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import INT, VARCHAR, BigInteger, DateTime, SmallInteger
+from sqlalchemy import INT, VARCHAR, BigInteger, DateTime, Index, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入
@@ -65,6 +65,7 @@ class HostRec(BaseDBModel):
     appr_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
+        index=True,
         comment=("审批状态;{disable: 0, 停用. enable: 1, 启用. new: 1, 新增. change: 2, 存在改动.}"),
     )
 
@@ -83,6 +84,7 @@ class HostRec(BaseDBModel):
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
+        index=True,
         comment=("主机状态;0-空闲 1-已锁定 2-已占用 3-case执行中 4-离线 5-待激活 6-硬件改动 7-手动停用 8-更新中"),
     )
 
@@ -104,3 +106,8 @@ class HostRec(BaseDBModel):
     def __repr__(self) -> str:
         """字符串表示"""
         return f"<HostRec(id={self.id}, host_ip={self.host_ip}, host_state={self.host_state})>"
+
+    __table_args__ = (
+        Index("ix_host_rec_host_state_appr_del", "host_state", "appr_state", "del_flag"),
+        Index("ix_host_rec_created_time", "created_time"),
+    )

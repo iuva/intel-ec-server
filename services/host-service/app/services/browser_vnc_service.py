@@ -206,8 +206,7 @@ class BrowserVNCService:
                 "connection_status": vnc_report.connection_status,
                 "connection_time": vnc_report.connection_time,
                 "message": (
-                    f"VNC连接结果上报成功，主机已锁定"
-                    f"{f'，执行日志已{exec_log_action}' if exec_log_action else ''}"
+                    f"VNC连接结果上报成功，主机已锁定{f'，执行日志已{exec_log_action}' if exec_log_action else ''}"
                 ),
             }
 

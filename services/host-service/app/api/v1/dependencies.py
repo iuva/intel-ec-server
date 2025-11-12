@@ -6,20 +6,20 @@ Host Service API 依赖注入
 
 import os
 import sys
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
-
-if TYPE_CHECKING:
-    from app.services.admin_ota_service import AdminOtaService
-    from app.services.file_manage_service import FileManageService
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.services.browser_host_service import BrowserHostService
     from app.services.browser_vnc_service import BrowserVNCService
     from app.services.host_discovery_service import HostDiscoveryService
+    from app.services.file_manage_service import FileManageService
+    from app.services.admin_appr_host_service import AdminApprHostService
+    from app.services.admin_ota_service import AdminOtaService
+    from app.services.admin_host_service import AdminHostService
 
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
@@ -29,6 +29,10 @@ except ImportError:
     from app.services.browser_host_service import BrowserHostService
     from app.services.browser_vnc_service import BrowserVNCService
     from app.services.host_discovery_service import HostDiscoveryService
+    from app.services.file_manage_service import FileManageService
+    from app.services.admin_appr_host_service import AdminApprHostService
+    from app.services.admin_host_service import AdminHostService
+    from app.services.admin_ota_service import AdminOtaService
 
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
@@ -101,12 +105,6 @@ def get_admin_host_service() -> Any:
     global _admin_host_service_instance
 
     if _admin_host_service_instance is None:
-        try:
-            from app.services.admin_host_service import AdminHostService
-        except ImportError:
-            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-            from app.services.admin_host_service import AdminHostService
-
         _admin_host_service_instance = AdminHostService()
 
     return _admin_host_service_instance
@@ -121,12 +119,6 @@ def get_admin_appr_host_service() -> Any:
     global _admin_appr_host_service_instance
 
     if _admin_appr_host_service_instance is None:
-        try:
-            from app.services.admin_appr_host_service import AdminApprHostService
-        except ImportError:
-            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-            from app.services.admin_appr_host_service import AdminApprHostService
-
         _admin_appr_host_service_instance = AdminApprHostService()
 
     return _admin_appr_host_service_instance
@@ -141,12 +133,6 @@ def get_admin_ota_service() -> "AdminOtaService":
     global _admin_ota_service_instance
 
     if _admin_ota_service_instance is None:
-        try:
-            from app.services.admin_ota_service import AdminOtaService
-        except ImportError:
-            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-            from app.services.admin_ota_service import AdminOtaService
-
         _admin_ota_service_instance = AdminOtaService()
 
     return _admin_ota_service_instance
@@ -161,12 +147,6 @@ def get_file_manage_service() -> "FileManageService":
     global _file_manage_service_instance
 
     if _file_manage_service_instance is None:
-        try:
-            from app.services.file_manage_service import FileManageService
-        except ImportError:
-            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-            from app.services.file_manage_service import FileManageService
-
         _file_manage_service_instance = FileManageService()
 
     return _file_manage_service_instance
@@ -200,9 +180,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 
         # 打印 X-User-Info header 信息（用于调试）
         if user_info_header:
-            header_preview = (
-                user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
-            )
+            header_preview = user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
             logger.info(
                 "接收 X-User-Info header",
                 extra={
@@ -265,9 +243,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 
             # 验证 user_info 是字典类型
             if not isinstance(user_info, dict):
-                raise ValueError(
-                    f"X-User-Info 解析后不是字典类型，而是: {type(user_info).__name__}"
-                )
+                raise ValueError(f"X-User-Info 解析后不是字典类型，而是: {type(user_info).__name__}")
 
             # 记录解析后的用户信息键（用于调试）
             user_info_keys = list(user_info.keys()) if isinstance(user_info, dict) else []
@@ -305,9 +281,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             header_length = len(user_info_header) if user_info_header else 0
             header_preview = (
-                user_info_header[:200] + "..."
-                if user_info_header and len(user_info_header) > 200
-                else user_info_header
+                user_info_header[:200] + "..." if user_info_header and len(user_info_header) > 200 else user_info_header
             )
             logger.opt(exception=e).error(
                 (
@@ -383,9 +357,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 
     except Exception as e:
         x_user_info_header = request.headers.get("X-User-Info")
-        header_info = (
-            "有 X-User-Info header" if x_user_info_header else "无 X-User-Info header"
-        )
+        header_info = "有 X-User-Info header" if x_user_info_header else "无 X-User-Info header"
 
         logger.opt(exception=e).error(
             (
@@ -454,12 +426,8 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
 
         # 打印 X-User-Info header 信息（用于调试）
         if user_info_header:
-            client_info = (
-                f"{request.client.host}:{request.client.port}" if request.client else "unknown"
-            )
-            header_preview = (
-                user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
-            )
+            client_info = f"{request.client.host}:{request.client.port}" if request.client else "unknown"
+            header_preview = user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
             logger.info(
                 (
                     f"Agent 接收 X-User-Info header | path={request.url.path} | "

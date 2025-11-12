@@ -208,10 +208,10 @@ class ServiceDiscovery:
             "auth": "auth-service",
             "host": "host-service",
         }
-        
+
         # 如果传入的是短名称，先映射为完整服务名
         full_service_name = short_to_full.get(service_name, service_name)
-        
+
         # 获取后备主机名
         fallback_host = self._fallback_urls.get(full_service_name, full_service_name)
 

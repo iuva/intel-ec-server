@@ -9,21 +9,28 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
 
 from sqlalchemy import and_, desc, func, select, update
-from sqlalchemy.orm import aliased
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.constants.host_constants import (
+        APPR_STATE_ENABLE,
+        HOST_STATE_FREE,
+        SYNC_STATE_WAIT,
+    )
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
     from app.models.sys_user import SysUser
-    from app.schemas.host import (AdminApprHostApproveRequest,
-                                  AdminApprHostApproveResponse,
-                                  AdminApprHostDetailResponse,
-                                  AdminApprHostHwInfo, AdminApprHostInfo,
-                                  AdminApprHostListRequest,
-                                  AdminMaintainEmailRequest,
-                                  AdminMaintainEmailResponse)
+    from app.schemas.host import (
+        AdminApprHostApproveRequest,
+        AdminApprHostApproveResponse,
+        AdminApprHostDetailResponse,
+        AdminApprHostHwInfo,
+        AdminApprHostInfo,
+        AdminApprHostListRequest,
+        AdminMaintainEmailRequest,
+        AdminMaintainEmailResponse,
+    )
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -36,16 +43,24 @@ try:
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.constants.host_constants import (
+        APPR_STATE_ENABLE,
+        HOST_STATE_FREE,
+        SYNC_STATE_WAIT,
+    )
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.schemas.host import (AdminApprHostApproveRequest,
-                                  AdminApprHostApproveResponse,
-                                  AdminApprHostDetailResponse,
-                                  AdminApprHostHwInfo, AdminApprHostInfo,
-                                  AdminApprHostListRequest,
-                                  AdminMaintainEmailRequest,
-                                  AdminMaintainEmailResponse)
+    from app.schemas.host import (
+        AdminApprHostApproveRequest,
+        AdminApprHostApproveResponse,
+        AdminApprHostDetailResponse,
+        AdminApprHostHwInfo,
+        AdminApprHostInfo,
+        AdminApprHostListRequest,
+        AdminMaintainEmailRequest,
+        AdminMaintainEmailResponse,
+    )
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -103,10 +118,7 @@ def _build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
     for i in range(max_len):
         hw_id = hardware_ids_padded[i] if i < len(hardware_ids) else ""
         host_ip = host_ips_padded[i] if i < len(host_ips) else ""
-        row_html = (
-            f"<tr><td style='{cell_style}'>{hw_id}</td>"
-            f"<td style='{cell_style}'>{host_ip}</td></tr>"
-        )
+        row_html = f"<tr><td style='{cell_style}'>{hw_id}</td><td style='{cell_style}'>{host_ip}</td></tr>"
         table_rows.append(row_html)
 
     table_html = f"""
@@ -118,7 +130,7 @@ def _build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
         </tr>
     </thead>
     <tbody>
-        {''.join(table_rows)}
+        {"".join(table_rows)}
     </tbody>
 </table>
 """
@@ -185,7 +197,7 @@ class AdminApprHostService:
         try:
             async with session_factory() as session:
                 logger.debug("数据库会话创建成功")
-                
+
                 # 构建基础查询条件
                 # host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
                 base_conditions = [
@@ -292,7 +304,7 @@ class AdminApprHostService:
                         extra={
                             "error": str(e),
                             "error_type": type(e).__name__,
-                            "sql_preview": str(stmt)[:500] if hasattr(stmt, '__str__') else "N/A",
+                            "sql_preview": str(stmt)[:500] if hasattr(stmt, "__str__") else "N/A",
                         },
                         exc_info=True,
                     )
@@ -303,8 +315,8 @@ class AdminApprHostService:
                 for row in rows:
                     try:
                         # 安全获取 diff_state，因为 LEFT JOIN 可能返回 None
-                        diff_state = getattr(row, 'diff_state', None)
-                        
+                        diff_state = getattr(row, "diff_state", None)
+
                         host_info = AdminApprHostInfo(
                             host_id=row.host_id,
                             mg_id=row.mg_id,
@@ -320,9 +332,9 @@ class AdminApprHostService:
                             extra={
                                 "error": str(e),
                                 "error_type": type(e).__name__,
-                                "row_host_id": getattr(row, 'host_id', None),
-                                "row_mg_id": getattr(row, 'mg_id', None),
-                                "row_keys": [key for key in dir(row) if not key.startswith('_')],
+                                "row_host_id": getattr(row, "host_id", None),
+                                "row_mg_id": getattr(row, "mg_id", None),
+                                "row_keys": [key for key in dir(row) if not key.startswith("_")],
                             },
                             exc_info=True,
                         )
@@ -398,7 +410,7 @@ class AdminApprHostService:
                 .where(
                     and_(
                         HostHwRec.host_id == host_id,
-                        HostHwRec.sync_state == 1,  # sync_state = 1（待同步）
+                        HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
                         HostHwRec.del_flag == 0,
                     )
                 )
@@ -589,13 +601,17 @@ class AdminApprHostService:
 
                 # 优化：批量查询所有硬件记录（避免 N+1 查询）
                 # 查询所有符合条件的硬件记录（包括最新和其他）
-                hw_rec_stmt = select(HostHwRec).where(
-                    and_(
-                        HostHwRec.host_id.in_(host_ids_to_process),
-                        HostHwRec.sync_state == 1,
-                        HostHwRec.del_flag == 0,
+                hw_rec_stmt = (
+                    select(HostHwRec)
+                    .where(
+                        and_(
+                            HostHwRec.host_id.in_(host_ids_to_process),
+                            HostHwRec.sync_state == 1,
+                            HostHwRec.del_flag == 0,
+                        )
                     )
-                ).order_by(HostHwRec.host_id, desc(HostHwRec.created_time), desc(HostHwRec.id))
+                    .order_by(HostHwRec.host_id, desc(HostHwRec.created_time), desc(HostHwRec.id))
+                )
                 hw_rec_result = await session.execute(hw_rec_stmt)
                 all_hw_recs = hw_rec_result.scalars().all()
 
@@ -659,8 +675,8 @@ class AdminApprHostService:
 
                         # 6. 收集主机更新信息
                         host_updates[host_id] = {
-                            "appr_state": 1,
-                            "host_state": 0,
+                            "appr_state": APPR_STATE_ENABLE,
+                            "host_state": HOST_STATE_FREE,
                             "hw_id": latest_hw_id,
                             "subm_time": now,
                         }
@@ -722,20 +738,17 @@ class AdminApprHostService:
                 if other_hw_ids_to_update:
                     # 批量更新其他硬件记录
                     update_other_stmt = (
-                        update(HostHwRec)
-                        .where(HostHwRec.id.in_(other_hw_ids_to_update))
-                        .values(sync_state=4)
+                        update(HostHwRec).where(HostHwRec.id.in_(other_hw_ids_to_update)).values(sync_state=4)
                     )
                     await session.execute(update_other_stmt)
 
-                # 批量更新主机记录
-                for host_id, update_values in host_updates.items():
-                    update_host_stmt = (
-                        update(HostRec)
-                        .where(HostRec.id == host_id)
-                        .values(**update_values)
-                    )
-                    await session.execute(update_host_stmt)
+                # ✅ 优化：批量更新主机记录（使用 bulk_update_mappings 提升性能）
+                if host_updates:
+                    bulk_update_data = [
+                        {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
+                    ]
+                    # 使用 bulk_update_mappings 进行批量更新（SQLAlchemy 2.0）
+                    await session.bulk_update_mappings(HostRec, bulk_update_data)
 
                 # 提交事务
                 await session.commit()
@@ -774,9 +787,7 @@ class AdminApprHostService:
                             if email_list:
                                 # 3. 查询 host_rec 表 id in (host_ids) 的数据，获取 hardware_id 和 host_ip
                                 successful_host_ids = [
-                                    r["host_id"]
-                                    for r in results
-                                    if r.get("success", False) and r.get("host_id")
+                                    r["host_id"] for r in results if r.get("success", False) and r.get("host_id")
                                 ]
 
                                 if successful_host_ids:
@@ -803,9 +814,7 @@ class AdminApprHostService:
                                     user_account = sys_user.user_account if sys_user else ""
 
                                     # 5. 构建邮件内容
-                                    hardware_ids = [
-                                        h.hardware_id for h in host_recs if h.hardware_id
-                                    ]
+                                    hardware_ids = [h.hardware_id for h in host_recs if h.hardware_id]
                                     host_ips = [h.host_ip for h in host_recs if h.host_ip]
 
                                     # 构建主机信息表格

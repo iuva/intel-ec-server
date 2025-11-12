@@ -86,9 +86,10 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=exc.http_status_code, content=error_response.model_dump())
         except Exception as exc:
             # 捕获所有未处理的异常
+            error_message = str(exc)
             logger.error(
-                f"未处理的异常: {type(exc).__name__}",
-                extra={"error": str(exc), "path": request.url.path, "method": request.method},
+                f"未处理的异常: {type(exc).__name__} - {error_message}",
+                extra={"error": error_message, "path": request.url.path, "method": request.method},
                 exc_info=True,
             )
 

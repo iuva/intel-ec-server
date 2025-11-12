@@ -15,15 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 try:
     from app.models.host_hw_rec import HostHwRec
 
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes
-    from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
     from app.models.host_hw_rec import HostHwRec
 
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes
-    from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -158,4 +154,3 @@ async def get_all_pending_hw_records(
 
     result = await session.execute(stmt)
     return list(result.scalars().all())
-

@@ -85,6 +85,45 @@ http_requests_in_progress = Gauge(
     registry=registry,
 )
 
+# ==================== 出站 HTTP 客户端指标 ====================
+
+http_client_requests_total = Counter(
+    "http_client_requests_total",
+    "Total number of outbound HTTP requests",
+    ["client", "method", "status"],
+    registry=registry,
+)
+
+http_client_request_duration_seconds = Histogram(
+    "http_client_request_duration_seconds",
+    "Outbound HTTP request duration in seconds",
+    ["client", "method"],
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.5,
+        5.0,
+        7.5,
+        10.0,
+    ),
+    registry=registry,
+)
+
+http_client_requests_in_progress = Gauge(
+    "http_client_requests_in_progress",
+    "Number of outbound HTTP requests currently being processed",
+    ["client", "method"],
+    registry=registry,
+)
+
 # ==================== 数据库指标 ====================
 
 # 数据库查询总数

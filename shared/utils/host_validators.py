@@ -160,4 +160,3 @@ def build_host_query(
         stmt = stmt.where(and_(*conditions))
 
     return stmt
-

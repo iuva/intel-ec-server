@@ -108,11 +108,7 @@ class I18nManager:
         # 只使用基本类型（str, int, float, bool, None）进行格式化，避免传递字典等复杂类型
         if kwargs:
             # 过滤掉复杂类型，只保留基本类型
-            format_kwargs = {
-                k: v
-                for k, v in kwargs.items()
-                if isinstance(v, (str, int, float, bool, type(None)))
-            }
+            format_kwargs = {k: v for k, v in kwargs.items() if isinstance(v, (str, int, float, bool, type(None)))}
             try:
                 message = message.format(**format_kwargs)
             except KeyError as e:

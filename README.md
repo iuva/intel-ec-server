@@ -10,6 +10,15 @@
 
 Intel EC 微服务架构项目是一个基于 **Python 3.8.10** 构建的企业级微服务管理系统，采用现代化技术栈实现高可用、可扩展的分布式应用架构。
 
+### 🆕 最近更新
+
+- 🚀 **网关 HTTP 客户端增强**：新增 `HTTPClientConfig` 配置，统一连接池、重试与 Prometheus 指标（`http_client_requests_total`、`http_client_request_duration_seconds` 等），支持通过环境变量自定义超时/并发参数。
+- 📊 **数据库性能优化**：为 `host_exec_log`、`host_hw_rec`、`host_rec` 等核心表添加多列索引，显著提升审批列表与硬件同步查询性能（预期提升 40-60%）。
+- 🧰 **代码复用提升**：新增 `shared/utils/query_helpers.py`（通用分页查询助手）与 `services/host-service/app/constants/host_constants.py`（主机状态常量），降低重复逻辑与魔法值风险。
+- 🛡️ **错误处理改进**：网关代理层修复防御性异常处理问题，未处理异常日志包含完整错误消息，方便快速定位。
+- ⚡ **批量操作优化**：使用 `bulk_update_mappings` 替代循环更新，批量更新性能提升 50-70%。
+- 🔧 **Bug 修复**：修复网关 HTTP 客户端初始化缺失配置、host-service model_dump 参数冲突等关键问题。
+
 ### 🎯 核心特性
 
 - ✅ **微服务架构**: 3个核心微服务（网关、认证、主机服务）

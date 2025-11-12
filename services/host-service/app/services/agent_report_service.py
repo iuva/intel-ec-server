@@ -18,6 +18,7 @@ try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.models.host_exec_log import HostExecLog
 
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -29,6 +30,7 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.models.host_exec_log import HostExecLog
 
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -511,13 +513,6 @@ class AgentReportService:
                     "state": state,
                 },
             )
-
-            # 导入 HostExecLog 模型
-            try:
-                from app.models.host_exec_log import HostExecLog
-            except ImportError:
-                sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-                from app.models.host_exec_log import HostExecLog
 
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:

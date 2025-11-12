@@ -108,7 +108,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         extra={
                             "header_key": key,
                             "header_value": value,
-                            "header_value_preview": value[:20] + "..." if len(value) > 20 else value},
+                            "header_value_preview": value[:20] + "..." if len(value) > 20 else value,
+                        },
                     )
                     break
 

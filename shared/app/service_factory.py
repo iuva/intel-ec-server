@@ -70,6 +70,18 @@ class ServiceConfig:
         enable_nacos: bool = True,
         enable_jaeger: bool = True,
         enable_prometheus: bool = True,
+        http_timeout: float = 15.0,
+        http_connect_timeout: float = 5.0,
+        http_max_keepalive_connections: int = 20,
+        http_max_connections: int = 100,
+        http_max_retries: int = 0,
+        http_retry_delay: float = 0.0,
+        health_check_timeout: float = 5.0,
+        health_check_connect_timeout: float = 2.0,
+        health_check_max_keepalive_connections: int = 5,
+        health_check_max_connections: int = 10,
+        health_check_max_retries: int = 1,
+        health_check_retry_delay: float = 0.0,
     ):
         """
         初始化服务配置
@@ -103,6 +115,22 @@ class ServiceConfig:
         self.enable_nacos = enable_nacos
         self.enable_jaeger = enable_jaeger
         self.enable_prometheus = enable_prometheus
+
+        # HTTP 客户端配置
+        self.http_timeout = http_timeout
+        self.http_connect_timeout = http_connect_timeout
+        self.http_max_keepalive_connections = http_max_keepalive_connections
+        self.http_max_connections = http_max_connections
+        self.http_max_retries = http_max_retries
+        self.http_retry_delay = http_retry_delay
+
+        # 健康检查 HTTP 客户端配置
+        self.health_check_timeout = health_check_timeout
+        self.health_check_connect_timeout = health_check_connect_timeout
+        self.health_check_max_keepalive_connections = health_check_max_keepalive_connections
+        self.health_check_max_connections = health_check_max_connections
+        self.health_check_max_retries = health_check_max_retries
+        self.health_check_retry_delay = health_check_retry_delay
 
     @staticmethod
     def from_env(service_name: str, service_port_key: str = "SERVICE_PORT") -> "ServiceConfig":
@@ -183,6 +211,41 @@ class ServiceConfig:
         enable_jaeger = parse_bool_env("ENABLE_JAEGER", default=True)
         enable_prometheus = parse_bool_env("ENABLE_PROMETHEUS", default=True)
 
+        # HTTP 客户端配置（支持环境变量覆盖）
+        def parse_float_env(env_key: str, default: float) -> float:
+            value = os.getenv(env_key)
+            if value is None:
+                return default
+            try:
+                return float(value)
+            except ValueError:
+                logger.warning(f"环境变量 {env_key} 非法值: {value}，使用默认值 {default}")
+                return default
+
+        def parse_int_env(env_key: str, default: int) -> int:
+            value = os.getenv(env_key)
+            if value is None:
+                return default
+            try:
+                return int(value)
+            except ValueError:
+                logger.warning(f"环境变量 {env_key} 非法值: {value}，使用默认值 {default}")
+                return default
+
+        http_timeout = parse_float_env("HTTP_TIMEOUT", 15.0)
+        http_connect_timeout = parse_float_env("HTTP_CONNECT_TIMEOUT", 5.0)
+        http_max_keepalive_connections = parse_int_env("HTTP_MAX_KEEPALIVE_CONNECTIONS", 20)
+        http_max_connections = parse_int_env("HTTP_MAX_CONNECTIONS", 100)
+        http_max_retries = parse_int_env("HTTP_MAX_RETRIES", 0)
+        http_retry_delay = parse_float_env("HTTP_RETRY_DELAY", 0.0)
+
+        health_check_timeout = parse_float_env("HEALTH_CHECK_TIMEOUT", 5.0)
+        health_check_connect_timeout = parse_float_env("HEALTH_CHECK_CONNECT_TIMEOUT", 2.0)
+        health_check_max_keepalive_connections = parse_int_env("HEALTH_CHECK_MAX_KEEPALIVE_CONNECTIONS", 5)
+        health_check_max_connections = parse_int_env("HEALTH_CHECK_MAX_CONNECTIONS", 10)
+        health_check_max_retries = parse_int_env("HEALTH_CHECK_MAX_RETRIES", 1)
+        health_check_retry_delay = parse_float_env("HEALTH_CHECK_RETRY_DELAY", 0.0)
+
         return ServiceConfig(
             service_name=service_name,
             service_port=service_port,
@@ -196,6 +259,18 @@ class ServiceConfig:
             enable_nacos=enable_nacos,
             enable_jaeger=enable_jaeger,
             enable_prometheus=enable_prometheus,
+            http_timeout=http_timeout,
+            http_connect_timeout=http_connect_timeout,
+            http_max_keepalive_connections=http_max_keepalive_connections,
+            http_max_connections=http_max_connections,
+            http_max_retries=http_max_retries,
+            http_retry_delay=http_retry_delay,
+            health_check_timeout=health_check_timeout,
+            health_check_connect_timeout=health_check_connect_timeout,
+            health_check_max_keepalive_connections=health_check_max_keepalive_connections,
+            health_check_max_connections=health_check_max_connections,
+            health_check_max_retries=health_check_max_retries,
+            health_check_retry_delay=health_check_retry_delay,
         )
 
 

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, SmallInteger
+from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, Index, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入
@@ -52,6 +52,7 @@ class HostHwRec(BaseDBModel):
     diff_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
+        index=True,
         comment="参数状态;{ver_diff: 1, 版本号变化. item_diff: 2, 内容更改. failed: 3, 异常.}",
     )
 
@@ -60,6 +61,7 @@ class HostHwRec(BaseDBModel):
         SmallInteger,
         default=0,
         nullable=False,
+        index=True,
         comment="同步状态;{empty: 0 空状态. wait: 1, 待同步. success: 2, 通过. failed: 3, 异常.}",
     )
 
@@ -78,3 +80,16 @@ class HostHwRec(BaseDBModel):
     def __repr__(self) -> str:
         """字符串表示"""
         return f"<HostHwRec(id={self.id}, host_id={self.host_id}, hw_ver={self.hw_ver}, diff_state={self.diff_state})>"
+
+    __table_args__ = (
+        Index("ix_host_hw_rec_sync_state", "sync_state", "del_flag"),
+        Index("ix_host_hw_rec_diff_state", "diff_state", "del_flag"),
+        Index(
+            "ix_host_hw_rec_host_sync_diff_del",
+            "host_id",
+            "sync_state",
+            "diff_state",
+            "del_flag",
+        ),
+        Index("ix_host_hw_rec_created_time", "created_time", "id"),
+    )

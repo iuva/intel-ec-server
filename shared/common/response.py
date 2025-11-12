@@ -51,10 +51,27 @@ class SuccessResponse(BaseModel):
             message_kwargs = {
                 k: v
                 for k, v in data.items()
-                if k not in ("code", "message", "message_key", "data", "timestamp", "locale")
+                if k
+                not in (
+                    "code",
+                    "message",
+                    "message_key",
+                    "data",
+                    "timestamp",
+                    "locale",
+                    "default",
+                )
                 and isinstance(v, (str, int, float, bool, type(None)))
             }
-            translated_message = t(message_key, locale=locale, **message_kwargs)
+            default_value = data.get("default")
+            default_arg: Optional[str]
+            if isinstance(default_value, str) or default_value is None:
+                default_arg = default_value
+            elif isinstance(default_value, (int, float, bool)):
+                default_arg = str(default_value)
+            else:
+                default_arg = None
+            translated_message = t(message_key, locale=locale, default=default_arg, **message_kwargs)
             data["message"] = translated_message
             # 移除 message_key，避免 Pydantic 验证错误
             data.pop("message_key", None)
@@ -88,7 +105,8 @@ class SuccessResponse(BaseModel):
         # 排除 message_key（因为 message 已经翻译）
         exclude.add("message_key")
         # 保留 locale 字段，以便客户端知道使用的语言
-        return super().model_dump(exclude=exclude, exclude_none=True, **kwargs)
+        exclude_none = kwargs.pop("exclude_none", True)
+        return super().model_dump(exclude=exclude, exclude_none=exclude_none, **kwargs)
 
 
 class ErrorResponse(BaseModel):
@@ -134,10 +152,28 @@ class ErrorResponse(BaseModel):
                 k: v
                 for k, v in data.items()
                 if k
-                not in ("code", "message", "message_key", "error_code", "details", "timestamp", "request_id", "locale")
+                not in (
+                    "code",
+                    "message",
+                    "message_key",
+                    "error_code",
+                    "details",
+                    "timestamp",
+                    "request_id",
+                    "locale",
+                    "default",
+                )
                 and isinstance(v, (str, int, float, bool, type(None)))
             }
-            translated_message = t(message_key, locale=locale, **message_kwargs)
+            default_value = data.get("default")
+            default_arg: Optional[str]
+            if isinstance(default_value, str) or default_value is None:
+                default_arg = default_value
+            elif isinstance(default_value, (int, float, bool)):
+                default_arg = str(default_value)
+            else:
+                default_arg = None
+            translated_message = t(message_key, locale=locale, default=default_arg, **message_kwargs)
             data["message"] = translated_message
             # ✅ 修复：保留 message_key 和 locale 字段，不删除它们
             # 这样可以在响应中包含多语言信息，供客户端使用
@@ -148,7 +184,7 @@ class ErrorResponse(BaseModel):
 
     def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
         """序列化模型
-        
+
         注意：默认排除 message_key 字段（因为 message 已经翻译），但保留 locale 字段
         如果需要排除这些字段，可以在调用时传递 exclude 参数
         """
@@ -159,7 +195,8 @@ class ErrorResponse(BaseModel):
         # 排除 message_key（因为 message 已经翻译）
         exclude.add("message_key")
         # 保留 locale 字段，以便客户端知道使用的语言
-        return super().model_dump(exclude=exclude, exclude_none=True, **kwargs)
+        exclude_none = kwargs.pop("exclude_none", True)
+        return super().model_dump(exclude=exclude, exclude_none=exclude_none, **kwargs)
 
 
 class PaginationInfo(BaseModel):

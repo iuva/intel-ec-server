@@ -40,6 +40,22 @@ class GatewayConfig(BaseSettings):
     rate_limit_requests: int = Field(default=100, description="限流请求数")
     rate_limit_period: int = Field(default=60, description="限流时间窗口（秒）")
 
+    # HTTP 客户端配置
+    http_timeout: float = Field(default=15.0, description="网关转发请求超时时间（秒）")
+    http_connect_timeout: float = Field(default=5.0, description="网关转发连接超时时间（秒）")
+    http_max_keepalive_connections: int = Field(default=20, description="HTTP 客户端保持活动连接数")
+    http_max_connections: int = Field(default=100, description="HTTP 客户端最大连接数")
+    http_max_retries: int = Field(default=0, description="HTTP 客户端最大重试次数")
+    http_retry_delay: float = Field(default=0.0, description="HTTP 客户端重试延迟（秒）")
+
+    # 健康检查 HTTP 客户端配置
+    health_check_timeout: float = Field(default=5.0, description="健康检查请求超时时间（秒）")
+    health_check_connect_timeout: float = Field(default=2.0, description="健康检查连接超时时间（秒）")
+    health_check_max_keepalive_connections: int = Field(default=5, description="健康检查保持活动连接数")
+    health_check_max_connections: int = Field(default=10, description="健康检查最大连接数")
+    health_check_max_retries: int = Field(default=1, description="健康检查最大重试次数")
+    health_check_retry_delay: float = Field(default=0.0, description="健康检查重试延迟（秒）")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

@@ -12,13 +12,14 @@ from typing import Any, Dict, Optional
 
 import websockets
 from fastapi import Request, WebSocket, WebSocketDisconnect
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 # 使用 try-except 方式处理路径导入
 try:
     from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
-    from shared.common.http_client import AsyncHTTPClient
+    from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import ServiceDiscovery
 except ImportError:
@@ -28,7 +29,7 @@ except ImportError:
     from httpx import ConnectError, TimeoutException
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
-    from shared.common.http_client import AsyncHTTPClient
+    from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import ServiceDiscovery
 
@@ -54,7 +55,12 @@ class ProxyService:
     负责将请求转发到后端微服务
     """
 
-    def __init__(self, service_discovery=None):
+    def __init__(
+        self,
+        service_discovery=None,
+        http_client_config: Optional[HTTPClientConfig] = None,
+        health_check_client_config: Optional[HTTPClientConfig] = None,
+    ):
         """初始化代理服务
 
         支持三种服务发现方式：
@@ -68,6 +74,27 @@ class ProxyService:
         # 服务发现工具
         self.service_discovery = service_discovery
 
+        # HTTP 客户端配置（在创建客户端之前必须初始化）
+        self.http_client_config = http_client_config or HTTPClientConfig(
+            timeout=15.0,
+            connect_timeout=5.0,
+            max_keepalive_connections=20,
+            max_connections=100,
+            max_retries=0,
+            retry_delay=0.0,
+            client_name="gateway_proxy_http_client",
+        )
+
+        self.health_check_client_config = health_check_client_config or HTTPClientConfig(
+            timeout=5.0,
+            connect_timeout=2.0,
+            max_keepalive_connections=5,
+            max_connections=10,
+            max_retries=1,
+            retry_delay=0.0,
+            client_name="gateway_proxy_health_check_client",
+        )
+
         # 服务名称映射（短名称 -> 完整服务名）
         self.service_name_map = {
             "auth": "auth-service",
@@ -79,27 +106,17 @@ class ProxyService:
             extra={
                 "service_discovery_enabled": service_discovery is not None,
                 "services": list(self.service_name_map.keys()),
+                "http_client_name": self.http_client_config.client_name,
+                "health_check_client_name": self.health_check_client_config.client_name,
             },
         )
 
         # 使用共享的 HTTP 客户端
         # ✅ 恢复正常超时时间，异步版本
-        self.http_client = AsyncHTTPClient(
-            timeout=15.0,  # 恢复正常超时时间
-            connect_timeout=5.0,  # 恢复正常连接超时
-            max_keepalive_connections=20,
-            max_connections=100,
-            max_retries=0,  # 禁用重试
-            retry_delay=0.0,  # 重试延迟设为 0
-        )
+        self.http_client = AsyncHTTPClient(config=self.http_client_config)
 
         # 健康检查专用客户端（缓存以避免重复创建）
-        self._health_check_client = AsyncHTTPClient(
-            timeout=5.0,
-            connect_timeout=2.0,
-            max_retries=1,
-            retry_delay=0.5,
-        )
+        self._health_check_client = AsyncHTTPClient(config=self.health_check_client_config)
 
     async def get_service_url(self, service_name: str) -> str:
         """获取服务 URL（异步方法）
@@ -381,25 +398,43 @@ class ProxyService:
                     },
                 )
 
-                # ✅ 修复：检查响应状态码，如果是错误状态码（4xx, 5xx），处理后端错误
                 if 400 <= status_code < 600:
                     # 使用新的方法处理响应字典中的错误
-                    await self._handle_backend_http_error_from_response(
-                        service_name, method, path, response
+                    await self._handle_backend_http_error_from_response(service_name, method, path, response)
+
+                    # 如果执行到此处，说明错误处理函数未按预期抛出异常
+                    logger.error(
+                        "后端错误处理未抛出异常",
+                        extra={
+                            "service_name": service_name,
+                            "method": method,
+                            "path": path,
+                            "status_code": status_code,
+                        },
                     )
-                    # _handle_backend_http_error_from_response 内部会抛出 BusinessError，不会返回
-                    # 防御性编程：如果异常处理出错，抛出运行时错误
-                    raise RuntimeError("不应该到达这里")
+                    raise BusinessError(
+                        message="后端服务错误处理失败",
+                        error_code="GATEWAY_ERROR_HANDLING_FAILED",
+                        code=ServiceErrorCodes.GATEWAY_INTERNAL_ERROR,
+                        http_status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                        details={
+                            "service_name": service_name,
+                            "method": method,
+                            "path": path,
+                            "status_code": status_code,
+                        },
+                    )
 
                 return response
             except Exception as http_error:
-                logger.error(http_error)
                 # 添加详细的连接错误日志
                 logger.error(
                     f"HTTP 请求异常: {method} {full_url}",
                     extra={
                         "method": method,
                         "url": full_url,
+                        "service_name": service_name,
+                        "path": path,
                         "error_type": type(http_error).__name__,
                         "error_message": str(http_error),
                     },
@@ -733,6 +768,7 @@ class ProxyService:
                 if isinstance(response_body, str):
                     try:
                         import json
+
                         response_data_502 = json.loads(response_body)
                     except (json.JSONDecodeError, TypeError):
                         response_data_502 = {"message": response_body}
@@ -774,6 +810,7 @@ class ProxyService:
             if isinstance(response_body, str):
                 try:
                     import json
+
                     response_data = json.loads(response_body)
                 except (json.JSONDecodeError, TypeError):
                     response_data = {"message": response_body}
@@ -787,6 +824,18 @@ class ProxyService:
                     error_detail = response_data
             else:
                 error_detail = {"message": str(response_data)}
+
+            # ✅ 记录后端响应的原始内容（用于调试）
+            logger.debug(
+                "后端错误响应解析",
+                extra={
+                    "service_name": service_name,
+                    "path": path,
+                    "status_code": status_code,
+                    "response_data": response_data,
+                    "error_detail": error_detail,
+                },
+            )
 
             # ✅ 提取关键错误信息，包括多语言支持字段
             error_message = error_detail.get("message", f"后端服务错误: {status_code}")
@@ -1066,7 +1115,14 @@ async def get_proxy_service(request: Request) -> ProxyService:
         # else:
         #     logger.info("⚠️ 代理服务使用后备地址（服务发现未配置）")
 
-        _proxy_service_instance = ProxyService(service_discovery=service_discovery)
+        http_client_config = getattr(request.app.state, "http_client_config", None)
+        health_check_config = getattr(request.app.state, "health_check_http_client_config", None)
+
+        _proxy_service_instance = ProxyService(
+            service_discovery=service_discovery,
+            http_client_config=http_client_config,
+            health_check_client_config=health_check_config,
+        )
 
     return _proxy_service_instance
 
@@ -1097,6 +1153,13 @@ async def get_proxy_service_ws(websocket: WebSocket) -> ProxyService:
         else:
             logger.info("⚠️ 代理服务（WebSocket）使用后备地址（服务发现未配置）")
 
-        _proxy_service_instance = ProxyService(service_discovery=service_discovery)
+        http_client_config = getattr(websocket.app.state, "http_client_config", None)
+        health_check_config = getattr(websocket.app.state, "health_check_http_client_config", None)
+
+        _proxy_service_instance = ProxyService(
+            service_discovery=service_discovery,
+            http_client_config=http_client_config,
+            health_check_client_config=health_check_config,
+        )
 
     return _proxy_service_instance

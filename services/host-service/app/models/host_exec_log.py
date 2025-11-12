@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, SmallInteger
+from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, Index, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 # 使用 try-except 方式处理路径导入
@@ -69,6 +69,7 @@ class HostExecLog(BaseDBModel):
         SmallInteger,
         default=0,
         nullable=False,
+        index=True,
         comment="case 执行状态;0-空闲 1-启动 2-成功 3-失败",
     )
 
@@ -89,6 +90,17 @@ class HostExecLog(BaseDBModel):
 
     # 📌 注意: del_flag 字段已由 BaseDBModel 提供，不需要重复定义
     # del_flag: TINYINT, default=0 (继承自 BaseDBModel)
+
+    __table_args__ = (
+        Index("ix_host_exec_log_case_state", "case_state"),
+        Index(
+            "ix_host_exec_log_host_case_begin_del",
+            "host_state",
+            "case_state",
+            "begin_time",
+            "del_flag",
+        ),
+    )
 
     def __repr__(self) -> str:
         """字符串表示"""

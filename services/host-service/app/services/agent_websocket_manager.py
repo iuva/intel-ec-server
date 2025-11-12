@@ -14,7 +14,7 @@ from typing import Callable, Dict, List, Optional
 
 from app.services.browser_host_service import BrowserHostService
 from fastapi import WebSocket
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -230,9 +230,9 @@ class AgentWebSocketManager:
             # 📤 日志：发送消息 (详细报文内容)
 
             message_type = message.get("type", "unknown")
+            message_json = json.dumps(message, ensure_ascii=False)
             logger.info(
-                f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | "
-                f"内容: {json.dumps(message, ensure_ascii=False)}",
+                f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | 内容: {message_json}",
             )
 
             websocket = self.active_connections[host_id]
@@ -294,8 +294,7 @@ class AgentWebSocketManager:
 
         message_json = json.dumps(message, ensure_ascii=False)
         logger.info(
-            f"📢 开始广播消息 | 类型: {message_type} | 目标数量: {len(target_hosts)} | "
-        f"排除: {exclude} | 内容: {message_json}",
+            f"📢 开始广播消息 | 类型: {message_type} | 目标数量: {len(target_hosts)} | 排除: {exclude} | 内容: {message_json}",
         )
 
         success_count = 0
@@ -504,8 +503,6 @@ class AgentWebSocketManager:
                 )
 
                 # 更新 host_state = 2 (已占用)
-                from sqlalchemy import update
-
                 update_stmt = (
                     update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=2)  # 已占用
                 )
@@ -643,7 +640,6 @@ class AgentWebSocketManager:
                 )
 
                 # 更新 host_state = 4 (离线)
-                from sqlalchemy import update
 
                 update_stmt = (
                     update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=4)  # 离线

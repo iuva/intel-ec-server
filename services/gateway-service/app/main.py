@@ -19,6 +19,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
 
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
+    from shared.common.http_client import HTTPClientConfig
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
@@ -33,6 +34,7 @@ except ImportError:
     from fastapi.middleware.cors import CORSMiddleware
 
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
+    from shared.common.http_client import HTTPClientConfig
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
@@ -82,6 +84,24 @@ app = FastAPI(
 
 # 在应用状态中保存服务发现实例，以便在路由中使用
 app.state.service_discovery = service_discovery
+app.state.http_client_config = HTTPClientConfig(
+    timeout=config.http_timeout,
+    connect_timeout=config.http_connect_timeout,
+    max_keepalive_connections=config.http_max_keepalive_connections,
+    max_connections=config.http_max_connections,
+    max_retries=config.http_max_retries,
+    retry_delay=config.http_retry_delay,
+    client_name=f"{config.service_name}_http_client",
+)
+app.state.health_check_http_client_config = HTTPClientConfig(
+    timeout=config.health_check_timeout,
+    connect_timeout=config.health_check_connect_timeout,
+    max_keepalive_connections=config.health_check_max_keepalive_connections,
+    max_connections=config.health_check_max_connections,
+    max_retries=config.health_check_max_retries,
+    retry_delay=config.health_check_retry_delay,
+    client_name=f"{config.service_name}_health_check_client",
+)
 
 # ✅ 在这里立即添加所有中间件（在 lifespan 之前）
 # 添加 CORS 中间件

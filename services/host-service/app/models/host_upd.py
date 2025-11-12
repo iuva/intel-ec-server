@@ -30,9 +30,7 @@ class HostUpd(BaseDBModel):
     __tablename__ = "host_upd"
 
     # 主机主键;host_rec 表主键
-    host_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, nullable=True, comment="主机主键;host_rec 表主键"
-    )
+    host_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="主机主键;host_rec 表主键")
 
     # 应用 key
     app_key: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="应用 key")

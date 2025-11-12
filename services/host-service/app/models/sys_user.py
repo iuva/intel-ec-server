@@ -61,4 +61,3 @@ class SysUser(Base):
     def __repr__(self) -> str:
         """字符串表示"""
         return f"<SysUser(id={self.id}, user_account={self.user_account}, user_name={self.user_name})>"
-
