@@ -21,11 +21,15 @@ from fastapi import APIRouter, Body, Depends, Query
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
+    from shared.common.response import SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
+    from shared.common.response import SuccessResponse
 
 from app.services.host_discovery_service import HostDiscoveryService
 
@@ -36,13 +40,13 @@ router = APIRouter()
 
 @router.get(
     "/available",
-    response_model=AvailableHostsListResponse,
+    response_model=SuccessResponse,
     summary="查询可用主机列表",
     description="查询可用的主机列表，支持游标分页",
     responses={
         200: {
             "description": "查询成功",
-            "model": AvailableHostsListResponse,
+            "model": SuccessResponse,
         },
         400: {
             "description": "请求参数错误",
@@ -78,7 +82,8 @@ async def query_available_hosts(
     page_size: int = Query(20, ge=1, le=100, description="每页大小"),
     last_id: Optional[str] = Query(None, description="上一页最后一条记录的 id（字符串格式）"),
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
-):
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
     """查询可用的主机列表 - 游标分页
 
     ## 请求参数说明
@@ -151,7 +156,11 @@ async def query_available_hosts(
         },
     )
 
-    return result
+    return SuccessResponse(
+        data=result.model_dump(),
+        message_key="success.host.available_list_query",
+        locale=locale,
+    )
 
 
 @router.post(

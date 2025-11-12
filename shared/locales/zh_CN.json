@@ -9,7 +9,10 @@
     "logout": "登出成功",
     "host": {
       "list_query": "查询主机列表成功",
+      "available_list_query": "查询可用主机列表成功",
+      "detail_query": "查询主机详情成功",
       "appr_list_query": "查询待审批主机列表成功",
+      "appr_detail_query": "查询待审批主机详情成功",
       "delete": "主机删除成功",
       "update_approval": "主机审批状态更新成功",
       "already_in_state": "主机已是{state_name}状态",

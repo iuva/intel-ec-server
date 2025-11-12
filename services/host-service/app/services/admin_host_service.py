@@ -113,13 +113,15 @@ class AdminHostService:
             )
 
             # 获取每个 host_id 的最大 id（当 created_time 相同时）
+            # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+            # 使用 select_from() 配合 join() 在表对象上
             max_id_subquery = (
                 select(
                     HostExecLog.host_id,
                     func.max(HostExecLog.id).label("max_id"),
                 )
                 .select_from(
-                    HostExecLog.join(
+                    HostExecLog.__table__.join(
                         max_time_subquery,
                         and_(
                             HostExecLog.host_id == max_time_subquery.c.host_id,
@@ -133,10 +135,11 @@ class AdminHostService:
             )
 
             # 获取最新执行日志的完整记录（使用 id 确保唯一性）
+            # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
             latest_log_subquery = (
                 select(HostExecLog.host_id, HostExecLog.user_name)
                 .select_from(
-                    HostExecLog.join(
+                    HostExecLog.__table__.join(
                         max_id_subquery,
                         HostExecLog.id == max_id_subquery.c.max_id,
                     )
@@ -152,35 +155,36 @@ class AdminHostService:
                 HostRec.del_flag == 0,
             ]
 
-            # 添加搜索条件
-            if request.mac:
-                base_conditions.append(HostRec.mac_addr.like(f"%{request.mac}%"))
+            # 添加搜索条件（过滤空字符串）
+            if request.mac and request.mac.strip():
+                base_conditions.append(HostRec.mac_addr.like(f"%{request.mac.strip()}%"))
 
-            if request.username:
-                base_conditions.append(HostRec.host_acct.like(f"%{request.username}%"))
+            if request.username and request.username.strip():
+                base_conditions.append(HostRec.host_acct.like(f"%{request.username.strip()}%"))
 
             if request.host_state is not None:
                 base_conditions.append(HostRec.host_state == request.host_state)
 
-            if request.mg_id:
-                base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id}%"))
+            if request.mg_id and request.mg_id.strip():
+                base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id.strip()}%"))
 
             # 如果指定了 use_by 过滤条件，需要重新构建子查询并添加过滤
-            if request.use_by:
+            if request.use_by and request.use_by.strip():
                 # 重新获取最大 id，但这次要过滤 user_name
+                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
                 max_id_with_filter_subquery = (
                     select(
                         HostExecLog.host_id,
                         func.max(HostExecLog.id).label("max_id"),
                     )
                     .select_from(
-                        HostExecLog.join(
+                        HostExecLog.__table__.join(
                             max_time_subquery,
                             and_(
                                 HostExecLog.host_id == max_time_subquery.c.host_id,
                                 HostExecLog.created_time == max_time_subquery.c.max_created_time,
                                 HostExecLog.del_flag == 0,
-                                HostExecLog.user_name.like(f"%{request.use_by}%"),
+                                HostExecLog.user_name.like(f"%{request.use_by.strip()}%"),
                             ),
                         )
                     )
@@ -189,10 +193,11 @@ class AdminHostService:
                 )
 
                 # 获取过滤后的最新执行日志
+                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
                 latest_log_subquery = (
                     select(HostExecLog.host_id, HostExecLog.user_name)
                     .select_from(
-                        HostExecLog.join(
+                        HostExecLog.__table__.join(
                             max_id_with_filter_subquery,
                             HostExecLog.id == max_id_with_filter_subquery.c.max_id,
                         )
@@ -201,6 +206,12 @@ class AdminHostService:
                 )
 
             # 构建主查询：LEFT JOIN 获取最新的执行日志
+            # 如果指定了 use_by，需要过滤掉 user_name 为 None 的记录
+            query_conditions = base_conditions.copy()
+            if request.use_by and request.use_by.strip():
+                # 由于使用了 LEFT JOIN，需要过滤掉 user_name 为 None 的记录
+                query_conditions.append(latest_log_subquery.c.user_name.is_not(None))
+
             base_query = (
                 select(
                     HostRec.id.label("host_id"),
@@ -215,12 +226,8 @@ class AdminHostService:
                     latest_log_subquery,
                     HostRec.id == latest_log_subquery.c.host_id,
                 )
-                .where(and_(*base_conditions))
+                .where(and_(*query_conditions))
             )
-
-            # 如果指定了 use_by，还需要在 WHERE 子句中过滤（因为可能有些主机没有执行日志）
-            if request.use_by:
-                base_query = base_query.where(latest_log_subquery.c.user_name.is_not(None))
 
             # 1. 查询总数
             count_stmt = select(func.count()).select_from(base_query.subquery())
@@ -782,8 +789,9 @@ class AdminHostService:
                 "查询主机详情完成",
                 extra={
                     "host_id": host_id,
-                    "has_hw_rec": hw_rec is not None,
+                    "has_hw_rec": host_rec is not None,
                     "has_***REMOVED***word": ***REMOVED*** is not None,
+                    "hw_list_count": len(hw_list),
                 },
             )
 
