@@ -539,7 +539,6 @@ class AdminMaintainEmailResponse(BaseModel):
 
     conf_key: str = Field(description="配置键（固定为 'email'）")
     conf_val: str = Field(description="配置值（格式化后的邮箱地址）")
-    message: str = Field(default="维护通知邮箱设置成功", description="操作结果消息")
 
     model_config = {"from_attributes": True}
 

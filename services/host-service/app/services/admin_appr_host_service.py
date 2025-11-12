@@ -1044,7 +1044,6 @@ class AdminApprHostService:
                 return AdminMaintainEmailResponse(
                     conf_key="email",
                     conf_val=formatted_email,
-                    message="维护通知邮箱设置成功",
                 )
 
             except Exception as e:
@@ -1067,4 +1066,82 @@ class AdminApprHostService:
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
                     details={"email": formatted_email},
+                )
+
+    @handle_service_errors(
+        error_message="获取维护通知邮箱失败",
+        error_code="GET_MAINTAIN_EMAIL_FAILED",
+    )
+    async def get_maintain_email(self) -> AdminMaintainEmailResponse:
+        """获取维护通知邮箱（管理后台）
+
+        业务逻辑：
+        1. 查询 sys_conf 表，conf_key = "email", state_flag = 0, del_flag = 0
+        2. 返回 conf_val 值
+
+        Returns:
+            AdminMaintainEmailResponse: 包含邮箱配置信息
+
+        Raises:
+            BusinessError: 数据库操作失败时
+        """
+        logger.info("开始获取维护通知邮箱")
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            try:
+                # 查询 sys_conf 表
+                stmt = (
+                    select(SysConf)
+                    .where(
+                        and_(
+                            SysConf.conf_key == "email",
+                            SysConf.state_flag == 0,
+                            SysConf.del_flag == 0,
+                        )
+                    )
+                    .limit(1)
+                )
+
+                result = await session.execute(stmt)
+                sys_conf = result.scalar_one_or_none()
+
+                if not sys_conf:
+                    # 如果不存在，返回空字符串
+                    logger.info("维护通知邮箱配置不存在，返回空值")
+                    return AdminMaintainEmailResponse(
+                        conf_key="email",
+                        conf_val="",
+                    )
+
+                # 返回配置值
+                conf_val = sys_conf.conf_val or ""
+                logger.info(
+                    "获取维护通知邮箱成功",
+                    extra={
+                        "conf_key": sys_conf.conf_key,
+                        "conf_val_length": len(conf_val),
+                    },
+                )
+
+                return AdminMaintainEmailResponse(
+                    conf_key="email",
+                    conf_val=conf_val,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "获取维护通知邮箱失败",
+                    extra={
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+                raise BusinessError(
+                    message=f"获取维护通知邮箱失败: {str(e)}",
+                    message_key="error.email.get_failed",
+                    error_code="GET_MAINTAIN_EMAIL_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
                 )

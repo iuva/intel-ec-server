@@ -30,6 +30,10 @@
       "report": "VNC连接结果上报成功",
       "get_connection": "获取 VNC 连接信息成功"
     },
+    "email": {
+      "get_completed": "获取维护通知邮箱成功",
+      "set_completed": "维护通知邮箱设置成功"
+    },
     "ota": {
       "list_query": "查询 OTA 配置列表成功",
       "deploy": "OTA 配置下发成功"

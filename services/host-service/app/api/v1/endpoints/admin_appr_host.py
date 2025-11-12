@@ -368,6 +368,88 @@ async def approve_hosts(
     )
 
 
+@router.get(
+    "/maintain-email",
+    response_model=SuccessResponse,
+    summary="获取维护通知邮箱",
+    description="查询 sys_conf 表，获取维护通知邮箱配置",
+    responses={
+        200: {
+            "description": "查询成功",
+            "model": AdminMaintainEmailResponse,
+        },
+        500: {
+            "description": "服务器内部错误",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "get_failed": {
+                            "summary": "获取失败",
+                            "value": {
+                                "code": 500,
+                                "message": "获取维护通知邮箱失败: 数据库操作异常",
+                                "error_code": "GET_MAINTAIN_EMAIL_FAILED",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def get_maintain_email(
+    admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
+    """获取维护通知邮箱（管理后台）
+
+    业务逻辑：
+    1. 查询 sys_conf 表，conf_key = "email", state_flag = 0, del_flag = 0
+    2. 返回 conf_val 值
+
+    ## 返回字段
+    - `conf_key`: 配置键（固定为 "email"）
+    - `conf_val`: 配置值（邮箱地址，多个邮箱以半角逗号分割）
+    - `message`: 操作结果消息
+
+    Args:
+        admin_appr_host_service: 管理后台待审批主机服务实例
+        current_user: 当前用户信息
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 包含维护通知邮箱配置信息
+
+    Raises:
+        BusinessError: 数据库操作失败时
+    """
+    logger.info(
+        "接收管理后台获取维护通知邮箱请求",
+        extra={
+            "user_id": current_user.get("user_id"),
+        },
+    )
+
+    # 调用服务层查询
+    result = await admin_appr_host_service.get_maintain_email()
+
+    logger.info(
+        "管理后台获取维护通知邮箱完成",
+        extra={
+            "conf_key": result.conf_key,
+            "conf_val_length": len(result.conf_val),
+        },
+    )
+
+    return SuccessResponse(
+        data=result.model_dump(),
+        message_key="success.email.get_completed",
+        locale=locale,
+    )
+
+
 @router.post(
     "/maintain-email",
     response_model=SuccessResponse,

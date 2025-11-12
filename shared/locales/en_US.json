@@ -30,6 +30,10 @@
       "report": "VNC connection result reported successfully",
       "get_connection": "Get VNC connection information successful"
     },
+    "email": {
+      "get_completed": "Maintenance notification email fetched successfully",
+      "set_completed": "Maintenance notification email set successfully"
+    },
     "ota": {
       "list_query": "OTA configuration list query successful",
       "deploy": "OTA configuration deployed successfully"
