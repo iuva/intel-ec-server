@@ -586,14 +586,21 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
                 },
             )
 
+            # ✅ 透传 message_key 和 locale 以支持多语言
+            error_response_kwargs = {
+                "code": e.code,  # 使用自定义错误码作为响应体中的 code
+                "message": e.message,
+                "error_code": e.error_code,
+                "details": e.details,
+            }
+            if e.message_key:
+                error_response_kwargs["message_key"] = e.message_key
+            if e.locale:
+                error_response_kwargs["locale"] = e.locale
+
             raise HTTPException(
                 status_code=status_code,
-                detail=ErrorResponse(
-                    code=e.code,  # 使用自定义错误码作为响应体中的 code
-                    message=e.message,
-                    error_code=e.error_code,
-                    details=e.details,
-                ).model_dump(),
+                detail=ErrorResponse(**error_response_kwargs).model_dump(),
             )
 
         except HTTPException:
@@ -655,14 +662,21 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
                 },
             )
 
+            # ✅ 透传 message_key 和 locale 以支持多语言
+            error_response_kwargs = {
+                "code": e.code,  # 使用自定义错误码作为响应体中的 code
+                "message": e.message,
+                "error_code": e.error_code,
+                "details": e.details,
+            }
+            if e.message_key:
+                error_response_kwargs["message_key"] = e.message_key
+            if e.locale:
+                error_response_kwargs["locale"] = e.locale
+
             raise HTTPException(
                 status_code=status_code,
-                detail=ErrorResponse(
-                    code=e.code,  # 使用自定义错误码作为响应体中的 code
-                    message=e.message,
-                    error_code=e.error_code,
-                    details=e.details,
-                ).model_dump(),
+                detail=ErrorResponse(**error_response_kwargs).model_dump(),
             )
 
         except HTTPException:
