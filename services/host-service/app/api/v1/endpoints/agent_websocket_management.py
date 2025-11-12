@@ -7,7 +7,7 @@ import os
 import sys
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -70,7 +70,7 @@ async def get_active_hosts(locale: str = Depends(get_locale)):
 
 @router.get("/ws/status/{host_id}")
 async def get_host_status(
-    host_id: str,
+    host_id: str = Path(..., description="主机ID（host_rec.id）"),
     locale: str = Depends(get_locale),
 ):
     """检查 Host 连接状态
@@ -115,8 +115,8 @@ async def get_host_status(
 
 @router.post("/ws/send/{host_id}")
 async def send_message_to_host(
-    host_id: str,
-    message: Dict,
+    host_id: str = Path(..., description="主机ID（host_rec.id）"),
+    message: Dict = ...,
     locale: str = Depends(get_locale),
 ):
     """发送消息给指定 Host
@@ -337,7 +337,7 @@ async def broadcast_message(
 
 @router.post("/ws/notify-offline/{host_id}")
 async def notify_host_offline(
-    host_id: str,
+    host_id: str = Path(..., description="主机ID（host_rec.id）"),
     reason: str = Query(None, description="下线原因"),
     locale: str = Depends(get_locale),
 ):

@@ -8,7 +8,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from starlette.status import HTTP_200_OK
 
 # 使用 try-except 方式处理路径导入
@@ -73,7 +73,7 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
 )
 @handle_api_errors
 async def report_vnc_connection(
-    request: VNCConnectionReport,
+    request: VNCConnectionReport = Body(..., description="VNC 连接结果上报数据"),
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
     locale: str = Depends(get_locale),
 ):
@@ -201,7 +201,7 @@ async def report_vnc_connection(
 )
 @handle_api_errors
 async def get_vnc_connection(
-    request: GetVNCConnectionRequest,
+    request: GetVNCConnectionRequest = Body(..., description="获取 VNC 连接信息请求数据"),
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
     locale: str = Depends(get_locale),
 ):

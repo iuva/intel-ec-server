@@ -6,7 +6,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -139,7 +139,7 @@ async def list_ota_configs(
 )
 @handle_api_errors
 async def deploy_ota_config(
-    deploy_data: AdminOtaDeployRequest,
+    deploy_data: AdminOtaDeployRequest = Body(..., description="OTA 下发请求数据"),
     admin_ota_service: AdminOtaService = Depends(get_admin_ota_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),

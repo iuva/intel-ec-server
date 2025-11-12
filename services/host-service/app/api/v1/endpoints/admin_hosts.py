@@ -6,7 +6,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends, Path
 from starlette.status import HTTP_200_OK
 
 # 使用 try-except 方式处理路径导入
@@ -215,7 +215,7 @@ async def list_hosts(
 )
 @handle_api_errors
 async def delete_host(
-    host_id: int,
+    host_id: int = Path(..., description="主机ID（host_rec.id）", ge=1),
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
@@ -317,7 +317,7 @@ async def delete_host(
 )
 @handle_api_errors
 async def disable_host(
-    request: AdminHostDisableRequest,
+    request: AdminHostDisableRequest = Body(..., description="主机停用请求数据"),
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
@@ -428,7 +428,7 @@ async def disable_host(
 )
 @handle_api_errors
 async def force_offline_host(
-    request: AdminHostForceOfflineRequest,
+    request: AdminHostForceOfflineRequest = Body(..., description="主机强制下线请求数据"),
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
@@ -667,7 +667,7 @@ async def get_host_detail(
 )
 @handle_api_errors
 async def update_host_***REMOVED***word(
-    request: AdminHostUpdatePasswordRequest,
+    request: AdminHostUpdatePasswordRequest = Body(..., description="主机密码修改请求数据"),
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),

@@ -260,7 +260,7 @@ async def get_retry_vnc_list(
 )
 @handle_api_errors
 async def release_hosts(
-    request: ReleaseHostsRequest,
+    request: ReleaseHostsRequest = Body(..., description="释放主机请求数据"),
     host_service: BrowserHostService = Depends(get_host_service),
 ):
     """释放主机 - 逻辑删除执行日志记录

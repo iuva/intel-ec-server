@@ -6,7 +6,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Path, UploadFile
 from fastapi.responses import FileResponse
 
 # 使用 try-except 方式处理路径导入
@@ -142,7 +142,7 @@ async def upload_file(
 )
 @handle_api_errors
 async def get_file(
-    filename: str,
+    filename: str = Path(..., description="保存的文件名（由上传接口返回的 saved_filename）"),
     file_manage_service: FileManageService = Depends(get_file_manage_service),
     current_user: dict = Depends(get_current_user),
 ) -> FileResponse:

@@ -12,7 +12,7 @@ from typing import Any, Union
 # 使用 try-except 方式处理路径导入
 try:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from fastapi import APIRouter, Depends, Request, WebSocket
+    from fastapi import APIRouter, Depends, Path, Request, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -25,7 +25,7 @@ except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from fastapi import APIRouter, Depends, Request, WebSocket
+    from fastapi import APIRouter, Depends, Path, Request, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -43,9 +43,9 @@ router = APIRouter()
 
 @router.websocket("/ws/{hostname}/{apiurl:path}")
 async def websocket_proxy(
-    websocket: WebSocket,
-    hostname: str,
-    apiurl: str,
+    websocket: WebSocket = ...,
+    hostname: str = Path(..., description="主机名或服务标识符（如 host-service）"),
+    apiurl: str = Path(..., description="WebSocket API 路径（转发到后端服务的完整路径）"),
     proxy_service: ProxyService = Depends(get_proxy_service_ws),
 ) -> None:
     """WebSocket 转发端点
@@ -283,9 +283,9 @@ SERVICE_SHORT_NAMES = {
     operation_id="proxy_service_request",
 )
 async def proxy_request(
-    service_name: str,
-    subpath: str,
-    request: Request,
+    service_name: str = Path(..., description="服务名称（如 auth、host、admin）"),
+    subpath: str = Path(..., description="子路径（转发到后端服务的完整路径）"),
+    request: Request = ...,
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Any:
     """通用代理端点
@@ -467,7 +467,7 @@ async def list_services(
 
 @router.get("/services/{service_name}/health", response_model=SuccessResponse)
 async def check_service_health(
-    service_name: str,
+    service_name: str = Path(..., description="服务名称（如 auth、host、admin）"),
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Union[SuccessResponse, JSONResponse]:
     """检查服务健康状态
@@ -514,7 +514,10 @@ async def check_service_health(
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     operation_id="catch_all_api_handler",
 )
-async def catch_all_handler(request: Request, path: str):
+async def catch_all_handler(
+    request: Request = ...,
+    path: str = Path(..., description="请求路径"),
+):
     """捕获所有未匹配的请求，返回统一格式的404错误
 
     这个路由处理器会捕获所有没有被其他路由匹配的请求，

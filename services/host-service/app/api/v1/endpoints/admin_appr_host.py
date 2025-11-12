@@ -6,7 +6,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -284,7 +284,7 @@ async def get_appr_host_detail(
 )
 @handle_api_errors
 async def approve_hosts(
-    request: AdminApprHostApproveRequest,
+    request: AdminApprHostApproveRequest = Body(..., description="同意启用待审批主机请求数据"),
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
@@ -416,7 +416,7 @@ async def approve_hosts(
 )
 @handle_api_errors
 async def set_maintain_email(
-    request: AdminMaintainEmailRequest,
+    request: AdminMaintainEmailRequest = Body(..., description="设置维护通知邮箱请求数据"),
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
