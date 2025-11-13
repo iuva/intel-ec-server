@@ -75,20 +75,111 @@ except ImportError:
 logger = get_logger(__name__)
 
 # 邮件内容模板常量
-EMAIL_HOST_APPROVE_CONTENT_TEMPLATE = """尊敬的维护人员：
+EMAIL_HOST_APPROVE_CONTENT_TEMPLATE = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        .header {{
+            background-color: #4CAF50;
+            color: white;
+            padding: 20px;
+            border-radius: 5px 5px 0 0;
+            margin-bottom: 0;
+        }}
+        .content {{
+            background-color: #f9f9f9;
+            padding: 30px;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }}
+        .section {{
+            margin-bottom: 25px;
+        }}
+        .section-title {{
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #4CAF50;
+        }}
+        .info-item {{
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }}
+        .info-item::before {{
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #4CAF50;
+            font-weight: bold;
+        }}
+        .info-label {{
+            font-weight: 600;
+            color: #555;
+        }}
+        .info-value {{
+            color: #333;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin: 0;">硬件变更审核通知</h2>
+    </div>
+    <div class="content">
+        <p style="font-size: 16px; margin-top: 0;">尊敬的维护人员：</p>
 
-变更的 Host 已通过硬件变更审核。
+        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
+            变更的 Host 已通过硬件变更审核。
+        </p>
 
-审批人信息：
-- 用户名称：{user_name}
-- 登录账号：{user_account}
+        <div class="section">
+            <div class="section-title">审批人信息</div>
+            <div class="info-item">
+                <span class="info-label">用户名称：</span>
+                <span class="info-value">{user_name}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">登录账号：</span>
+                <span class="info-value">{user_account}</span>
+            </div>
+        </div>
 
-变更的主机信息：
-{host_table}
+        <div class="section">
+            <div class="section-title">变更的主机信息</div>
+            {host_table}
+        </div>
 
-请及时关注相关变更。
+        <p style="margin-top: 25px; color: #555;">
+            请及时关注相关变更。
+        </p>
 
-此邮件由系统自动发送，请勿回复。
+        <div class="footer">
+            此邮件由系统自动发送，请勿回复。
+        </div>
+    </div>
+</body>
+</html>
 """
 
 
@@ -112,17 +203,32 @@ def _build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
 
     # 构建 HTML 表格
     table_rows = []
-    cell_style = "padding: 8px; border: 1px solid #ddd;"
-    header_style = "padding: 8px; border: 1px solid #ddd; background-color: #f2f2f2; text-align: left;"
+    cell_style = "padding: 12px; border: 1px solid #ddd; text-align: left;"
+    header_style = (
+        "padding: 12px; border: 1px solid #ddd; background-color: #4CAF50; "
+        "color: white; text-align: left; font-weight: 600;"
+    )
+    row_style = "background-color: white;"
+    alternate_row_style = "background-color: #f9f9f9;"
 
     for i in range(max_len):
         hw_id = hardware_ids_padded[i] if i < len(hardware_ids) else ""
         host_ip = host_ips_padded[i] if i < len(host_ips) else ""
-        row_html = f"<tr><td style='{cell_style}'>{hw_id}</td><td style='{cell_style}'>{host_ip}</td></tr>"
+        row_bg = alternate_row_style if i % 2 == 1 else row_style
+        row_html = (
+            f"<tr style='{row_bg}'>"
+            f"<td style='{cell_style}'>{hw_id or '-'}</td>"
+            f"<td style='{cell_style}'>{host_ip or '-'}</td>"
+            f"</tr>"
+        )
         table_rows.append(row_html)
 
+    table_style = (
+        "border-collapse: collapse; width: 100%; margin: 15px 0; "
+        "border-radius: 5px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+    )
     table_html = f"""
-<table style='border-collapse: collapse; width: 100%; margin: 10px 0;'>
+<table style='{table_style}'>
     <thead>
         <tr>
             <th style='{header_style}'>Hardware ID</th>
@@ -742,13 +848,16 @@ class AdminApprHostService:
                     )
                     await session.execute(update_other_stmt)
 
-                # ✅ 优化：批量更新主机记录（使用 bulk_update_mappings 提升性能）
                 if host_updates:
                     bulk_update_data = [
                         {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
                     ]
-                    # 使用 bulk_update_mappings 进行批量更新（SQLAlchemy 2.0）
-                    await session.bulk_update_mappings(HostRec, bulk_update_data)
+                    # 使用同步会话的 bulk_update_mappings 进行批量更新
+
+                    def _bulk_update(sync_session: Any) -> None:
+                        sync_session.bulk_update_mappings(HostRec, bulk_update_data)
+
+                    await session.run_sync(_bulk_update)
 
                 # 提交事务
                 await session.commit()
@@ -919,7 +1028,11 @@ class AdminApprHostService:
                     error_code="APPROVE_HOST_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
-                    details={"diff_type": request.diff_type, "host_ids": request.host_ids},
+                    details={
+                        "diff_type": request.diff_type,
+                        "host_ids": request.host_ids,
+                        "error": str(e),  # ✅ 添加 error 字段用于翻译格式化
+                    },
                 )
 
     @handle_service_errors(

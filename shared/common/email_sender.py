@@ -6,6 +6,9 @@
 import os
 import sys
 from typing import Any, Dict, List
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 try:
     from shared.common.loguru_config import get_logger
@@ -62,26 +65,28 @@ async def send_email(
         try:
             # TODO: 实现实际的邮件发送逻辑
             # 示例：使用 smtplib 或第三方邮件服务
-            # import smtplib
-            # from email.mime.text import MIMEText
-            # from email.mime.multipart import MIMEMultipart
-            #
-            # msg = MIMEMultipart()
-            # msg['From'] = os.getenv("SMTP_FROM_EMAIL")
-            # msg['To'] = email
-            # msg['Subject'] = subject
-            # msg.attach(MIMEText(content, 'html', 'utf-8'))
-            #
-            # smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
-            # smtp_port = int(os.getenv("SMTP_PORT", "587"))
-            # smtp_user = os.getenv("SMTP_USER")
-            # smtp_***REMOVED***word = os.getenv("SMTP_PASSWORD")
-            #
-            # server = smtplib.SMTP(smtp_server, smtp_port)
-            # server.starttls()
-            # server.login(smtp_user, smtp_***REMOVED***word)
-            # server.send_message(msg)
-            # server.quit()
+            msg = MIMEMultipart()
+            smtp_from_email = os.getenv("SMTP_FROM_EMAIL")
+            if not smtp_from_email:
+                raise ValueError("SMTP_FROM_EMAIL 环境变量未设置")
+            msg['From'] = smtp_from_email
+            msg['To'] = email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(content, 'html', 'utf-8'))
+
+            smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
+            smtp_port = int(os.getenv("SMTP_PORT", "587"))
+            smtp_user = os.getenv("SMTP_USER")
+            smtp_***REMOVED***word = os.getenv("SMTP_PASSWORD")
+
+            if not smtp_user or not smtp_***REMOVED***word:
+                raise ValueError("SMTP_USER 或 SMTP_PASSWORD 环境变量未设置")
+
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(smtp_user, smtp_***REMOVED***word)
+            server.send_message(msg)
+            server.quit()
 
             logger.info(
                 "邮件发送成功（模拟）",
