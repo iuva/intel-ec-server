@@ -68,7 +68,8 @@ JWT_SECRET_KEY=your-secret-key-here
 JWT_ALGORITHM=HS256
 
 # 认证服务配置
-AUTH_SERVICE_URL=http://auth-service:8001
+AUTH_SERVICE_URL=http://auth-service:8001             # 网关用于HTTP请求的默认地址
+AUTH_SERVICE_BASE_URL=http://localhost:8001          # ✅ 可选：WebSocket认证的优先地址（未设置时自动回退）
 
 # 日志配置
 LOG_LEVEL=INFO
@@ -165,6 +166,20 @@ POST /admin-service/api/v1/users
 2. 网关验证 token 有效性（调用 auth-service）
 3. 验证通过后转发请求到后端服务
 4. 返回后端服务响应
+
+## WebSocket 认证说明
+
+- 网关会从以下位置依次提取 WebSocket 令牌：
+  1. 查询参数 `?token=xxx`
+  2. `Authorization: Bearer xxx` 请求头
+  3. 自定义请求头 `X-Token` / `token`
+- 验证 Token 时会按顺序尝试以下认证服务地址（遇到请求失败会自动回退）：
+  1. `AUTH_SERVICE_BASE_URL` 环境变量指定地址
+  2. 通过服务发现获取的 `auth-service` 地址
+  3. `http://auth-service:8001`
+  4. `http://localhost:8001`
+  5. `http://127.0.0.1:8001`
+- 因此，在本地开发环境中只需确保认证服务运行在 `8001` 端口即可完成 WebSocket 认证。
 
 ## 负载均衡策略
 
