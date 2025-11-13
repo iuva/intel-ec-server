@@ -980,25 +980,64 @@ class AdminHostService:
                 # 计算 exec_date（begin_time 的日期部分）
                 exec_date: Optional[str] = None
                 if log.begin_time:
-                    exec_date = log.begin_time.strftime("%Y-%m-%d")
+                    try:
+                        exec_date = log.begin_time.strftime("%Y-%m-%d")
+                    except Exception as e:
+                        logger.warning(
+                            "格式化执行日期失败",
+                            extra={
+                                "log_id": log.id,
+                                "begin_time": str(log.begin_time),
+                                "error": str(e),
+                            },
+                        )
+                        exec_date = None
 
                 # 计算 exec_time（end_time - begin_time，格式 %H:%M:%S）
                 exec_time: Optional[str] = None
                 if log.begin_time:
-                    # 如果 end_time 为空，使用当前时间
-                    end_time = log.end_time if log.end_time else current_time
-                    # 计算时间差
-                    time_diff = end_time - log.begin_time
-                    # 转换为秒
-                    total_seconds = int(time_diff.total_seconds())
-                    # 计算小时、分钟、秒
-                    hours = total_seconds // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    seconds = total_seconds % 60
-                    # 格式化为 %H:%M:%S
-                    exec_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    try:
+                        # 确保 begin_time 是 timezone-aware
+                        begin_time = log.begin_time
+                        if begin_time.tzinfo is None:
+                            # 如果是 naive datetime，假设是 UTC
+                            begin_time = begin_time.replace(tzinfo=timezone.utc)
+
+                        # 如果 end_time 为空，使用当前时间
+                        if log.end_time:
+                            end_time = log.end_time
+                            # 确保 end_time 是 timezone-aware
+                            if end_time.tzinfo is None:
+                                end_time = end_time.replace(tzinfo=timezone.utc)
+                        else:
+                            end_time = current_time
+
+                        # 计算时间差
+                        time_diff = end_time - begin_time
+                        # 转换为秒（确保非负数）
+                        total_seconds = max(0, int(time_diff.total_seconds()))
+                        # 计算小时、分钟、秒
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        # 格式化为 %H:%M:%S
+                        exec_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    except Exception as e:
+                        logger.warning(
+                            "计算执行时长失败",
+                            extra={
+                                "log_id": log.id,
+                                "begin_time": str(log.begin_time),
+                                "end_time": str(log.end_time) if log.end_time else None,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                            },
+                            exc_info=True,
+                        )
+                        exec_time = None
 
                 log_info = AdminHostExecLogInfo(
+                    log_id=str(log.id),
                     exec_date=exec_date,
                     exec_time=exec_time,
                     tc_id=log.tc_id,

@@ -431,6 +431,7 @@ class AdminHostExecLogListRequest(BaseModel):
 class AdminHostExecLogInfo(BaseModel):
     """管理后台主机执行日志信息响应模式"""
 
+    log_id: Optional[str] = Field(default=None, description="执行日志ID（host_exec_log 表 id）")
     exec_date: Optional[str] = Field(default=None, description="执行日期（格式：%Y-%m-%d）")
     exec_time: Optional[str] = Field(default=None, description="执行时长（格式：%H:%M:%S）")
     tc_id: Optional[str] = Field(default=None, description="执行测试ID（host_exec_log 表 tc_id）")
