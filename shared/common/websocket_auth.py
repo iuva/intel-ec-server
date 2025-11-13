@@ -2,7 +2,7 @@
 
 import os
 import sys
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -10,12 +10,17 @@ try:
     from fastapi import WebSocket, status
 
     from shared.common.loguru_config import get_logger
+    from shared.utils.service_discovery import get_service_discovery
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
     import httpx
     from fastapi import WebSocket, status
 
     from shared.common.loguru_config import get_logger
+    from shared.utils.service_discovery import get_service_discovery
+
+if TYPE_CHECKING:  # pragma: no cover
+    from shared.utils.service_discovery import ServiceDiscovery
 
 logger = get_logger(__name__)
 
@@ -65,13 +70,13 @@ async def extract_websocket_token(websocket: WebSocket) -> Optional[str]:
 
 async def verify_websocket_token(
     websocket: WebSocket,
-    auth_service_url: str = "http://auth-service:8001",
+    auth_service_url: Optional[str] = None,
 ) -> Tuple[bool, Optional[dict]]:
     """验证 WebSocket token
 
     Args:
         websocket: WebSocket 连接对象
-        auth_service_url: 认证服务 URL
+        auth_service_url: 认证服务 URL (如果为 None，则自动从 ServiceDiscovery 获取)
 
     Returns:
         (是否验证成功, 用户信息字典或None)
@@ -89,21 +94,84 @@ async def verify_websocket_token(
             )
             return False, None
 
-        # 2. 调用认证服务验证 token
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # 2. 构建候选认证服务地址列表（采用与 verify_token_string 相同的多策略方式）
+        candidate_urls = []
+
+        if auth_service_url:
+            candidate_urls.append(auth_service_url)
+
+        env_url = os.getenv("AUTH_SERVICE_BASE_URL")
+        if env_url:
+            candidate_urls.append(env_url)
+
+        service_discovery_instance: Optional["ServiceDiscovery"] = None
+        try:
+            service_discovery_instance = get_service_discovery()
+            discovered_url = await service_discovery_instance.get_service_url("auth-service")
+            candidate_urls.append(discovered_url)
+        except Exception as discovery_error:
+            logger.debug(
+                "WebSocket 服务发现获取 auth-service 地址失败",
+                extra={"error": str(discovery_error)},
+            )
+
+        # 使用与 HTTP 服务一致的后备地址策略
+        if service_discovery_instance:
             try:
-                response = await client.post(
-                    f"{auth_service_url}/api/v1/auth/introspect",
-                    json={"token": token},
-                    headers={"Content-Type": "application/json"},
+                fallback_url = service_discovery_instance._get_fallback_url("auth-service")
+                candidate_urls.append(fallback_url)
+            except Exception as fallback_error:
+                logger.debug(
+                    "WebSocket 计算认证服务后备地址失败",
+                    extra={"error": str(fallback_error)},
                 )
+
+        # 去重并规范化地址
+        normalized_urls = []
+        seen = set()
+        for url in candidate_urls:
+            if not url:
+                continue
+            normalized = url.rstrip("/")
+            if normalized not in seen:
+                seen.add(normalized)
+                normalized_urls.append(normalized)
+
+        if not normalized_urls:
+            logger.error(
+                "WebSocket 无法确定认证服务地址",
+                extra={
+                    "candidate_urls": candidate_urls,
+                },
+            )
+            return False, None
+
+        last_error: Optional[Exception] = None
+
+        # 3. 尝试使用各个候选地址验证 token
+        for base_url in normalized_urls:
+            try:
+                logger.debug(
+                    "WebSocket 开始验证 token",
+                    extra={
+                        "token_preview": token[:20] + "..." if len(token) > 20 else token,
+                        "auth_service_url": base_url,
+                    },
+                )
+
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.post(
+                        f"{base_url}/api/v1/auth/introspect",
+                        json={"token": token},
+                        headers={"Content-Type": "application/json"},
+                    )
 
                 if response.status_code == 200:
                     result = response.json()
                     data = result.get("data", {})
 
                     logger.debug(
-                        "收到 introspect 响应",
+                        "WebSocket 收到 introspect 响应",
                         extra={
                             "response_data": data,
                             "active": data.get("active"),
@@ -135,32 +203,48 @@ async def verify_websocket_token(
                         return True, user_info
                     else:
                         logger.warning(
-                            "Token active=False",
+                            "WebSocket token active=False",
                             extra={
                                 "data": data,
+                                "auth_service_url": base_url,
                             },
                         )
-
-                logger.warning(
-                    "WebSocket token 无效或已过期",
-                    extra={
-                        "status_code": response.status_code,
-                        "response": result,
-                        "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
-                    },
-                )
-                return False, None
+                        # 继续尝试其他地址
+                        continue
+                else:
+                    logger.warning(
+                        "WebSocket token 验证响应错误",
+                        extra={
+                            "status_code": response.status_code,
+                            "auth_service_url": base_url,
+                        },
+                    )
+                    # 继续尝试其他地址
+                    continue
 
             except httpx.RequestError as e:
-                logger.error(
-                    "调用认证服务失败",
+                logger.debug(
+                    "WebSocket 调用认证服务失败",
                     extra={
                         "error": str(e),
-                        "auth_service_url": auth_service_url,
+                        "auth_service_url": base_url,
                     },
-                    exc_info=True,
                 )
-                return False, None
+                last_error = e
+                # 继续尝试其他地址
+                continue
+
+        # 所有地址都失败了
+        logger.error(
+            "WebSocket 无法验证 token - 所有认证服务地址都失败",
+            extra={
+                "last_error": str(last_error) if last_error else "unknown",
+                "tried_urls": normalized_urls,
+                "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+            },
+            exc_info=last_error,
+        )
+        return False, None
 
     except Exception as e:
         logger.error(
@@ -197,7 +281,7 @@ async def handle_websocket_auth_error(websocket: WebSocket, message: str = "认�
 
 async def verify_token_string(
     token: str,
-    auth_service_url: str = "http://auth-service:8001",
+    auth_service_url: Optional[str] = None,
 ) -> Optional[str]:
     """验证 token 字符串并返回 user_id
 
@@ -210,96 +294,160 @@ async def verify_token_string(
     Returns:
         user_id 或 None (验证失败时)
     """
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            try:
-                logger.debug(
-                    "开始验证 Token 字符串",
-                    extra={
-                        "token_preview": token[:20] + "..." if len(token) > 20 else token,
-                        "auth_service_url": auth_service_url,
-                    },
-                )
+    # 构建候选认证服务地址列表（按优先级排序）
+    candidate_urls = []
 
+    if auth_service_url:
+        candidate_urls.append(auth_service_url)
+
+    env_url = os.getenv("AUTH_SERVICE_BASE_URL")
+    if env_url:
+        candidate_urls.append(env_url)
+
+    service_discovery: Optional["ServiceDiscovery"] = None
+    try:
+        service_discovery = get_service_discovery()
+        discovered_url = await service_discovery.get_service_url("auth-service")
+        candidate_urls.append(discovered_url)
+    except Exception as discovery_error:
+        logger.debug(
+            "服务发现获取 auth-service 地址失败，使用默认地址",
+            extra={"error": str(discovery_error)},
+        )
+
+    # 使用与 HTTP 服务一致的后备地址策略
+    if service_discovery:
+        try:
+            fallback_url = service_discovery._get_fallback_url("auth-service")
+            candidate_urls.append(fallback_url)
+        except Exception as fallback_error:
+            logger.debug(
+                "计算认证服务后备地址失败",
+                extra={"error": str(fallback_error)},
+            )
+
+    # 去重并规范化地址
+    normalized_urls = []
+    seen = set()
+    for url in candidate_urls:
+        if not url:
+            continue
+        normalized = url.rstrip("/")
+        if normalized not in seen:
+            seen.add(normalized)
+            normalized_urls.append(normalized)
+
+    last_error: Optional[Exception] = None
+
+    for base_url in normalized_urls:
+        try:
+            logger.debug(
+                "开始验证 Token 字符串",
+                extra={
+                    "token_preview": token[:20] + "..." if len(token) > 20 else token,
+                    "auth_service_url": base_url,
+                },
+            )
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
-                    f"{auth_service_url}/api/v1/auth/introspect",
+                    f"{base_url}/api/v1/auth/introspect",
                     json={"token": token},
                     headers={"Content-Type": "application/json"},
                 )
 
+            logger.debug(
+                "Token 验证响应收到",
+                extra={
+                    "status_code": response.status_code,
+                    "auth_service_url": base_url,
+                },
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                data = result.get("data", {})
+
                 logger.debug(
-                    "Token 验证响应收到",
+                    "Token 验证响应解析",
                     extra={
-                        "status_code": response.status_code,
-                        "response_keys": list(response.json().keys()) if response.status_code == 200 else None,
+                        "active": data.get("active", False),
+                        "user_id": data.get("user_id"),
+                        "username": data.get("username"),
+                        "data_keys": list(data.keys()),
                     },
                 )
 
-                if response.status_code == 200:
-                    result = response.json()
-                    data = result.get("data", {})
+                if data.get("active", False):
+                    user_id = data.get("user_id") or data.get("sub")
+                    if user_id:
+                        logger.info(
+                            "Token 字符串验证成功",
+                            extra={
+                                "user_id": user_id,
+                                "username": data.get("username"),
+                                "auth_service_url": base_url,
+                            },
+                        )
+                        return str(user_id)
 
-                    logger.debug(
-                        "Token 验证响应解析",
+                    logger.warning(
+                        "Token 有效但未获取到 user_id",
                         extra={
-                            "active": data.get("active", False),
-                            "user_id": data.get("user_id"),
-                            "username": data.get("username"),
+                            "auth_service_url": base_url,
                             "data_keys": list(data.keys()),
                         },
                     )
-
-                    # 检查 token 是否有效
-                    if data.get("active", False):
-                        user_id = data.get("user_id") or data.get("sub")
-
-                        if user_id:
-                            logger.info(
-                                "Token 字符串验证成功",
-                                extra={
-                                    "user_id": user_id,
-                                    "username": data.get("username"),
-                                },
-                            )
-                            return str(user_id)
-                        else:
-                            logger.warning(
-                                "Token 有效但未获取到 user_id",
-                                extra={
-                                    "active": True,
-                                    "data_keys": list(data.keys()),
-                                },
-                            )
-                            return None
+                    return None
 
                 logger.warning(
-                    "Token 字符串验证失败",
+                    "Token 已验证但处于非激活状态",
                     extra={
-                        "status_code": response.status_code,
-                        "active": data.get("active", False) if response.status_code == 200 else None,
+                        "auth_service_url": base_url,
+                        "active": data.get("active", False),
                     },
                 )
-                return None
+                continue
 
-            except httpx.RequestError as e:
-                logger.error(
-                    "调用认证服务失败",
-                    extra={
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                        "auth_service_url": auth_service_url,
-                    },
-                    exc_info=True,
-                )
-                return None
+            logger.warning(
+                "Token 字符串验证失败",
+                extra={
+                    "auth_service_url": base_url,
+                    "status_code": response.status_code,
+                },
+            )
 
-    except Exception as e:
+        except httpx.RequestError as request_error:
+            logger.warning(
+                "调用认证服务失败，尝试下一个候选地址",
+                extra={
+                    "auth_service_url": base_url,
+                    "error": str(request_error),
+                    "error_type": type(request_error).__name__,
+                },
+            )
+            last_error = request_error
+            continue
+
+        except Exception as exc:
+            logger.error(
+                "Token 字符串验证异常",
+                extra={
+                    "auth_service_url": base_url,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+                exc_info=True,
+            )
+            last_error = exc
+            continue
+
+    if last_error:
         logger.error(
-            "Token 字符串验证异常",
-            extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
-            },
-            exc_info=True,
+            "所有认证服务地址均无法验证 Token",
+            extra={"error": str(last_error), "error_type": type(last_error).__name__},
         )
-        return None
+    else:
+        logger.warning("未找到有效的认证服务地址，Token 验证失败")
+
+    return None

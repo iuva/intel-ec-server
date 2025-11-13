@@ -13,12 +13,12 @@ from typing import Any, Dict, Optional
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.exceptions import BusinessError, ErrorCode, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.exceptions import BusinessError, ErrorCode, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -194,7 +194,10 @@ class FileManageService:
         if not file_path.exists():
             raise BusinessError(
                 message="文件不存在",
-                error_code=ServiceErrorCodes.FILE_NOT_FOUND,
+                error_code=ErrorCode.FILE_NOT_FOUND,
+                code=ServiceErrorCodes.FILE_NOT_FOUND,
+                http_status_code=404,
+                details={"filename": saved_filename},
             )
 
         return file_path

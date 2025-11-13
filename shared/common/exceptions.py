@@ -148,6 +148,7 @@ class ServiceErrorCodes:
     HOST_OPERATION_FAILED = 53012  # 主机操作失败
     HOST_AGENT_OFFLINE = 53013  # Agent离线
     HOST_INVALID_REQUEST = 53014  # 无效的请求
+    FILE_NOT_FOUND = 53015  # 文件不存在
 
 
 class ErrorCode:

@@ -75,6 +75,10 @@ async def websocket_proxy(
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]
 
+        # 如果仍然没有，尝试读取常见自定义头
+        if not token:
+            token = websocket.headers.get("X-Token") or websocket.headers.get("token")
+
         # 如果还是没有，尝试从自定义头提取
         if not token:
             token = websocket.headers.get("X-Token")
@@ -99,7 +103,6 @@ async def websocket_proxy(
                 {
                     "code": 401,
                     "message": t("error.auth.missing_token", locale=locale),
-                    "message_key": "error.auth.missing_token",
                     "error_code": "WEBSOCKET_MISSING_TOKEN",
                     "locale": locale,
                 }
@@ -131,7 +134,6 @@ async def websocket_proxy(
                     {
                         "code": 403,
                         "message": t("error.auth.token_invalid_or_expired", locale=locale),
-                        "message_key": "error.auth.token_invalid_or_expired",
                         "error_code": "WEBSOCKET_AUTH_FAILED",
                         "locale": locale,
                     }
@@ -189,6 +191,9 @@ async def websocket_proxy(
         )
 
         # 构建后端路径（添加 /api/v1/ws/ 前缀）
+        # 获取后端服务地址
+        service_url = await proxy_service.get_service_url(hostname)
+
         backend_path = f"/ws/{apiurl}"
 
         # 转发 token 到后端（作为查询参数）
@@ -201,6 +206,7 @@ async def websocket_proxy(
             service_name=service_short_name,
             path=backend_path,
             client_websocket=websocket,
+            service_url=service_url,
         )
 
     except Exception as e:
@@ -440,7 +446,6 @@ async def proxy_request(
         error_response = ErrorResponse(
             code=HTTP_500_INTERNAL_SERVER_ERROR,
             message=t("error.gateway.internal_error", locale=locale),
-            message_key="error.gateway.internal_error",
             error_code="GATEWAY_ERROR",
             locale=locale,
         )
@@ -548,7 +553,6 @@ async def catch_all_handler(
     error_response = ErrorResponse(
         code=404,
         message=t("error.gateway.resource_not_found", locale=locale),
-        message_key="error.gateway.resource_not_found",
         error_code="RESOURCE_NOT_FOUND",
         locale=locale,
         details={

@@ -512,6 +512,7 @@ class ProxyService:
         service_name: str,
         path: str,
         client_websocket: Any,  # WebSocket
+        service_url: Optional[str] = None,
     ) -> None:
         """转发 WebSocket 连接到后端服务
 
@@ -525,11 +526,12 @@ class ProxyService:
         """
 
         try:
-            # 获取服务 URL
-            service_url = self.get_service_url(service_name)
+            resolved_service_url = service_url
+            if not resolved_service_url:
+                resolved_service_url = await self.get_service_url(service_name)
 
             # 构建 WebSocket URL（转换 http -> ws，添加服务标识符前缀）
-            ws_url = service_url.replace("http://", "ws://").replace("https://", "wss://")
+            ws_url = resolved_service_url.replace("http://", "ws://").replace("https://", "wss://")
 
             # ✅ 添加服务标识符前缀（与 HTTP 转发保持一致）
             # 例如: service_name="host", path="/ws/host?token=xxx"
