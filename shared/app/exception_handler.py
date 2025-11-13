@@ -3,6 +3,7 @@
 """
 
 import json
+import re
 from typing import Any, Dict
 
 from fastapi import FastAPI, Request
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from shared.common.exceptions import BusinessError, ErrorCode
+from shared.common.i18n import parse_accept_language, t
 from shared.common.loguru_config import get_logger
 from shared.common.response import ErrorResponse
 
@@ -53,6 +55,10 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
         """处理 HTTP 异常"""
         logger.warning(f"HTTP异常: {exc.status_code} - {exc.detail}")
 
+        # 获取语言偏好
+        accept_language = request.headers.get("Accept-Language")
+        locale = parse_accept_language(accept_language)
+
         # 尝试理解 detail 的实际内容
         detail: Any = exc.detail
 
@@ -77,14 +83,46 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
             401: ErrorCode.UNAUTHORIZED,
             403: ErrorCode.FORBIDDEN,
             404: ErrorCode.RESOURCE_NOT_FOUND,
+            405: "METHOD_NOT_ALLOWED",
             500: ErrorCode.INTERNAL_SERVER_ERROR,
         }
 
-        error_response = ErrorResponse(
-            code=exc.status_code,
-            message=str(detail),
-            error_code=error_code_map.get(exc.status_code, "HTTP_ERROR"),
-        )
+        # 为 405 错误提供更友好的错误消息（使用多语言）
+        if exc.status_code == 405:
+            # 尝试从 detail 中提取允许的方法
+            detail_str = str(detail)
+
+            # FastAPI 的 405 错误可能包含允许的方法信息
+            # 例如: "Method Not Allowed" 或更详细的错误信息
+            if "Method Not Allowed" in detail_str or "method not allowed" in detail_str.lower():
+                # 尝试提取允许的方法（如果有）
+                allowed_match = re.search(r'allowed.*?\[(.*?)\]', detail_str, re.IGNORECASE)
+                if allowed_match:
+                    allowed_methods = allowed_match.group(1)
+                    message_key = "error.http.method_not_allowed_with_methods"
+                    message = t(message_key, locale=locale, allowed_methods=allowed_methods)
+                else:
+                    message_key = "error.http.method_not_allowed"
+                    message = t(message_key, locale=locale)
+            else:
+                message_key = "error.http.method_not_allowed"
+                message = t(message_key, locale=locale)
+
+            error_response = ErrorResponse(
+                code=exc.status_code,
+                message=message,
+                message_key=message_key,
+                error_code=error_code_map.get(exc.status_code, "HTTP_ERROR"),
+                locale=locale,
+            )
+        else:
+            # 其他错误使用默认消息
+            error_response = ErrorResponse(
+                code=exc.status_code,
+                message=str(detail),
+                error_code=error_code_map.get(exc.status_code, "HTTP_ERROR"),
+                locale=locale,
+            )
 
         return JSONResponse(status_code=exc.status_code, content=error_response.model_dump())
 

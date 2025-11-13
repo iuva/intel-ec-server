@@ -5,6 +5,8 @@
 
 import logging
 import os
+import platform
+import socket
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -52,8 +54,6 @@ def get_docker_host_for_database() -> str:
         - macOS/Windows: host.docker.internal
         - Linux: 172.17.0.1 (Docker 默认网关)
     """
-    import platform
-
     system = platform.system().lower()
     if system in ("darwin", "windows"):
         return "host.docker.internal"
@@ -178,8 +178,6 @@ def resolve_service_ip() -> str:
     if is_running_in_docker():
         # Docker 环境：尝试从网络接口获取容器 IP
         try:
-            import socket
-
             # 方法1: 连接到外部地址以获取本地 IP（推荐方法）
             # 连接到外部地址（如 8.8.8.8）以获取路由使用的本地 IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

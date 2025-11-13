@@ -5,18 +5,16 @@
 
 import os
 import sys
-from typing import Optional
 
 from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
-    AvailableHostsListResponse,
     QueryAvailableHostsRequest,
     ReleaseHostsRequest,
     ReleaseHostsResponse,
     RetryVNCListResponse,
 )
 from app.services.browser_host_service import BrowserHostService
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -38,7 +36,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get(
+@router.post(
     "/available",
     response_model=SuccessResponse,
     summary="查询可用主机列表",
@@ -60,6 +58,18 @@ router = APIRouter()
                 }
             },
         },
+        405: {
+            "description": "HTTP 方法不允许",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 405,
+                        "message": "此接口仅支持 POST 方法，请使用 POST 请求",
+                        "error_code": "METHOD_NOT_ALLOWED",
+                    }
+                }
+            },
+        },
         503: {
             "description": "外部服务不可用",
             "content": {
@@ -76,11 +86,7 @@ router = APIRouter()
 )
 @handle_api_errors
 async def query_available_hosts(
-    tc_id: str = Query(..., description="测试用例 ID"),
-    cycle_name: str = Query(..., description="测试周期名称"),
-    user_name: str = Query(..., description="用户名"),
-    page_size: int = Query(20, ge=1, le=100, description="每页大小"),
-    last_id: Optional[str] = Query(None, description="上一页最后一条记录的 id（字符串格式）"),
+    request: QueryAvailableHostsRequest = Body(..., description="查询可用主机列表请求参数"),
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
@@ -126,28 +132,20 @@ async def query_available_hosts(
     logger.info(
         "接收查询可用主机列表请求",
         extra={
-            "tc_id": tc_id,
-            "cycle_name": cycle_name,
-            "user_name": user_name,
-            "page_size": page_size,
-            "last_id": last_id,
+            "tc_id": request.tc_id,
+            "cycle_name": request.cycle_name,
+            "user_name": request.user_name,
+            "page_size": request.page_size,
+            "last_id": request.last_id,
         },
     )
 
-    result = await host_discovery_service.query_available_hosts(
-        QueryAvailableHostsRequest(
-            tc_id=tc_id,
-            cycle_name=cycle_name,
-            user_name=user_name,
-            page_size=page_size,
-            last_id=last_id,  # last_id 已经是字符串类型
-        )
-    )
+    result = await host_discovery_service.query_available_hosts(request)
 
     logger.info(
         "查询可用主机列表完成",
         extra={
-            "tc_id": tc_id,
+            "tc_id": request.tc_id,
             "total_available": result.total,
             "page_size": result.page_size,
             "has_next": result.has_next,

@@ -4,6 +4,7 @@ Host Service API 依赖注入
 提供服务实例的依赖注入函数
 """
 
+import json
 import os
 import sys
 from typing import Any, Dict, Optional
@@ -172,8 +173,6 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         HTTPException: 缺少用户信息时抛出 401
     """
     try:
-        import json
-
         # ✅ 从 Gateway 传递的 header 中获取用户信息
         # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
         user_info_header = request.headers.get("X-User-Info")
@@ -418,8 +417,6 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         >>>     host_id = agent_info["host_id"]
     """
     try:
-        import json
-
         # ✅ 从 Gateway 传递的 header 中获取用户信息
         # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
         user_info_header = request.headers.get("X-User-Info")

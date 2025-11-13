@@ -109,7 +109,27 @@
       "bad_gateway": "后端服务返回了无效响应",
       "unavailable": "后端服务暂时不可用",
       "timeout": "后端服务响应超时",
-      "error": "后端服务错误"
+      "error": "后端服务错误",
+      "connection_failed": "无法连接到后端服务: {service_name}",
+      "timeout_error": "后端服务响应超时: {service_name}",
+      "network_error": "后端服务网络错误: {service_name}",
+      "protocol_error": "后端服务协议错误: {service_name}",
+      "error_handling_failed": "后端服务错误处理失败"
+    },
+    "http": {
+      "method_not_allowed": "HTTP 方法不允许。此接口不支持当前使用的 HTTP 方法，请检查 API 文档确认正确的请求方法（例如：GET、POST、PUT、DELETE）。",
+      "method_not_allowed_with_methods": "HTTP 方法不允许。此接口仅支持以下方法: {allowed_methods}。请使用正确的 HTTP 方法重试。"
+    },
+    "websocket": {
+      "service_unavailable": "WebSocket 服务不可用",
+      "auth_failed": "WebSocket 认证失败，Token 无效或已过期",
+      "unauthorized": "WebSocket 连接未授权，请提供有效的认证令牌",
+      "connection_failed": "WebSocket 连接失败",
+      "proxy_error": "WebSocket 转发失败"
+    },
+    "gateway": {
+      "internal_error": "网关内部错误",
+      "resource_not_found": "请求的资源不存在"
     }
   }
 }

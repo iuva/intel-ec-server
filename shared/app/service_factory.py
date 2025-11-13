@@ -11,6 +11,7 @@
 """
 
 import asyncio
+import inspect
 import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
@@ -476,8 +477,6 @@ class ServiceLifecycleManager:
             for handler in self.shutdown_handlers:
                 if asyncio.iscoroutinefunction(handler):
                     # 检查函数签名，如果需要一个参数（app），则传递它
-                    import inspect
-
                     sig = inspect.signature(handler)
                     params = list(sig.parameters.keys())
                     if len(params) > 0:
@@ -485,8 +484,6 @@ class ServiceLifecycleManager:
                     else:
                         await handler()
                 else:
-                    import inspect
-
                     sig = inspect.signature(handler)
                     params = list(sig.parameters.keys())
                     if len(params) > 0:

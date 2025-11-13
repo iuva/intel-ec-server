@@ -6,7 +6,9 @@
 
 import asyncio
 import contextlib
+import json
 import os
+import re
 import sys
 from typing import Any, Dict, Optional
 
@@ -20,6 +22,7 @@ try:
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
+    from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import ServiceDiscovery
 except ImportError:
@@ -30,6 +33,7 @@ except ImportError:
 
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
+    from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import ServiceDiscovery
 
@@ -221,68 +225,80 @@ class ProxyService:
             exc_info=True,
         )
 
-    def _raise_connection_error(self, service_name: str, error: Exception) -> None:
+    def _raise_connection_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
         """抛出连接错误异常
 
         Args:
             service_name: 服务名称
             error: 原始异常
+            locale: 语言代码
         """
         self._log_backend_error(service_name, "", "", "CONNECTION_ERROR", str(error))
         raise BusinessError(
-            message=f"无法连接到后端服务: {service_name}",
+            message=t("error.service.connection_failed", locale=locale, service_name=service_name),
+            message_key="error.service.connection_failed",
             error_code="GATEWAY_CONNECTION_FAILED",
             code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
             http_status_code=502,
+            locale=locale,
             details={"original_error": str(error), "service_name": service_name},
         )
 
-    def _raise_timeout_error(self, service_name: str, error: Exception) -> None:
+    def _raise_timeout_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
         """抛出超时错误异常
 
         Args:
             service_name: 服务名称
             error: 原始异常
+            locale: 语言代码
         """
         self._log_backend_error(service_name, "", "", "TIMEOUT_ERROR", str(error))
         raise BusinessError(
-            message=f"后端服务响应超时: {service_name}",
+            message=t("error.service.timeout_error", locale=locale, service_name=service_name),
+            message_key="error.service.timeout_error",
             error_code="GATEWAY_TIMEOUT",
             code=ServiceErrorCodes.GATEWAY_TIMEOUT,
             http_status_code=504,
+            locale=locale,
             details={"original_error": str(error), "service_name": service_name, "timeout": True},
         )
 
-    def _raise_network_error(self, service_name: str, error: Exception) -> None:
+    def _raise_network_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
         """抛出网络错误异常
 
         Args:
             service_name: 服务名称
             error: 原始异常
+            locale: 语言代码
         """
         self._log_backend_error(service_name, "", "", "NETWORK_ERROR", str(error))
         raise BusinessError(
-            message=f"后端服务网络错误: {service_name}",
+            message=t("error.service.network_error", locale=locale, service_name=service_name),
+            message_key="error.service.network_error",
             error_code="GATEWAY_NETWORK_ERROR",
             code=ServiceErrorCodes.GATEWAY_NETWORK_ERROR,
             http_status_code=502,
+            locale=locale,
             details={"original_error": str(error), "service_name": service_name},
         )
 
-    def _raise_protocol_error(self, service_name: str, error: Exception) -> None:
+    def _raise_protocol_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
         """抛出协议错误异常
 
         Args:
             service_name: 服务名称
             error: 原始异常
+            locale: 语言代码
         """
         error_type = type(error).__name__
         self._log_backend_error(service_name, "", "", "PROTOCOL_ERROR", str(error))
         raise BusinessError(
-            message=f"后端服务协议错误: {service_name}",
+            message=t("error.service.protocol_error", locale=locale, service_name=service_name),
+            message_key="error.service.protocol_error",
             error_code="GATEWAY_PROTOCOL_ERROR",
             code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
             http_status_code=502,
+            locale=locale,
             details={"original_error": str(error), "error_type": error_type, "service_name": service_name},
         )
 
@@ -335,6 +351,10 @@ class ProxyService:
 
             # 清理请求头
             clean_headers = self._clean_headers(headers)
+
+            # 获取语言偏好
+            accept_language = headers.get("Accept-Language") if headers else None
+            locale = parse_accept_language(accept_language)
 
             logger.debug(
                 f"清理后的请求头: {list(clean_headers.keys())}",
@@ -413,10 +433,12 @@ class ProxyService:
                         },
                     )
                     raise BusinessError(
-                        message="后端服务错误处理失败",
+                        message=t("error.service.error_handling_failed", locale=locale),
+                        message_key="error.service.error_handling_failed",
                         error_code="GATEWAY_ERROR_HANDLING_FAILED",
                         code=ServiceErrorCodes.GATEWAY_INTERNAL_ERROR,
                         http_status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                        locale=locale,
                         details={
                             "service_name": service_name,
                             "method": method,
@@ -459,19 +481,27 @@ class ProxyService:
 
         except ConnectError as e:
             # 处理连接错误
-            self._raise_connection_error(service_name, e)
+            accept_language = headers.get("Accept-Language") if headers else None
+            locale = parse_accept_language(accept_language)
+            self._raise_connection_error(service_name, e, locale)
 
         except TimeoutException as e:
             # 处理超时错误
-            self._raise_timeout_error(service_name, e)
+            accept_language = headers.get("Accept-Language") if headers else None
+            locale = parse_accept_language(accept_language)
+            self._raise_timeout_error(service_name, e, locale)
 
         except NetworkError as e:
             # 处理网络错误
-            self._raise_network_error(service_name, e)
+            accept_language = headers.get("Accept-Language") if headers else None
+            locale = parse_accept_language(accept_language)
+            self._raise_network_error(service_name, e, locale)
 
         except Exception as e:
             # 处理其他错误（协议错误等）
-            self._raise_protocol_error(service_name, e)
+            accept_language = headers.get("Accept-Language") if headers else None
+            locale = parse_accept_language(accept_language)
+            self._raise_protocol_error(service_name, e, locale)
 
         # 不应该到达这里，但作为防御性编程
         msg = f"请求转发异常（未捕获）: {service_name}"
@@ -567,11 +597,20 @@ class ProxyService:
                 f"无效的 WebSocket URL: {e!s}",
                 extra={"service_name": service_name, "path": path},
             )
+            # 获取语言偏好
+            accept_language = (
+                client_websocket.headers.get("Accept-Language")
+                if hasattr(client_websocket, "headers")
+                else None
+            )
+            locale = parse_accept_language(accept_language)
             raise BusinessError(
-                message="WebSocket 服务不可用",
+                message=t("error.websocket.service_unavailable", locale=locale),
+                message_key="error.websocket.service_unavailable",
                 error_code="WEBSOCKET_SERVICE_UNAVAILABLE",
                 code=ServiceErrorCodes.GATEWAY_SERVICE_UNAVAILABLE,
                 http_status_code=503,
+                locale=locale,
             )
 
         except websockets.exceptions.WebSocketException as e:
@@ -583,11 +622,20 @@ class ProxyService:
                     f"WebSocket 认证失败: {error_msg}",
                     extra={"service_name": service_name, "path": path},
                 )
+                # 获取语言偏好
+                accept_language = (
+                    client_websocket.headers.get("Accept-Language")
+                    if hasattr(client_websocket, "headers")
+                    else None
+                )
+                locale = parse_accept_language(accept_language)
                 raise BusinessError(
-                    message="WebSocket 认证失败，Token 无效或已过期",
+                    message=t("error.websocket.auth_failed", locale=locale),
+                    message_key="error.websocket.auth_failed",
                     error_code="WEBSOCKET_AUTH_FAILED",
                     code=ServiceErrorCodes.GATEWAY_AUTH_FAILED,
                     http_status_code=403,
+                    locale=locale,
                 )
 
             # ✅ 检查是否为未授权（401 Unauthorized）
@@ -596,11 +644,20 @@ class ProxyService:
                     f"WebSocket 未授权: {error_msg}",
                     extra={"service_name": service_name, "path": path},
                 )
+                # 获取语言偏好
+                accept_language = (
+                    client_websocket.headers.get("Accept-Language")
+                    if hasattr(client_websocket, "headers")
+                    else None
+                )
+                locale = parse_accept_language(accept_language)
                 raise BusinessError(
-                    message="WebSocket 连接未授权，请提供有效的认证令牌",
+                    message=t("error.websocket.unauthorized", locale=locale),
+                    message_key="error.websocket.unauthorized",
                     error_code="WEBSOCKET_UNAUTHORIZED",
                     code=ServiceErrorCodes.GATEWAY_UNAUTHORIZED,
                     http_status_code=401,
+                    locale=locale,
                 )
 
             # ✅ 其他 WebSocket 连接错误
@@ -608,11 +665,20 @@ class ProxyService:
                 f"WebSocket 连接异常: {error_msg}",
                 extra={"service_name": service_name, "path": path},
             )
+            # 获取语言偏好
+            accept_language = (
+                client_websocket.headers.get("Accept-Language")
+                if hasattr(client_websocket, "headers")
+                else None
+            )
+            locale = parse_accept_language(accept_language)
             raise BusinessError(
-                message="WebSocket 连接失败",
+                message=t("error.websocket.connection_failed", locale=locale),
+                message_key="error.websocket.connection_failed",
                 error_code="WEBSOCKET_CONNECTION_ERROR",
                 code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
                 http_status_code=502,
+                locale=locale,
             )
 
         except Exception as e:
@@ -621,11 +687,20 @@ class ProxyService:
                 extra={"service_name": service_name, "path": path, "error_type": type(e).__name__},
                 exc_info=True,
             )
+            # 获取语言偏好
+            accept_language = (
+                client_websocket.headers.get("Accept-Language")
+                if hasattr(client_websocket, "headers")
+                else None
+            )
+            locale = parse_accept_language(accept_language)
             raise BusinessError(
-                message="WebSocket 转发失败",
+                message=t("error.websocket.proxy_error", locale=locale),
+                message_key="error.websocket.proxy_error",
                 error_code="WEBSOCKET_PROXY_ERROR",
                 code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
                 http_status_code=502,
+                locale=locale,
             )
 
     async def _forward_messages(
@@ -756,19 +831,24 @@ class ProxyService:
             # 检查响应体是否为空或无效
             if not response_body or (isinstance(response_body, str) and not response_body.strip()):
                 # 502 且响应体为空，说明无法连接到后端服务
-                error_message = "后端服务不可用或连接失败"
+                # 尝试从响应头获取 locale，如果没有则使用默认值
+                response_headers = response.get("headers", {})
+                accept_language = (
+                    response_headers.get("Accept-Language")
+                    if isinstance(response_headers, dict)
+                    else None
+                )
+                locale = parse_accept_language(accept_language) if accept_language else "zh_CN"
+                error_message = t("error.service.unavailable", locale=locale)
+                message_key = "error.service.unavailable"
                 error_code = "SERVICE_UNAVAILABLE"
                 error_details = {"service_name": service_name, "status_code": 502}
                 backend_error_code = status_code  # 502
-                message_key = None
-                locale = None
             else:
                 # 502 但有响应体，尝试解析
                 response_data_502: Any = response_body
                 if isinstance(response_body, str):
                     try:
-                        import json
-
                         response_data_502 = json.loads(response_body)
                     except (json.JSONDecodeError, TypeError):
                         response_data_502 = {"message": response_body}
@@ -782,7 +862,21 @@ class ProxyService:
                 else:
                     error_detail_502 = {"message": str(response_data_502)}
 
-                error_message = error_detail_502.get("message", "后端服务不可用或连接失败")
+                # 尝试从响应中获取 locale
+                response_headers = response.get("headers", {})
+                accept_language = (
+                    response_headers.get("Accept-Language")
+                    if isinstance(response_headers, dict)
+                    else None
+                )
+                locale_502 = (
+                    parse_accept_language(accept_language)
+                    if accept_language
+                    else error_detail_502.get("locale", "zh_CN")
+                )
+                error_message = error_detail_502.get(
+                    "message", t("error.service.unavailable", locale=locale_502)
+                )
                 error_code = error_detail_502.get("error_code", "SERVICE_UNAVAILABLE")
                 error_details_raw_502 = error_detail_502.get("details", {})
                 # ✅ 提取 message_key 和 locale（用于多语言支持）
@@ -809,8 +903,6 @@ class ProxyService:
             # 尝试解析 JSON 响应体
             if isinstance(response_body, str):
                 try:
-                    import json
-
                     response_data = json.loads(response_body)
                 except (json.JSONDecodeError, TypeError):
                     response_data = {"message": response_body}
@@ -834,10 +926,18 @@ class ProxyService:
                                 field_path = ".".join(str(loc) for loc in error.get("loc", []))
                                 field_errors[field_path] = error.get("msg", "Unknown error")
 
+                        # 获取语言偏好（从响应中或使用默认值）
+                        locale_for_validation = (
+                            response_data.get("locale", "zh_CN")
+                            if isinstance(response_data, dict)
+                            else "zh_CN"
+                        )
                         error_detail = {
-                            "message": "请求参数验证失败",
+                            "message": t("error.validation", locale=locale_for_validation),
+                            "message_key": "error.validation",
                             "error_code": "VALIDATION_ERROR",
                             "code": 422,
+                            "locale": locale_for_validation,
                             "details": {"errors": field_errors},
                         }
                     elif isinstance(detail_value, dict):
@@ -865,12 +965,42 @@ class ProxyService:
             )
 
             # ✅ 提取关键错误信息，包括多语言支持字段
-            error_message = error_detail.get("message", f"后端服务错误: {status_code}")
+            # 为 405 错误提供更友好的默认消息（使用多语言）
+            if status_code == 405:
+                # 尝试从响应中获取 locale，如果没有则使用默认值
+                locale = error_detail.get("locale", "zh_CN")
+                # 检查是否已有 message_key
+                if "message_key" not in error_detail:
+                    # 尝试提取允许的方法
+                    detail_str = str(error_detail.get("message", ""))
+                    allowed_match = re.search(r'allowed.*?\[(.*?)\]', detail_str, re.IGNORECASE)
+                    if allowed_match:
+                        allowed_methods = allowed_match.group(1)
+                        message_key = "error.http.method_not_allowed_with_methods"
+                        default_message = t(message_key, locale=locale, allowed_methods=allowed_methods)
+                    else:
+                        message_key = "error.http.method_not_allowed"
+                        default_message = t(message_key, locale=locale)
+                else:
+                    # 已有 message_key，使用它
+                    message_key = error_detail.get("message_key")
+                    default_message = error_detail.get("message", "")
+            else:
+                # 为其他错误提供多语言支持
+                locale_for_error = error_detail.get("locale", "zh_CN")
+                default_message = t("error.service.error", locale=locale_for_error)
+                message_key = "error.service.error"
+                locale = locale_for_error
+
+            error_message = error_detail.get("message", default_message)
             error_code = error_detail.get("error_code", f"BACKEND_{status_code}")
             error_details_raw = error_detail.get("details", {})
             # ✅ 提取 message_key 和 locale（用于多语言支持）
-            message_key = error_detail.get("message_key")
-            locale = error_detail.get("locale")
+            # 如果 405 错误中没有 message_key，使用上面设置的 message_key
+            if status_code != 405 or "message_key" not in error_detail:
+                # 对于非 405 错误，或 405 错误但后端没有提供 message_key，使用后端提供的
+                message_key = error_detail.get("message_key", message_key if status_code == 405 else None)
+                locale = error_detail.get("locale", locale if status_code == 405 else "zh_CN")
 
             # ✅ 保留后端服务的自定义错误码（code），而不是用 HTTP 状态码覆盖
             backend_error_code_raw = error_detail.get("code")
@@ -906,7 +1036,7 @@ class ProxyService:
             code=backend_error_code,  # 使用后端的自定义错误码
             error_code=error_code,
             http_status_code=status_code,  # ✅ 使用后端服务的 HTTP 状态码（如 401）
-            message_key=message_key,  # ✅ 透传 message_key 以支持多语言
+            message_key=message_key if message_key else None,  # ✅ 透传 message_key 以支持多语言
             locale=locale,  # ✅ 透传 locale 以支持多语言
             details=error_details,
         )
@@ -953,8 +1083,6 @@ class ProxyService:
             else:
                 # 尝试解析为 JSON
                 try:
-                    import json
-
                     response_text = response_content.decode("utf-8")
                     response_data = json.loads(response_text)
 
@@ -1024,10 +1152,18 @@ class ProxyService:
                             field_path = ".".join(str(loc) for loc in error.get("loc", []))
                             field_errors[field_path] = error.get("msg", "Unknown error")
 
+                    # 获取语言偏好（从响应中或使用默认值）
+                    locale_for_validation = (
+                        response_data.get("locale", "zh_CN")
+                        if isinstance(response_data, dict)
+                        else "zh_CN"
+                    )
                     error_detail = {
-                        "message": "请求参数验证失败",
+                        "message": t("error.validation", locale=locale_for_validation),
+                        "message_key": "error.validation",
                         "error_code": "VALIDATION_ERROR",
                         "code": 422,
+                        "locale": locale_for_validation,
                         "details": {"errors": field_errors},
                     }
                 elif isinstance(detail_value, dict):
@@ -1043,7 +1179,8 @@ class ProxyService:
             error_detail = {"message": str(response_data)}
 
         # 提取关键错误信息
-        error_message = error_detail.get("message", f"后端服务错误: {status_code}")
+        locale_for_error = error_detail.get("locale", "zh_CN")
+        error_message = error_detail.get("message", t("error.service.error", locale=locale_for_error))
         error_code = error_detail.get("error_code", f"BACKEND_{status_code}")
         error_details_raw = error_detail.get("details", {})
         # ✅ 提取 message_key 和 locale（用于多语言支持）

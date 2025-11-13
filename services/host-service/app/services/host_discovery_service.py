@@ -6,6 +6,7 @@
 - 本地数据库过滤和查询
 """
 
+import os
 from typing import List, Optional, cast
 
 import httpx
@@ -20,7 +21,6 @@ try:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 except ImportError:
-    import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -256,7 +256,56 @@ class HostDiscoveryService:
             Mock 硬件主机列表
         """
         # Mock 数据：基于用户提供的格式
+        # 注意：前两条数据对应数据库中的记录，需要确保数据库中的 hardware_id 字段已更新
+        # 第一条：id=1846557388006625421, mg_id='test', host_ip='127.0.0.1', mac_addr='123'
+        # 第二条：id=1847395771312739675, mg_id='test123', host_ip='192.168.1.1', mac_addr='234'
         mock_data = [
+            {
+                "hardware_id": "test-hardware-1",
+                "name": "Test Host 1 (127.0.0.1)",
+                "dmr_config": {
+                    "revision": 1,
+                    "mainboard": {
+                        "plt_meta_data": {
+                            "platform": "DMR",
+                            "label_plt_cfg": "test_config",
+                        },
+                        "board": {
+                            "board_meta_data": {
+                                "board_name": "SHMRCDMR",
+                                "host_name": "test-host-1",
+                                "host_ip": "127.0.0.1",
+                            },
+                        },
+                    },
+                },
+                "updated_at": "2025-10-21T02:39:14Z",
+                "updated_by": "test@intel.com",
+                "tags": ["test", "dmr"],
+            },
+            {
+                "hardware_id": "test-hardware-2",
+                "name": "Test Host 2 (192.168.1.1)",
+                "dmr_config": {
+                    "revision": 1,
+                    "mainboard": {
+                        "plt_meta_data": {
+                            "platform": "DMR",
+                            "label_plt_cfg": "test123_config",
+                        },
+                        "board": {
+                            "board_meta_data": {
+                                "board_name": "SHMRCDMR",
+                                "host_name": "test-host-2",
+                                "host_ip": "192.168.1.1",
+                            },
+                        },
+                    },
+                },
+                "updated_at": "2025-10-30T08:44:59Z",
+                "updated_by": "test@intel.com",
+                "tags": ["test", "dmr"],
+            },
             {
                 "hardware_id": "abc123",
                 "name": "Test Server Config",
@@ -352,8 +401,6 @@ class HostDiscoveryService:
             BusinessError: 当接口调用失败时
         """
         # ✅ 检查是否使用 Mock 数据（通过环境变量控制）
-        import os
-
         use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
 
         if use_mock:

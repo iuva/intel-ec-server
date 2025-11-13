@@ -432,11 +432,17 @@ async def proxy_request(
             exc_info=True,
         )
 
+        # 获取语言偏好
+        accept_language = request.headers.get("Accept-Language")
+        locale = parse_accept_language(accept_language)
+
         # 直接返回JSONResponse，避免HTTPException的detail包装
         error_response = ErrorResponse(
             code=HTTP_500_INTERNAL_SERVER_ERROR,
-            message="网关内部错误",
+            message=t("error.gateway.internal_error", locale=locale),
+            message_key="error.gateway.internal_error",
             error_code="GATEWAY_ERROR",
+            locale=locale,
         )
 
         return JSONResponse(
@@ -534,11 +540,17 @@ async def catch_all_handler(
         },
     )
 
+    # 获取语言偏好
+    accept_language = request.headers.get("Accept-Language")
+    locale = parse_accept_language(accept_language)
+
     # 返回统一格式的404错误响应
     error_response = ErrorResponse(
         code=404,
-        message="请求的资源不存在",
+        message=t("error.gateway.resource_not_found", locale=locale),
+        message_key="error.gateway.resource_not_found",
         error_code="RESOURCE_NOT_FOUND",
+        locale=locale,
         details={
             "method": request.method,
             "path": f"/{path}",

@@ -9,6 +9,7 @@
 
 import os
 import sys
+import time
 from typing import Any, Dict, Optional
 
 # 使用 try-except 方式处理路径导入
@@ -134,8 +135,6 @@ class ServiceDiscovery:
         timestamp = cache_entry.get("timestamp", 0)
 
         # 检查是否过期
-        import time
-
         if time.time() - timestamp > self.cache_ttl:
             logger.debug(f"缓存已过期: {service_name}")
             del self._cache[service_name]
@@ -190,8 +189,6 @@ class ServiceDiscovery:
             service_name: 服务名称
             url: 服务 URL
         """
-        import time
-
         self._cache[service_name] = {"url": url, "timestamp": time.time()}
 
     def _get_fallback_url(self, service_name: str) -> str:

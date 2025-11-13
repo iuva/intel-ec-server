@@ -109,7 +109,27 @@
       "bad_gateway": "Backend service returned invalid response",
       "unavailable": "Backend service temporarily unavailable",
       "timeout": "Backend service response timeout",
-      "error": "Backend service error"
+      "error": "Backend service error",
+      "connection_failed": "Unable to connect to backend service: {service_name}",
+      "timeout_error": "Backend service response timeout: {service_name}",
+      "network_error": "Backend service network error: {service_name}",
+      "protocol_error": "Backend service protocol error: {service_name}",
+      "error_handling_failed": "Backend service error handling failed"
+    },
+    "http": {
+      "method_not_allowed": "HTTP method not allowed. This endpoint does not support the HTTP method you are using. Please check the API documentation to confirm the correct request method (e.g., GET, POST, PUT, DELETE).",
+      "method_not_allowed_with_methods": "HTTP method not allowed. This endpoint only supports the following methods: {allowed_methods}. Please use the correct HTTP method and try again."
+    },
+    "websocket": {
+      "service_unavailable": "WebSocket service unavailable",
+      "auth_failed": "WebSocket authentication failed, Token invalid or expired",
+      "unauthorized": "WebSocket connection unauthorized, please provide a valid authentication token",
+      "connection_failed": "WebSocket connection failed",
+      "proxy_error": "WebSocket proxy failed"
+    },
+    "gateway": {
+      "internal_error": "Gateway internal error",
+      "resource_not_found": "Requested resource not found"
     }
   }
 }
