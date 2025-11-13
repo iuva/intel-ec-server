@@ -96,7 +96,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
             # 例如: "Method Not Allowed" 或更详细的错误信息
             if "Method Not Allowed" in detail_str or "method not allowed" in detail_str.lower():
                 # 尝试提取允许的方法（如果有）
-                allowed_match = re.search(r'allowed.*?\[(.*?)\]', detail_str, re.IGNORECASE)
+                allowed_match = re.search(r"allowed.*?\[(.*?)\]", detail_str, re.IGNORECASE)
                 if allowed_match:
                     allowed_methods = allowed_match.group(1)
                     message_key = "error.http.method_not_allowed_with_methods"

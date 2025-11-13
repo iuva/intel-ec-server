@@ -599,9 +599,7 @@ class ProxyService:
             )
             # 获取语言偏好
             accept_language = (
-                client_websocket.headers.get("Accept-Language")
-                if hasattr(client_websocket, "headers")
-                else None
+                client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
             )
             locale = parse_accept_language(accept_language)
             raise BusinessError(
@@ -624,9 +622,7 @@ class ProxyService:
                 )
                 # 获取语言偏好
                 accept_language = (
-                    client_websocket.headers.get("Accept-Language")
-                    if hasattr(client_websocket, "headers")
-                    else None
+                    client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
                 )
                 locale = parse_accept_language(accept_language)
                 raise BusinessError(
@@ -646,9 +642,7 @@ class ProxyService:
                 )
                 # 获取语言偏好
                 accept_language = (
-                    client_websocket.headers.get("Accept-Language")
-                    if hasattr(client_websocket, "headers")
-                    else None
+                    client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
                 )
                 locale = parse_accept_language(accept_language)
                 raise BusinessError(
@@ -667,9 +661,7 @@ class ProxyService:
             )
             # 获取语言偏好
             accept_language = (
-                client_websocket.headers.get("Accept-Language")
-                if hasattr(client_websocket, "headers")
-                else None
+                client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
             )
             locale = parse_accept_language(accept_language)
             raise BusinessError(
@@ -689,9 +681,7 @@ class ProxyService:
             )
             # 获取语言偏好
             accept_language = (
-                client_websocket.headers.get("Accept-Language")
-                if hasattr(client_websocket, "headers")
-                else None
+                client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
             )
             locale = parse_accept_language(accept_language)
             raise BusinessError(
@@ -834,9 +824,7 @@ class ProxyService:
                 # 尝试从响应头获取 locale，如果没有则使用默认值
                 response_headers = response.get("headers", {})
                 accept_language = (
-                    response_headers.get("Accept-Language")
-                    if isinstance(response_headers, dict)
-                    else None
+                    response_headers.get("Accept-Language") if isinstance(response_headers, dict) else None
                 )
                 locale = parse_accept_language(accept_language) if accept_language else "zh_CN"
                 error_message = t("error.service.unavailable", locale=locale)
@@ -865,18 +853,14 @@ class ProxyService:
                 # 尝试从响应中获取 locale
                 response_headers = response.get("headers", {})
                 accept_language = (
-                    response_headers.get("Accept-Language")
-                    if isinstance(response_headers, dict)
-                    else None
+                    response_headers.get("Accept-Language") if isinstance(response_headers, dict) else None
                 )
                 locale_502 = (
                     parse_accept_language(accept_language)
                     if accept_language
                     else error_detail_502.get("locale", "zh_CN")
                 )
-                error_message = error_detail_502.get(
-                    "message", t("error.service.unavailable", locale=locale_502)
-                )
+                error_message = error_detail_502.get("message", t("error.service.unavailable", locale=locale_502))
                 error_code = error_detail_502.get("error_code", "SERVICE_UNAVAILABLE")
                 error_details_raw_502 = error_detail_502.get("details", {})
                 # ✅ 提取 message_key 和 locale（用于多语言支持）
@@ -928,9 +912,7 @@ class ProxyService:
 
                         # 获取语言偏好（从响应中或使用默认值）
                         locale_for_validation = (
-                            response_data.get("locale", "zh_CN")
-                            if isinstance(response_data, dict)
-                            else "zh_CN"
+                            response_data.get("locale", "zh_CN") if isinstance(response_data, dict) else "zh_CN"
                         )
                         error_detail = {
                             "message": t("error.validation", locale=locale_for_validation),
@@ -973,7 +955,7 @@ class ProxyService:
                 if "message_key" not in error_detail:
                     # 尝试提取允许的方法
                     detail_str = str(error_detail.get("message", ""))
-                    allowed_match = re.search(r'allowed.*?\[(.*?)\]', detail_str, re.IGNORECASE)
+                    allowed_match = re.search(r"allowed.*?\[(.*?)\]", detail_str, re.IGNORECASE)
                     if allowed_match:
                         allowed_methods = allowed_match.group(1)
                         message_key = "error.http.method_not_allowed_with_methods"
@@ -1154,9 +1136,7 @@ class ProxyService:
 
                     # 获取语言偏好（从响应中或使用默认值）
                     locale_for_validation = (
-                        response_data.get("locale", "zh_CN")
-                        if isinstance(response_data, dict)
-                        else "zh_CN"
+                        response_data.get("locale", "zh_CN") if isinstance(response_data, dict) else "zh_CN"
                     )
                     error_detail = {
                         "message": t("error.validation", locale=locale_for_validation),
