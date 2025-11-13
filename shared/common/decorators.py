@@ -198,6 +198,7 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
             api_locale = kwargs.get("locale") or e.locale or "zh_CN"
 
             # ✅ 透传 message_key 和 locale 以支持多语言
+            # ✅ 修复：从 details 中提取格式化变量，传递给 ErrorResponse 以便翻译时使用
             error_response_kwargs = {
                 "code": e.code,  # 使用自定义错误码作为响应体中的 code
                 "message": e.message,
@@ -208,6 +209,12 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
                 error_response_kwargs["message_key"] = e.message_key
                 # 使用 API 层的 locale 重新翻译消息
                 error_response_kwargs["locale"] = api_locale
+                # ✅ 从 details 中提取格式化变量（如 host_id），传递给 ErrorResponse
+                # 这样翻译函数可以使用这些变量来格式化消息
+                if e.details:
+                    for key, value in e.details.items():
+                        if isinstance(value, (str, int, float, bool, type(None))):
+                            error_response_kwargs[key] = value
             elif e.locale:
                 error_response_kwargs["locale"] = e.locale
 

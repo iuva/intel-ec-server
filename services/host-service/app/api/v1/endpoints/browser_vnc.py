@@ -46,12 +46,11 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "message": "操作成功",
+                        "message": "VNC连接结果上报成功",
                         "data": {
                             "host_id": "123",
                             "connection_status": "success",
                             "connection_time": "2025-10-15T10:00:00Z",
-                            "message": "VNC连接结果上报成功，主机已锁定，执行日志已deleted_and_created",
                         },
                     }
                 }
@@ -130,7 +129,6 @@ async def report_vnc_connection(
         host_id=result["host_id"],
         connection_status=result["connection_status"],
         connection_time=result["connection_time"],
-        message=result["message"],
     )
 
     logger.info(

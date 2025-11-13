@@ -78,7 +78,6 @@ class VNCConnectionResponse(BaseModel):
     host_id: str = Field(description="主机ID")
     connection_status: str = Field(description="连接状态")
     connection_time: datetime = Field(description="连接时间")
-    message: str = Field(description="处理消息")
 
     model_config = {"from_attributes": True}
 
