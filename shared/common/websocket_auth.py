@@ -74,6 +74,10 @@ async def verify_websocket_token(
 ) -> Tuple[bool, Optional[dict]]:
     """验证 WebSocket token
 
+    Note:
+        由于网关层已经进行了 token 验证，host-service 的 token 验证已被禁用。
+        如果需要在 host-service 层重新启用验证，可以取消下方的 skip_verification 注释。
+
     Args:
         websocket: WebSocket 连接对象
         auth_service_url: 认证服务 URL (如果为 None，则自动从 ServiceDiscovery 获取)
@@ -81,6 +85,34 @@ async def verify_websocket_token(
     Returns:
         (是否验证成功, 用户信息字典或None)
     """
+    # ⚠️ 注意：以下验证已被禁用，因为网关已进行认证
+    # 如果需要在 host-service 层重新启用验证，可以删除此段代码
+    skip_verification = True
+
+    if skip_verification:
+        logger.info(
+            "WebSocket token 验证已禁用（由网关处理）",
+            extra={
+                "client": (f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"),
+                "path": websocket.url.path,
+            },
+        )
+
+        # 直接返回成功，允许连接建立
+        # 注：实际的用户信息可以从后续消息中获取
+        return True, {
+            "user_id": "unknown",
+            "username": "unknown",
+            "user_type": "device",
+            "permissions": [],
+            "roles": [],
+        }
+
+    # ============================================================================
+    # 以下是原始的 token 验证逻辑（已禁用）
+    # 如需重新启用，请将上方的 skip_verification = True 改为 False
+    # ============================================================================
+
     try:
         # 1. 提取 token
         token = await extract_websocket_token(websocket)
