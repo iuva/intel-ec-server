@@ -71,7 +71,7 @@ class AdminHostService:
         """查询可用主机列表（分页、搜索）
 
         业务逻辑：
-        1. 查询 host_rec 表，条件：host_state < 5, appr_state = 1, del_flag = 0
+        1. 查询 host_rec 表，条件：host_state = 0, appr_state = 1, del_flag = 0
         2. 关联 host_exec_log 表，获取每个 host_id 的最新一条记录（按 created_time 倒序）
         3. 支持按 use_by（user_name）过滤
         4. 按 host_rec.created_time 倒序排序
@@ -148,9 +148,9 @@ class AdminHostService:
             )
 
             # 主查询：JOIN host_rec 和最新的 host_exec_log
-            # 基础条件：host_state < 5, appr_state = 1, del_flag = 0
+            # 基础条件：host_state = 0, appr_state = 1, del_flag = 0
             base_conditions = [
-                HostRec.host_state < 5,
+                HostRec.host_state == 0,
                 HostRec.appr_state == 1,
                 HostRec.del_flag == 0,
             ]
@@ -162,8 +162,7 @@ class AdminHostService:
             if request.username and request.username.strip():
                 base_conditions.append(HostRec.host_acct.like(f"%{request.username.strip()}%"))
 
-            if request.host_state is not None:
-                base_conditions.append(HostRec.host_state == request.host_state)
+            # 注意：host_state 参数已移除，因为基础条件已固定为 host_state = 0
 
             if request.mg_id and request.mg_id.strip():
                 base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id.strip()}%"))

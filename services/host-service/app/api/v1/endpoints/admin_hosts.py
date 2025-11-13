@@ -85,16 +85,17 @@ async def list_hosts(
     """查询可用主机列表（管理后台）
 
     业务逻辑：
-    - 查询 host_rec 表，条件：host_state < 5, appr_state = 1, del_flag = 0
+    - 查询 host_rec 表，条件：host_state = 0, appr_state = 1, del_flag = 0
     - 关联 host_exec_log 表，获取每个 host_id 的最新一条记录（按 created_time 倒序）
     - 按 host_rec.created_time 倒序排序
 
     ## 搜索条件（可选）
     - `mac`: MAC地址（对应 host_rec.mac_addr）
     - `username`: 主机账号（对应 host_rec.host_acct）
-    - `host_state`: 主机状态（对应 host_rec.host_state）
     - `mg_id`: 唯一引导ID（对应 host_rec.mg_id）
     - `use_by`: 使用人（对应 host_exec_log.user_name）
+
+    注意：此接口固定查询 `host_state = 0` 的记录，不支持通过参数修改
 
     ## 返回字段
     - `host_id`: 主机ID（host_rec 表主键 id）
@@ -121,7 +122,6 @@ async def list_hosts(
             "page_size": request.page_size,
             "mac": request.mac,
             "username": request.username,
-            "host_state": request.host_state,
             "mg_id": request.mg_id,
             "use_by": request.use_by,
             "user_id": current_user.get("user_id"),

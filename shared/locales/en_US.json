@@ -17,8 +17,12 @@
       "update_approval": "Host approval status updated successfully",
       "already_in_state": "Host is already {state_name}",
       "approved": "Host approved successfully",
+      "approve_completed": "Host approval completed",
+      "disable": "Host disabled successfully",
+      "force_offline": "Host force offline successfully",
       "release": "Host released successfully",
-      "***REMOVED***word_update": "Host ***REMOVED***word updated successfully"
+      "***REMOVED***word_update": "Host ***REMOVED***word updated successfully",
+      "exec_log_list_query": "Host execution log list query successful"
     },
     "hardware": {
       "report": "Hardware information reported successfully",
@@ -78,10 +82,6 @@
     "vnc": {
       "info_incomplete": "VNC connection information incomplete, missing IP address or port"
     },
-    "websocket": {
-      "invalid_message_format": "Message must contain type field",
-      "host_not_connected": "Message sending failed (Host not connected)"
-    },
     "hardware": {
       "report_failed": "Hardware information reporting failed",
       "test_result_report_failed": "Test case result reporting failed"
@@ -130,7 +130,9 @@
       "auth_failed": "WebSocket authentication failed, Token invalid or expired",
       "unauthorized": "WebSocket connection unauthorized, please provide a valid authentication token",
       "connection_failed": "WebSocket connection failed",
-      "proxy_error": "WebSocket proxy failed"
+      "proxy_error": "WebSocket proxy failed",
+      "invalid_message_format": "Message must contain type field",
+      "host_not_connected": "Message sending failed (Host not connected)"
     },
     "gateway": {
       "internal_error": "Gateway internal error",

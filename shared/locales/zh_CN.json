@@ -17,8 +17,12 @@
       "update_approval": "主机审批状态更新成功",
       "already_in_state": "主机已是{state_name}状态",
       "approved": "主机启用成功",
+      "approve_completed": "主机审批完成",
+      "disable": "主机停用成功",
+      "force_offline": "主机强制下线成功",
       "release": "主机释放成功",
-      "***REMOVED***word_update": "主机密码修改成功"
+      "***REMOVED***word_update": "主机密码修改成功",
+      "exec_log_list_query": "查询主机执行日志列表成功"
     },
     "hardware": {
       "report": "硬件信息上报成功",
@@ -78,10 +82,6 @@
     "vnc": {
       "info_incomplete": "VNC 连接信息不完整，缺少 IP 地址或端口"
     },
-    "websocket": {
-      "invalid_message_format": "消息必须包含 type 字段",
-      "host_not_connected": "消息发送失败（Host未连接）"
-    },
     "hardware": {
       "report_failed": "硬件信息上报处理失败",
       "test_result_report_failed": "测试用例结果上报处理失败"
@@ -130,7 +130,9 @@
       "auth_failed": "WebSocket 认证失败，Token 无效或已过期",
       "unauthorized": "WebSocket 连接未授权，请提供有效的认证令牌",
       "connection_failed": "WebSocket 连接失败",
-      "proxy_error": "WebSocket 转发失败"
+      "proxy_error": "WebSocket 转发失败",
+      "invalid_message_format": "消息必须包含 type 字段",
+      "host_not_connected": "消息发送失败（Host未连接）"
     },
     "gateway": {
       "internal_error": "网关内部错误",

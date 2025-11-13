@@ -24,7 +24,7 @@ class TokenResponse(BaseModel):
                 "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
-                "expires_in": 1800,
+                "expires_in": 86400,
                 "refresh_expires_in": 604800,
             }
         }
@@ -165,7 +165,7 @@ class LoginResponse(BaseModel):
                 "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
-                "expires_in": 1800,
+                "expires_in": 86400,
                 "refresh_expires_in": 604800,
             }
         }

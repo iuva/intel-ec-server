@@ -287,7 +287,7 @@ curl -X POST http://localhost:8001/api/v1/auth/admin/login \
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",
-    "expires_in": 1800
+    "expires_in": 86400
   }
 }
 ```
@@ -313,7 +313,7 @@ curl -X POST http://localhost:8001/api/v1/auth/device/login \
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",
-    "expires_in": 1800
+    "expires_in": 86400
   }
 }
 ```

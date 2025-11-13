@@ -49,12 +49,14 @@ class AuthService:
 
     def __init__(self):
         """初始化认证服务"""
+        self.access_token_expire_minutes = 24 * 60  # 24 小时
+        self.refresh_token_expire_days = 7
         self.jwt_manager = JWTManager(
             secret_key=os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production"),
             algorithm="HS256",
+            access_token_expire_minutes=self.access_token_expire_minutes,
+            refresh_token_expire_days=self.refresh_token_expire_days,
         )
-        self.access_token_expire_minutes = 30
-        self.refresh_token_expire_days = 7
 
     async def refresh_access_token(self, refresh_data: RefreshTokenRequest) -> TokenResponse:
         """刷新访问令牌

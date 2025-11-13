@@ -158,10 +158,10 @@ class ProxyService:
             # ✅ 修复：无服务发现时使用后备地址（本地开发环境）
             fallback_discovery = ServiceDiscovery()
             fallback_url = fallback_discovery._get_fallback_url(full_service_name)
-            logger.warning(
-                f"服务发现未配置，使用后备地址: {service_name} -> {fallback_url}",
-                extra={"service_name": service_name, "fallback_url": fallback_url},
-            )
+            # logger.warning(
+            #     f"服务发现未配置，使用后备地址: {service_name} -> {fallback_url}",
+            #     extra={"service_name": service_name, "fallback_url": fallback_url},
+            # )
             return fallback_url
 
     def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
