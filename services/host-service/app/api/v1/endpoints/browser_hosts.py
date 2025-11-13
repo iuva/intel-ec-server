@@ -10,7 +10,6 @@ from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
     QueryAvailableHostsRequest,
     ReleaseHostsRequest,
-    ReleaseHostsResponse,
     RetryVNCListResponse,
 )
 from app.services.browser_host_service import BrowserHostService
@@ -243,13 +242,25 @@ async def get_retry_vnc_list(
 
 @router.post(
     "/release",
-    response_model=ReleaseHostsResponse,
+    response_model=SuccessResponse,
     summary="释放主机",
     description="逻辑删除指定用户的主机执行日志记录（设置 del_flag = 1）",
     responses={
         200: {
             "description": "释放成功",
-            "model": ReleaseHostsResponse,
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "message": "主机释放成功",
+                        "data": {
+                            "updated_count": 3,
+                            "user_id": "user123",
+                            "host_list": ["host1", "host2", "host3"],
+                        },
+                    }
+                }
+            },
         },
         400: {
             "description": "请求参数错误",
@@ -269,7 +280,8 @@ async def get_retry_vnc_list(
 async def release_hosts(
     request: ReleaseHostsRequest = Body(..., description="释放主机请求数据"),
     host_service: BrowserHostService = Depends(get_host_service),
-):
+    locale: str = Depends(get_locale),
+) -> SuccessResponse:
     """释放主机 - 逻辑删除执行日志记录
 
     ## 业务逻辑
@@ -291,9 +303,10 @@ async def release_hosts(
     Args:
         request: 释放主机请求
         host_service: 主机服务实例
+        locale: 语言偏好
 
     Returns:
-        释放主机响应
+        SuccessResponse: 统一格式的成功响应，包含释放结果数据
     """
     logger.info(
         "接收释放主机请求",
@@ -317,8 +330,12 @@ async def release_hosts(
         },
     )
 
-    return ReleaseHostsResponse(
-        updated_count=updated_count,
-        user_id=request.user_id,
-        host_list=request.host_list,
+    return SuccessResponse(
+        data={
+            "updated_count": updated_count,
+            "user_id": request.user_id,
+            "host_list": request.host_list,
+        },
+        message_key="success.host.release",
+        locale=locale,
     )

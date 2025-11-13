@@ -16,7 +16,9 @@
       "delete": "主机删除成功",
       "update_approval": "主机审批状态更新成功",
       "already_in_state": "主机已是{state_name}状态",
-      "approved": "主机启用成功"
+      "approved": "主机启用成功",
+      "release": "主机释放成功",
+      "***REMOVED***word_update": "主机密码修改成功"
     },
     "hardware": {
       "report": "硬件信息上报成功",
@@ -72,6 +74,9 @@
       "***REMOVED***word_encrypt_failed": "密码加密失败（ID: {host_id}）",
       "***REMOVED***word_update_failed": "密码更新失败（ID: {host_id}）",
       "force_offline_failed": "主机强制下线失败，记录可能已被删除（ID: {host_id}）"
+    },
+    "vnc": {
+      "info_incomplete": "VNC 连接信息不完整，缺少 IP 地址或端口"
     },
     "websocket": {
       "invalid_message_format": "消息必须包含 type 字段",

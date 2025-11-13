@@ -20,6 +20,7 @@ try:
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.common.security import aes_decrypt
     from shared.utils.host_validators import validate_host_exists
 except ImportError:
     import os
@@ -30,9 +31,91 @@ except ImportError:
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
+    from shared.common.security import aes_decrypt
     from shared.utils.host_validators import validate_host_exists
 
+# RealVNC 加密依赖
+try:
+    from Crypto.Cipher import DES
+except ImportError:
+    DES = None  # type: ignore
+
 logger = get_logger(__name__)
+
+
+def _reverse_bits(byte_val: int) -> int:
+    """翻转字节中的位顺序
+
+    Args:
+        byte_val: 要翻转的字节值 (0-255)
+
+    Returns:
+        位翻转后的字节值
+    """
+    result = 0
+    for i in range(8):
+        if byte_val & (1 << i):
+            result |= 1 << (7 - i)
+    return result
+
+
+def _realvnc_encrypt_***REMOVED***word(***REMOVED***word: str) -> str:
+    """RealVNC密码加密算法
+
+    该算法使用固定的DES密钥对密码进行加密，密码被分成多个8字节块：
+    1. 第一个块：密码的前8个字符（不足8个用null字节填充）
+    2. 第二个块：密码的第9-16个字符（不足8个用null字节填充）
+    3. 第三个块：密码的第17-24个字符（不足8个用null字节填充）
+
+    Args:
+        ***REMOVED***word: 要加密的密码
+
+    Returns:
+        十六进制字符串（长度取决于密码长度）
+
+    Raises:
+        BusinessError: 当 DES 加密库未安装时
+    """
+    if DES is None:
+        raise BusinessError(
+            message="RealVNC 加密功能需要 pycryptodome 库，请安装: pip install pycryptodome",
+            error_code="REALVNC_ENCRYPTION_LIBRARY_MISSING",
+            code=500,
+        )
+
+    # RealVNC使用的固定DES密钥
+    REALVNC_DES_KEY = bytes([0x17, 0x52, 0x6B, 0x06, 0x23, 0x4E, 0x58, 0x07])
+
+    # 对固定密钥进行位翻转处理（VNC协议的特殊要求）
+    reversed_key = bytes([_reverse_bits(b) for b in REALVNC_DES_KEY])
+
+    # 创建DES加密器
+    cipher = DES.new(reversed_key, DES.MODE_ECB)
+
+    # 将密码分成8字节块进行加密
+    encrypted_blocks = []
+
+    # 计算需要的块数（至少2个块，最多3个块）
+    block_count = max(2, min(3, (len(***REMOVED***word) + 7) // 8))
+
+    for i in range(block_count):
+        start_pos = i * 8
+        end_pos = start_pos + 8
+
+        # 获取当前块的密码片段
+        ***REMOVED***word_chunk = ***REMOVED***word[start_pos:end_pos]
+
+        # 填充到8字节
+        block = ***REMOVED***word_chunk.ljust(8, "\x00").encode("ascii")
+
+        # 加密当前块
+        encrypted_block = cipher.encrypt(block)
+        encrypted_blocks.append(encrypted_block)
+
+    # 连接所有加密结果并转换为十六进制字符串
+    result = b"".join(encrypted_blocks).hex().lower()
+
+    return result
 
 
 class BrowserVNCService:
@@ -298,17 +381,63 @@ class BrowserVNCService:
                         },
                     )
                     raise BusinessError(
-                        message="VNC 连接信息不完整",
+                        message="VNC 连接信息不完整，缺少 IP 地址或端口",
+                        message_key="error.vnc.info_incomplete",
                         error_code="VNC_INFO_INCOMPLETE",
                         code=400,
                     )
+
+                # 处理密码：AES 解密 -> RealVNC 加密
+                vnc_***REMOVED***word = ""
+                if host_rec.host_pwd:
+                    try:
+                        # 1. 使用 AES 解密数据库中的密码
+                        ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
+                        if ***REMOVED***:
+                            logger.debug(
+                                "密码 AES 解密成功",
+                                extra={
+                                    "host_rec_id": host_rec_id,
+                                },
+                            )
+
+                            # 2. 使用 RealVNC 加密算法加密密码
+                            vnc_***REMOVED***word = _realvnc_encrypt_***REMOVED***word(***REMOVED***)
+                            logger.debug(
+                                "密码 RealVNC 加密成功",
+                                extra={
+                                    "host_rec_id": host_rec_id,
+                                    "***REMOVED***word_length": len(***REMOVED***),
+                                    "encrypted_length": len(vnc_***REMOVED***word),
+                                },
+                            )
+                        else:
+                            logger.warning(
+                                "密码 AES 解密返回 None",
+                                extra={
+                                    "host_rec_id": host_rec_id,
+                                    "note": "可能是密码格式不正确或加密方式不匹配",
+                                },
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            "密码处理异常（AES 解密或 RealVNC 加密）",
+                            extra={
+                                "host_rec_id": host_rec_id,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                            },
+                            exc_info=True,
+                        )
+                        # 密码处理失败时返回空字符串，而不是抛出异常
+                        vnc_***REMOVED***word = ""
 
                 # 构建响应数据
                 vnc_info = {
                     "ip": cast(str, host_rec.host_ip),
                     "port": (str(cast(int, host_rec.host_port)) if host_rec.host_port else "5900"),
                     "username": cast(str, host_rec.host_acct) or "",
-                    "***REMOVED***word": cast(str, host_rec.host_pwd) or "",
+                    "***REMOVED***word": vnc_***REMOVED***word,  # 返回 RealVNC 加密后的密码
                 }
 
                 logger.info(

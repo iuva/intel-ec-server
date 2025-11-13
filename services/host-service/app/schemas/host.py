@@ -328,7 +328,6 @@ class AdminHostDeleteResponse(BaseModel):
     """管理后台主机删除响应模式"""
 
     id: str = Field(description="已删除的主机ID")
-    message: str = Field(default="主机删除成功", description="删除结果消息")
 
     model_config = {"from_attributes": True}
 
@@ -346,7 +345,7 @@ class AdminHostDisableResponse(BaseModel):
 
     id: str = Field(description="主机ID")
     appr_state: int = Field(default=0, description="更新后的审批状态（0=停用）")
-    message: str = Field(default="主机已停用", description="操作结果消息")
+    host_state: int = Field(default=7, description="更新后的主机状态（7=手动停用）")
 
     model_config = {"from_attributes": True}
 
@@ -365,7 +364,6 @@ class AdminHostForceOfflineResponse(BaseModel):
     id: str = Field(description="主机ID")
     host_state: int = Field(default=4, description="更新后的主机状态（4=离线）")
     websocket_notified: bool = Field(description="是否成功发送WebSocket通知")
-    message: str = Field(default="主机已强制下线", description="操作结果消息")
 
     model_config = {"from_attributes": True}
 
@@ -417,7 +415,6 @@ class AdminHostUpdatePasswordResponse(BaseModel):
     """管理后台主机密码修改响应模式"""
 
     id: str = Field(description="主机ID")
-    message: str = Field(default="密码修改成功", description="操作结果消息")
 
     model_config = {"from_attributes": True}
 

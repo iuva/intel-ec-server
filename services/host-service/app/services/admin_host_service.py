@@ -471,10 +471,9 @@ class AdminHostService:
                     },
                 )
                 return {
-                    "id": host_id,
+                    "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
                     "appr_state": 0,
                     "host_state": 7,
-                    "message": "主机已是停用状态",
                 }
 
             # 3. 更新审批状态为停用，同时设置 host_state 为 7（手动停用）
@@ -680,7 +679,6 @@ class AdminHostService:
                 "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
                 "host_state": 4,
                 "websocket_notified": websocket_notified,
-                "message": "主机已强制下线",
             }
 
     @handle_service_errors(
@@ -911,7 +909,6 @@ class AdminHostService:
 
             return {
                 "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
-                "message": "密码修改成功",
             }
 
     @handle_service_errors(

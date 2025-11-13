@@ -193,6 +193,10 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
                 },
             )
 
+            # ✅ 优先使用 API 层的 locale（从函数参数中提取）
+            # 如果 API 层有 locale 参数，使用它；否则使用异常中的 locale
+            api_locale = kwargs.get("locale") or e.locale or "zh_CN"
+
             # ✅ 透传 message_key 和 locale 以支持多语言
             error_response_kwargs = {
                 "code": e.code,  # 使用自定义错误码作为响应体中的 code
@@ -202,7 +206,9 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
             }
             if e.message_key:
                 error_response_kwargs["message_key"] = e.message_key
-            if e.locale:
+                # 使用 API 层的 locale 重新翻译消息
+                error_response_kwargs["locale"] = api_locale
+            elif e.locale:
                 error_response_kwargs["locale"] = e.locale
 
             raise HTTPException(

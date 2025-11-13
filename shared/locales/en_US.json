@@ -16,7 +16,9 @@
       "delete": "Host deleted successfully",
       "update_approval": "Host approval status updated successfully",
       "already_in_state": "Host is already {state_name}",
-      "approved": "Host approved successfully"
+      "approved": "Host approved successfully",
+      "release": "Host released successfully",
+      "***REMOVED***word_update": "Host ***REMOVED***word updated successfully"
     },
     "hardware": {
       "report": "Hardware information reported successfully",
@@ -72,6 +74,9 @@
       "***REMOVED***word_encrypt_failed": "Password encryption failed (ID: {host_id})",
       "***REMOVED***word_update_failed": "Password update failed (ID: {host_id})",
       "force_offline_failed": "Host force offline failed, record may have been deleted (ID: {host_id})"
+    },
+    "vnc": {
+      "info_incomplete": "VNC connection information incomplete, missing IP address or port"
     },
     "websocket": {
       "invalid_message_format": "Message must contain type field",

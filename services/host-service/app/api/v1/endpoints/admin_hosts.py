@@ -173,7 +173,7 @@ async def list_hosts(
                     "example": {
                         "code": 200,
                         "message": "主机删除成功",
-                        "data": {"id": 123, "message": "主机删除成功"},
+                        "data": {"id": "123"},
                     }
                 }
             },
@@ -280,9 +280,9 @@ async def delete_host(
                         "code": 200,
                         "message": "主机停用成功",
                         "data": {
-                            "id": 123,
+                            "id": "123",
                             "appr_state": 0,
-                            "message": "主机已停用",
+                            "host_state": 7,
                         },
                     }
                 }
@@ -360,18 +360,13 @@ async def disable_host(
         },
     )
 
-    # 检查是否已经是停用状态
-    message_key = "success.host.disable"
-    if "已是" in result["message"]:
-        message_key = "success.host.already_disabled"
-
     return SuccessResponse(
         data=AdminHostDisableResponse(
             id=result["id"],
             appr_state=result["appr_state"],
-            message=result["message"],
+            host_state=result["host_state"],
         ).model_dump(),
-        message_key=message_key,
+        message_key="success.host.disable",
         locale=locale,
     )
 
@@ -390,10 +385,9 @@ async def disable_host(
                         "code": 200,
                         "message": "主机强制下线成功",
                         "data": {
-                            "id": 123,
+                            "id": "123",
                             "host_state": 4,
                             "websocket_notified": True,
-                            "message": "主机已强制下线",
                         },
                     }
                 }
@@ -473,19 +467,13 @@ async def force_offline_host(
         },
     )
 
-    # 根据WebSocket通知结果选择消息键
-    message_key = "success.host.force_offline"
-    if not result["websocket_notified"]:
-        message_key = "success.host.force_offline_no_websocket"
-
     return SuccessResponse(
         data=AdminHostForceOfflineResponse(
             id=result["id"],
             host_state=result["host_state"],
             websocket_notified=result["websocket_notified"],
-            message=result["message"],
         ).model_dump(),
-        message_key=message_key,
+        message_key="success.host.force_offline",
         locale=locale,
     )
 
@@ -621,10 +609,9 @@ async def get_host_detail(
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "message": "密码修改成功",
+                        "message": "主机密码修改成功",
                         "data": {
-                            "id": 123,
-                            "message": "密码修改成功",
+                            "id": "123",
                         },
                     }
                 }
@@ -713,7 +700,6 @@ async def update_host_***REMOVED***word(
     return SuccessResponse(
         data=AdminHostUpdatePasswordResponse(
             id=result["id"],
-            message=result["message"],
         ).model_dump(),
         message_key="success.host.***REMOVED***word_update",
         locale=locale,
