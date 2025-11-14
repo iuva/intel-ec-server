@@ -90,6 +90,10 @@ class CaseTimeoutTaskService:
 
     async def _run_loop(self) -> None:
         """定时任务循环"""
+        # ✅ 服务启动时延迟首次检查，避免立即检查历史数据产生大量警告
+        # 等待 60 秒后再执行第一次检查，给服务一些时间建立连接
+        await asyncio.sleep(60)
+
         while self._running:
             try:
                 # 执行超时检测
@@ -184,11 +188,14 @@ class CaseTimeoutTaskService:
 
                 # 检查 Host 是否在线
                 if not ws_manager.is_connected(host_id):
-                    logger.warning(
-                        "Host 未连接，无法发送超时通知",
+                    # ✅ 对于 Host 不在线的情况，使用 DEBUG 级别而不是 WARNING
+                    # 因为这些超时记录可能是历史数据，Host 不在线是正常情况
+                    logger.debug(
+                        "Host 未连接，无法发送超时通知（可能是历史超时记录）",
                         extra={
                             "host_id": host_id,
                             "log_id": exec_log.id,
+                            "begin_time": exec_log.begin_time.isoformat() if exec_log.begin_time else None,
                         },
                     )
                     failed_count += 1

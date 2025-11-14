@@ -31,9 +31,16 @@ class HostUpdate(BaseModel):
 
 
 class HostStatusUpdate(BaseModel):
-    """更新主机状态请求模式"""
+    """更新主机状态请求模式
 
-    status: str = Field(description="主机状态 (online, offline, error)")
+    支持两种更新方式：
+    1. 使用 status 字符串字段（推荐）："online", "offline", "error"
+    2. 使用 host_state 和 appr_state 整数字段（高级用法）
+    """
+
+    status: Optional[str] = Field(default=None, description="主机状态 (online, offline, error)")
+    host_state: Optional[int] = Field(default=None, description="主机状态码 (0-空闲, 1-已锁定, 2-已占用, 3-执行中, 4-离线, 5-待激活, 6-硬件改动, 7-手动停用, 8-更新中)")
+    appr_state: Optional[int] = Field(default=None, description="审批状态 (0-停用, 1-启用/新增, 2-存在改动)")
 
 
 class HostResponse(HostBase):
@@ -155,7 +162,7 @@ class HardwareHostData(BaseModel):
     hardware_id: str = Field(description="硬件ID")
     name: Optional[str] = Field(default=None, description="主机配置名称")
     dmr_config: Optional[DMRConfig] = Field(default=None, description="DMR配置")
-    updated_at: Optional[str] = Field(default=None, description="更新时间（ISO格式字符串）")
+    updated_time: Optional[str] = Field(default=None, description="更新时间（ISO格式字符串）")
     updated_by: Optional[str] = Field(default=None, description="更新人")
     tags: Optional[List[str]] = Field(default=None, description="标签列表")
     # 兼容旧字段

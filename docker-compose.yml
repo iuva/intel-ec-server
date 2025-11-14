@@ -239,6 +239,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    # ✅ WebSocket 性能优化：增加文件描述符限制
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
 
   # ==========================================
   # Auth Service (认证服务)
@@ -388,6 +393,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    # ✅ WebSocket 性能优化：增加文件描述符限制
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
 
 # ==========================================
 # 网络配置

@@ -3,7 +3,7 @@
 提供浏览器插件使用的主机查询、状态更新等核心业务逻辑。
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, cast
 
 from app.models.host_exec_log import HostExecLog
@@ -103,9 +103,31 @@ class BrowserHostService:
         Raises:
             BusinessError: 主机不存在或更新失败时
         """
+        # ✅ 记录方法调用开始（用于调试）
+        status_update_str = (
+            status_update.model_dump()
+            if hasattr(status_update, "model_dump")
+            else str(status_update)
+        )
+        logger.debug(
+            f"开始更新主机状态: {host_id}",
+            extra={
+                "host_id": host_id,
+                "status_update": status_update_str,
+            },
+        )
+
         try:
             host_id_int = int(host_id)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            logger.error(
+                f"主机ID格式无效: {host_id}",
+                extra={
+                    "host_id": host_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+            )
             raise BusinessError(
                 message="主机ID格式无效",
                 error_code="INVALID_HOST_ID",
@@ -114,34 +136,190 @@ class BrowserHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 使用工具函数验证主机存在
-            host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
+            try:
+                # 使用工具函数验证主机存在
+                logger.debug(f"验证主机存在: {host_id} (int: {host_id_int})")
+                host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
+                logger.debug(
+                    f"主机验证成功: {host_id}",
+                    extra={
+                        "host_id": host_id,
+                        "host_found": host is not None,
+                        "current_host_state": host.host_state if host else None,
+                        "current_appr_state": host.appr_state if host else None,
+                    },
+                )
+            except BusinessError as validate_error:
+                # BusinessError 直接重新抛出，但记录详细信息
+                logger.error(
+                    f"验证主机存在失败（业务异常）: {host_id}",
+                    extra={
+                        "host_id": host_id,
+                        "host_id_int": host_id_int,
+                        "error_code": validate_error.error_code,
+                        "error_message": validate_error.message,
+                        "business_code": validate_error.code,
+                        "details": validate_error.details,
+                    },
+                    exc_info=True,
+                )
+                raise
+            except Exception as validate_error:
+                # 验证主机存在失败，记录详细错误信息
+                logger.error(
+                    f"验证主机存在失败（系统异常）: {host_id}",
+                    extra={
+                        "host_id": host_id,
+                        "host_id_int": host_id_int,
+                        "error_type": type(validate_error).__name__,
+                        "error_message": str(validate_error),
+                    },
+                    exc_info=True,
+                )
+                raise
 
-            # 更新主机状态
+            # 记录当前状态（用于调试）
+            old_host_state = host.host_state
+            old_appr_state = host.appr_state
+
+            # ✅ 更新主机状态
+            # 支持两种方式：
+            # 1. 直接使用 host_state 和 appr_state（整数）
+            # 2. 使用 status 字符串（转换为对应的 host_state）
+            state_changed = False
             if status_update.host_state is not None:
-                host.host_state = status_update.host_state
+                if host.host_state != status_update.host_state:
+                    host.host_state = status_update.host_state
+                    state_changed = True
+            elif hasattr(status_update, "status") and status_update.status:
+                # 将字符串状态转换为 host_state
+                status_map = {
+                    "online": None,  # 在线状态不需要更新 host_state
+                    "offline": 4,    # 4 = 离线状态
+                    "error": None,   # 错误状态暂不处理
+                }
+                mapped_state = status_map.get(status_update.status.lower())
+                if mapped_state is not None and host.host_state != mapped_state:
+                    host.host_state = mapped_state
+                    state_changed = True
 
             if status_update.appr_state is not None:
-                host.appr_state = status_update.appr_state
+                if host.appr_state != status_update.appr_state:
+                    host.appr_state = status_update.appr_state
+                    state_changed = True
 
-            await session.commit()
-            await session.refresh(host)
-
-            logger.info(
-                "主机状态更新成功",
+            # 记录状态变更信息（用于调试）
+            logger.debug(
+                f"主机状态更新检查: {host_id}",
                 extra={
                     "host_id": host_id,
+                    "old_host_state": old_host_state,
                     "new_host_state": host.host_state,
+                    "old_appr_state": old_appr_state,
                     "new_appr_state": host.appr_state,
+                    "state_changed": state_changed,
+                    "status_update": status_update_str,
                 },
             )
 
-            return {
+            # ✅ 只有在状态确实改变时才提交
+            if state_changed:
+                try:
+                    await session.commit()
+                    await session.refresh(host)
+                    logger.info(
+                        "主机状态更新成功",
+                        extra={
+                            "host_id": host_id,
+                            "new_host_state": host.host_state,
+                            "new_appr_state": host.appr_state,
+                        },
+                    )
+                except Exception as commit_error:
+                    # 提交失败，回滚事务
+                    await session.rollback()
+                    logger.error(
+                        f"主机状态更新提交失败: {host_id}",
+                        extra={
+                            "host_id": host_id,
+                            "error_type": type(commit_error).__name__,
+                            "error_message": str(commit_error),
+                        },
+                        exc_info=True,
+                    )
+                    raise
+            else:
+                # 状态没有改变，直接返回当前状态
+                logger.debug(
+                    f"主机状态未改变，跳过更新: {host_id}",
+                    extra={
+                        "host_id": host_id,
+                        "current_host_state": host.host_state,
+                        "current_appr_state": host.appr_state,
+                    },
+                )
+                # ✅ 在会话关闭前保存需要返回的数据
+                try:
+                    updated_time_str = (
+                        cast(datetime, host.updated_time).isoformat()
+                        if host.updated_time
+                        else None
+                    )
+                except Exception as attr_error:
+                    # 如果访问 updated_time 失败，记录警告但不抛出异常
+                    logger.warning(
+                        f"访问 host.updated_time 失败: {host_id}",
+                        extra={
+                            "host_id": host_id,
+                            "error_type": type(attr_error).__name__,
+                            "error_message": str(attr_error),
+                        },
+                    )
+                    updated_time_str = None
+
+                result = {
+                    "id": host.id,
+                    "host_state": host.host_state,
+                    "appr_state": host.appr_state,
+                    "updated_time": updated_time_str,
+                }
+                logger.info(
+                    "主机状态更新成功（状态未改变）",
+                    extra={
+                        "host_id": host_id,
+                        "current_host_state": host.host_state,
+                        "current_appr_state": host.appr_state,
+                    },
+                )
+                # ✅ 在会话关闭前返回，避免访问已关闭的会话对象
+                return result
+
+            # ✅ 状态已改变，在会话关闭前返回结果
+            try:
+                updated_time_str = (
+                    cast(datetime, host.updated_time).isoformat()
+                    if host.updated_time
+                    else None
+                )
+            except Exception as attr_error:
+                # 如果访问 updated_time 失败，记录警告但不抛出异常
+                logger.warning(
+                    f"访问 host.updated_time 失败: {host_id}",
+                    extra={
+                        "host_id": host_id,
+                        "error_type": type(attr_error).__name__,
+                        "error_message": str(attr_error),
+                    },
+                )
+                updated_time_str = None
+
+            result = {
                 "id": host.id,
                 "host_state": host.host_state,
                 "appr_state": host.appr_state,
-                "updated_at": cast(datetime, host.updated_at).isoformat() if host.updated_at else None,
+                "updated_time": updated_time_str,
             }
+            return result
 
     @handle_service_errors(
         error_message="更新主机心跳失败",
@@ -173,8 +351,9 @@ class BrowserHostService:
             # 使用工具函数验证主机存在
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
-            # 更新心跳时间
-            host.updated_at = datetime.now(timezone.utc)
+            # ✅ WebSocket 更新数据时无需设置 updated_by 更新人
+            # ✅ 不手动设置 updated_time，让数据库自动更新（通过 onupdate=func.now()）
+            # 只需要提交事务，数据库会自动更新 updated_time
 
             await session.commit()
             await session.refresh(host)
@@ -183,13 +362,13 @@ class BrowserHostService:
                 "主机心跳更新成功",
                 extra={
                     "host_id": host_id,
-                    "updated_at": cast(datetime, host.updated_at).isoformat(),
+                    "updated_time": cast(datetime, host.updated_time).isoformat(),
                 },
             )
 
             return {
                 "host_id": host_id,
-                "heartbeat_at": cast(datetime, host.updated_at).isoformat(),
+                "heartbeat_at": cast(datetime, host.updated_time).isoformat(),
             }
 
     async def update_heartbeat_silent(self, host_id: str) -> bool:
@@ -234,8 +413,9 @@ class BrowserHostService:
                     # 主机不存在，静默失败
                     return False
 
-                # 更新心跳时间
-                host.updated_at = datetime.now(timezone.utc)
+                # ✅ WebSocket 更新数据时无需设置 updated_by 更新人
+                # ✅ 不手动设置 updated_time，让数据库自动更新（通过 onupdate=func.now()）
+                # 只需要提交事务，数据库会自动更新 updated_time
                 await session.commit()
 
                 return True

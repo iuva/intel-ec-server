@@ -69,10 +69,10 @@ async def send_email(
             smtp_from_email = os.getenv("SMTP_FROM_EMAIL")
             if not smtp_from_email:
                 raise ValueError("SMTP_FROM_EMAIL 环境变量未设置")
-            msg['From'] = smtp_from_email
-            msg['To'] = email
-            msg['Subject'] = subject
-            msg.attach(MIMEText(content, 'html', 'utf-8'))
+            msg["From"] = smtp_from_email
+            msg["To"] = email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(content, "html", "utf-8"))
 
             smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
             smtp_port = int(os.getenv("SMTP_PORT", "587"))

@@ -141,14 +141,22 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket 正常断开: {host_id}")
-        await ws_manager.disconnect(host_id)
+        # ✅ 检查连接是否仍然存在，避免重复断开
+        if host_id in ws_manager.active_connections:
+            await ws_manager.disconnect(host_id)
+        else:
+            logger.debug(f"连接 {host_id} 已断开，跳过重复断开操作")
 
     except Exception as e:
         logger.error(
             f"WebSocket 异常: {host_id}, 错误: {e!s}",
             exc_info=True,
         )
-        await ws_manager.disconnect(host_id)
+        # ✅ 检查连接是否仍然存在，避免重复断开
+        if host_id in ws_manager.active_connections:
+            await ws_manager.disconnect(host_id)
+        else:
+            logger.debug(f"连接 {host_id} 已断开，跳过重复断开操作")
 
 
 @router.websocket("/ws/host")

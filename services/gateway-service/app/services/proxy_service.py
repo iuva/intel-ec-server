@@ -64,6 +64,7 @@ class ProxyService:
         service_discovery=None,
         http_client_config: Optional[HTTPClientConfig] = None,
         health_check_client_config: Optional[HTTPClientConfig] = None,
+        max_websocket_connections: int = 1000,
     ):
         """初始化代理服务
 
@@ -74,6 +75,9 @@ class ProxyService:
 
         Args:
             service_discovery: ServiceDiscovery 实例（可选）
+            http_client_config: HTTP 客户端配置（可选）
+            health_check_client_config: 健康检查客户端配置（可选）
+            max_websocket_connections: 最大 WebSocket 连接数限制，默认 1000
         """
         # 服务发现工具
         self.service_discovery = service_discovery
@@ -105,6 +109,11 @@ class ProxyService:
             "host": "host-service",
         }
 
+        # ✅ WebSocket 连接管理
+        self.max_websocket_connections = max_websocket_connections
+        self.active_websocket_connections: Dict[str, Any] = {}  # 跟踪活跃连接
+        self._websocket_connection_lock: Optional[asyncio.Lock] = None  # 连接数限制锁（延迟创建）
+
         logger.info(
             "代理服务初始化完成",
             extra={
@@ -112,6 +121,7 @@ class ProxyService:
                 "services": list(self.service_name_map.keys()),
                 "http_client_name": self.http_client_config.client_name,
                 "health_check_client_name": self.health_check_client_config.client_name,
+                "max_websocket_connections": max_websocket_connections,
             },
         )
 
@@ -520,12 +530,54 @@ class ProxyService:
             service_name: 后端服务名称
             path: 请求路径
             client_websocket: 客户端 WebSocket 连接
+            service_url: 服务 URL（可选，如果不提供则通过服务发现获取）
 
         Raises:
             ServiceNotFoundError: 服务不存在
+            BusinessError: 连接数已达上限
         """
-
+        connection_id = None
         try:
+            # ✅ 延迟创建锁（在异步上下文中）
+            if self._websocket_connection_lock is None:
+                self._websocket_connection_lock = asyncio.Lock()
+
+            # ✅ 检查连接数限制
+            async with self._websocket_connection_lock:
+                current_connections = len(self.active_websocket_connections)
+                if current_connections >= self.max_websocket_connections:
+                    logger.warning(
+                        "WebSocket 连接数已达上限，拒绝新连接",
+                        extra={
+                            "service_name": service_name,
+                            "current_connections": current_connections,
+                            "max_connections": self.max_websocket_connections,
+                        },
+                    )
+                    # 获取语言偏好
+                    accept_language = (
+                        client_websocket.headers.get("Accept-Language")
+                        if hasattr(client_websocket, "headers")
+                        else None
+                    )
+                    locale = parse_accept_language(accept_language)
+                    raise BusinessError(
+                        message=t("error.websocket.connection_limit_reached", locale=locale),
+                        message_key="error.websocket.connection_limit_reached",
+                        error_code="WEBSOCKET_CONNECTION_LIMIT_REACHED",
+                        code=ServiceErrorCodes.GATEWAY_SERVICE_UNAVAILABLE,
+                        http_status_code=503,
+                        locale=locale,
+                    )
+
+                # 生成连接ID并注册
+                connection_id = f"{service_name}_{id(client_websocket)}"
+                self.active_websocket_connections[connection_id] = {
+                    "service_name": service_name,
+                    "path": path,
+                    "created_at": asyncio.get_event_loop().time(),
+                }
+
             resolved_service_url = service_url
             if not resolved_service_url:
                 resolved_service_url = await self.get_service_url(service_name)
@@ -547,6 +599,8 @@ class ProxyService:
                     "service_name": service_name,
                     "path": path,
                     "target_url": full_ws_url,
+                    "connection_id": connection_id,
+                    "current_connections": len(self.active_websocket_connections),
                 },
             )
 
@@ -588,12 +642,15 @@ class ProxyService:
 
                 logger.info(
                     "WebSocket 连接已关闭",
-                    extra={"service_name": service_name, "path": path},
+                    extra={
+                        "service_name": service_name,
+                        "path": path,
+                        "connection_id": connection_id,
+                    },
                 )
 
         except ServiceNotFoundError:
             raise
-
         except websockets.exceptions.InvalidURI as e:
             logger.error(
                 f"无效的 WebSocket URL: {e!s}",
@@ -694,6 +751,22 @@ class ProxyService:
                 http_status_code=502,
                 locale=locale,
             )
+        finally:
+            # ✅ 清理连接记录
+            if connection_id and connection_id in self.active_websocket_connections:
+                # 确保锁已创建
+                if self._websocket_connection_lock is None:
+                    self._websocket_connection_lock = asyncio.Lock()
+
+                async with self._websocket_connection_lock:
+                    self.active_websocket_connections.pop(connection_id, None)
+                    logger.debug(
+                        "WebSocket 连接记录已清理",
+                        extra={
+                            "connection_id": connection_id,
+                            "remaining_connections": len(self.active_websocket_connections),
+                        },
+                    )
 
     async def _forward_messages(
         self,

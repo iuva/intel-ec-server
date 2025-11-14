@@ -150,7 +150,7 @@ async def websocket_proxy(
                     "client": websocket.client.host if websocket.client else "unknown",
                 },
             )
-            
+
             # ✅ 网关已验证 token，提取 host_id 以传递给后端服务
             # 这样后端服务（host-service）就不需要重复验证 token
             host_id_param = f"host_id={user_id}"
