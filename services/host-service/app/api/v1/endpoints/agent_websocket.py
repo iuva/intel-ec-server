@@ -33,7 +33,8 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
         path_host_id: 从路径获取的 host_id（兼容旧API，实际不使用）
 
     Note:
-        - host_id 从 token 中的 user_id/sub 字段获取
+        - host_id 优先从查询参数获取（网关已验证）
+        - 其次从 token 中的 user_id/sub 字段获取（兼容直接连接）
         - 认证失败会直接返回，不建立连接
         - 连接建立后会自动发送欢迎消息
     """
@@ -46,33 +47,60 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
         },
     )
 
-    # ✅ 认证验证
-    is_valid, user_info = await verify_websocket_token(websocket)
+    # ✅ 第一步：尝试从查询参数获取 host_id（网关已验证的情况）
+    host_id = websocket.query_params.get("host_id")
+    user_info = None  # 初始化 user_info
 
-    if not is_valid or not user_info:
-        logger.warning("WebSocket 认证失败")
-        await handle_websocket_auth_error(websocket, "缺少有效的认证令牌")
-        return
+    if host_id:
+        # ✅ 网关已验证 token，直接使用网关传递的 host_id
+        logger.info(
+            "WebSocket 连接使用网关传递的 host_id",
+            extra={
+                "host_id": host_id,
+                "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+            },
+        )
+    else:
+        # ✅ 兼容直接连接的情况：从 token 中验证并提取 host_id
+        logger.info(
+            "WebSocket 连接直接连接，需要从 token 中验证",
+            extra={
+                "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+            },
+        )
 
-    # ✅ 从 token 中获取 host_id (来自 device_login 时存储的 host_rec.id)
-    host_id = user_info.get("user_id")  # user_id 实际上是 host_rec.id
+        is_valid, user_info = await verify_websocket_token(websocket)
 
-    if not host_id:
-        logger.warning("WebSocket token 中缺少 host_id")
-        await handle_websocket_auth_error(websocket, "Token 中缺少 host_id")
-        return
+        if not is_valid or not user_info:
+            logger.warning("WebSocket 认证失败")
+            await handle_websocket_auth_error(websocket, "缺少有效的认证令牌")
+            return
+
+        # ✅ 从 token 中获取 host_id (来自 device_login 时存储的 host_rec.id)
+        host_id = user_info.get("user_id")  # user_id 实际上是 host_rec.id
+
+        if not host_id:
+            logger.warning("WebSocket token 中缺少 host_id")
+            await handle_websocket_auth_error(websocket, "Token 中缺少 host_id")
+            return
 
     # 转换为字符串（确保类型一致）
     host_id = str(host_id)
 
+    # ✅ 构建日志信息（兼容两种认证方式）
+    log_extra = {
+        "host_id": host_id,
+        "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
+    }
+
+    # 如果有 user_info，添加额外信息
+    if user_info:
+        log_extra["user_type"] = user_info.get("user_type")
+        log_extra["mg_id"] = user_info.get("mg_id")
+
     logger.info(
         "WebSocket 认证成功",
-        extra={
-            "host_id": host_id,
-            "user_type": user_info.get("user_type"),
-            "mg_id": user_info.get("mg_id"),
-            "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
-        },
+        extra=log_extra,
     )
 
     # ✅ 认证成功，接受连接

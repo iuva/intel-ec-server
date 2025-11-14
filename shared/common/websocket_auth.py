@@ -90,23 +90,59 @@ async def verify_websocket_token(
     skip_verification = True
 
     if skip_verification:
+        # 即使禁用完整验证，也要从 token 中提取基本信息（特别是 host_id）
+        token = await extract_websocket_token(websocket)
+
         logger.info(
-            "WebSocket token 验证已禁用（由网关处理）",
+            "WebSocket token 验证已禁用（由网关处理），从token中提取host_id",
             extra={
                 "client": (f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"),
                 "path": websocket.url.path,
+                "token_exists": bool(token),
             },
         )
 
-        # 直接返回成功，允许连接建立
-        # 注：实际的用户信息可以从后续消息中获取
-        return True, {
+        # 如果有 token，尝试从中解码获取用户信息（特别是 host_id/user_id）
+        user_info = {
             "user_id": "unknown",
             "username": "unknown",
             "user_type": "device",
             "permissions": [],
             "roles": [],
         }
+
+        if token:
+            try:
+                import jwt
+
+                # 不验证签名，只解码以获取信息
+                decoded = jwt.decode(token, options={"verify_signature": False})
+
+                # 从 token 中提取 host_id（可能在 sub 或 user_id 字段）
+                user_id = decoded.get("sub") or decoded.get("user_id")
+                if user_id:
+                    user_info["user_id"] = str(user_id)
+                    logger.debug(
+                        "从token中提取到host_id",
+                        extra={"host_id": user_id},
+                    )
+
+                # 提取其他可用信息
+                if decoded.get("username"):
+                    user_info["username"] = decoded.get("username")
+                if decoded.get("user_type"):
+                    user_info["user_type"] = decoded.get("user_type")
+                if decoded.get("mg_id"):
+                    user_info["mg_id"] = decoded.get("mg_id")
+
+            except Exception as e:
+                logger.debug(
+                    "无法从token中解码信息",
+                    extra={"error": str(e)},
+                )
+
+        # 直接返回成功，允许连接建立
+        return True, user_info
 
     # ============================================================================
     # 以下是原始的 token 验证逻辑（已禁用）

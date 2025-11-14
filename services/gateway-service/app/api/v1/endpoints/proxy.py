@@ -110,7 +110,7 @@ async def websocket_proxy(
             await websocket.close(code=1008, reason="缺少认证令牌")
             return
 
-        # ✅ 验证 token 有效性
+        # ✅ 验证 token 有效性（网关在此处验证）
         try:
             user_id = await verify_token_string(token)
             if not user_id:
@@ -150,6 +150,10 @@ async def websocket_proxy(
                     "client": websocket.client.host if websocket.client else "unknown",
                 },
             )
+            
+            # ✅ 网关已验证 token，提取 host_id 以传递给后端服务
+            # 这样后端服务（host-service）就不需要重复验证 token
+            host_id_param = f"host_id={user_id}"
 
         except Exception as e:
             logger.error(
@@ -196,10 +200,22 @@ async def websocket_proxy(
 
         backend_path = f"/ws/{apiurl}"
 
-        # 转发 token 到后端（作为查询参数）
-        # 这样后端服务也能进行认证
+        # ✅ 优化：传递网关已验证的 host_id 和 token
+        # 后端服务无需重复验证 token，直接使用 host_id
+        query_params = f"token={token}&{host_id_param}"
         if not backend_path.startswith("?"):
-            backend_path = f"{backend_path}?token={token}"
+            backend_path = f"{backend_path}?{query_params}"
+
+        logger.info(
+            "WebSocket 代理参数准备",
+            extra={
+                "hostname": hostname,
+                "apiurl": apiurl,
+                "user_id": user_id,
+                "backend_path": backend_path[:100],  # 避免日志过长
+                "has_host_id": bool(user_id),
+            },
+        )
 
         # 转发到后端服务
         await proxy_service.forward_websocket(
