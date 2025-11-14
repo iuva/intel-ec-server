@@ -107,7 +107,31 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
     await websocket.accept()
 
     # ✅ 注册连接
+    # 记录连接前的状态
+    current_connections = ws_manager.get_connection_count()
+    current_hosts = ws_manager.get_active_hosts()
+
+    logger.info(
+        "准备注册 WebSocket 连接",
+        extra={
+            "host_id": host_id,
+            "current_connection_count": current_connections,
+            "current_active_hosts": current_hosts,
+            "is_already_connected": ws_manager.is_connected(host_id),
+        },
+    )
+
     await ws_manager.connect(host_id, websocket)
+
+    # 记录连接后的状态
+    logger.info(
+        "WebSocket 连接注册完成",
+        extra={
+            "host_id": host_id,
+            "new_connection_count": ws_manager.get_connection_count(),
+            "new_active_hosts": ws_manager.get_active_hosts(),
+        },
+    )
 
     try:
         # ✅ 消息循环 - 接收并处理消息

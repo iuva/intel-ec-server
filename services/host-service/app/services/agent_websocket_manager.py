@@ -114,7 +114,32 @@ class AgentWebSocketManager:
         Args:
             agent_id: Agent/Host ID
             websocket: WebSocket 连接对象
+
+        Note:
+            - 如果同一个 agent_id 已有连接，会先断开旧连接再建立新连接
+            - 这样可以确保每个 agent_id 只有一个活跃连接
         """
+        # ✅ 检查是否已有连接
+        if agent_id in self.active_connections:
+            old_websocket = self.active_connections[agent_id]
+            logger.warning(
+                "检测到重复连接，将断开旧连接",
+                extra={
+                    "agent_id": agent_id,
+                    "old_connection_state": old_websocket.client_state.name if hasattr(old_websocket, "client_state") else "unknown",
+                },
+            )
+            # 断开旧连接
+            try:
+                await self.disconnect(agent_id)
+            except Exception as e:
+                logger.error(
+                    f"断开旧连接失败: {agent_id}",
+                    extra={"error": str(e)},
+                    exc_info=True,
+                )
+
+        # ✅ 建立新连接
         self.active_connections[agent_id] = websocket
 
         logger.info(
@@ -122,6 +147,7 @@ class AgentWebSocketManager:
             extra={
                 "agent_id": agent_id,
                 "total_connections": len(self.active_connections),
+                "all_connected_hosts": list(self.active_connections.keys()),
             },
         )
 
@@ -717,8 +743,23 @@ class AgentWebSocketManager:
 
         Returns:
             Host ID 列表
+
+        Note:
+            - 返回所有活跃连接的 host_id
+            - 如果多个连接使用相同的 host_id，只会返回一个（字典去重）
         """
-        return list(self.active_connections.keys())
+        hosts = list(self.active_connections.keys())
+        
+        logger.debug(
+            "查询活跃主机列表",
+            extra={
+                "host_count": len(hosts),
+                "host_ids": hosts,
+                "total_connections": len(self.active_connections),
+            },
+        )
+        
+        return hosts
 
     def get_connection_count(self) -> int:
         """获取当前连接数
