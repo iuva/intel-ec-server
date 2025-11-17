@@ -7,7 +7,7 @@
 import asyncio
 import time
 from functools import wraps
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from fastapi import HTTPException
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
@@ -32,10 +32,96 @@ logger = get_logger(__name__)
 # 类型变量
 T = TypeVar("T")
 
+# 常量
+DEFAULT_ERROR_MESSAGE = "操作失败"
+DEFAULT_ERROR_CODE = "OPERATION_FAILED"
+DEFAULT_LOCALE = "zh_CN"
+INTERNAL_ERROR_CODE = "INTERNAL_ERROR"
+INTERNAL_ERROR_MESSAGE = "服务器内部错误"
+
+
+def _log_service_error(func_name: str, error: Exception, args: tuple, kwargs: dict) -> None:
+    """记录服务层错误日志
+
+    Args:
+        func_name: 函数名称
+        error: 异常对象
+        args: 函数参数（元组）
+        kwargs: 函数关键字参数（字典）
+    """
+    # 构建详细的错误信息
+    extra: Dict[str, Any] = {
+        "function": func_name,
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+    }
+
+    # 如果是 BusinessError，记录详细信息
+    if isinstance(error, BusinessError):
+        extra.update({
+            "error_code": error.error_code,
+            "business_code": error.code,
+            "http_status_code": error.http_status_code,
+            "message": error.message,
+            "message_key": error.message_key,
+            "locale": error.locale,
+            "details": error.details,
+        })
+
+    # 提取函数参数中的关键信息（如 host_id, agent_id 等）
+    # 跳过 self 参数
+    if len(args) > 1:
+        # 尝试提取常见的参数名
+        for i, arg in enumerate(args[1:], start=1):
+            if isinstance(arg, str) and (arg.isdigit() or len(arg) > 10):
+                # 可能是 ID 参数
+                extra[f"arg_{i}"] = arg
+            elif isinstance(arg, (int, float, bool)):
+                extra[f"arg_{i}"] = arg
+
+    # 提取 kwargs 中的关键信息
+    for key, value in kwargs.items():
+        if key in ("host_id", "agent_id", "user_id", "service_name", "path"):
+            extra[key] = value
+        elif isinstance(value, (str, int, float, bool, type(None))):
+            # 只记录简单类型的值，避免记录复杂对象
+            extra[f"kwarg_{key}"] = value
+
+    # 记录完整的参数信息（用于调试）
+    extra["args_count"] = len(args) - 1 if len(args) > 1 else 0
+    extra["kwargs_count"] = len(kwargs)
+
+    logger.error(
+        f"{func_name} 执行失败: {type(error).__name__} - {str(error)}",
+        extra=extra,
+        exc_info=True,  # 记录完整的堆栈跟踪
+    )
+
+
+def _create_business_error(
+    error: Exception, error_message: str, error_code: str
+) -> BusinessError:
+    """创建业务异常对象
+
+    Args:
+        error: 原始异常
+        error_message: 错误消息
+        error_code: 错误码
+
+    Returns:
+        BusinessError 对象
+    """
+    return BusinessError(
+        message=error_message,
+        error_code=error_code,
+        code=HTTP_500_INTERNAL_SERVER_ERROR,
+        details={"original_error": str(error), "error_type": type(error).__name__},
+    )
+
 
 def handle_service_errors(
-    error_message: str = "操作失败",
-    error_code: str = "OPERATION_FAILED",
+    error_message: str = DEFAULT_ERROR_MESSAGE,
+    error_code: str = DEFAULT_ERROR_CODE,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """服务层错误处理装饰器
 
@@ -75,63 +161,23 @@ def handle_service_errors(
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
-
             except BusinessError:
                 # 重新抛出业务异常，不做转换
                 raise
-
             except Exception as e:
-                # 记录系统异常
-                logger.error(
-                    f"{func.__name__} 执行失败",
-                    extra={
-                        "function": func.__name__,
-                        "error_type": type(e).__name__,
-                        "error": str(e),
-                        "args": str(args[1:]) if len(args) > 1 else "",  # 跳过 self
-                        "kwargs": str(kwargs),
-                    },
-                    exc_info=True,
-                )
-
-                # 转换为业务异常
-                raise BusinessError(
-                    message=error_message,
-                    error_code=error_code,
-                    code=HTTP_500_INTERNAL_SERVER_ERROR,
-                    details={"original_error": str(e), "error_type": type(e).__name__},
-                )
+                _log_service_error(func.__name__, e, args, kwargs)
+                raise _create_business_error(e, error_message, error_code)
 
         @wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
-
             except BusinessError:
                 # 重新抛出业务异常，不做转换
                 raise
-
             except Exception as e:
-                # 记录系统异常
-                logger.error(
-                    f"{func.__name__} 执行失败",
-                    extra={
-                        "function": func.__name__,
-                        "error_type": type(e).__name__,
-                        "error": str(e),
-                        "args": str(args[1:]) if len(args) > 1 else "",  # 跳过 self
-                        "kwargs": str(kwargs),
-                    },
-                    exc_info=True,
-                )
-
-                # 转换为业务异常
-                raise BusinessError(
-                    message=error_message,
-                    error_code=error_code,
-                    code=HTTP_500_INTERNAL_SERVER_ERROR,
-                    details={"original_error": str(e), "error_type": type(e).__name__},
-                )
+                _log_service_error(func.__name__, e, args, kwargs)
+                raise _create_business_error(e, error_message, error_code)
 
         # 根据函数类型返回对应的包装器
         if asyncio.iscoroutinefunction(func):
@@ -139,6 +185,109 @@ def handle_service_errors(
         return sync_wrapper
 
     return decorator
+
+
+def _build_error_response_kwargs(
+    error: BusinessError, api_locale: Optional[str] = None
+) -> Dict[str, Any]:
+    """构建错误响应参数字典
+
+    Args:
+        error: 业务异常对象
+        api_locale: API 层的 locale（可选）
+
+    Returns:
+        错误响应参数字典
+    """
+    # 优先使用 API 层的 locale，否则使用异常中的 locale，最后使用默认值
+    locale = api_locale or error.locale or DEFAULT_LOCALE
+
+    error_response_kwargs: Dict[str, Any] = {
+        "code": error.code,  # 使用自定义错误码作为响应体中的 code
+        "message": error.message,
+        "error_code": error.error_code,
+        "details": error.details or {},
+    }
+
+    if error.message_key:
+        error_response_kwargs["message_key"] = error.message_key
+        error_response_kwargs["locale"] = locale
+        # 从 details 中提取格式化变量（如 host_id），传递给 ErrorResponse
+        # 这样翻译函数可以使用这些变量来格式化消息
+        if error.details:
+            for key, value in error.details.items():
+                if isinstance(value, (str, int, float, bool, type(None))):
+                    error_response_kwargs[key] = value
+    elif error.locale:
+        error_response_kwargs["locale"] = error.locale
+
+    return error_response_kwargs
+
+
+def _handle_business_error(
+    error: BusinessError, func_name: str, kwargs: dict
+) -> HTTPException:
+    """处理业务异常，转换为 HTTPException
+
+    Args:
+        error: 业务异常对象
+        func_name: 函数名称
+        kwargs: 函数关键字参数
+
+    Returns:
+        HTTPException 对象
+    """
+    status_code = error.http_status_code
+
+    logger.warning(
+        f"业务异常: {error.error_code}",
+        extra={
+            "function": func_name,
+            "error_code": error.error_code,
+            "message": error.message,
+            "status_code": status_code,
+        },
+    )
+
+    # 优先使用 API 层的 locale（从函数参数中提取）
+    api_locale = kwargs.get("locale")
+    error_response_kwargs = _build_error_response_kwargs(error, api_locale)
+
+    return HTTPException(
+        status_code=status_code,
+        detail=ErrorResponse(**error_response_kwargs).model_dump(),
+    )
+
+
+def _handle_unexpected_error(error: Exception, func_name: str) -> HTTPException:
+    """处理未预期的异常，转换为 HTTPException
+
+    Args:
+        error: 异常对象
+        func_name: 函数名称
+
+    Returns:
+        HTTPException 对象
+    """
+    logger.error(
+        f"API 异常: {func_name}",
+        extra={
+            "function": func_name,
+            "error_type": type(error).__name__,
+            "error": str(error),
+        },
+        exc_info=True,
+    )
+
+    return HTTPException(
+        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=ErrorResponse(
+            code=HTTP_500_INTERNAL_SERVER_ERROR,
+            message=INTERNAL_ERROR_MESSAGE,
+            error_code=INTERNAL_ERROR_CODE,
+            details={"error_type": type(error).__name__},
+        ).model_dump(),
+    )
 
 
 def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -176,147 +325,77 @@ def handle_api_errors(func: Callable[..., Any]) -> Callable[..., Any]:
     async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return await func(*args, **kwargs)
-
         except BusinessError as e:
-            # 业务异常转换为 HTTP 异常
-            # 使用 e.http_status_code 作为实际的 HTTP 状态码（必须是 100-599）
-            # 响应体中的 code 是自定义错误码（可能是 53009 这样的值）
-            status_code = e.http_status_code
-
-            logger.warning(
-                f"业务异常: {e.error_code}",
-                extra={
-                    "function": func.__name__,
-                    "error_code": e.error_code,
-                    "message": e.message,
-                    "status_code": status_code,
-                },
-            )
-
-            # ✅ 优先使用 API 层的 locale（从函数参数中提取）
-            # 如果 API 层有 locale 参数，使用它；否则使用异常中的 locale
-            api_locale = kwargs.get("locale") or e.locale or "zh_CN"
-
-            # ✅ 透传 message_key 和 locale 以支持多语言
-            # ✅ 修复：从 details 中提取格式化变量，传递给 ErrorResponse 以便翻译时使用
-            error_response_kwargs = {
-                "code": e.code,  # 使用自定义错误码作为响应体中的 code
-                "message": e.message,
-                "error_code": e.error_code,
-                "details": e.details,
-            }
-            if e.message_key:
-                error_response_kwargs["message_key"] = e.message_key
-                # 使用 API 层的 locale 重新翻译消息
-                error_response_kwargs["locale"] = api_locale
-                # ✅ 从 details 中提取格式化变量（如 host_id），传递给 ErrorResponse
-                # 这样翻译函数可以使用这些变量来格式化消息
-                if e.details:
-                    for key, value in e.details.items():
-                        if isinstance(value, (str, int, float, bool, type(None))):
-                            error_response_kwargs[key] = value
-            elif e.locale:
-                error_response_kwargs["locale"] = e.locale
-
-            raise HTTPException(
-                status_code=status_code,
-                detail=ErrorResponse(**error_response_kwargs).model_dump(),
-            )
-
+            raise _handle_business_error(e, func.__name__, kwargs)
         except HTTPException:
             # 直接抛出 HTTP 异常
             raise
-
         except Exception as e:
-            # 未预期的异常
-            logger.error(
-                f"API 异常: {func.__name__}",
-                extra={
-                    "function": func.__name__,
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                },
-                exc_info=True,
-            )
-
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=ErrorResponse(
-                    code=HTTP_500_INTERNAL_SERVER_ERROR,
-                    message="服务器内部错误",
-                    error_code="INTERNAL_ERROR",
-                    details={"error_type": type(e).__name__},
-                ).model_dump(),
-            )
+            raise _handle_unexpected_error(e, func.__name__)
 
     @wraps(func)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
-
         except BusinessError as e:
-            # 业务异常转换为 HTTP 异常
-            # 使用 e.http_status_code 作为实际的 HTTP 状态码（必须是 100-599）
-            # 响应体中的 code 是自定义错误码（可能是 53009 这样的值）
-            status_code = e.http_status_code
-
-            logger.warning(
-                f"业务异常: {e.error_code}",
-                extra={
-                    "function": func.__name__,
-                    "error_code": e.error_code,
-                    "message": e.message,
-                    "status_code": status_code,
-                },
-            )
-
-            # ✅ 透传 message_key 和 locale 以支持多语言
-            error_response_kwargs = {
-                "code": e.code,  # 使用自定义错误码作为响应体中的 code
-                "message": e.message,
-                "error_code": e.error_code,
-                "details": e.details,
-            }
-            if e.message_key:
-                error_response_kwargs["message_key"] = e.message_key
-            if e.locale:
-                error_response_kwargs["locale"] = e.locale
-
-            raise HTTPException(
-                status_code=status_code,
-                detail=ErrorResponse(**error_response_kwargs).model_dump(),
-            )
-
+            raise _handle_business_error(e, func.__name__, kwargs)
         except HTTPException:
             # 直接抛出 HTTP 异常
             raise
-
         except Exception as e:
-            # 未预期的异常
-            logger.error(
-                f"API 异常: {func.__name__}",
-                extra={
-                    "function": func.__name__,
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                },
-                exc_info=True,
-            )
-
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=ErrorResponse(
-                    code=HTTP_500_INTERNAL_SERVER_ERROR,
-                    message="服务器内部错误",
-                    error_code="INTERNAL_ERROR",
-                    details={"error_type": type(e).__name__},
-                ).model_dump(),
-            )
+            raise _handle_unexpected_error(e, func.__name__)
 
     # 根据函数类型返回对应的包装器
     if asyncio.iscoroutinefunction(func):
         return async_wrapper
     return sync_wrapper
+
+
+def _record_operation_metrics(
+    operation_name: str, status: str, duration: Optional[float] = None
+) -> None:
+    """记录操作指标
+
+    Args:
+        operation_name: 操作名称
+        status: 操作状态（"success" 或 "failed"）
+        duration: 操作耗时（秒），可选
+    """
+    metrics_collector.record_business_operation(
+        operation=operation_name, status=status, duration=duration
+    )
+
+
+def _log_operation_result(
+    operation_name: str,
+    status: str,
+    duration: Optional[float] = None,
+    error: Optional[Exception] = None,
+) -> None:
+    """记录操作结果日志
+
+    Args:
+        operation_name: 操作名称
+        status: 操作状态（"success" 或 "failed"）
+        duration: 操作耗时（秒），可选
+        error: 异常对象（仅在失败时提供），可选
+    """
+    extra: Dict[str, Any] = {
+        "operation": operation_name,
+        "status": status,
+    }
+
+    if duration is not None:
+        extra["duration_ms"] = int(duration * 1000)
+
+    if error is not None:
+        extra["error_type"] = type(error).__name__
+        extra["error"] = str(error)
+
+    if status == "success":
+        logger.info(f"{operation_name} 完成", extra=extra)
+    else:
+        logger.error(f"{operation_name} 失败", extra=extra)
 
 
 def monitor_operation(
@@ -362,54 +441,22 @@ def monitor_operation(
             try:
                 result = await func(*args, **kwargs)
 
-                # 记录成功指标（包含耗时）
+                # 计算耗时
                 duration = time.time() - start_time if start_time is not None else None
-                metrics_collector.record_business_operation(
-                    operation=operation_name, status="success", duration=duration
-                )
 
-                # 记录耗时日志
-                if start_time is not None and duration is not None:
-                    logger.info(
-                        f"{operation_name} 完成",
-                        extra={
-                            "operation": operation_name,
-                            "duration_ms": int(duration * 1000),
-                            "status": "success",
-                        },
-                    )
+                # 记录成功指标和日志
+                _record_operation_metrics(operation_name, "success", duration)
+                _log_operation_result(operation_name, "success", duration)
 
                 return result
 
             except Exception as e:
-                # 记录失败指标（包含耗时）
+                # 计算耗时
                 duration = time.time() - start_time if start_time is not None else None
-                metrics_collector.record_business_operation(
-                    operation=operation_name, status="failed", duration=duration
-                )
 
-                # 记录失败日志
-                if start_time is not None and duration is not None:
-                    logger.error(
-                        f"{operation_name} 失败",
-                        extra={
-                            "operation": operation_name,
-                            "duration_ms": int(duration * 1000),
-                            "status": "failed",
-                            "error_type": type(e).__name__,
-                            "error": str(e),
-                        },
-                    )
-                else:
-                    logger.error(
-                        f"{operation_name} 失败",
-                        extra={
-                            "operation": operation_name,
-                            "status": "failed",
-                            "error_type": type(e).__name__,
-                            "error": str(e),
-                        },
-                    )
+                # 记录失败指标和日志
+                _record_operation_metrics(operation_name, "failed", duration)
+                _log_operation_result(operation_name, "failed", duration, error=e)
 
                 raise
 
@@ -420,54 +467,22 @@ def monitor_operation(
             try:
                 result = func(*args, **kwargs)
 
-                # 记录成功指标（包含耗时）
+                # 计算耗时
                 duration = time.time() - start_time if start_time is not None else None
-                metrics_collector.record_business_operation(
-                    operation=operation_name, status="success", duration=duration
-                )
 
-                # 记录耗时日志
-                if start_time is not None and duration is not None:
-                    logger.info(
-                        f"{operation_name} 完成",
-                        extra={
-                            "operation": operation_name,
-                            "duration_ms": int(duration * 1000),
-                            "status": "success",
-                        },
-                    )
+                # 记录成功指标和日志
+                _record_operation_metrics(operation_name, "success", duration)
+                _log_operation_result(operation_name, "success", duration)
 
                 return result
 
             except Exception as e:
-                # 记录失败指标（包含耗时）
+                # 计算耗时
                 duration = time.time() - start_time if start_time is not None else None
-                metrics_collector.record_business_operation(
-                    operation=operation_name, status="failed", duration=duration
-                )
 
-                # 记录失败日志
-                if start_time is not None and duration is not None:
-                    logger.error(
-                        f"{operation_name} 失败",
-                        extra={
-                            "operation": operation_name,
-                            "duration_ms": int(duration * 1000),
-                            "status": "failed",
-                            "error_type": type(e).__name__,
-                            "error": str(e),
-                        },
-                    )
-                else:
-                    logger.error(
-                        f"{operation_name} 失败",
-                        extra={
-                            "operation": operation_name,
-                            "status": "failed",
-                            "error_type": type(e).__name__,
-                            "error": str(e),
-                        },
-                    )
+                # 记录失败指标和日志
+                _record_operation_metrics(operation_name, "failed", duration)
+                _log_operation_result(operation_name, "failed", duration, error=e)
 
                 raise
 

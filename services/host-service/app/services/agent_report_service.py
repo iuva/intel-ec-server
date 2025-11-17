@@ -7,9 +7,10 @@
 4. 数据库记录更新
 """
 
+import asyncio
 import os
 import sys
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, select, update
 
@@ -21,6 +22,7 @@ try:
     from app.models.host_exec_log import HostExecLog
 
     from shared.common.database import generate_snowflake_id, mariadb_manager
+    from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.json_comparator import JSONComparator
@@ -33,6 +35,7 @@ except ImportError:
     from app.models.host_exec_log import HostExecLog
 
     from shared.common.database import generate_snowflake_id, mariadb_manager
+    from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.json_comparator import JSONComparator
@@ -347,10 +350,20 @@ class AgentReportService:
             async with session_factory() as session:
                 # 如果有差异，需要更新 host_rec 和插入新的 host_hw_rec
                 if diff_state:
-                    # 1. 更新 host_rec 表
+                    # 1. 查询 host_rec 获取 hardware_id 和 host_ip（用于邮件通知）
+                    host_rec_stmt = select(HostRec).where(
+                        and_(
+                            HostRec.id == host_id,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    host_rec_result = await session.execute(host_rec_stmt)
+                    host_rec = host_rec_result.scalar_one_or_none()
+
+                    # 2. 更新 host_rec 表
                     await self._update_host_rec(session, host_id)
 
-                    # 2. 插入新的 host_hw_rec 记录
+                    # 3. 插入新的 host_hw_rec 记录
                     new_hw_rec = await self._insert_hardware_record(
                         session=session,
                         host_id=host_id,
@@ -360,6 +373,18 @@ class AgentReportService:
                     )
 
                     await session.commit()
+
+                    # 4. 发送硬件变更邮件通知（异步，不阻塞主流程）
+                    if host_rec:
+                        asyncio.create_task(
+                            self._send_hardware_change_notification(
+                                host_id=host_id,
+                                hardware_id=host_rec.hardware_id or "未知",
+                                host_ip=host_rec.host_ip or "未知",
+                                diff_state=diff_state,
+                                hw_rec_id=new_hw_rec.id,
+                            )
+                        )
 
                     return {
                         "status": "hardware_changed",
@@ -597,6 +622,268 @@ class AgentReportService:
                 error_code="TESTCASE_REPORT_FAILED",
                 code=500,
             )
+
+    async def _send_hardware_change_notification(
+        self,
+        host_id: int,
+        hardware_id: str,
+        host_ip: str,
+        diff_state: int,
+        hw_rec_id: int,
+    ) -> None:
+        """发送硬件变更邮件通知
+
+        Args:
+            host_id: 主机ID
+            hardware_id: 硬件ID
+            host_ip: 主机IP
+            diff_state: 变更类型（1=版本号变化，2=内容更改）
+            hw_rec_id: 硬件记录ID
+        """
+        try:
+            # 1. 获取收件人邮箱列表（从系统配置中获取）
+            maintain_emails = await self._get_maintain_emails()
+            if not maintain_emails:
+                logger.warning("未配置维护人员邮箱，跳过硬件变更邮件通知")
+                return
+
+            # 2. 确定变更类型
+            change_type_map = {
+                self.DIFF_STATE_VERSION: "版本号变化",
+                self.DIFF_STATE_CONTENT: "内容更改",
+            }
+            change_type = change_type_map.get(diff_state, "未知变更")
+
+            # 3. 构建邮件主题和内容
+            subject = f"硬件变更通知 - Host ID: {host_id}"
+            content = self._build_hardware_change_email_content(
+                host_id=host_id,
+                hardware_id=hardware_id,
+                host_ip=host_ip,
+                change_type=change_type,
+                hw_rec_id=hw_rec_id,
+            )
+
+            # 4. 发送邮件
+            result = await send_email(
+                to_emails=maintain_emails,
+                subject=subject,
+                content=content,
+                locale="zh_CN",
+            )
+
+            if result.get("success"):
+                logger.info(
+                    "硬件变更邮件通知发送成功",
+                    extra={
+                        "host_id": host_id,
+                        "hardware_id": hardware_id,
+                        "host_ip": host_ip,
+                        "change_type": change_type,
+                        "sent_count": result.get("sent_count", 0),
+                    },
+                )
+            else:
+                logger.warning(
+                    "硬件变更邮件通知发送失败",
+                    extra={
+                        "host_id": host_id,
+                        "hardware_id": hardware_id,
+                        "host_ip": host_ip,
+                        "change_type": change_type,
+                        "errors": result.get("errors", []),
+                    },
+                )
+
+        except Exception as e:
+            # 邮件发送失败不影响主流程，只记录日志
+            logger.error(
+                f"发送硬件变更邮件通知异常: {e!s}",
+                extra={
+                    "host_id": host_id,
+                    "hardware_id": hardware_id,
+                    "host_ip": host_ip,
+                    "diff_state": diff_state,
+                },
+                exc_info=True,
+            )
+
+    async def _get_maintain_emails(self) -> List[str]:
+        """获取维护人员邮箱列表
+
+        从 sys_conf 表查询 conf_key='maintain_email' 的配置
+
+        Returns:
+            维护人员邮箱列表
+        """
+        try:
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                stmt = select(SysConf).where(
+                    and_(
+                        SysConf.conf_key == "maintain_email",
+                        SysConf.state_flag == 0,
+                        SysConf.del_flag == 0,
+                    )
+                )
+
+                result = await session.execute(stmt)
+                conf = result.scalar_one_or_none()
+
+                if not conf or not conf.conf_json:
+                    logger.warning("未找到维护人员邮箱配置（conf_key='maintain_email'）")
+                    return []
+
+                # conf_json 可能是字符串列表或逗号分隔的字符串
+                emails = conf.conf_json
+                if isinstance(emails, str):
+                    # 如果是字符串，按逗号分割
+                    emails = [email.strip() for email in emails.split(",") if email.strip()]
+                elif isinstance(emails, list):
+                    # 如果是列表，直接使用
+                    emails = [str(email).strip() for email in emails if email]
+                else:
+                    logger.warning(f"维护人员邮箱配置格式不正确: {type(emails)}")
+                    return []
+
+                return emails
+
+        except Exception as e:
+            logger.error(f"获取维护人员邮箱列表失败: {e!s}", exc_info=True)
+            return []
+
+    def _build_hardware_change_email_content(
+        self,
+        host_id: int,
+        hardware_id: str,
+        host_ip: str,
+        change_type: str,
+        hw_rec_id: int,
+    ) -> str:
+        """构建硬件变更邮件内容（HTML格式）
+
+        Args:
+            host_id: 主机ID
+            hardware_id: 硬件ID
+            host_ip: 主机IP
+            change_type: 变更类型
+            hw_rec_id: 硬件记录ID
+
+        Returns:
+            HTML格式的邮件内容
+        """
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        .header {{
+            background-color: #4CAF50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }}
+        .content {{
+            background-color: #f9f9f9;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-top: none;
+        }}
+        .section {{
+            margin: 20px 0;
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #e0e0e0;
+        }}
+        .section-title {{
+            font-size: 16px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #4CAF50;
+        }}
+        .info-item {{
+            margin: 10px 0;
+            padding: 8px;
+            background-color: #f5f5f5;
+            border-radius: 3px;
+        }}
+        .info-label {{
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            width: 120px;
+        }}
+        .info-value {{
+            color: #333;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #888;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin: 0;">硬件变更通知</h2>
+    </div>
+    <div class="content">
+        <p style="font-size: 16px; margin-top: 0;">尊敬的维护人员：</p>
+
+        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
+            检测到主机硬件信息发生变化，请及时关注。
+        </p>
+
+        <div class="section">
+            <div class="section-title">变更信息</div>
+            <div class="info-item">
+                <span class="info-label">主机ID：</span>
+                <span class="info-value">{host_id}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">硬件ID：</span>
+                <span class="info-value">{hardware_id}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">主机IP：</span>
+                <span class="info-value">{host_ip}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">变更类型：</span>
+                <span class="info-value">{change_type}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">硬件记录ID：</span>
+                <span class="info-value">{hw_rec_id}</span>
+            </div>
+        </div>
+
+        <p style="margin-top: 25px; color: #555;">
+            请登录系统查看详细信息并进行审批。
+        </p>
+
+        <div class="footer">
+            此邮件由系统自动发送，请勿回复。
+        </div>
+    </div>
+</body>
+</html>
+"""
 
 
 # 全局服务实例（单例模式）

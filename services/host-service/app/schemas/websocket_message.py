@@ -25,12 +25,14 @@ class MessageType(str, Enum):
     # 命令执行
     COMMAND = "command"  # 执行命令
     COMMAND_RESPONSE = "command_response"  # 命令响应
+    CONNECTION_RESULT = "connection_result"  # Agent上报连接结果
 
     # 系统消息
     NOTIFICATION = "notification"  # 系统通知
     ERROR = "error"  # 错误消息
     HEARTBEAT_TIMEOUT_WARNING = "heartbeat_timeout_warning"  # 心跳超时警告
     HOST_OFFLINE_NOTIFICATION = "host_offline_notification"  # Host下线通知
+    CONNECTION_NOTIFICATION = "connection_notification"  # 连接通知（VNC连接成功时通知Agent进行日志监控）
 
 
 class BaseMessage(BaseModel):
@@ -166,6 +168,19 @@ class HostOfflineNotificationMessage(BaseMessage):
     reason: Optional[str] = Field(default=None, description="下线原因")
 
 
+class ConnectionNotificationMessage(BaseMessage):
+    """连接通知 - Server → Agent
+
+    当浏览器 VNC 连接成功时，通知 Agent 进行日志监控
+    """
+
+    type: MessageType = Field(default=MessageType.CONNECTION_NOTIFICATION, description="消息类型")
+    host_id: str = Field(..., description="Host ID")
+    message: str = Field(default="VNC连接成功，请开始日志监控", description="通知消息")
+    action: str = Field(default="start_log_monitoring", description="操作类型（start_log_monitoring）")
+    details: Optional[Dict[str, Any]] = Field(default=None, description="附加信息（如用户ID、测试ID等）")
+
+
 # 消息类型映射
 MESSAGE_TYPE_MAP = {
     MessageType.WELCOME: WelcomeMessage,
@@ -179,6 +194,7 @@ MESSAGE_TYPE_MAP = {
     MessageType.ERROR: ErrorMessage,
     MessageType.HEARTBEAT_TIMEOUT_WARNING: HeartbeatTimeoutWarningMessage,
     MessageType.HOST_OFFLINE_NOTIFICATION: HostOfflineNotificationMessage,
+    MessageType.CONNECTION_NOTIFICATION: ConnectionNotificationMessage,
 }
 
 

@@ -21,6 +21,7 @@ from starlette.websockets import WebSocketState
 try:
     from app.models.host_exec_log import HostExecLog
     from app.schemas.host import HostStatusUpdate
+    from app.schemas.websocket_message import MessageType
 
     from shared.common.database import mariadb_manager
     from shared.common.loguru_config import get_logger
@@ -31,6 +32,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_exec_log import HostExecLog
     from app.schemas.host import HostStatusUpdate
+    from app.schemas.websocket_message import MessageType
 
     from shared.common.database import mariadb_manager
     from shared.common.loguru_config import get_logger
@@ -112,11 +114,11 @@ class AgentWebSocketManager:
     def _register_default_handlers(self) -> None:
         """注册默认的消息处理器"""
         self.message_handlers = {
-            "heartbeat": self._handle_heartbeat,
-            "status_update": self._handle_status_update,
-            "command_response": self._handle_command_response,
-            "connection_result": self._handle_connection_result,  # Agent 上报连接结果
-            "host_offline_notification": self._handle_host_offline_notification,  # Host下线通知
+            MessageType.HEARTBEAT: self._handle_heartbeat,
+            MessageType.STATUS_UPDATE: self._handle_status_update,
+            MessageType.COMMAND_RESPONSE: self._handle_command_response,
+            MessageType.CONNECTION_RESULT: self._handle_connection_result,  # Agent 上报连接结果
+            MessageType.HOST_OFFLINE_NOTIFICATION: self._handle_host_offline_notification,  # Host下线通知
         }
 
     def register_handler(self, message_type: str, handler: Callable) -> None:
@@ -322,31 +324,36 @@ class AgentWebSocketManager:
             agent_id: Agent/Host ID
             data: 消息数据
         """
-        message_type = data.get("type", "unknown")
+        message_type_str = data.get("type", "unknown")
+        # 尝试转换为 MessageType 枚举（如果匹配）
+        try:
+            message_type = MessageType(message_type_str)
+        except ValueError:
+            message_type = message_type_str  # 未知类型，使用字符串
 
         # 📥 日志：接收到消息 (详细报文内容)
 
         logger.info(
-            f"📥 接收消息 | Agent: {agent_id} | 类型: {message_type} | 内容: {json.dumps(data, ensure_ascii=False)}",
+            f"📥 接收消息 | Agent: {agent_id} | 类型: {message_type_str} | 内容: {json.dumps(data, ensure_ascii=False)}",
         )
 
         try:
-            # 查找对应的消息处理器
-            handler = self.message_handlers.get(message_type)
+            # 查找对应的消息处理器（支持枚举和字符串两种方式）
+            handler = self.message_handlers.get(message_type) or self.message_handlers.get(message_type_str)
 
             if handler:
                 # 调用处理器
                 await handler(agent_id, data)
             else:
                 # 未知消息类型
-                logger.warning(f"未知消息类型: {message_type}, Agent: {agent_id}")
-                await self._send_error_message(agent_id, f"未知消息类型: {message_type}")
+                logger.warning(f"未知消息类型: {message_type_str}, Agent: {agent_id}")
+                await self._send_error_message(agent_id, f"未知消息类型: {message_type_str}")
 
         except Exception as e:
             logger.error(
                 f"消息处理失败: {agent_id}",
                 extra={
-                    "message_type": message_type,
+                    "message_type": message_type_str,
                     "error": str(e),
                 },
                 exc_info=True,
@@ -372,10 +379,10 @@ class AgentWebSocketManager:
         try:
             # 📤 日志：发送消息 (详细报文内容)
 
-            message_type = message.get("type", "unknown")
+            message_type_str = message.get("type", "unknown")
             message_json = json.dumps(message, ensure_ascii=False)
             logger.info(
-                f"📤 发送消息 | Host: {host_id} | 类型: {message_type} | 内容: {message_json}",
+                f"📤 发送消息 | Host: {host_id} | 类型: {message_type_str} | 内容: {message_json}",
             )
 
             websocket = self.active_connections[host_id]
@@ -383,7 +390,7 @@ class AgentWebSocketManager:
             return True
         except Exception as e:
             logger.error(
-                f"❌ 发送消息失败 | Host: {host_id} | 类型: {message.get('type')} | 错误: {str(e)}",
+                f"❌ 发送消息失败 | Host: {host_id} | 类型: {message.get('type', 'unknown')} | 错误: {str(e)}",
             )
             await self.disconnect(host_id)
             return False
@@ -436,11 +443,11 @@ class AgentWebSocketManager:
         """
         # 📢 日志：开始广播
         target_hosts = [host_id for host_id in self.active_connections.keys() if not exclude or host_id != exclude]
-        message_type = message.get("type", "unknown")
+        message_type_str = message.get("type", "unknown")
 
         message_json = json.dumps(message, ensure_ascii=False)
         logger.info(
-            f"📢 开始广播消息 | 类型: {message_type} | 目标数量: {len(target_hosts)} | 排除: {exclude} | 内容: {message_json}",
+            f"📢 开始广播消息 | 类型: {message_type_str} | 目标数量: {len(target_hosts)} | 排除: {exclude} | 内容: {message_json}",
         )
 
         if not target_hosts:
@@ -475,7 +482,7 @@ class AgentWebSocketManager:
         logger.info(
             f"✅ 广播完成: 成功 {success_count}/{len(target_hosts)}",
             extra={
-                "message_type": message.get("type"),
+                "message_type": message.get("type", "unknown"),
                 "success_count": success_count,
                 "failed_count": len(failed_hosts),
             },
@@ -509,7 +516,7 @@ class AgentWebSocketManager:
     async def _send_welcome_message(self, agent_id: str) -> None:
         """发送欢迎消息"""
         welcome_msg = {
-            "type": "welcome",
+            "type": MessageType.WELCOME,
             "agent_id": agent_id,
             "message": "WebSocket 连接已建立",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -519,7 +526,7 @@ class AgentWebSocketManager:
     async def _send_error_message(self, agent_id: str, error_msg: str) -> None:
         """发送错误消息"""
         error_msg_obj = {
-            "type": "error",
+            "type": MessageType.ERROR,
             "message": error_msg,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -559,7 +566,7 @@ class AgentWebSocketManager:
 
             # 发送心跳确认
             ack_msg = {
-                "type": "heartbeat_ack",
+                "type": MessageType.HEARTBEAT_ACK,
                 "message": "心跳已接收",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -579,7 +586,7 @@ class AgentWebSocketManager:
             await self.host_service.update_host_status(agent_id, HostStatusUpdate(status=status))
 
             ack_msg = {
-                "type": "status_update_ack",
+                "type": MessageType.STATUS_UPDATE_ACK,
                 "message": "状态更新成功",
                 "status": status,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -680,8 +687,9 @@ class AgentWebSocketManager:
                     )
 
                     error_msg = {
-                        "type": "connection_result_error",
+                        "type": MessageType.ERROR,
                         "message": "未找到待执行任务，请先通过 VNC 上报连接结果",
+                        "error_code": "CONNECTION_RESULT_NOT_FOUND",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                     await self.send_to_host(agent_id, error_msg)
@@ -718,7 +726,8 @@ class AgentWebSocketManager:
 
                 # 提取执行参数
                 execute_params = {
-                    "type": "execute_params",
+                    "type": MessageType.COMMAND,  # 使用 COMMAND 类型表示执行命令
+                    "command": "execute_test_case",
                     "tc_id": exec_log.tc_id,
                     "cycle_name": exec_log.cycle_name,
                     "user_name": exec_log.user_name,
@@ -977,7 +986,7 @@ class AgentWebSocketManager:
 
             # 发送超时警告
             timeout_msg = {
-                "type": "heartbeat_timeout_warning",
+                "type": MessageType.HEARTBEAT_TIMEOUT_WARNING,
                 "message": f"心跳超时警告，请在 {self.heartbeat_warning_wait_time} 秒内发送心跳，否则连接将被关闭",
                 "timeout": self.heartbeat_timeout,
                 "warning_wait_time": self.heartbeat_warning_wait_time,
