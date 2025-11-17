@@ -170,3 +170,45 @@ class LoginResponse(BaseModel):
             }
         }
     }
+
+
+class TokenResponseSuccessResponse(BaseModel):
+    """令牌响应成功包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="操作成功", description="响应消息")
+    data: TokenResponse = Field(description="令牌数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class LoginResponseSuccessResponse(BaseModel):
+    """登录响应成功包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="登录成功", description="响应消息")
+    data: LoginResponse = Field(description="登录数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class IntrospectResponseSuccessResponse(BaseModel):
+    """令牌验证响应成功包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="验证成功", description="响应消息")
+    data: IntrospectResponse = Field(description="验证结果数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}

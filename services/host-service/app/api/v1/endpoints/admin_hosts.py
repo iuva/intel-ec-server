@@ -5,6 +5,7 @@
 
 import os
 import sys
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, Path
 from starlette.status import HTTP_200_OK
@@ -16,6 +17,7 @@ try:
         AdminHostDeleteResponse,
         AdminHostDetailRequest,
         AdminHostDetailResponse,
+        AdminHostDetailSuccessResponse,
         AdminHostDisableRequest,
         AdminHostDisableResponse,
         AdminHostExecLogListRequest,
@@ -24,12 +26,14 @@ try:
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
+        AdminHostListSuccessResponse,
         AdminHostUpdatePasswordRequest,
         AdminHostUpdatePasswordResponse,
     )
     from app.services.admin_host_service import AdminHostService
 
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -40,6 +44,7 @@ except ImportError:
         AdminHostDeleteResponse,
         AdminHostDetailRequest,
         AdminHostDetailResponse,
+        AdminHostDetailSuccessResponse,
         AdminHostDisableRequest,
         AdminHostDisableResponse,
         AdminHostExecLogListRequest,
@@ -48,12 +53,14 @@ except ImportError:
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
+        AdminHostListSuccessResponse,
         AdminHostUpdatePasswordRequest,
         AdminHostUpdatePasswordResponse,
     )
     from app.services.admin_host_service import AdminHostService
 
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -65,13 +72,13 @@ router = APIRouter()
 
 @router.get(
     "/list",
-    response_model=SuccessResponse,
+    response_model=AdminHostListSuccessResponse,
     summary="查询可用 host 主机列表",
     description="分页查询可用主机列表，支持多种搜索条件",
     responses={
         200: {
             "description": "查询成功",
-            "model": AdminHostListResponse,
+            "model": AdminHostListSuccessResponse,
         },
     },
 )
@@ -81,7 +88,7 @@ async def list_hosts(
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminHostListSuccessResponse:
     """查询可用主机列表（管理后台）
 
     业务逻辑：
@@ -113,7 +120,7 @@ async def list_hosts(
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 包含主机列表和分页信息
+        AdminHostListSuccessResponse: 包含主机列表和分页信息
     """
     logger.info(
         "接收管理后台可用主机列表查询请求",
@@ -152,10 +159,18 @@ async def list_hosts(
         },
     )
 
-    return SuccessResponse(
-        data=response_data.model_dump(),
-        message_key="success.host.list_query",
+    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
+    message = t(
+        "success.host.list_query",
         locale=locale,
+        default="查询主机列表成功",
+    )
+
+    return AdminHostListSuccessResponse(
+        code=200,
+        message=message,
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -480,7 +495,7 @@ async def force_offline_host(
 
 @router.get(
     "/detail",
-    response_model=SuccessResponse,
+    response_model=AdminHostDetailSuccessResponse,
     summary="查询主机详情",
     description="查询可用主机的详细信息（主体信息）",
     responses={
@@ -530,7 +545,7 @@ async def get_host_detail(
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminHostDetailSuccessResponse:
     """查询主机详情（主体信息）
 
     业务逻辑：
@@ -557,7 +572,7 @@ async def get_host_detail(
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 包含主机详情的响应
+        AdminHostDetailSuccessResponse: 包含主机详情的响应
 
     Raises:
         BusinessError: 主机不存在时
@@ -582,18 +597,29 @@ async def get_host_detail(
         },
     )
 
-    return SuccessResponse(
-        data=AdminHostDetailResponse(
-            mg_id=detail.get("mg_id"),
-            mac=detail.get("mac"),
-            ip=detail.get("ip"),
-            username=detail.get("username"),
-            ***REMOVED***word=detail.get("***REMOVED***word"),
-            port=detail.get("port"),
-            hw_list=detail.get("hw_list", []),
-        ).model_dump(),
-        message_key="success.host.detail_query",
+    # 构建响应数据
+    detail_response = AdminHostDetailResponse(
+        mg_id=detail.get("mg_id"),
+        mac=detail.get("mac"),
+        ip=detail.get("ip"),
+        username=detail.get("username"),
+        ***REMOVED***word=detail.get("***REMOVED***word"),
+        port=detail.get("port"),
+        hw_list=detail.get("hw_list", []),
+    )
+
+    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
+    message = t(
+        "success.host.detail_query",
         locale=locale,
+        default="查询主机详情成功",
+    )
+
+    return AdminHostDetailSuccessResponse(
+        code=200,
+        message=message,
+        data=detail_response,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 

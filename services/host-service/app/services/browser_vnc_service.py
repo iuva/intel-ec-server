@@ -16,6 +16,8 @@ from app.schemas.host import VNCConnectionReport
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
+    from app.schemas.websocket_message import MessageType
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -27,6 +29,8 @@ except ImportError:
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
+    from app.schemas.websocket_message import MessageType
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -283,6 +287,60 @@ class BrowserVNCService:
                     "exec_log_action": exec_log_action,
                 },
             )
+
+            # ✅ 如果连接状态为 success，通过 WebSocket 通知 Agent 进行日志监控
+            if vnc_report.connection_status == "success":
+                try:
+                    ws_manager = get_agent_websocket_manager()
+                    host_id_str = str(vnc_report.host_id)
+
+                    # 构建连接通知消息
+                    connection_notification = {
+                        "type": MessageType.CONNECTION_NOTIFICATION,
+                        "host_id": host_id_str,
+                        "message": "VNC连接成功，请开始日志监控",
+                        "action": "start_log_monitoring",
+                        "details": {
+                            "user_id": vnc_report.user_id,
+                            "tc_id": vnc_report.tc_id,
+                            "cycle_name": vnc_report.cycle_name,
+                            "user_name": vnc_report.user_name,
+                            "connection_time": connection_time_str,
+                        },
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+
+                    # 发送通知
+                    success = await ws_manager.send_to_host(host_id_str, connection_notification)
+                    if success:
+                        logger.info(
+                            "连接通知已发送给 Agent",
+                            extra={
+                                "host_id": host_id_str,
+                                "user_id": vnc_report.user_id,
+                                "tc_id": vnc_report.tc_id,
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            "连接通知发送失败（Agent 可能未连接）",
+                            extra={
+                                "host_id": host_id_str,
+                                "user_id": vnc_report.user_id,
+                                "tc_id": vnc_report.tc_id,
+                            },
+                        )
+                except Exception as e:
+                    # 通知发送失败不影响主流程，只记录警告
+                    logger.warning(
+                        "发送连接通知异常",
+                        extra={
+                            "host_id": vnc_report.host_id,
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                        },
+                        exc_info=True,
+                    )
 
             return {
                 "host_id": vnc_report.host_id,

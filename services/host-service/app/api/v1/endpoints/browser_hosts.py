@@ -5,12 +5,14 @@
 
 import os
 import sys
+from datetime import datetime, timezone
 
 from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
     QueryAvailableHostsRequest,
     ReleaseHostsRequest,
     RetryVNCListResponse,
+    RetryVNCListSuccessResponse,
 )
 from app.services.browser_host_service import BrowserHostService
 from fastapi import APIRouter, Body, Depends
@@ -18,12 +20,14 @@ from fastapi import APIRouter, Body, Depends
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -162,13 +166,13 @@ async def query_available_hosts(
 
 @router.post(
     "/retry-vnc",
-    response_model=RetryVNCListResponse,
+    response_model=RetryVNCListSuccessResponse,
     summary="获取重试 VNC 列表",
     description="查询需要重试的 VNC 连接列表（case_state != 2 的主机）",
     responses={
         200: {
             "description": "查询成功",
-            "model": RetryVNCListResponse,
+            "model": RetryVNCListSuccessResponse,
         },
         400: {
             "description": "请求参数错误",
@@ -188,7 +192,8 @@ async def query_available_hosts(
 async def get_retry_vnc_list(
     user_id: str = Body(..., embed=True, description="用户ID"),
     host_service: BrowserHostService = Depends(get_host_service),
-):
+    locale: str = Depends(get_locale),
+) -> RetryVNCListSuccessResponse:
     """获取需要重试的 VNC 连接列表
 
     ## 业务逻辑
@@ -215,7 +220,7 @@ async def get_retry_vnc_list(
         host_service: 主机服务实例
 
     Returns:
-        重试 VNC 列表响应
+        RetryVNCListSuccessResponse: 重试 VNC 列表响应
     """
     logger.info(
         "接收获取重试 VNC 列表请求",
@@ -234,9 +239,24 @@ async def get_retry_vnc_list(
         },
     )
 
-    return RetryVNCListResponse(
+    # 构建响应数据
+    response_data = RetryVNCListResponse(
         hosts=retry_vnc_list,
         total=len(retry_vnc_list),
+    )
+
+    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
+    message = t(
+        "success.host.retry_vnc_list_query",
+        locale=locale,
+        default="查询重试 VNC 列表成功",
+    )
+
+    return RetryVNCListSuccessResponse(
+        code=200,
+        message=message,
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 

@@ -5,6 +5,7 @@
 
 import os
 import sys
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends
 
@@ -16,14 +17,17 @@ try:
         AdminApprHostApproveResponse,
         AdminApprHostDetailRequest,
         AdminApprHostDetailResponse,
+        AdminApprHostDetailSuccessResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
+        AdminApprHostListSuccessResponse,
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
     from app.services.admin_appr_host_service import AdminApprHostService
 
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -35,14 +39,17 @@ except ImportError:
         AdminApprHostApproveResponse,
         AdminApprHostDetailRequest,
         AdminApprHostDetailResponse,
+        AdminApprHostDetailSuccessResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
+        AdminApprHostListSuccessResponse,
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
     from app.services.admin_appr_host_service import AdminApprHostService
 
     from shared.common.decorators import handle_api_errors
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
@@ -54,13 +61,13 @@ router = APIRouter()
 
 @router.get(
     "/list",
-    response_model=SuccessResponse,
+    response_model=AdminApprHostListSuccessResponse,
     summary="查询待审批 host 主机列表",
     description="分页查询待审批主机列表，支持多种搜索条件",
     responses={
         200: {
             "description": "查询成功",
-            "model": AdminApprHostListResponse,
+            "model": AdminApprHostListSuccessResponse,
         },
     },
 )
@@ -70,7 +77,7 @@ async def list_appr_hosts(
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminApprHostListSuccessResponse:
     """查询待审批主机列表（管理后台）
 
     业务逻辑：
@@ -97,7 +104,7 @@ async def list_appr_hosts(
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 包含待审批主机列表和分页信息
+        AdminApprHostListSuccessResponse: 包含待审批主机列表和分页信息
     """
     logger.info(
         "接收管理后台待审批主机列表查询请求",
@@ -135,22 +142,30 @@ async def list_appr_hosts(
         },
     )
 
-    return SuccessResponse(
-        data=response_data.model_dump(),
-        message_key="success.host.appr_list_query",
+    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
+    message = t(
+        "success.host.appr_list_query",
         locale=locale,
+        default="查询待审批主机列表成功",
+    )
+
+    return AdminApprHostListSuccessResponse(
+        code=200,
+        message=message,
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 
 @router.get(
     "/detail",
-    response_model=SuccessResponse,
+    response_model=AdminApprHostDetailSuccessResponse,
     summary="查询待审批 host 主机详情",
     description="查询待审批主机的详细信息",
     responses={
         200: {
             "description": "查询成功",
-            "model": AdminApprHostDetailResponse,
+            "model": AdminApprHostDetailSuccessResponse,
         },
         400: {
             "description": "查询失败（业务错误）",
@@ -177,7 +192,7 @@ async def get_appr_host_detail(
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminApprHostDetailSuccessResponse:
     """查询待审批主机详情（管理后台）
 
     业务逻辑：
@@ -205,7 +220,7 @@ async def get_appr_host_detail(
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 包含待审批主机详情的响应
+        AdminApprHostDetailSuccessResponse: 包含待审批主机详情的响应
 
     Raises:
         BusinessError: 主机不存在时
@@ -229,10 +244,18 @@ async def get_appr_host_detail(
         },
     )
 
-    return SuccessResponse(
-        data=detail.model_dump(),
-        message_key="success.host.appr_detail_query",
+    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
+    message = t(
+        "success.host.appr_detail_query",
         locale=locale,
+        default="查询待审批主机详情成功",
+    )
+
+    return AdminApprHostDetailSuccessResponse(
+        code=200,
+        message=message,
+        data=detail,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 

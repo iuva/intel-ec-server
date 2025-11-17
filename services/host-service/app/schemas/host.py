@@ -1,5 +1,7 @@
 """主机相关的 Pydantic 模式"""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -258,6 +260,20 @@ class RetryVNCListResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RetryVNCListSuccessResponse(BaseModel):
+    """重试 VNC 列表成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询重试 VNC 列表成功", description="响应消息")
+    data: RetryVNCListResponse = Field(description="重试 VNC 列表数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
 class ReleaseHostsRequest(BaseModel):
     """释放主机请求模式"""
 
@@ -404,6 +420,62 @@ class AdminHostDetailResponse(BaseModel):
         default_factory=list,
         description="硬件信息列表（host_hw_rec 表 sync_state=2 的记录，按 updated_time 倒序）",
     )
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostDetailSuccessResponse(BaseModel):
+    """管理后台主机详情成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询主机详情成功", description="响应消息")
+    data: AdminHostDetailResponse = Field(description="主机详情数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminHostListSuccessResponse(BaseModel):
+    """管理后台主机列表成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询主机列表成功", description="响应消息")
+    data: AdminHostListResponse = Field(description="主机列表数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostListSuccessResponse(BaseModel):
+    """管理后台待审批主机列表成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询待审批主机列表成功", description="响应消息")
+    data: AdminApprHostListResponse = Field(description="待审批主机列表数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminApprHostDetailSuccessResponse(BaseModel):
+    """管理后台待审批主机详情成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询待审批主机详情成功", description="响应消息")
+    data: AdminApprHostDetailResponse = Field(description="待审批主机详情数据")
+    timestamp: str = Field(description="响应时间戳")
 
     model_config = {"from_attributes": True}
 
