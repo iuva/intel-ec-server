@@ -35,7 +35,7 @@ from app.services.browser_vnc_service import BrowserVNCService
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
+router = APIRouter()
 
 
 @router.post(

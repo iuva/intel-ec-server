@@ -1099,7 +1099,20 @@ class AdminApprHostService:
                     )
                 )
                 result = await session.execute(stmt)
-                sys_conf = result.scalar_one_or_none()
+                sys_conf_rows = result.scalars().all()
+                sys_conf = sys_conf_rows[0] if sys_conf_rows else None
+                duplicate_ids = [conf.id for conf in sys_conf_rows[1:]]
+                if duplicate_ids:
+                    logger.warning(
+                        "检测到重复的维护通知邮箱配置，自动清理多余记录",
+                        extra={"duplicate_ids": duplicate_ids},
+                    )
+                    cleanup_stmt = (
+                        update(SysConf)
+                        .where(SysConf.id.in_(duplicate_ids))
+                        .values(del_flag=1, updated_by=operator_id)
+                    )
+                    await session.execute(cleanup_stmt)
 
                 if sys_conf:
                     # 3. 如果存在则更新
@@ -1178,7 +1191,10 @@ class AdminApprHostService:
                     error_code="SET_MAINTAIN_EMAIL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
-                    details={"email": formatted_email},
+                    details={
+                        "email": formatted_email,
+                        "error": str(e),
+                    },
                 )
 
     @handle_service_errors(

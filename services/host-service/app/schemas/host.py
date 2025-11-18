@@ -616,6 +616,16 @@ class AdminMaintainEmailResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OtaConfigItem(BaseModel):
+    """Agent 获取 OTA 配置项"""
+
+    conf_name: Optional[str] = Field(default=None, description="配置名称")
+    conf_ver: Optional[str] = Field(default=None, description="配置版本")
+    conf_val: Optional[str] = Field(default=None, description="配置内容")
+
+    model_config = {"from_attributes": True}
+
+
 class AdminOtaConfigInfo(BaseModel):
     """管理后台 OTA 配置信息"""
 

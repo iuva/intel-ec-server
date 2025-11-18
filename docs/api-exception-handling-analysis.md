@@ -16,6 +16,11 @@
    - FastAPI 应用注册了全局异常处理器
    - 中间件提供了最后的异常处理防线
 
+4. **成功响应格式统一**
+   - 所有端点均返回 `Result[T]` 泛型响应
+   - 成功响应字段固定为：`code`, `message`, `data`, `timestamp`, `locale`
+   - `data` 必须承载所有业务数据，外层不再嵌套 `detail` 或其他结构
+
 ### ⚠️ 需要统一的问题
 
 #### 1. `auth-service` 端点缺少 `@handle_api_errors` 装饰器
@@ -108,6 +113,19 @@ raise BusinessError(
    ↓
 5. 返回统一的错误响应
 ```
+
+## 🧱 通用响应规则（更新）
+
+1. **成功响应**：统一使用 `Result[T]`，`data` 字段承载实际业务数据，禁止再包装 `detail`。
+2. **错误响应**：统一使用 `ErrorResponse`，字段包含 `code`, `message`, `error_code`, `details`, `timestamp`, `request_id`, `locale`。
+3. **装饰器**：所有需要统一处理的端点必须使用 `@handle_api_errors`，避免函数内重复 `try/except`。
+4. **状态码约定**：
+   - 认证失败：401
+   - 授权失败：403
+   - 请求数据错误：400
+   - 数据验证失败：422
+   - 服务器错误：500
+5. **多语言**：`message` 优先使用 `message_key` + `locale`，确保日志和响应均支持中英文。
 
 ## 📝 示例代码
 

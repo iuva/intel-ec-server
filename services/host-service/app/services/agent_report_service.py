@@ -171,6 +171,44 @@ class AgentReportService:
                 code=500,
             )
 
+    async def get_latest_ota_configs(self) -> List[Dict[str, Optional[str]]]:
+        """获取最新 OTA 配置信息列表"""
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            stmt = (
+                select(SysConf)
+                .where(
+                    and_(
+                        SysConf.conf_key == "ota",
+                        SysConf.state_flag == 0,
+                        SysConf.del_flag == 0,
+                    )
+                )
+                .order_by(SysConf.updated_time.desc(), SysConf.id.desc())
+            )
+            result = await session.execute(stmt)
+            records = result.scalars().all()
+
+            if not records:
+                logger.info("未查询到 OTA 配置，返回空列表")
+                return []
+
+            logger.info(
+                "获取 OTA 配置成功",
+                extra={
+                    "count": len(records),
+                },
+            )
+
+            return [
+                {
+                    "conf_name": record.conf_name,
+                    "conf_ver": record.conf_ver,
+                    "conf_val": record.conf_val,
+                }
+                for record in records
+            ]
+
     async def _get_hardware_template(self) -> Optional[Dict[str, Any]]:
         """获取硬件模板配置
 

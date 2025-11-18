@@ -5,7 +5,7 @@
 
 import os
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Body, Depends
 from starlette.status import HTTP_200_OK
@@ -13,7 +13,7 @@ from starlette.status import HTTP_200_OK
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.host import HardwareReportResponse
+    from app.schemas.host import HardwareReportResponse, OtaConfigItem
     from app.schemas.testcase import TestCaseReportRequest, TestCaseReportResponse
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
@@ -25,7 +25,7 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.host import HardwareReportResponse
+    from app.schemas.host import HardwareReportResponse, OtaConfigItem
     from app.schemas.testcase import TestCaseReportRequest, TestCaseReportResponse
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
@@ -388,5 +388,42 @@ async def report_testcase_result(
         code=200,
         message=t("success.hardware.test_result_report", locale=locale, default="测试用例结果上报成功"),
         data=response_data,
+        locale=locale,
+    )
+
+
+@router.get(
+    "/ota/latest",
+    response_model=Result[List[OtaConfigItem]],
+    status_code=HTTP_200_OK,
+    summary="获取最新 OTA 配置信息",
+    description="""
+    Agent 获取 OTA 版本配置信息。
+
+    ## 功能说明
+    1. 查询 `sys_conf` 表中 `conf_key = "ota"` 的有效配置
+    2. 返回按更新时间倒序排列的配置列表
+
+    ## 响应说明
+    - `conf_name`: 配置名称
+    - `conf_ver`: 配置版本号
+    - `conf_val`: 配置内容
+    """,
+)
+@handle_api_errors
+async def get_latest_ota_configs(
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[List[OtaConfigItem]]:
+    """获取最新 OTA 配置信息"""
+    logger.info("收到获取 OTA 配置信息请求")
+
+    configs = await agent_report_service.get_latest_ota_configs()
+    ota_items = [OtaConfigItem(**config) for config in configs]
+
+    return Result(
+        code=200,
+        message=t("success.ota.query", locale=locale, default="获取 OTA 配置成功"),
+        data=ota_items,
         locale=locale,
     )

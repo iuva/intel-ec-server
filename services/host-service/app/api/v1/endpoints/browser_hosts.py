@@ -23,14 +23,14 @@ try:
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import Result, SuccessResponse
+    from shared.common.response import Result
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import Result, SuccessResponse
+    from shared.common.response import Result
 
 from app.services.host_discovery_service import HostDiscoveryService
 
@@ -91,8 +91,8 @@ router = APIRouter()
 async def query_available_hosts(
     request: QueryAvailableHostsRequest = Body(..., description="查询可用主机列表请求参数"),
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
-    locale: str = Depends(get_locale),
-    ) -> Result[AvailableHostsListResponse]:
+    locale: str = Depends(get_locale)
+) -> Result[AvailableHostsListResponse]:
     """查询可用的主机列表 - 游标分页
 
     ## 请求参数说明
