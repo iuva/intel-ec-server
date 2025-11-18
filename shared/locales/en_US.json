@@ -45,7 +45,8 @@
     },
     "ota": {
       "list_query": "OTA configuration list query successful",
-      "deploy": "OTA configuration deployed successfully"
+      "deploy": "OTA configuration deployed successfully",
+      "query": "OTA configuration retrieved successfully"
     },
     "file": {
       "upload": "File uploaded successfully"
