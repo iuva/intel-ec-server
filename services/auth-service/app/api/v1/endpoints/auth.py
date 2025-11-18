@@ -4,6 +4,7 @@
 提供登录、令牌刷新、令牌验证、注销等功能
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.api.v1.dependencies import get_auth_service, get_current_user
@@ -12,8 +13,11 @@ from app.schemas.auth import (
     AutoRefreshTokenRequest,
     DeviceLoginRequest,
     IntrospectRequest,
+    IntrospectResponseSuccessResponse,
+    LoginResponseSuccessResponse,
     LogoutRequest,
     RefreshTokenRequest,
+    TokenResponseSuccessResponse,
 )
 from app.services.auth_service import AuthService
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +26,7 @@ from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 # 使用 try-except 方式处理路径导入
 try:
     from shared.common.exceptions import BusinessError
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
@@ -32,6 +37,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import BusinessError
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse, SuccessResponse
@@ -41,12 +47,12 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/admin/login", response_model=SuccessResponse, summary="管理员登录")
+@router.post("/admin/login", response_model=LoginResponseSuccessResponse, summary="管理员登录")
 async def admin_login(
     login_data: AdminLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> LoginResponseSuccessResponse:
     """管理员登录（传统方式）
 
     使用用户名和密码进行登录，返回访问令牌
@@ -73,10 +79,11 @@ async def admin_login(
             },
         )
 
-        return SuccessResponse(
-            data=login_response.model_dump(),
-            message_key="success.login",
-            locale=locale,
+        return LoginResponseSuccessResponse(
+            code=200,
+            message=t("success.login", locale=locale, default="登录成功"),
+            data=login_response,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except BusinessError as e:
@@ -123,13 +130,13 @@ async def admin_login(
         )
 
 
-@router.post("/device/login", response_model=SuccessResponse, summary="设备登录")
+@router.post("/device/login", response_model=LoginResponseSuccessResponse, summary="设备登录")
 async def device_login(
     login_data: DeviceLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
     current_user: Optional[dict] = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> LoginResponseSuccessResponse:
     """设备登录（传统方式）
 
     使用 mg_id、host_ip 和 username 进行登录
@@ -166,10 +173,11 @@ async def device_login(
             },
         )
 
-        return SuccessResponse(
-            data=login_response.model_dump(),
-            message_key="success.login",
-            locale=locale,
+        return LoginResponseSuccessResponse(
+            code=200,
+            message=t("success.login", locale=locale, default="登录成功"),
+            data=login_response,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except BusinessError as e:
@@ -218,12 +226,12 @@ async def device_login(
         )
 
 
-@router.post("/refresh", response_model=SuccessResponse)
+@router.post("/refresh", response_model=TokenResponseSuccessResponse)
 async def refresh_token(
     refresh_data: RefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> TokenResponseSuccessResponse:
     """刷新访问令牌
 
     Args:
@@ -249,10 +257,11 @@ async def refresh_token(
             },
         )
 
-        return SuccessResponse(
-            data=token_response.model_dump(),
-            message_key="success.operation",
-            locale=locale,
+        return TokenResponseSuccessResponse(
+            code=200,
+            message=t("success.operation", locale=locale, default="操作成功"),
+            data=token_response,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except BusinessError as e:
@@ -297,12 +306,12 @@ async def refresh_token(
         )
 
 
-@router.post("/auto-refresh", response_model=SuccessResponse, summary="自动续期令牌")
+@router.post("/auto-refresh", response_model=TokenResponseSuccessResponse, summary="自动续期令牌")
 async def auto_refresh_tokens(
     refresh_data: AutoRefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> TokenResponseSuccessResponse:
     """自动续期访问令牌和刷新令牌
 
     当刷新令牌将要过期时，同时生成新的 access_token 和 refresh_token
@@ -330,10 +339,11 @@ async def auto_refresh_tokens(
             },
         )
 
-        return SuccessResponse(
-            data=token_response.model_dump(),
-            message_key="success.operation",
-            locale=locale,
+        return TokenResponseSuccessResponse(
+            code=200,
+            message=t("success.operation", locale=locale, default="操作成功"),
+            data=token_response,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except BusinessError as e:
@@ -378,12 +388,12 @@ async def auto_refresh_tokens(
         )
 
 
-@router.post("/introspect", response_model=SuccessResponse)
+@router.post("/introspect", response_model=IntrospectResponseSuccessResponse)
 async def introspect_token(
     introspect_data: IntrospectRequest,
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> IntrospectResponseSuccessResponse:
     """验证令牌
 
     Args:
@@ -397,10 +407,11 @@ async def introspect_token(
         # 验证令牌
         introspect_response = await auth_service.introspect_token(introspect_data.token)
 
-        return SuccessResponse(
-            data=introspect_response.model_dump(),
-            message_key="success.operation",
-            locale=locale,
+        return IntrospectResponseSuccessResponse(
+            code=200,
+            message=t("success.operation", locale=locale, default="验证成功"),
+            data=introspect_response,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except (ValueError, KeyError, AttributeError) as e:
@@ -415,10 +426,19 @@ async def introspect_token(
         )
         # ✅ 正确：直接返回标准的成功响应，active=false 表示令牌无效
         # 不抛出 HTTPException，保持响应格式一致性
-        return SuccessResponse(
-            data={"active": False, "username": None, "user_id": None, "exp": None, "token_type": None, "error": str(e)},
-            message_key="error.auth.token_expired",
-            locale=locale,
+        error_response = IntrospectResponse(
+            active=False,
+            username=None,
+            user_id=None,
+            exp=None,
+            token_type=None,
+            error=str(e),
+        )
+        return IntrospectResponseSuccessResponse(
+            code=200,
+            message=t("error.auth.token_expired", locale=locale, default="令牌验证失败"),
+            data=error_response,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
 

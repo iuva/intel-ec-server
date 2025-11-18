@@ -91,6 +91,34 @@ class VNCConnectionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class VNCConnectionResponseSuccessResponse(BaseModel):
+    """VNC 连接结果上报成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="VNC连接结果上报成功", description="响应消息")
+    data: VNCConnectionResponse = Field(description="VNC连接结果数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class VNCConnectionInfoSuccessResponse(BaseModel):
+    """VNC 连接信息成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="获取VNC连接信息成功", description="响应消息")
+    data: VNCConnectionInfo = Field(description="VNC连接信息数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
 class QueryAvailableHostsRequest(BaseModel):
     """查询可用主机列表请求模式 - 使用游标分页
 
@@ -289,6 +317,20 @@ class ReleaseHostsResponse(BaseModel):
     updated_count: int = Field(description="更新的记录数（逻辑删除）")
     user_id: str = Field(description="用户ID")
     host_list: List[str] = Field(description="主机ID列表")
+
+    model_config = {"from_attributes": True}
+
+
+class ReleaseHostsSuccessResponse(BaseModel):
+    """释放主机成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="释放主机成功", description="响应消息")
+    data: ReleaseHostsResponse = Field(description="释放主机结果数据")
+    timestamp: str = Field(description="响应时间戳")
 
     model_config = {"from_attributes": True}
 
@@ -536,6 +578,20 @@ class AdminHostExecLogListResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminHostExecLogListSuccessResponse(BaseModel):
+    """管理后台主机执行日志列表成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询执行日志列表成功", description="响应消息")
+    data: AdminHostExecLogListResponse = Field(description="执行日志列表数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
 class AdminApprHostListRequest(BaseModel):
     """管理后台待审批主机列表查询请求模式"""
 
@@ -697,6 +753,20 @@ class AdminOtaListResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminOtaListSuccessResponse(BaseModel):
+    """管理后台 OTA 配置列表成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="查询OTA配置列表成功", description="响应消息")
+    data: AdminOtaListResponse = Field(description="OTA配置列表数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
 class FileUploadResponse(BaseModel):
     """文件上传响应模式"""
 
@@ -707,6 +777,20 @@ class FileUploadResponse(BaseModel):
     file_size: int = Field(description="文件大小（字节）")
     content_type: str = Field(description="文件 MIME 类型")
     upload_time: str = Field(description="上传时间")
+
+    model_config = {"from_attributes": True}
+
+
+class FileUploadSuccessResponse(BaseModel):
+    """文件上传成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="文件上传成功", description="响应消息")
+    data: FileUploadResponse = Field(description="文件上传结果数据")
+    timestamp: str = Field(description="响应时间戳")
 
     model_config = {"from_attributes": True}
 
@@ -730,5 +814,45 @@ class AdminOtaDeployResponse(BaseModel):
     conf_name: str = Field(description="配置名称")
     conf_val: str = Field(description="配置值")
     broadcast_count: int = Field(description="广播消息成功发送的主机数量")
+
+    model_config = {"from_attributes": True}
+
+
+class AdminOtaDeploySuccessResponse(BaseModel):
+    """管理后台 OTA 下发成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="OTA配置下发成功", description="响应消息")
+    data: AdminOtaDeployResponse = Field(description="OTA下发结果数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
+
+
+class HardwareReportResponse(BaseModel):
+    """硬件上报响应模式"""
+
+    status: str = Field(description="状态 (first_report/hardware_changed/no_change)")
+    hw_rec_id: Optional[int] = Field(default=None, description="硬件记录ID")
+    diff_state: Optional[int] = Field(default=None, description="差异状态 (1-版本号变化, 2-内容更改)")
+    diff_details: Optional[Dict[str, Any]] = Field(default=None, description="差异详情")
+    message: str = Field(description="响应消息")
+
+    model_config = {"from_attributes": True}
+
+
+class HardwareReportSuccessResponse(BaseModel):
+    """硬件上报成功响应包装模型
+
+    用于 FastAPI 文档展示，明确指定 data 字段的类型
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="硬件信息上报成功", description="响应消息")
+    data: HardwareReportResponse = Field(description="硬件上报结果数据")
+    timestamp: str = Field(description="响应时间戳")
 
     model_config = {"from_attributes": True}

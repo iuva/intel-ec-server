@@ -13,7 +13,8 @@ from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNA
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.testcase import TestCaseReportRequest
+    from app.schemas.host import HardwareReportResponse, HardwareReportSuccessResponse
+    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportSuccessResponse
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
@@ -24,7 +25,8 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.testcase import TestCaseReportRequest
+    from app.schemas.host import HardwareReportResponse, HardwareReportSuccessResponse
+    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportSuccessResponse
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
@@ -40,7 +42,7 @@ router = APIRouter()
 
 @router.post(
     "/hardware/report",
-    response_model=SuccessResponse,
+    response_model=HardwareReportSuccessResponse,
     status_code=HTTP_200_OK,
     summary="上报硬件信息",
     description="""
@@ -198,7 +200,7 @@ async def report_hardware(
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> HardwareReportSuccessResponse:
     """上报硬件信息
 
     Args:
@@ -230,10 +232,15 @@ async def report_hardware(
             hardware_data=hardware_data,
         )
 
-        return SuccessResponse(
-            data=result,
-            message_key="success.hardware.report",
-            locale=locale,
+        from datetime import datetime, timezone
+        from shared.common.i18n import t
+
+        response_data = HardwareReportResponse(**result)
+        return HardwareReportSuccessResponse(
+            code=200,
+            message=t("success.hardware.report", locale=locale, default="硬件信息上报成功"),
+            data=response_data,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except BusinessError as e:
@@ -282,7 +289,7 @@ async def report_hardware(
 
 @router.post(
     "/testcase/report",
-    response_model=SuccessResponse,
+    response_model=TestCaseReportSuccessResponse,
     status_code=HTTP_200_OK,
     summary="上报测试用例执行结果",
     description="""
@@ -388,7 +395,7 @@ async def report_testcase_result(
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> TestCaseReportSuccessResponse:
     """上报测试用例执行结果
 
     Args:
@@ -424,10 +431,16 @@ async def report_testcase_result(
             log_url=report_data.log_url,
         )
 
-        return SuccessResponse(
-            data=result,
-            message_key="success.hardware.test_result_report",
-            locale=locale,
+        from datetime import datetime, timezone
+        from shared.common.i18n import t
+        from app.schemas.testcase import TestCaseReportResponse
+
+        response_data = TestCaseReportResponse(**result)
+        return TestCaseReportSuccessResponse(
+            code=200,
+            message=t("success.hardware.test_result_report", locale=locale, default="测试用例结果上报成功"),
+            data=response_data,
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     except BusinessError as e:

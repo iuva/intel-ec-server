@@ -88,6 +88,7 @@ class IntrospectResponse(BaseModel):
     mg_id: Optional[str] = Field(default=None, description="设备管理ID")
     host_ip: Optional[str] = Field(default=None, description="主机IP")
     sub: Optional[str] = Field(default=None, description="Subject（用户/设备ID）")
+    error: Optional[str] = Field(default=None, description="错误信息（当 active=False 时）")
 
     model_config = {
         "json_schema_extra": {

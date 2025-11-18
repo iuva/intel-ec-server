@@ -15,7 +15,9 @@ try:
         AdminOtaConfigInfo,
         AdminOtaDeployRequest,
         AdminOtaDeployResponse,
+        AdminOtaDeploySuccessResponse,
         AdminOtaListResponse,
+        AdminOtaListSuccessResponse,
     )
     from app.services.admin_ota_service import AdminOtaService
 
@@ -30,7 +32,9 @@ except ImportError:
         AdminOtaConfigInfo,
         AdminOtaDeployRequest,
         AdminOtaDeployResponse,
+        AdminOtaDeploySuccessResponse,
         AdminOtaListResponse,
+        AdminOtaListSuccessResponse,
     )
     from app.services.admin_ota_service import AdminOtaService
 
@@ -46,7 +50,7 @@ router = APIRouter()
 
 @router.get(
     "/list",
-    response_model=SuccessResponse,
+    response_model=AdminOtaListSuccessResponse,
     summary="查询 OTA 配置列表",
     description="查询 sys_conf 表中 conf_key = 'ota', state_flag = 0, del_flag = 0 的全部数据",
     responses={
@@ -61,7 +65,7 @@ async def list_ota_configs(
     admin_ota_service: AdminOtaService = Depends(get_admin_ota_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminOtaListSuccessResponse:
     """查询 OTA 配置列表（管理后台）
 
     业务逻辑：
@@ -115,16 +119,20 @@ async def list_ota_configs(
         },
     )
 
-    return SuccessResponse(
-        data=response_data.model_dump(),
-        message_key="success.ota.list_query",
-        locale=locale,
+    from datetime import datetime, timezone
+    from shared.common.i18n import t
+
+    return AdminOtaListSuccessResponse(
+        code=200,
+        message=t("success.ota.list_query", locale=locale, default="查询OTA配置列表成功"),
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 
 @router.post(
     "/deploy",
-    response_model=SuccessResponse,
+    response_model=AdminOtaDeploySuccessResponse,
     summary="下发 OTA 配置",
     description="下发 OTA 配置到所有连接的 Host，更新 sys_conf 表并广播消息",
     responses={
@@ -143,7 +151,7 @@ async def deploy_ota_config(
     admin_ota_service: AdminOtaService = Depends(get_admin_ota_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminOtaDeploySuccessResponse:
     """下发 OTA 配置（管理后台）
 
     业务逻辑：
@@ -221,8 +229,12 @@ async def deploy_ota_config(
         },
     )
 
-    return SuccessResponse(
-        data=response_data.model_dump(),
-        message_key="success.ota.deploy",
-        locale=locale,
+    from datetime import datetime, timezone
+    from shared.common.i18n import t
+
+    return AdminOtaDeploySuccessResponse(
+        code=200,
+        message=t("success.ota.deploy", locale=locale, default="OTA配置下发成功"),
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )

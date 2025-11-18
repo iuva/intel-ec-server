@@ -11,6 +11,8 @@ from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
     QueryAvailableHostsRequest,
     ReleaseHostsRequest,
+    ReleaseHostsResponse,
+    ReleaseHostsSuccessResponse,
     RetryVNCListResponse,
     RetryVNCListSuccessResponse,
 )
@@ -262,7 +264,7 @@ async def get_retry_vnc_list(
 
 @router.post(
     "/release",
-    response_model=SuccessResponse,
+    response_model=ReleaseHostsSuccessResponse,
     summary="释放主机",
     description="逻辑删除指定用户的主机执行日志记录（设置 del_flag = 1）",
     responses={
@@ -301,7 +303,7 @@ async def release_hosts(
     request: ReleaseHostsRequest = Body(..., description="释放主机请求数据"),
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> ReleaseHostsSuccessResponse:
     """释放主机 - 逻辑删除执行日志记录
 
     ## 业务逻辑
@@ -350,12 +352,15 @@ async def release_hosts(
         },
     )
 
-    return SuccessResponse(
-        data={
-            "updated_count": updated_count,
-            "user_id": request.user_id,
-            "host_list": request.host_list,
-        },
-        message_key="success.host.release",
-        locale=locale,
+    response_data = ReleaseHostsResponse(
+        updated_count=updated_count,
+        user_id=request.user_id,
+        host_list=request.host_list,
+    )
+
+    return ReleaseHostsSuccessResponse(
+        code=200,
+        message=t("success.host.release", locale=locale, default="释放主机成功"),
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )

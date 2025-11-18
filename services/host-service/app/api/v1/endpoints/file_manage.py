@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_file_manage_service, get_current_user
-    from app.schemas.host import FileUploadResponse
+    from app.schemas.host import FileUploadResponse, FileUploadSuccessResponse
     from app.services.file_manage_service import FileManageService
 
     from shared.common.decorators import handle_api_errors
@@ -22,7 +22,7 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_file_manage_service, get_current_user
-    from app.schemas.host import FileUploadResponse
+    from app.schemas.host import FileUploadResponse, FileUploadSuccessResponse
     from app.services.file_manage_service import FileManageService
 
     from shared.common.decorators import handle_api_errors
@@ -37,7 +37,7 @@ router = APIRouter()
 
 @router.post(
     "/upload",
-    response_model=SuccessResponse,
+    response_model=FileUploadSuccessResponse,
     summary="上传文件",
     description="上传文件到服务器指定目录，返回文件访问 URL",
     responses={
@@ -53,7 +53,7 @@ async def upload_file(
     file_manage_service: FileManageService = Depends(get_file_manage_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> FileUploadSuccessResponse:
     """上传文件（管理后台）
 
     业务逻辑：
@@ -119,10 +119,14 @@ async def upload_file(
         },
     )
 
-    return SuccessResponse(
-        data=response_data.model_dump(),
-        message_key="success.file.upload",
-        locale=locale,
+    from datetime import datetime, timezone
+    from shared.common.i18n import t
+
+    return FileUploadSuccessResponse(
+        code=200,
+        message=t("success.file.upload", locale=locale, default="文件上传成功"),
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
 

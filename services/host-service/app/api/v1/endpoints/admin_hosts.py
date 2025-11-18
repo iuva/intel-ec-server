@@ -22,6 +22,7 @@ try:
         AdminHostDisableResponse,
         AdminHostExecLogListRequest,
         AdminHostExecLogListResponse,
+        AdminHostExecLogListSuccessResponse,
         AdminHostForceOfflineRequest,
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
@@ -49,6 +50,7 @@ except ImportError:
         AdminHostDisableResponse,
         AdminHostExecLogListRequest,
         AdminHostExecLogListResponse,
+        AdminHostExecLogListSuccessResponse,
         AdminHostForceOfflineRequest,
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
@@ -734,7 +736,7 @@ async def update_host_***REMOVED***word(
 
 @router.get(
     "/exec-logs",
-    response_model=SuccessResponse,
+    response_model=AdminHostExecLogListSuccessResponse,
     summary="查询主机执行日志列表",
     description="分页查询主机执行日志列表（按创建时间倒序）",
     responses={
@@ -793,7 +795,7 @@ async def list_host_exec_logs(
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+) -> AdminHostExecLogListSuccessResponse:
     """查询主机执行日志列表（分页）
 
     业务逻辑：
@@ -860,8 +862,9 @@ async def list_host_exec_logs(
         },
     )
 
-    return SuccessResponse(
-        data=response_data.model_dump(),
-        message_key="success.host.exec_log_list_query",
-        locale=locale,
+    return AdminHostExecLogListSuccessResponse(
+        code=200,
+        message=t("success.host.exec_log_list_query", locale=locale, default="查询执行日志列表成功"),
+        data=response_data,
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
