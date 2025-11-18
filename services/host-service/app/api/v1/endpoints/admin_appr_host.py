@@ -5,7 +5,6 @@
 
 import os
 import sys
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends
 
@@ -17,10 +16,8 @@ try:
         AdminApprHostApproveResponse,
         AdminApprHostDetailRequest,
         AdminApprHostDetailResponse,
-        AdminApprHostDetailSuccessResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
-        AdminApprHostListSuccessResponse,
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
@@ -30,7 +27,7 @@ try:
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+    from shared.common.response import Result, SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_admin_appr_host_service, get_current_user
@@ -39,10 +36,8 @@ except ImportError:
         AdminApprHostApproveResponse,
         AdminApprHostDetailRequest,
         AdminApprHostDetailResponse,
-        AdminApprHostDetailSuccessResponse,
         AdminApprHostListRequest,
         AdminApprHostListResponse,
-        AdminApprHostListSuccessResponse,
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
@@ -52,7 +47,7 @@ except ImportError:
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+    from shared.common.response import Result, SuccessResponse
 
 logger = get_logger(__name__)
 
@@ -61,13 +56,13 @@ router = APIRouter()
 
 @router.get(
     "/list",
-    response_model=AdminApprHostListSuccessResponse,
+    response_model=Result[AdminApprHostListResponse],
     summary="查询待审批 host 主机列表",
     description="分页查询待审批主机列表，支持多种搜索条件",
     responses={
         200: {
             "description": "查询成功",
-            "model": AdminApprHostListSuccessResponse,
+            "model": Result[AdminApprHostListResponse],
         },
     },
 )
@@ -77,7 +72,7 @@ async def list_appr_hosts(
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> AdminApprHostListSuccessResponse:
+) -> Result[AdminApprHostListResponse]:
     """查询待审批主机列表（管理后台）
 
     业务逻辑：
@@ -149,23 +144,23 @@ async def list_appr_hosts(
         default="查询待审批主机列表成功",
     )
 
-    return AdminApprHostListSuccessResponse(
+    return Result(
         code=200,
         message=message,
         data=response_data,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
 
 
 @router.get(
     "/detail",
-    response_model=AdminApprHostDetailSuccessResponse,
+    response_model=Result[AdminApprHostDetailResponse],
     summary="查询待审批 host 主机详情",
     description="查询待审批主机的详细信息",
     responses={
         200: {
             "description": "查询成功",
-            "model": AdminApprHostDetailSuccessResponse,
+            "model": Result[AdminApprHostDetailResponse],
         },
         400: {
             "description": "查询失败（业务错误）",
@@ -192,7 +187,7 @@ async def get_appr_host_detail(
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> AdminApprHostDetailSuccessResponse:
+) -> Result[AdminApprHostDetailResponse]:
     """查询待审批主机详情（管理后台）
 
     业务逻辑：
@@ -251,11 +246,11 @@ async def get_appr_host_detail(
         default="查询待审批主机详情成功",
     )
 
-    return AdminApprHostDetailSuccessResponse(
+    return Result(
         code=200,
         message=message,
         data=detail,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
 
 

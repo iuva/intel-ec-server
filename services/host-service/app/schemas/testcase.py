@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+
 class TestCaseReportRequest(BaseModel):
     """测试用例执行结果上报请求"""
 
@@ -41,15 +42,3 @@ class TestCaseReportResponse(BaseModel):
     }
 
 
-class TestCaseReportSuccessResponse(BaseModel):
-    """测试用例执行结果上报成功响应包装模型
-
-    用于 FastAPI 文档展示，明确指定 data 字段的类型
-    """
-
-    code: int = Field(default=200, description="响应码")
-    message: str = Field(default="测试用例结果上报成功", description="响应消息")
-    data: TestCaseReportResponse = Field(description="测试用例上报结果数据")
-    timestamp: str = Field(description="响应时间戳")
-
-    model_config = {"from_attributes": True}

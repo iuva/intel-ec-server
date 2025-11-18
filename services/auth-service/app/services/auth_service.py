@@ -475,6 +475,7 @@ class AuthService:
                     raise BusinessError(
                         message="用户名或密码错误",
                         error_code="AUTH_INVALID_CREDENTIALS",
+                        http_status_code=401,
                     )
 
                 # 检查用户状态
@@ -509,6 +510,7 @@ class AuthService:
                     raise BusinessError(
                         message="用户名或密码错误",
                         error_code="AUTH_INVALID_CREDENTIALS",
+                        http_status_code=401,
                     )
 
                 # 生成访问令牌

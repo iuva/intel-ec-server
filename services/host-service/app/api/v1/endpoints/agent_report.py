@@ -7,33 +7,33 @@ import os
 import sys
 from typing import Any, Dict
 
-from fastapi import APIRouter, Body, Depends, HTTPException
-from starlette.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
+from fastapi import APIRouter, Body, Depends
+from starlette.status import HTTP_200_OK
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.host import HardwareReportResponse, HardwareReportSuccessResponse
-    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportSuccessResponse
+    from app.schemas.host import HardwareReportResponse
+    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportResponse
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import ErrorResponse, SuccessResponse
+    from shared.common.response import Result
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.host import HardwareReportResponse, HardwareReportSuccessResponse
-    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportSuccessResponse
+    from app.schemas.host import HardwareReportResponse
+    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportResponse
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import ErrorResponse, SuccessResponse
+    from shared.common.response import Result
 
 logger = get_logger(__name__)
 
@@ -42,7 +42,7 @@ router = APIRouter()
 
 @router.post(
     "/hardware/report",
-    response_model=HardwareReportSuccessResponse,
+    response_model=Result[HardwareReportResponse],
     status_code=HTTP_200_OK,
     summary="上报硬件信息",
     description="""
@@ -79,7 +79,7 @@ router = APIRouter()
     responses={
         200: {
             "description": "上报成功",
-            "model": SuccessResponse,
+            "model": Result[HardwareReportResponse],
         },
         400: {
             "description": "请求参数错误",
@@ -200,7 +200,7 @@ async def report_hardware(
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
-) -> HardwareReportSuccessResponse:
+) -> Result[HardwareReportResponse]:
     """上报硬件信息
 
     Args:
@@ -212,84 +212,37 @@ async def report_hardware(
         SuccessResponse: 处理结果
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误
+        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
     """
-    try:
-        # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
-        host_id = agent_info["host_id"]
+    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["host_id"]
 
-        logger.info(
-            "收到硬件信息上报请求",
-            extra={
-                "host_id": host_id,
-                "has_dmr_config": "dmr_config" in hardware_data,
-            },
-        )
+    logger.info(
+        "收到硬件信息上报请求",
+        extra={
+            "host_id": host_id,
+            "has_dmr_config": "dmr_config" in hardware_data,
+        },
+    )
 
-        # 调用服务层处理硬件信息上报
-        result = await agent_report_service.report_hardware(
-            host_id=host_id,
-            hardware_data=hardware_data,
-        )
+    # 调用服务层处理硬件信息上报
+    result = await agent_report_service.report_hardware(
+        host_id=host_id,
+        hardware_data=hardware_data,
+    )
 
-        from datetime import datetime, timezone
-        from shared.common.i18n import t
-
-        response_data = HardwareReportResponse(**result)
-        return HardwareReportSuccessResponse(
-            code=200,
-            message=t("success.hardware.report", locale=locale, default="硬件信息上报成功"),
-            data=response_data,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        )
-
-    except BusinessError as e:
-        # 业务逻辑错误 - 返回统一的错误响应
-        logger.warning(
-            f"硬件信息上报业务错误: {e.message}",
-            extra={
-                "error_code": e.error_code,
-                "details": e.details,
-            },
-        )
-
-        # 获取语言偏好（从异常或请求头）
-        exc_locale = getattr(e, "locale", None) or locale
-
-        raise HTTPException(
-            status_code=e.http_status_code if hasattr(e, "http_status_code") else (e.code or HTTP_400_BAD_REQUEST),
-            detail=ErrorResponse(
-                code=e.code or HTTP_400_BAD_REQUEST,
-                message_key=getattr(e, "message_key", None),
-                message=e.message,
-                error_code=e.error_code,
-                details=e.details,
-                locale=exc_locale,
-                **(e.details or {}),
-            ).model_dump(),
-        )
-
-    except Exception as e:
-        # 系统错误 - 返回统一的错误响应
-        logger.error(
-            f"硬件信息上报系统错误: {e!s}",
-            exc_info=True,
-        )
-
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorResponse(
-                code=HTTP_500_INTERNAL_SERVER_ERROR,
-                message_key="error.hardware.report_failed",
-                error_code="HARDWARE_REPORT_FAILED",
-                locale=locale,
-            ).model_dump(),
-        )
+    response_data = HardwareReportResponse(**result)
+    return Result(
+        code=200,
+        message=t("success.hardware.report", locale=locale, default="硬件信息上报成功"),
+        data=response_data,
+        locale=locale,
+    )
 
 
 @router.post(
     "/testcase/report",
-    response_model=TestCaseReportSuccessResponse,
+    response_model=Result[TestCaseReportResponse],
     status_code=HTTP_200_OK,
     summary="上报测试用例执行结果",
     description="""
@@ -325,7 +278,7 @@ async def report_hardware(
     responses={
         200: {
             "description": "上报成功",
-            "model": SuccessResponse,
+            "model": Result[TestCaseReportResponse],
         },
         400: {
             "description": "请求参数错误或业务逻辑错误（包括：请求参数验证失败、未找到执行日志记录等）",
@@ -395,7 +348,7 @@ async def report_testcase_result(
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
-) -> TestCaseReportSuccessResponse:
+) -> Result[TestCaseReportResponse]:
     """上报测试用例执行结果
 
     Args:
@@ -407,81 +360,33 @@ async def report_testcase_result(
         SuccessResponse: 处理结果
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误
+        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
     """
-    try:
-        # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
-        host_id = agent_info["host_id"]
+    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["host_id"]
 
-        logger.info(
-            "收到测试用例结果上报请求",
-            extra={
-                "host_id": host_id,
-                "tc_id": report_data.tc_id,
-                "state": report_data.state,
-            },
-        )
+    logger.info(
+        "收到测试用例结果上报请求",
+        extra={
+            "host_id": host_id,
+            "tc_id": report_data.tc_id,
+            "state": report_data.state,
+        },
+    )
 
-        # 调用服务层处理测试用例结果上报
-        result = await agent_report_service.report_testcase_result(
-            host_id=host_id,
-            tc_id=report_data.tc_id,
-            state=report_data.state,
-            result_msg=report_data.result_msg,
-            log_url=report_data.log_url,
-        )
+    # 调用服务层处理测试用例结果上报
+    result = await agent_report_service.report_testcase_result(
+        host_id=host_id,
+        tc_id=report_data.tc_id,
+        state=report_data.state,
+        result_msg=report_data.result_msg,
+        log_url=report_data.log_url,
+    )
 
-        from datetime import datetime, timezone
-        from shared.common.i18n import t
-        from app.schemas.testcase import TestCaseReportResponse
-
-        response_data = TestCaseReportResponse(**result)
-        return TestCaseReportSuccessResponse(
-            code=200,
-            message=t("success.hardware.test_result_report", locale=locale, default="测试用例结果上报成功"),
-            data=response_data,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        )
-
-    except BusinessError as e:
-        # 业务逻辑错误 - 返回统一的错误响应
-        logger.warning(
-            f"测试用例结果上报业务错误: {e.message}",
-            extra={
-                "error_code": e.error_code,
-                "details": e.details,
-            },
-        )
-
-        # 获取语言偏好（从异常或请求头）
-        exc_locale = getattr(e, "locale", None) or locale
-
-        raise HTTPException(
-            status_code=e.http_status_code if hasattr(e, "http_status_code") else (e.code or HTTP_400_BAD_REQUEST),
-            detail=ErrorResponse(
-                code=e.code or HTTP_400_BAD_REQUEST,
-                message_key=getattr(e, "message_key", None),
-                message=e.message,
-                error_code=e.error_code,
-                details=e.details,
-                locale=exc_locale,
-                **(e.details or {}),
-            ).model_dump(),
-        )
-
-    except Exception as e:
-        # 系统错误 - 返回统一的错误响应
-        logger.error(
-            f"测试用例结果上报系统错误: {e!s}",
-            exc_info=True,
-        )
-
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorResponse(
-                code=HTTP_500_INTERNAL_SERVER_ERROR,
-                message_key="error.hardware.test_result_report_failed",
-                error_code="TESTCASE_REPORT_FAILED",
-                locale=locale,
-            ).model_dump(),
-        )
+    response_data = TestCaseReportResponse(**result)
+    return Result(
+        code=200,
+        message=t("success.hardware.test_result_report", locale=locale, default="测试用例结果上报成功"),
+        data=response_data,
+        locale=locale,
+    )

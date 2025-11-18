@@ -9,9 +9,12 @@ import os
 import sys
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 from pydantic import BaseModel, Field, model_serializer
+
+# 定义泛型类型变量
+T = TypeVar("T")
 
 try:
     from shared.common.i18n import t
@@ -107,6 +110,75 @@ class SuccessResponse(BaseModel):
         # 保留 locale 字段，以便客户端知道使用的语言
         exclude_none = kwargs.pop("exclude_none", True)
         return super().model_dump(exclude=exclude, exclude_none=exclude_none, **kwargs)
+
+
+class Result(BaseModel, Generic[T]):
+    """统一的 API 响应结果模型
+
+    用于所有 API 响应，提供统一的响应格式。
+    支持泛型类型，确保 FastAPI 文档能正确显示 data 字段的具体类型。
+
+    字段说明:
+        - code: 响应码（200 表示成功）
+        - message: 响应消息
+        - data: 响应数据（泛型类型 T）
+        - timestamp: 响应时间戳（ISO 8601 格式）
+        - locale: 语言代码（可选，用于多语言支持）
+
+    使用示例:
+        ```python
+        from shared.common.response import Result
+
+        class UserResponse(BaseModel):
+            id: int
+            name: str
+
+        @router.get("/users/{user_id}", response_model=Result[UserResponse])
+        async def get_user(user_id: int) -> Result[UserResponse]:
+            user = UserResponse(id=1, name="John")
+            return Result(
+                code=200,
+                message="查询成功",
+                data=user,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+        ```
+
+    这样在 FastAPI 文档中就能看到完整的 data 字段 Schema。
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="操作成功", description="响应消息")
+    data: T = Field(description="响应数据")
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        description="响应时间戳（ISO 8601 格式）",
+    )
+    locale: Optional[str] = Field(default=None, description="语言代码（用于多语言支持）")
+
+    model_config = {"from_attributes": True}
+
+    def __init__(self, **data: Any) -> None:
+        """初始化响应结果，自动设置时间戳"""
+        # 如果没有提供 timestamp，自动生成
+        if "timestamp" not in data:
+            data["timestamp"] = datetime.now(timezone.utc).isoformat()
+        super().__init__(**data)
+
+
+class TypedSuccessResponse(BaseModel, Generic[T]):
+    """类型化的成功响应包装模型（已废弃，请使用 Result[T]）
+
+    注意：此类已废弃，请使用 Result[T] 替代。
+    保留此类仅用于向后兼容，新代码请使用 Result[T]。
+    """
+
+    code: int = Field(default=200, description="响应码")
+    message: str = Field(default="操作成功", description="响应消息")
+    data: T = Field(description="响应数据")
+    timestamp: str = Field(description="响应时间戳")
+
+    model_config = {"from_attributes": True}
 
 
 class ErrorResponse(BaseModel):

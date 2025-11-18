@@ -5,7 +5,6 @@
 
 import os
 import sys
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, Path
 from starlette.status import HTTP_200_OK
@@ -17,17 +16,14 @@ try:
         AdminHostDeleteResponse,
         AdminHostDetailRequest,
         AdminHostDetailResponse,
-        AdminHostDetailSuccessResponse,
         AdminHostDisableRequest,
         AdminHostDisableResponse,
         AdminHostExecLogListRequest,
         AdminHostExecLogListResponse,
-        AdminHostExecLogListSuccessResponse,
         AdminHostForceOfflineRequest,
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
-        AdminHostListSuccessResponse,
         AdminHostUpdatePasswordRequest,
         AdminHostUpdatePasswordResponse,
     )
@@ -37,7 +33,7 @@ try:
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+    from shared.common.response import Result, SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_admin_host_service, get_current_user
@@ -45,17 +41,14 @@ except ImportError:
         AdminHostDeleteResponse,
         AdminHostDetailRequest,
         AdminHostDetailResponse,
-        AdminHostDetailSuccessResponse,
         AdminHostDisableRequest,
         AdminHostDisableResponse,
         AdminHostExecLogListRequest,
         AdminHostExecLogListResponse,
-        AdminHostExecLogListSuccessResponse,
         AdminHostForceOfflineRequest,
         AdminHostForceOfflineResponse,
         AdminHostListRequest,
         AdminHostListResponse,
-        AdminHostListSuccessResponse,
         AdminHostUpdatePasswordRequest,
         AdminHostUpdatePasswordResponse,
     )
@@ -65,7 +58,7 @@ except ImportError:
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+    from shared.common.response import Result, SuccessResponse
 
 logger = get_logger(__name__)
 
@@ -74,13 +67,13 @@ router = APIRouter()
 
 @router.get(
     "/list",
-    response_model=AdminHostListSuccessResponse,
+    response_model=Result[AdminHostListResponse],
     summary="查询可用 host 主机列表",
     description="分页查询可用主机列表，支持多种搜索条件",
     responses={
         200: {
             "description": "查询成功",
-            "model": AdminHostListSuccessResponse,
+            "model": Result[AdminHostListResponse],
         },
     },
 )
@@ -90,7 +83,7 @@ async def list_hosts(
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> AdminHostListSuccessResponse:
+) -> Result[AdminHostListResponse]:
     """查询可用主机列表（管理后台）
 
     业务逻辑：
@@ -168,11 +161,11 @@ async def list_hosts(
         default="查询主机列表成功",
     )
 
-    return AdminHostListSuccessResponse(
+    return Result(
         code=200,
         message=message,
         data=response_data,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
 
 
@@ -497,7 +490,7 @@ async def force_offline_host(
 
 @router.get(
     "/detail",
-    response_model=AdminHostDetailSuccessResponse,
+    response_model=Result[AdminHostDetailResponse],
     summary="查询主机详情",
     description="查询可用主机的详细信息（主体信息）",
     responses={
@@ -547,7 +540,7 @@ async def get_host_detail(
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> AdminHostDetailSuccessResponse:
+) -> Result[AdminHostDetailResponse]:
     """查询主机详情（主体信息）
 
     业务逻辑：
@@ -617,11 +610,11 @@ async def get_host_detail(
         default="查询主机详情成功",
     )
 
-    return AdminHostDetailSuccessResponse(
+    return Result(
         code=200,
         message=message,
         data=detail_response,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
 
 
@@ -736,7 +729,7 @@ async def update_host_***REMOVED***word(
 
 @router.get(
     "/exec-logs",
-    response_model=AdminHostExecLogListSuccessResponse,
+    response_model=Result[AdminHostExecLogListResponse],
     summary="查询主机执行日志列表",
     description="分页查询主机执行日志列表（按创建时间倒序）",
     responses={
@@ -795,7 +788,7 @@ async def list_host_exec_logs(
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
-) -> AdminHostExecLogListSuccessResponse:
+) -> Result[AdminHostExecLogListResponse]:
     """查询主机执行日志列表（分页）
 
     业务逻辑：
@@ -862,9 +855,9 @@ async def list_host_exec_logs(
         },
     )
 
-    return AdminHostExecLogListSuccessResponse(
+    return Result(
         code=200,
         message=t("success.host.exec_log_list_query", locale=locale, default="查询执行日志列表成功"),
         data=response_data,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )

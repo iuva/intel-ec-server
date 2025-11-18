@@ -16,20 +16,20 @@ try:
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
+    from shared.common.response import Result
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
+    from shared.common.response import Result
 
 from app.api.v1.dependencies import get_vnc_service
 from app.schemas.host import (
     GetVNCConnectionRequest,
     VNCConnectionInfo,
-    VNCConnectionInfoSuccessResponse,
     VNCConnectionReport,
     VNCConnectionResponse,
-    VNCConnectionResponseSuccessResponse,
 )
 from app.services.browser_vnc_service import BrowserVNCService
 
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/vnc", tags=["VNC连接管理"])
 
 @router.post(
     "/report",
-    response_model=VNCConnectionResponseSuccessResponse,
+    response_model=Result[VNCConnectionResponse],
     status_code=HTTP_200_OK,
     summary="上报 VNC 连接结果",
     description="处理浏览器插件上报的 VNC 连接结果，更新主机状态并管理执行日志",
@@ -145,20 +145,19 @@ async def report_vnc_connection(
         },
     )
 
-    from datetime import datetime, timezone
     from shared.common.i18n import t
 
-    return VNCConnectionResponseSuccessResponse(
+    return Result(
         code=200,
         message=t("success.vnc.report", locale=locale, default="VNC连接结果上报成功"),
         data=vnc_response,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
 
 
 @router.post(
     "/connect",
-    response_model=VNCConnectionInfoSuccessResponse,
+    response_model=Result[VNCConnectionInfo],
     status_code=HTTP_200_OK,
     summary="获取 VNC 连接信息",
     description="获取指定主机的 VNC 连接参数，用于建立 VNC 连接",
@@ -211,7 +210,7 @@ async def get_vnc_connection(
     request: GetVNCConnectionRequest = Body(..., description="获取 VNC 连接信息请求数据"),
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
     locale: str = Depends(get_locale),
-) -> VNCConnectionInfoSuccessResponse:
+) -> Result[VNCConnectionInfo]:
     """获取 VNC 连接信息
 
     根据主机 ID 查询数据库，返回建立 VNC 连接所需的参数。
@@ -267,12 +266,11 @@ async def get_vnc_connection(
         },
     )
 
-    from datetime import datetime, timezone
     from shared.common.i18n import t
 
-    return VNCConnectionInfoSuccessResponse(
+    return Result(
         code=200,
         message=t("success.vnc.get_connection", locale=locale, default="获取VNC连接信息成功"),
         data=vnc_connection_info,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )

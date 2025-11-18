@@ -5,16 +5,14 @@
 
 import os
 import sys
-from datetime import datetime, timezone
 
 from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
+    AvailableHostsListResponse,
     QueryAvailableHostsRequest,
     ReleaseHostsRequest,
     ReleaseHostsResponse,
-    ReleaseHostsSuccessResponse,
     RetryVNCListResponse,
-    RetryVNCListSuccessResponse,
 )
 from app.services.browser_host_service import BrowserHostService
 from fastapi import APIRouter, Body, Depends
@@ -25,14 +23,14 @@ try:
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+    from shared.common.response import Result, SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
-    from shared.common.response import SuccessResponse
+    from shared.common.response import Result, SuccessResponse
 
 from app.services.host_discovery_service import HostDiscoveryService
 
@@ -43,13 +41,13 @@ router = APIRouter()
 
 @router.post(
     "/available",
-    response_model=SuccessResponse,
+    response_model=Result[AvailableHostsListResponse],
     summary="查询可用主机列表",
     description="查询可用的主机列表，支持游标分页",
     responses={
         200: {
             "description": "查询成功",
-            "model": SuccessResponse,
+            "model": Result[AvailableHostsListResponse],
         },
         400: {
             "description": "请求参数错误",
@@ -94,7 +92,7 @@ async def query_available_hosts(
     request: QueryAvailableHostsRequest = Body(..., description="查询可用主机列表请求参数"),
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
     locale: str = Depends(get_locale),
-) -> SuccessResponse:
+    ) -> Result[AvailableHostsListResponse]:
     """查询可用的主机列表 - 游标分页
 
     ## 请求参数说明
@@ -159,22 +157,23 @@ async def query_available_hosts(
         },
     )
 
-    return SuccessResponse(
-        data=result.model_dump(),
-        message_key="success.host.available_list_query",
+    return Result(
+        code=200,
+        message=t("success.host.available_list_query", locale=locale, default="查询可用主机列表成功"),
+        data=result,
         locale=locale,
     )
 
 
 @router.post(
     "/retry-vnc",
-    response_model=RetryVNCListSuccessResponse,
+    response_model=Result[RetryVNCListResponse],
     summary="获取重试 VNC 列表",
     description="查询需要重试的 VNC 连接列表（case_state != 2 的主机）",
     responses={
         200: {
             "description": "查询成功",
-            "model": RetryVNCListSuccessResponse,
+            "model": Result[RetryVNCListResponse],
         },
         400: {
             "description": "请求参数错误",
@@ -195,7 +194,7 @@ async def get_retry_vnc_list(
     user_id: str = Body(..., embed=True, description="用户ID"),
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
-) -> RetryVNCListSuccessResponse:
+) -> Result[RetryVNCListResponse]:
     """获取需要重试的 VNC 连接列表
 
     ## 业务逻辑
@@ -254,17 +253,17 @@ async def get_retry_vnc_list(
         default="查询重试 VNC 列表成功",
     )
 
-    return RetryVNCListSuccessResponse(
+    return Result(
         code=200,
         message=message,
         data=response_data,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
 
 
 @router.post(
     "/release",
-    response_model=ReleaseHostsSuccessResponse,
+    response_model=Result[ReleaseHostsResponse],
     summary="释放主机",
     description="逻辑删除指定用户的主机执行日志记录（设置 del_flag = 1）",
     responses={
@@ -303,7 +302,7 @@ async def release_hosts(
     request: ReleaseHostsRequest = Body(..., description="释放主机请求数据"),
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
-) -> ReleaseHostsSuccessResponse:
+) -> Result[ReleaseHostsResponse]:
     """释放主机 - 逻辑删除执行日志记录
 
     ## 业务逻辑
@@ -358,9 +357,9 @@ async def release_hosts(
         host_list=request.host_list,
     )
 
-    return ReleaseHostsSuccessResponse(
+    return Result(
         code=200,
         message=t("success.host.release", locale=locale, default="释放主机成功"),
         data=response_data,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        locale=locale,
     )
