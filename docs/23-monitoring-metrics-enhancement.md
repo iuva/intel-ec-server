@@ -248,7 +248,6 @@ scrape_configs:
       - targets:
         - 'gateway-service:8000'
         - 'auth-service:8001'
-        - 'admin-service:8002'
         - 'host-service:8003'
 ```
 

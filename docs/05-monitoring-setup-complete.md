@@ -114,14 +114,6 @@ scrape_configs:
           type: 'microservice'
           tier: 'backend'
 
-  - job_name: 'admin-service'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['admin-service:8002']
-        labels:
-          service: 'admin-service'
-          type: 'microservice'
-          tier: 'backend'
 
   - job_name: 'host-service'
     metrics_path: '/metrics'

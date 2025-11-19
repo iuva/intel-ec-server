@@ -5,7 +5,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-
 class TestCaseReportRequest(BaseModel):
     """测试用例执行结果上报请求"""
 
@@ -40,5 +39,3 @@ class TestCaseReportResponse(BaseModel):
     model_config = {
         "from_attributes": True,
     }
-
-

@@ -44,10 +44,9 @@ load_env_file() {
         done < "$ENV_FILE"
         
         # 本地开发特定配置：设置服务主机地址为 localhost
-        # Docker 启动时使用默认值（auth-service, admin-service, host-service）
+        # Docker 启动时使用默认值（auth-service, host-service）
         echo -e "${BLUE}🔧 配置本地服务连接...${NC}"
         export SERVICE_HOST_AUTH="127.0.0.1"
-        export SERVICE_HOST_ADMIN="127.0.0.1"
         export SERVICE_HOST_HOST="127.0.0.1"
         
         # 本地开发特定配置：Jaeger 追踪端点
@@ -56,7 +55,6 @@ load_env_file() {
         
         echo -e "${GREEN}✓ 环境变量加载成功${NC}"
         echo -e "${GREEN}  • SERVICE_HOST_AUTH: $SERVICE_HOST_AUTH${NC}"
-        echo -e "${GREEN}  • SERVICE_HOST_ADMIN: $SERVICE_HOST_ADMIN${NC}"
         echo -e "${GREEN}  • SERVICE_HOST_HOST: $SERVICE_HOST_HOST${NC}"
         echo -e "${GREEN}  • JAEGER_ENDPOINT: $JAEGER_ENDPOINT${NC}"
     else
@@ -271,15 +269,12 @@ main() {
         auth)
             start_service "Auth Service" "8001" "services/auth-service"
             ;;
-        admin)
-            start_service "Admin Service" "8002" "services/admin-service"
-            ;;
         host)
             start_service "Host Service" "8003" "services/host-service"
             ;;
         *)
             echo -e "${RED}❌ 未知的命令: $1${NC}"
-            echo "支持的命令: check, all, gateway, auth, admin, host"
+            echo "支持的命令: check, all, gateway, auth, host"
             exit 1
             ;;
     esac

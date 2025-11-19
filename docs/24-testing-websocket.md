@@ -255,7 +255,7 @@ pytest services/host-service/tests/test_websocket_connection.py::TestWebSocketCo
 top -l 1 | head -20
 
 # 2. 减少其他运行的服务
-docker-compose stop gateway-service auth-service admin-service
+docker-compose stop gateway-service auth-service
 
 # 3. 重新运行测试
 pytest services/host-service/tests/test_websocket_performance.py -v

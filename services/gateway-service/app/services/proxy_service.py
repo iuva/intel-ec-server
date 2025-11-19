@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 import websockets
 from fastapi import Request, WebSocket, WebSocketDisconnect
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.websockets import WebSocketState
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -70,7 +71,7 @@ class ProxyService:
 
         支持三种服务发现方式：
         1. Nacos 动态服务发现（推荐）
-        2. Docker: 使用服务名（auth-service, admin-service, host-service）
+        2. Docker: 使用服务名（auth-service, host-service）
         3. 本地开发: 使用 localhost + 端口
 
         Args:
@@ -634,11 +635,34 @@ class ProxyService:
                     return_when=asyncio.FIRST_COMPLETED,
                 )
 
-                # 取消其他任务
+                # 取消其他任务并确保清理
                 for task in pending:
                     task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
+                    try:
                         await task
+                    except asyncio.CancelledError:
+                        ***REMOVED***
+                    except Exception as e:
+                        logger.warning(f"任务取消时出现异常: {e!s}")
+
+                # ✅ 确保 WebSocket 连接被正确关闭
+                try:
+                    # 检查客户端 WebSocket 状态
+                    if hasattr(client_websocket, "client_state"):
+                        if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                            await client_websocket.close(code=1000, reason="Connection closed")
+                    elif not getattr(client_websocket, "closed", True):
+                        # websockets.WebSocketClientProtocol
+                        await client_websocket.close()
+                except Exception as e:
+                    logger.debug(f"关闭客户端 WebSocket 时出错: {e!s}")
+
+                try:
+                    # 检查服务端 WebSocket 状态
+                    if not server_websocket.closed:
+                        await server_websocket.close()
+                except Exception as e:
+                    logger.debug(f"关闭服务端 WebSocket 时出错: {e!s}")
 
                 logger.info(
                     "WebSocket 连接已关闭",
@@ -650,12 +674,31 @@ class ProxyService:
                 )
 
         except ServiceNotFoundError:
+            # ✅ 确保在异常情况下也关闭客户端 WebSocket
+            try:
+                if hasattr(client_websocket, "client_state"):
+                    if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                        await client_websocket.close(code=1011, reason="Service not found")
+                elif not getattr(client_websocket, "closed", True):
+                    await client_websocket.close()
+            except Exception:
+                ***REMOVED***
             raise
         except websockets.exceptions.InvalidURI as e:
             logger.error(
                 f"无效的 WebSocket URL: {e!s}",
                 extra={"service_name": service_name, "path": path},
             )
+            # ✅ 确保在异常情况下也关闭客户端 WebSocket
+            try:
+                if hasattr(client_websocket, "client_state"):
+                    if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                        await client_websocket.close(code=1011, reason="Invalid URI")
+                elif not getattr(client_websocket, "closed", True):
+                    await client_websocket.close()
+            except Exception:
+                ***REMOVED***
+
             # 获取语言偏好
             accept_language = (
                 client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
@@ -679,6 +722,18 @@ class ProxyService:
                     f"WebSocket 认证失败: {error_msg}",
                     extra={"service_name": service_name, "path": path},
                 )
+                # ✅ 确保在异常情况下也关闭客户端 WebSocket
+                try:
+                    if hasattr(client_websocket, "client_state"):
+                        from starlette.websockets import WebSocketState
+
+                        if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                            await client_websocket.close(code=1008, reason="Authentication failed")
+                    elif not getattr(client_websocket, "closed", True):
+                        await client_websocket.close()
+                except Exception:
+                    ***REMOVED***
+
                 # 获取语言偏好
                 accept_language = (
                     client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
@@ -699,6 +754,18 @@ class ProxyService:
                     f"WebSocket 未授权: {error_msg}",
                     extra={"service_name": service_name, "path": path},
                 )
+                # ✅ 确保在异常情况下也关闭客户端 WebSocket
+                try:
+                    if hasattr(client_websocket, "client_state"):
+                        from starlette.websockets import WebSocketState
+
+                        if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                            await client_websocket.close(code=1008, reason="Unauthorized")
+                    elif not getattr(client_websocket, "closed", True):
+                        await client_websocket.close()
+                except Exception:
+                    ***REMOVED***
+
                 # 获取语言偏好
                 accept_language = (
                     client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
@@ -718,6 +785,16 @@ class ProxyService:
                 f"WebSocket 连接异常: {error_msg}",
                 extra={"service_name": service_name, "path": path},
             )
+            # ✅ 确保在异常情况下也关闭客户端 WebSocket
+            try:
+                if hasattr(client_websocket, "client_state"):
+                    if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                        await client_websocket.close(code=1011, reason="Connection failed")
+                elif not getattr(client_websocket, "closed", True):
+                    await client_websocket.close()
+            except Exception:
+                ***REMOVED***
+
             # 获取语言偏好
             accept_language = (
                 client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
@@ -738,6 +815,16 @@ class ProxyService:
                 extra={"service_name": service_name, "path": path, "error_type": type(e).__name__},
                 exc_info=True,
             )
+            # ✅ 确保在异常情况下也关闭客户端 WebSocket
+            try:
+                if hasattr(client_websocket, "client_state"):
+                    if client_websocket.client_state != WebSocketState.DISCONNECTED:
+                        await client_websocket.close(code=1011, reason="Server error")
+                elif not getattr(client_websocket, "closed", True):
+                    await client_websocket.close()
+            except Exception:
+                ***REMOVED***
+
             # 获取语言偏好
             accept_language = (
                 client_websocket.headers.get("Accept-Language") if hasattr(client_websocket, "headers") else None
@@ -848,13 +935,30 @@ class ProxyService:
             error_type = type(e).__name__
             logger.error(f"转发异常 ({direction}): {error_type} - {e!s}")
         finally:
-            with contextlib.suppress(Exception):
+            # ✅ 确保目标 WebSocket 连接被关闭
+            try:
                 if hasattr(destination, "close"):
                     # FastAPI WebSocket
-                    await destination.close()
-                else:
+                    if hasattr(destination, "client_state"):
+                        if destination.client_state != WebSocketState.DISCONNECTED:
+                            await destination.close()
+                    else:
+                        await destination.close()
+                elif hasattr(destination, "closed") and not destination.closed:
                     # websockets.WebSocketClientProtocol
                     await destination.close()
+            except Exception as e:
+                logger.debug(f"关闭目标 WebSocket 时出错 ({direction}): {e!s}")
+
+            # ✅ 确保源 WebSocket 连接也被关闭（如果可能）
+            try:
+                if hasattr(source, "close") and not hasattr(source, "receive_text"):
+                    # 只有非 FastAPI WebSocket 才需要手动关闭源连接
+                    # FastAPI WebSocket 由框架管理
+                    if hasattr(source, "closed") and not source.closed:
+                        await source.close()
+            except Exception as e:
+                logger.debug(f"关闭源 WebSocket 时出错 ({direction}): {e!s}")
 
     async def _handle_backend_http_error_from_response(
         self,
@@ -1370,11 +1474,13 @@ async def get_proxy_service(request: Request) -> ProxyService:
 
         http_client_config = getattr(request.app.state, "http_client_config", None)
         health_check_config = getattr(request.app.state, "health_check_http_client_config", None)
+        max_websocket_connections = getattr(request.app.state, "max_websocket_connections", 1000)
 
         _proxy_service_instance = ProxyService(
             service_discovery=service_discovery,
             http_client_config=http_client_config,
             health_check_client_config=health_check_config,
+            max_websocket_connections=max_websocket_connections,
         )
 
     return _proxy_service_instance
@@ -1408,11 +1514,13 @@ async def get_proxy_service_ws(websocket: WebSocket) -> ProxyService:
 
         http_client_config = getattr(websocket.app.state, "http_client_config", None)
         health_check_config = getattr(websocket.app.state, "health_check_http_client_config", None)
+        max_websocket_connections = getattr(websocket.app.state, "max_websocket_connections", 1000)
 
         _proxy_service_instance = ProxyService(
             service_discovery=service_discovery,
             http_client_config=http_client_config,
             health_check_client_config=health_check_config,
+            max_websocket_connections=max_websocket_connections,
         )
 
     return _proxy_service_instance

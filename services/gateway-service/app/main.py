@@ -52,7 +52,8 @@ except ImportError:
 
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("GATEWAY_SERVICE_NAME", "gateway-service")
-configure_logger(service_name=service_name, log_level="INFO")
+log_level = os.getenv("LOG_LEVEL", "INFO")
+configure_logger(service_name=service_name, log_level=log_level)
 
 logger = get_logger(__name__)
 
@@ -61,6 +62,24 @@ config = ServiceConfig.from_env(
     service_name=service_name,
     service_port_key="GATEWAY_SERVICE_PORT",
 )
+
+# ✅ 验证 JWT 密钥配置（生产环境必须设置）
+jwt_secret_key = os.getenv("JWT_SECRET_KEY", "")
+environment = os.getenv("ENVIRONMENT", "development").lower()
+if environment == "production":
+    if not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
+        logger.error("生产环境必须设置 JWT_SECRET_KEY 环境变量，且不能使用默认值")
+        raise ValueError(
+            "生产环境必须设置 JWT_SECRET_KEY 环境变量。"
+            "请在 .env 文件中设置 JWT_SECRET_KEY，或通过环境变量传递。"
+        )
+else:
+    # 开发环境：如果没有设置，使用默认值并警告
+    if not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
+        logger.warning(
+            "JWT_SECRET_KEY 未设置或使用默认值，这在生产环境中是不安全的。"
+            "请设置 JWT_SECRET_KEY 环境变量。"
+        )
 
 # ✅ 修复：根据 Nacos 开关配置初始化服务发现
 # 如果 Nacos 关闭，不创建服务发现实例，直接使用后备地址
@@ -102,6 +121,8 @@ app.state.health_check_http_client_config = HTTPClientConfig(
     retry_delay=config.health_check_retry_delay,
     client_name=f"{config.service_name}_health_check_client",
 )
+# ✅ 保存 WebSocket 配置
+app.state.max_websocket_connections = int(os.getenv("MAX_WEBSOCKET_CONNECTIONS", "1000"))
 
 # ✅ 在这里立即添加所有中间件（在 lifespan 之前）
 # 添加 CORS 中间件

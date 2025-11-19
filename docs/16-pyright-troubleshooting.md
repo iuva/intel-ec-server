@@ -7,8 +7,9 @@
 运行 `pyright services/ shared/` 时，看到大量类似的错误：
 
 ```
-/Users/chiyeming/KiroProjects/intel_ec_ms/services/admin-service/app/main.py:17:10 - error: Import "shared.common.database" could not be resolved (reportMissingImports)
-/Users/chiyeming/KiroProjects/intel_ec_ms/services/admin-service/app/main.py:18:10 - error: Import "shared.common.loguru_config" could not be resolved (reportMissingImports)
+# 注意：admin-service 已删除，以下错误示例仅供参考
+# /Users/chiyeming/KiroProjects/intel_ec_ms/services/auth-service/app/main.py:17:10 - error: Import "shared.common.database" could not be resolved (reportMissingImports)
+# /Users/chiyeming/KiroProjects/intel_ec_ms/services/auth-service/app/main.py:18:10 - error: Import "shared.common.loguru_config" could not be resolved (reportMissingImports)
 ...
 207 errors, 0 warnings, 0 informations
 ```

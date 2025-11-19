@@ -182,7 +182,7 @@ async def websocket_proxy(
         )
 
         # 映射完整服务名称到短名称
-        # 例如: host-service -> host, auth-service -> auth, admin-service -> admin
+        # 例如: host-service -> host, auth-service -> auth
         service_short_name = hostname.replace("-service", "")
 
         logger.info(
@@ -315,7 +315,7 @@ async def proxy_request(
     将请求转发到指定的后端微服务
 
     Args:
-        service_name: 服务名称（如 auth-service, admin-service）
+        service_name: 服务名称（如 auth-service, host-service）
         subpath: 子路径
         request: 请求对象
         proxy_service: 代理服务实例

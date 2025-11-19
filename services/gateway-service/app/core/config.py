@@ -23,11 +23,23 @@ class GatewayConfig(BaseSettings):
     redis_url: str = Field(default="redis://intel-redis:6379/0", description="Redis连接URL")
 
     # JWT 配置
-    jwt_secret_key: str = Field(default="your-secret-key-here", description="JWT密钥")
+    jwt_secret_key: str = Field(
+        default="", description="JWT密钥（生产环境必须设置，否则将抛出异常）"
+    )
     jwt_algorithm: str = Field(default="HS256", description="JWT算法")
 
     # 认证服务配置
     auth_service_url: str = Field(default="http://auth-service:8001", description="认证服务URL")
+    auth_service_host: str = Field(default="auth-service", description="认证服务主机名（用于本地开发时覆盖）")
+    auth_service_port: int = Field(default=8001, description="认证服务端口")
+
+    # 认证中间件 HTTP 客户端配置
+    auth_middleware_timeout: float = Field(default=10.0, description="认证中间件请求超时时间（秒）")
+    auth_middleware_connect_timeout: float = Field(default=5.0, description="认证中间件连接超时时间（秒）")
+
+    # 服务端口映射（用于服务发现后备地址）
+    service_port_auth: int = Field(default=8001, description="认证服务端口")
+    service_port_host: int = Field(default=8003, description="主机服务端口")
 
     # 日志配置
     log_level: str = Field(default="INFO", description="日志级别")

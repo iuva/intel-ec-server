@@ -33,17 +33,14 @@ if exist "%ENV_FILE%" (
     REM 本地开发特定配置：设置服务主机地址为 localhost
     echo [INFO] 配置本地服务连接...
     set "SERVICE_HOST_AUTH=127.0.0.1"
-    set "SERVICE_HOST_ADMIN=127.0.0.1"
     set "SERVICE_HOST_HOST=127.0.0.1"
     echo [OK] 本地服务地址已配置
     echo   - SERVICE_HOST_AUTH: !SERVICE_HOST_AUTH!
-    echo   - SERVICE_HOST_ADMIN: !SERVICE_HOST_ADMIN!
     echo   - SERVICE_HOST_HOST: !SERVICE_HOST_HOST!
 ) else (
     echo [WARNING] .env 文件不存在，使用默认环境变量
     REM 即使没有 .env，也要设置本地开发配置
     set "SERVICE_HOST_AUTH=127.0.0.1"
-    set "SERVICE_HOST_ADMIN=127.0.0.1"
     set "SERVICE_HOST_HOST=127.0.0.1"
 )
 goto :EOF
@@ -123,10 +120,10 @@ echo     cd /d "%PROJECT_ROOT%"
 echo     call venv\Scripts\activate.bat
 echo     python -m uvicorn services.auth-service.app.main:app --host 0.0.0.0 --port 8001 --reload
 echo.
-echo [2] 命令行窗口2 - Admin Service (8002):
+echo [2] 命令行窗口2 - Host Service (8003):
 echo     cd /d "%PROJECT_ROOT%"
 echo     call venv\Scripts\activate.bat
-echo     python -m uvicorn services.admin-service.app.main:app --host 0.0.0.0 --port 8002 --reload
+echo     python -m uvicorn services.host-service.app.main:app --host 0.0.0.0 --port 8003 --reload
 echo.
 echo [3] 命令行窗口3 - Host Service (8003):
 echo     cd /d "%PROJECT_ROOT%"
@@ -201,13 +198,11 @@ if /i "%~1"=="check" (
     call :start_service "Gateway Service" "8000" "services\gateway-service"
 ) else if /i "%~1"=="auth" (
     call :start_service "Auth Service" "8001" "services\auth-service"
-) else if /i "%~1"=="admin" (
-    call :start_service "Admin Service" "8002" "services\admin-service"
 ) else if /i "%~1"=="host" (
     call :start_service "Host Service" "8003" "services\host-service"
 ) else (
     echo [ERROR] 未知的命令: %~1
-    echo 支持的命令: check, all, gateway, auth, admin, host
+    echo 支持的命令: check, all, gateway, auth, host
     exit /b 1
 )
 

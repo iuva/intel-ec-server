@@ -41,6 +41,19 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+# Gateway 服务 IP 地址（用于验证请求来源）
+# Docker 环境：172.20.0.100
+# 本地开发环境：127.0.0.1 或 localhost
+GATEWAY_IP_ADDRESSES = {
+    "172.20.0.100",  # Docker 网络中的 Gateway IP
+    "127.0.0.1",  # 本地开发环境
+    "localhost",  # 本地开发环境
+}
+# 允许从环境变量配置额外的 Gateway IP（用于特殊部署场景）
+GATEWAY_IP_ENV = os.getenv("GATEWAY_IP_ADDRESSES", "")
+if GATEWAY_IP_ENV:
+    GATEWAY_IP_ADDRESSES.update(ip.strip() for ip in GATEWAY_IP_ENV.split(",") if ip.strip())
+
 # 全局服务实例缓存（使用 Optional 类型注解）
 _browser_host_service_instance: Optional[BrowserHostService] = None
 _browser_vnc_service_instance: Optional[BrowserVNCService] = None
@@ -173,14 +186,62 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         HTTPException: 缺少用户信息时抛出 401
     """
     try:
+        # ✅ 安全验证：检查请求来源 IP，确保请求来自 Gateway
+        client_host = request.client.host if request.client else None
+        if client_host and client_host not in GATEWAY_IP_ADDRESSES:
+            # 检查是否是 Docker 网络中的 Gateway（可能通过代理）
+            # 如果 X-Forwarded-For 或 X-Real-IP 存在，也检查这些
+            forwarded_for = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            real_ip = request.headers.get("X-Real-IP", "").strip()
+
+            is_from_gateway = (
+                client_host in GATEWAY_IP_ADDRESSES
+                or forwarded_for in GATEWAY_IP_ADDRESSES
+                or real_ip in GATEWAY_IP_ADDRESSES
+            )
+
+            if not is_from_gateway:
+                logger.warning(
+                    (
+                        f"拒绝非 Gateway 来源的请求 | client_host={client_host} | "
+                        f"forwarded_for={forwarded_for} | real_ip={real_ip} | path={request.url.path}"
+                    ),
+                    extra={
+                        "path": request.url.path,
+                        "method": request.method,
+                        "client_host": client_host,
+                        "forwarded_for": forwarded_for,
+                        "real_ip": real_ip,
+                        "allowed_gateway_ips": list(GATEWAY_IP_ADDRESSES),
+                    },
+                )
+
+                # 获取语言偏好
+                accept_language = request.headers.get("Accept-Language")
+                locale = parse_accept_language(accept_language)
+
+                raise HTTPException(
+                    status_code=HTTP_401_UNAUTHORIZED,
+                    detail=ErrorResponse(
+                        code=HTTP_401_UNAUTHORIZED,
+                        message="请求必须通过 Gateway 转发",
+                        message_key="error.auth.invalid_request_source",
+                        error_code="INVALID_REQUEST_SOURCE",
+                        locale=locale,
+                        details={
+                            "hint": "请求必须通过 Gateway 转发，不允许直接访问服务",
+                        },
+                    ).model_dump(),
+                )
+
         # ✅ 从 Gateway 传递的 header 中获取用户信息
         # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
         user_info_header = request.headers.get("X-User-Info")
 
-        # 打印 X-User-Info header 信息（用于调试）
+        # 记录 X-User-Info header 信息（不记录完整内容，避免敏感信息泄露）
         if user_info_header:
-            header_preview = user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
-            logger.info(
+            header_preview = user_info_header[:100] + "..." if len(user_info_header) > 100 else user_info_header
+            logger.debug(
                 "接收 X-User-Info header",
                 extra={
                     "path": request.url.path,
@@ -188,7 +249,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
                     "has_x_user_info": True,
                     "x_user_info_preview": header_preview,
                     "x_user_info_length": len(user_info_header),
-                    "x_user_info_full": user_info_header,
+                    # ❌ 移除: "x_user_info_full": user_info_header,  # 避免敏感信息泄露
                 },
             )
         else:
@@ -244,14 +305,14 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             if not isinstance(user_info, dict):
                 raise ValueError(f"X-User-Info 解析后不是字典类型，而是: {type(user_info).__name__}")
 
-            # 记录解析后的用户信息键（用于调试）
+            # 记录解析后的用户信息键（不记录完整内容，避免敏感信息泄露）
             user_info_keys = list(user_info.keys()) if isinstance(user_info, dict) else []
-            logger.info(
-                "解析 X-User-Info header 成功（原始内容已记录）",
+            logger.debug(
+                "解析 X-User-Info header 成功",
                 extra={
                     "user_info_keys": user_info_keys,
                     "user_info_type": type(user_info).__name__,
-                    "raw_header": user_info_header,
+                    # ❌ 移除: "raw_header": user_info_header,  # 避免敏感信息泄露
                     "path": request.url.path,
                 },
             )
@@ -262,7 +323,7 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
             user_type = user_info.get("user_type")
             active = user_info.get("active")
 
-            logger.info(
+            logger.debug(
                 (
                     f"解析 X-User-Info header 成功 | user_id={user_id} | "
                     f"username={username} | user_type={user_type} | active={active} | "
@@ -280,25 +341,19 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             header_length = len(user_info_header) if user_info_header else 0
             header_preview = (
-                user_info_header[:200] + "..." if user_info_header and len(user_info_header) > 200 else user_info_header
+                user_info_header[:100] + "..." if user_info_header and len(user_info_header) > 100 else user_info_header
             )
             logger.opt(exception=e).error(
                 (
-                    "解析 X-User-Info header 失败 | path={} | error={} | error_type={} | "
-                    "header_length={} | header_preview={}"
-                ).format(
-                    request.url.path,
-                    str(e),
-                    type(e).__name__,
-                    header_length,
-                    header_preview,
+                    f"解析 X-User-Info header 失败 | path={request.url.path} | error={str(e)} | "
+                    f"error_type={type(e).__name__} | header_length={header_length} | header_preview={header_preview}"
                 ),
                 extra={
                     "error": str(e),
                     "error_type": type(e).__name__,
                     "header_value_preview": header_preview,
                     "header_length": header_length,
-                    "header_full": user_info_header,
+                    # ❌ 移除: "header_full": user_info_header,  # 避免敏感信息泄露
                     "path": request.url.path,
                     "method": request.method,
                 },
@@ -417,19 +472,66 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         >>>     host_id = agent_info["host_id"]
     """
     try:
+        # ✅ 安全验证：检查请求来源 IP，确保请求来自 Gateway
+        client_host = request.client.host if request.client else None
+        if client_host and client_host not in GATEWAY_IP_ADDRESSES:
+            # 检查是否是 Docker 网络中的 Gateway（可能通过代理）
+            # 如果 X-Forwarded-For 或 X-Real-IP 存在，也检查这些
+            forwarded_for = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            real_ip = request.headers.get("X-Real-IP", "").strip()
+
+            is_from_gateway = (
+                client_host in GATEWAY_IP_ADDRESSES
+                or forwarded_for in GATEWAY_IP_ADDRESSES
+                or real_ip in GATEWAY_IP_ADDRESSES
+            )
+
+            if not is_from_gateway:
+                logger.warning(
+                    (
+                        f"拒绝非 Gateway 来源的 Agent 请求 | client_host={client_host} | "
+                        f"forwarded_for={forwarded_for} | real_ip={real_ip} | path={request.url.path}"
+                    ),
+                    extra={
+                        "path": request.url.path,
+                        "method": request.method,
+                        "client_host": client_host,
+                        "forwarded_for": forwarded_for,
+                        "real_ip": real_ip,
+                        "allowed_gateway_ips": list(GATEWAY_IP_ADDRESSES),
+                    },
+                )
+
+                # 获取语言偏好
+                accept_language = request.headers.get("Accept-Language")
+                locale = parse_accept_language(accept_language)
+
+                raise HTTPException(
+                    status_code=HTTP_401_UNAUTHORIZED,
+                    detail=ErrorResponse(
+                        code=HTTP_401_UNAUTHORIZED,
+                        message="请求必须通过 Gateway 转发",
+                        message_key="error.auth.invalid_request_source",
+                        error_code="INVALID_REQUEST_SOURCE",
+                        locale=locale,
+                        details={
+                            "hint": "请求必须通过 Gateway 转发，不允许直接访问服务",
+                        },
+                    ).model_dump(),
+                )
+
         # ✅ 从 Gateway 传递的 header 中获取用户信息
         # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
         user_info_header = request.headers.get("X-User-Info")
 
-        # 打印 X-User-Info header 信息（用于调试）
+        # 记录 X-User-Info header 信息（不记录完整内容，避免敏感信息泄露）
         if user_info_header:
             client_info = f"{request.client.host}:{request.client.port}" if request.client else "unknown"
-            header_preview = user_info_header[:200] + "..." if len(user_info_header) > 200 else user_info_header
-            logger.info(
+            header_preview = user_info_header[:100] + "..." if len(user_info_header) > 100 else user_info_header
+            logger.debug(
                 (
-                    f"Agent 接收 X-User-Info header | path={request.url.path} | "
-                    f"method={request.method} | header_length={len(user_info_header)} | "
-                    f"header_preview={header_preview} | client={client_info}"
+                    f"Agent 接收 X-User-Info header | path={request.url.path} | method={request.method} | "
+                    f"header_length={len(user_info_header)} | header_preview={header_preview} | client={client_info}"
                 ),
                 extra={
                     "path": request.url.path,
@@ -437,7 +539,7 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
                     "has_x_user_info": True,
                     "x_user_info_preview": header_preview,
                     "x_user_info_length": len(user_info_header),
-                    "x_user_info_full": user_info_header,
+                    # ❌ 移除: "x_user_info_full": user_info_header,  # 避免敏感信息泄露
                     "client": client_info,
                 },
             )
@@ -488,7 +590,7 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
             username = user_info.get("username")
             user_type = user_info.get("user_type")
 
-            logger.info(
+            logger.debug(
                 (
                     f"解析 Agent X-User-Info header 成功 | user_id={user_id} | "
                     f"username={username} | user_type={user_type} | path={request.url.path}"
@@ -503,11 +605,15 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
                 },
             )
         except json.JSONDecodeError as e:
+            header_preview = (
+                user_info_header[:100] + "..." if user_info_header and len(user_info_header) > 100 else user_info_header
+            )
             logger.error(
-                "解析 Agent X-User-Info header 失败",
+                f"解析 Agent X-User-Info header 失败 | error={str(e)} | header_preview={header_preview}",
                 extra={
                     "error": str(e),
-                    "header_value_preview": user_info_header[:100] if len(user_info_header) > 100 else user_info_header,
+                    "header_value_preview": header_preview,
+                    # ❌ 移除完整 header 内容，避免敏感信息泄露
                 },
             )
 

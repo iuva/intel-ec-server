@@ -19,7 +19,6 @@ mkdir -p "$DOCS_DIR"
 SERVICES=(
     "gateway-service:8000:网关服务"
     "auth-service:8001:认证服务"
-    "admin-service:8002:管理服务"
     "host-service:8003:主机服务"
 )
 
@@ -176,7 +175,7 @@ main() {
         echo "❌ 没有运行中的服务，无法生成文档"
         echo ""
         echo "💡 请先启动服务："
-        echo "   docker-compose up -d gateway-service auth-service admin-service host-service"
+        echo "   docker-compose up -d gateway-service auth-service host-service"
         echo "   或者分别启动每个服务"
         exit 1
     fi

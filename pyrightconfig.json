@@ -56,11 +56,6 @@
       "extraPaths": ["../../", "../../../"]
     },
     {
-      "root": "services/admin-service",
-      "pythonVersion": "3.8",
-      "extraPaths": ["../../", "../../../"]
-    },
-    {
       "root": "services/host-service",
       "pythonVersion": "3.8",
       "extraPaths": ["../../", "../../../"]

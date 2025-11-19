@@ -15,7 +15,6 @@ intel-cw-ms/
 ├── services/                    # 微服务目录
 │   ├── gateway-service/        # 网关服务 (8000)
 │   ├── auth-service/           # 认证服务 (8001)
-│   ├── admin-service/          # 管理服务 (8002)
 │   └── host-service/           # 主机服务 (8003)
 ├── shared/                      # 共享模块
 │   ├── app/                    # 应用模板

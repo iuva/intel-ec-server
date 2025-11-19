@@ -16,7 +16,6 @@ cd "$PROJECT_ROOT"
 SERVICES=(
     "gateway-service:8000:网关服务"
     "auth-service:8001:认证服务"
-    "admin-service:8002:管理服务"
     "host-service:8003:主机服务"
 )
 
@@ -113,11 +112,6 @@ start_services() {
     print_status "启动认证服务..."
     cd services/auth-service && python -m app.main &
     AUTH_PID=$!
-    cd "$PROJECT_ROOT"
-
-    print_status "启动管理服务..."
-    cd services/admin-service && python -m app.main &
-    ADMIN_PID=$!
     cd "$PROJECT_ROOT"
 
     print_status "启动主机服务..."

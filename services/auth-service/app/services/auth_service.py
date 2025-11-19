@@ -4,10 +4,12 @@
 实现用户登录、令牌生成、令牌验证等功能
 """
 
+from datetime import datetime, timezone
 import os
 import time
-from datetime import datetime, timezone
 from typing import Optional
+
+from sqlalchemy import select
 
 from app.models.host_rec import HostRec
 from app.models.sys_user import SysUser
@@ -21,7 +23,6 @@ from app.schemas.auth import (
     RefreshTokenRequest,
     TokenResponse,
 )
-from sqlalchemy import select
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -51,8 +52,37 @@ class AuthService:
         """初始化认证服务"""
         self.access_token_expire_minutes = 24 * 60  # 24 小时
         self.refresh_token_expire_days = 7
+
+        # ✅ 验证 JWT 密钥配置（生产环境必须设置）
+        jwt_secret_key = os.getenv("JWT_SECRET_KEY", "")
+        environment = os.getenv("ENVIRONMENT", "development").lower()
+        if environment == "production":
+            if not jwt_secret_key or jwt_secret_key in (
+                "your-secret-key-change-in-production",
+                "your-secret-key-here",
+                "default_secret_key",
+                "",
+            ):
+                logger.error("生产环境必须设置 JWT_SECRET_KEY 环境变量，且不能使用默认值")
+                raise ValueError(
+                    "生产环境必须设置 JWT_SECRET_KEY 环境变量。"
+                    "请在 .env 文件中设置 JWT_SECRET_KEY，或通过环境变量传递。"
+                )
+        # 开发环境：如果没有设置，使用默认值并警告
+        elif not jwt_secret_key or jwt_secret_key in (
+            "your-secret-key-change-in-production",
+            "your-secret-key-here",
+            "default_secret_key",
+            "",
+        ):
+            logger.warning(
+                "JWT_SECRET_KEY 未设置或使用默认值，这在生产环境中是不安全的。"
+                "请设置 JWT_SECRET_KEY 环境变量。"
+            )
+            jwt_secret_key = "your-secret-key-change-in-production"
+
         self.jwt_manager = JWTManager(
-            secret_key=os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production"),
+            secret_key=jwt_secret_key,
             algorithm="HS256",
             access_token_expire_minutes=self.access_token_expire_minutes,
             refresh_token_expire_days=self.refresh_token_expire_days,

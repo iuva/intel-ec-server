@@ -512,16 +512,8 @@ class BrowserHostService:
                 return False
 
         except Exception as e:
-            error_message = (
-                "更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={error_type}, 错误消息={error_msg}"
-            ).format(
-                host_id=host_id,
-                tcp_state=tcp_state,
-                error_type=type(e).__name__,
-                error_msg=e,
-            )
             logger.error(
-                error_message,
+                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={e}",
                 extra={
                     "host_id": host_id,
                     "tcp_state": tcp_state,

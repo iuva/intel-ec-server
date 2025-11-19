@@ -273,12 +273,20 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: 数据库会话
     """
     session_factory = mariadb_manager.get_session()
-    async with session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    session = None
+    try:
+        async with session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+    finally:
+        # ✅ 确保会话总是被关闭（即使 commit/rollback 抛出异常）
+        # 注意：async with 语句通常会自动关闭，但这里显式处理以确保健壮性
+        if session and not session.closed:
+            try:
+                await session.close()
+            except Exception as e:
+                logger.warning(f"关闭数据库会话时出现异常: {e!s}", exc_info=True)

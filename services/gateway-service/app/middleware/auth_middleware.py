@@ -69,13 +69,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # 不能在中间件级别设为公开路径，否则无法强制认证
         }
 
-        service_host_auth = os.getenv("SERVICE_HOST_AUTH", "auth-service")
+        # ✅ 从配置读取认证服务 URL 和端口（兼容 Docker 和本地开发）
+        # 优先级：AUTH_SERVICE_URL > (AUTH_SERVICE_HOST + AUTH_SERVICE_PORT) > 默认值
+        auth_service_url = os.getenv("AUTH_SERVICE_URL")
+        if auth_service_url:
+            # 如果设置了完整的 URL，直接使用
+            self.auth_service_url = auth_service_url
+        else:
+            # 否则从主机名和端口构建
+            auth_service_host = os.getenv("AUTH_SERVICE_HOST", "auth-service")
+            auth_service_port = int(os.getenv("AUTH_SERVICE_PORT", "8001"))
+            self.auth_service_url = f"http://{auth_service_host}:{auth_service_port}"
 
-        # Auth Service URL
-        self.auth_service_url = f"http://{service_host_auth}:8001"
-
-        # HTTP 客户端配置
-        self.timeout = httpx.Timeout(10.0, connect=5.0)
+        # ✅ 从配置读取 HTTP 客户端超时配置
+        auth_timeout = float(os.getenv("AUTH_MIDDLEWARE_TIMEOUT", "10.0"))
+        auth_connect_timeout = float(os.getenv("AUTH_MIDDLEWARE_CONNECT_TIMEOUT", "5.0"))
+        self.timeout = httpx.Timeout(auth_timeout, connect=auth_connect_timeout)
 
     async def dispatch(self, request: Request, call_next):
         """处理请求

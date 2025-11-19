@@ -60,6 +60,12 @@ class ServiceDiscovery:
             "host-service": host_host,
         }
 
+        # ✅ 从环境变量读取服务端口映射（用于后备地址）
+        self._service_ports = {
+            "auth-service": int(os.getenv("SERVICE_PORT_AUTH", "8001")),
+            "host-service": int(os.getenv("SERVICE_PORT_HOST", "8003")),
+        }
+
         logger.info(
             "服务发现工具初始化完成",
             extra={
@@ -212,13 +218,8 @@ class ServiceDiscovery:
         # 获取后备主机名
         fallback_host = self._fallback_urls.get(full_service_name, full_service_name)
 
-        # 推断端口
-        port_map = {
-            "auth-service": 8001,
-            "host-service": 8003,
-        }
-
-        port = port_map.get(full_service_name, 8000)
+        # ✅ 从配置读取端口（支持环境变量覆盖）
+        port = self._service_ports.get(full_service_name, 8000)
 
         return f"http://{fallback_host}:{port}"
 

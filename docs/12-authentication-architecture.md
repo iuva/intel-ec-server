@@ -191,7 +191,6 @@ request.state.user = {
 ```python
 service_routes = {
     "auth-service": "http://auth-service:8001",
-    "admin-service": "http://admin-service:8002", 
     "host-service": "http://host-service:8003",
 }
 ```
@@ -199,8 +198,8 @@ service_routes = {
 ### **代理转发规则**
 
 ```text
-GET /api/v1/admin-service/users → GET http://admin-service:8002/users
-POST /api/v1/auth-service/login → POST http://auth-service:8001/login
+GET /api/v1/host-service/admin/host/list → GET http://host-service:8003/api/v1/host/admin/host/list
+POST /api/v1/auth-service/login → POST http://auth-service:8001/api/v1/auth/login
 ```
 
 ## 📊 **OAuth 2.0 完整请求示例**
@@ -246,14 +245,14 @@ POST /api/v1/auth-service/login → POST http://auth-service:8001/login
 ### **访问受保护资源流程**
 
 ```text
-1. GET /api/v1/admin-service/users
+1. GET /api/v1/host-service/admin/host/list
    Header: Authorization: Bearer <oauth_jwt_token>
 
 2. Gateway → 验证OAuth令牌 (调用Auth Service的oauth2/introspect)
 
-3. 令牌有效 → 转发到 Admin Service
+3. 令牌有效 → 转发到 Host Service
 
-4. Admin Service → 检查用户类型和权限 → 返回数据
+4. Host Service → 检查用户类型和权限 → 返回数据
 ```
 
 ### **令牌内省验证**

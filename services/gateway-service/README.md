@@ -149,7 +149,7 @@ GET/POST/PUT/DELETE /{service_name}/{path:path}
 
 # 示例
 GET /auth-service/api/v1/auth/introspect
-POST /admin-service/api/v1/users
+GET /host-service/api/v1/host/admin/host/list
 ```
 
 ## 服务路由映射
@@ -157,7 +157,6 @@ POST /admin-service/api/v1/users
 | 服务名称 | 后端地址 | 说明 |
 |---------|---------|------|
 | auth-service | `http://auth-service:8001` | 认证服务 |
-| admin-service | `http://admin-service:8002` | 管理服务 |
 | host-service | `http://host-service:8003` | 主机服务 |
 
 ## 认证流程
@@ -222,10 +221,10 @@ curl -X POST http://auth-service:8001/api/v1/auth/introspect \
 
 ```bash
 # 检查后端服务状态
-curl http://admin-service:8002/health
+curl http://host-service:8003/health
 
 # 查看 Nacos 服务列表
-curl http://nacos:8848/nacos/v1/ns/instance/list?serviceName=admin-service
+curl http://nacos:8848/nacos/v1/ns/instance/list?serviceName=host-service
 ```
 
 ## 开发指南
@@ -237,7 +236,6 @@ curl http://nacos:8848/nacos/v1/ns/instance/list?serviceName=admin-service
 ```python
 self.service_routes = {
     "auth-service": "http://auth-service:8001",
-    "admin-service": "http://admin-service:8002",
     "host-service": "http://host-service:8003",
     "new-service": "http://new-service:8004",  # 添加新服务
 }
