@@ -200,7 +200,11 @@ class DeviceLoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     """登录响应"""
 
-    token: str = Field(description="访问令牌")
+    access_token: str = Field(description="访问令牌")
+    token: Optional[str] = Field(
+        default=None,
+        description="访问令牌兼容字段（与 access_token 相同，保留用于向后兼容）",
+    )
     refresh_token: Optional[str] = Field(default=None, description="刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
     expires_in: int = Field(description="过期时间（秒）")
@@ -209,6 +213,7 @@ class LoginResponse(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "token_type": "bearer",
