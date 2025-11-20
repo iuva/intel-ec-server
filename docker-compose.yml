@@ -387,9 +387,9 @@ services:
     networks:
       intel-network:
         ipv4_address: 172.20.0.103
-    depends_on:
-      mariadb:
-        condition: service_healthy
+    # depends_on:
+    #   mariadb:
+    #     condition: service_healthy
       # nacos:
       #   condition: service_healthy
       # jaeger:
