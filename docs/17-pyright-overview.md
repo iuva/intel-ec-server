@@ -29,7 +29,7 @@
 cd /Users/chiyeming/KiroProjects/intel_ec_ms
 
 # 2. 运行类型检查
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 ```
 
 就这么简单！✅
@@ -46,7 +46,7 @@ cd /Users/chiyeming/KiroProjects/intel_ec_ms
 
 ```bash
 # 方式 1：使用脚本（推荐）
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 
 # 方式 2：手动设置 PYTHONPATH
 PYTHONPATH=$PWD pyright services/ shared/
@@ -105,7 +105,7 @@ async def get_users(
 
 ```bash
 # 运行 Pyright 检查（自动设置 PYTHONPATH）
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 
 # 运行代码质量检查（包含 Ruff + Pyright）
 ./scripts/check_quality.sh
@@ -124,7 +124,7 @@ async def get_users(
 ### 初次使用
 
 1. 阅读 [快速指南](./PYRIGHT_QUICK_GUIDE.md)（5 分钟）
-2. 运行 `./scripts/run_pyright.sh`
+2. 运行 `./scripts/check_types.sh`
 3. 查看错误报告
 
 ### 深入了解
@@ -162,13 +162,13 @@ async def get_users(
 
 1. **始终使用脚本运行 Pyright**
    ```bash
-   ./scripts/run_pyright.sh
+   ./scripts/check_types.sh
    ```
 
 2. **定期运行类型检查**
    ```bash
    # 提交代码前
-   ./scripts/run_pyright.sh
+   ./scripts/check_types.sh
    git commit -m "..."
    ```
 
@@ -203,7 +203,7 @@ async def get_users(
 
 1. 克隆项目
 2. 阅读 [快速指南](./PYRIGHT_QUICK_GUIDE.md)
-3. 运行 `./scripts/run_pyright.sh`
+3. 运行 `./scripts/check_types.sh`
 4. 了解当前的 56 个错误
 
 ### Code Review
@@ -239,16 +239,6 @@ async def get_users(
 
 ---
 
-## 🤝 贡献
-
-如果您发现文档有误或有改进建议：
-
-1. 创建 Issue 说明问题
-2. 提交 Pull Request
-3. 更新相关文档
-
----
-
 ## 📞 获取帮助
 
 ### 查看文档
@@ -265,4 +255,4 @@ async def get_users(
 
 ---
 
-**开始使用：`./scripts/run_pyright.sh`** 🚀
+**开始使用：`./scripts/check_types.sh`** 🚀

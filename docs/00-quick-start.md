@@ -97,7 +97,7 @@ docker-compose logs -f nacos jaeger
 > 3. **使用提供的脚本生成新令牌**：
 >
 >    ```bash
->    ./scripts/generate_nacos_token.sh
+>    ./scripts/generate_token.sh
 >    ```
 >
 > 4. **将生成的令牌添加到 `.env` 文件**：

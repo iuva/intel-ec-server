@@ -53,7 +53,7 @@ ruff check --select I services/ shared/  # 仅检查导入排序
 
 ```bash
 # 安装 pre-commit
-bash scripts/setup_pre_commit.sh
+bash scripts/setup_precommit.sh
 
 # 手动运行所有检查
 pre-commit run --all-files
@@ -84,7 +84,7 @@ bash scripts/check_quality.sh
 bash scripts/fix_quality.sh
 
 # 安装 Git 钩子
-bash scripts/setup_pre_commit.sh
+bash scripts/setup_precommit.sh
 ```
 
 ## 配置说明
@@ -264,18 +264,3 @@ git commit -m "fix: 修复代码质量问题"
 - [Bandit 文档](https://bandit.readthedocs.io/)
 - [Pre-commit 文档](https://pre-commit.com/)
 - [PEP 8 风格指南](https://peps.python.org/pep-0008/)
-
-## 更新历史
-
-- **2025-10-13**: 工具栈优化，移除 Black
-  - ❌ 移除 Black，统一使用 Ruff Format（速度提升 10-100 倍）
-  - ✅ 合并 auth-service 的 Ruff 配置到根目录
-  - ✅ 更新所有脚本和文档
-  - ✅ 简化工具栈，减少维护复杂度
-  - 详见：[13-code-quality-tools-analysis.md](./13-code-quality-tools-analysis.md)
-
-- **2025-01-29**: 初始版本，完成代码质量保证系统配置
-  - 配置 Ruff、MyPy、Black
-  - 创建自动化检查和修复脚本
-  - 配置 Pre-commit 钩子
-  - 修复现有代码质量问题

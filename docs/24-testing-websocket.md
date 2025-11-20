@@ -300,9 +300,3 @@ async with websockets.connect(uri, ping_interval=None) as ws:
 # ❌ 不好
 message = await ws.recv()  # 可能无限等待
 ```
-
----
-
-**最后更新**: 2025-10-25  
-**维护者**: Intel EC 团队
-

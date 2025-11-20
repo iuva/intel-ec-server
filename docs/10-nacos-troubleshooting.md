@@ -31,10 +31,10 @@ io.jsonwebtoken.io.DecodingException: Illegal base64 character: '-'
 
 ```bash
 # 生成随机令牌
-./scripts/generate_nacos_token.sh
+./scripts/generate_token.sh
 
 # 或使用自定义密钥生成
-./scripts/generate_nacos_token.sh "your-custom-secret-key-at-least-32-bytes"
+./scripts/generate_token.sh "your-custom-secret-key-at-least-32-bytes"
 ```
 
 脚本会输出类似以下内容：
@@ -232,7 +232,7 @@ nacos:
 
 ```bash
 # 生成强随机令牌
-./scripts/generate_nacos_token.sh
+./scripts/generate_token.sh
 
 # 在 .env 文件中配置
 NACOS_AUTH_TOKEN=生成的强随机令牌

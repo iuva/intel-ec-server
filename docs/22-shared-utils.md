@@ -788,10 +788,3 @@ class AdminHostService:
 **使用位置**:
 - `services/host-service/app/services/admin_host_service.py` - 4处替换
 - `services/host-service/app/services/admin_appr_host_service.py` - 1处替换
-
----
-
-**最后更新**: 2025-10-15
-**版本**: 1.3.0
-**维护者**: AI Assistant
-

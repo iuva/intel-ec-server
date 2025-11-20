@@ -6,51 +6,28 @@
 
 ### 🚀 服务管理脚本
 
-#### start_services.sh
+> **注意**: 项目使用 Docker Compose 进行服务管理。服务启动、停止、重启等操作请使用 `docker-compose` 命令。  
+> 详细说明请参考 [部署指南](./03-deployment-guide.md#服务管理)
 
-**功能**: 启动所有微服务和基础设施组件
+#### start_services_local.sh / start_services_local.bat
+
+**功能**: 本地开发环境启动脚本（自动设置环境变量）
+
 **使用方法**:
 
 ```bash
-bash scripts/start_services.sh [选项]
+# Linux/macOS
+./scripts/start_services_local.sh
+
+# Windows
+scripts\start_services_local.bat
 ```
 
-**选项**:
+**功能特性**:
 
-- `-b, --build`: 重新构建镜像
-- `-f, --foreground`: 前台运行
-- `--only <service>`: 只启动指定服务
-- `--skip <service>`: 跳过指定服务
-
-#### stop_services.sh
-
-**功能**: 停止所有微服务和基础设施组件
-**使用方法**:
-
-```bash
-bash scripts/stop_services.sh [选项]
-```
-
-**选项**:
-
-- `-v, --volumes`: 同时删除数据卷
-- `--only <service>`: 只停止指定服务
-- `--timeout <seconds>`: 设置停止超时时间
-
-#### restart_services.sh
-
-**功能**: 重启所有微服务和基础设施组件
-**使用方法**:
-
-```bash
-bash scripts/restart_services.sh [选项]
-```
-
-**选项**:
-
-- `-b, --build`: 重新构建镜像
-- `--only <service>`: 只重启指定服务
-- `--quick`: 快速重启（不等待健康检查）
+- 自动设置 `*_SERVICE_IP=127.0.0.1` 环境变量
+- 自动设置 `JAEGER_ENDPOINT=localhost:4317`
+- 支持 Docker 和本地启动方式
 
 #### build_services.sh
 
@@ -95,12 +72,18 @@ bash scripts/fix_quality.sh
 
 #### check_types.sh
 
-**功能**: 运行Pyright类型检查
+**功能**: 运行 Pyright 类型检查
 **使用方法**:
 
 ```bash
 bash scripts/check_types.sh
 ```
+
+**检查内容**:
+
+- Pyright 类型检查
+- 类型注解验证
+- 导入路径检查
 
 #### setup_precommit.sh
 
@@ -339,8 +322,8 @@ bash scripts/setup_precommit.sh
 # 4. 构建所有服务
 bash scripts/build_services.sh
 
-# 5. 启动所有服务
-bash scripts/start_services.sh
+# 5. 启动所有服务（使用 Docker Compose）
+docker-compose up -d
 
 # 6. 启动监控系统
 bash scripts/start_monitoring.sh
@@ -392,22 +375,26 @@ bash scripts/dev_docs.sh --stop
 
 ```bash
 # 启动服务（后台运行）
-bash scripts/start_services.sh
+docker-compose up -d
 
 # 启动服务（前台运行，查看日志）
-bash scripts/start_services.sh -f
+docker-compose up
 
 # 重新构建并启动
-bash scripts/start_services.sh -b
+docker-compose up -d --build
 
 # 停止所有服务
-bash scripts/stop_services.sh
+docker-compose down
 
 # 停止服务并删除数据卷
-bash scripts/stop_services.sh -v
+docker-compose down -v
 
 # 重启所有服务
-bash scripts/restart_services.sh
+docker-compose restart
+
+# 本地开发环境启动（自动设置环境变量）
+./scripts/start_services_local.sh  # Linux/macOS
+scripts\start_services_local.bat   # Windows
 ```
 
 ### 🧹 维护操作

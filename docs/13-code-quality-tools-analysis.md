@@ -363,8 +363,3 @@ pre-commit install
 # 3. CI/CD 强制检查
 # 在 GitHub Actions 或 GitLab CI 中运行质量检查
 ```
-
----
-
-**最后更新**: 2025-10-13  
-**维护者**: DevOps Team

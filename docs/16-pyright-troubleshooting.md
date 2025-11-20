@@ -32,7 +32,7 @@
 
 ```bash
 cd /Users/chiyeming/KiroProjects/intel_ec_ms
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 ```
 
 这个脚本会自动设置正确的 PYTHONPATH。
@@ -77,7 +77,7 @@ rm -rf .pyright/
 rm -rf **/.pyright/
 
 # 重新运行
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 ```
 
 ---
@@ -145,7 +145,7 @@ pyright --version
 
 **A:** 因为运行 pyright 时没有正确设置 PYTHONPATH。
 
-**解决：** 使用 `./scripts/run_pyright.sh` 或 `PYTHONPATH=$PWD pyright services/ shared/`
+**解决：** 使用 `./scripts/check_types.sh` 或 `PYTHONPATH=$PWD pyright services/ shared/`
 
 ### Q2: 修复后还是 56 个错误正常吗？
 
@@ -197,7 +197,7 @@ steps:
 
 ```bash
 # 1. 使用脚本
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 
 # 2. 或在命令中设置 PYTHONPATH
 PYTHONPATH=$PWD pyright services/ shared/
@@ -249,7 +249,7 @@ cp pyrightconfig.json pyrightconfig.json.backup
 rm -rf .pyright/
 
 # 4. 重新运行
-./scripts/run_pyright.sh
+./scripts/check_types.sh
 ```
 
 ### 检查文件是否存在

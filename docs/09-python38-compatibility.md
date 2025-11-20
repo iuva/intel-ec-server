@@ -12,7 +12,7 @@ for port in 8000 8001 8003; do
 done
 
 # 检查类型注解问题
-bash scripts/fix_all_python38_types.sh
+bash scripts/check_types.sh
 
 # 查看服务日志
 docker-compose logs --tail=50 auth-service

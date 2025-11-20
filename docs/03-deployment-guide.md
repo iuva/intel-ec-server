@@ -50,7 +50,6 @@
 |------|--------|--------|------|
 | Gateway Service | ~800MB | ~400MB | 50% |
 | Auth Service | ~800MB | ~400MB | 50% |
-| Admin Service | ~800MB | ~400MB | 50% |
 | Host Service | ~800MB | ~400MB | 50% |
 
 ## 环境配置
@@ -77,6 +76,7 @@ MYSQL_DATABASE=intel_cw             # 数据库名称
 ```
 
 **主机地址配置说明**:
+
 - 宿主机服务（macOS/Windows）: `host.docker.internal`
 - 宿主机服务（Linux）: `172.17.0.1` 或实际IP
 - 远程服务器: 实际IP地址或域名
@@ -98,53 +98,106 @@ JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
-#### Nacos 配置
+#### 服务间调用配置
+
+**用于服务间相互调用的地址配置**（与 `SERVICE_IP` 用于 Nacos 注册不同）：
+
+```bash
+# Gateway Service 配置（用于调用其他服务）
+AUTH_SERVICE_IP=auth-service      # Docker 环境：使用服务名
+AUTH_SERVICE_PORT=8001
+HOST_SERVICE_IP=host-service      # Docker 环境：使用服务名
+HOST_SERVICE_PORT=8003
+
+# Auth Service 配置（用于调用其他服务）
+GATEWAY_SERVICE_IP=gateway-service
+GATEWAY_SERVICE_PORT=8000
+HOST_SERVICE_IP=host-service
+HOST_SERVICE_PORT=8003
+
+# Host Service 配置（用于调用其他服务）
+GATEWAY_SERVICE_IP=gateway-service
+GATEWAY_SERVICE_PORT=8000
+AUTH_SERVICE_IP=auth-service
+AUTH_SERVICE_PORT=8001
+```
+
+**配置说明**:
+
+- **Docker 环境**：在 `docker-compose.yml` 中，`*_SERVICE_IP` 应设置为对应的服务名（如 `auth-service`），Docker DNS 会自动解析
+- **本地开发环境**：使用 `127.0.0.1` 或 `localhost`，脚本 `start_services_local.*` 会自动设置
+- **优先级**：环境变量 > 自动检测（Docker 服务名 / `127.0.0.1`）
+
+> **注意**：这些变量用于"如何访问其他服务"，与 `SERVICE_IP`（用于向 Nacos 注册自己的地址）是不同的概念。  
+> 详细说明请参考 [SERVICE_IP 和 SERVICE_PORT 配置说明文档](./20-service-ip-port-config-explanation.md)
+
+#### 服务注册配置
+
+**用于向 Nacos 注册自己的地址**（每个服务需要知道自己的 IP 和端口）：
+
+```bash
+# 每个服务需要配置自己的 SERVICE_IP 和 SERVICE_PORT
+SERVICE_IP=172.20.0.100    # Gateway Service 的 IP（Docker 环境）
+SERVICE_PORT=8000          # Gateway Service 的端口
+
+# 或者使用服务名（Docker 环境会自动检测）
+# 本地开发环境会自动使用 127.0.0.1
+```
+
+**配置说明**:
+
+- **Docker 环境**：建议明确配置 `SERVICE_IP`（对应 `docker-compose.yml` 中的 `ipv4_address`）
+- **本地开发环境**：通常不需要配置，代码会自动使用 `127.0.0.1`
+- **自动检测**：代码支持自动检测容器 IP，但明确配置更可靠
+
+> 详细说明请参考 [SERVICE_IP 和 SERVICE_PORT 配置说明文档](./20-service-ip-port-config-explanation.md)
+
+<!-- #### Nacos 配置
 
 ```bash
 NACOS_SERVER_ADDR=http://nacos:8848
 NACOS_NAMESPACE=public
 NACOS_GROUP=DEFAULT_GROUP
-```
+``` -->
 
-## 服务管理脚本
+## 服务管理
+
+### 使用 Docker Compose 管理服务
+
+项目使用 Docker Compose 进行服务管理。所有服务管理操作都通过 `docker-compose` 命令完成。
 
 ### 启动服务
 
-#### 基本启动
+#### 基本启动（后台运行）
 
 ```bash
-./scripts/start_services.sh
+docker-compose up -d
 ```
 
 #### 重新构建并启动
 
 ```bash
-./scripts/start_services.sh -b
+docker-compose up -d --build
 ```
 
 #### 不使用缓存构建
 
 ```bash
-./scripts/start_services.sh -b --no-cache
+docker-compose build --no-cache
+docker-compose up -d
 ```
 
 #### 只启动特定服务
 
 ```bash
-./scripts/start_services.sh --only mysql
-./scripts/start_services.sh --only auth-service
-```
-
-#### 跳过特定服务
-
-```bash
-./scripts/start_services.sh --skip jaeger
+docker-compose up -d mariadb redis nacos jaeger
+docker-compose up -d auth-service
 ```
 
 #### 前台运行（查看日志）
 
 ```bash
-./scripts/start_services.sh -f
+docker-compose up
 ```
 
 ### 停止服务
@@ -152,27 +205,27 @@ NACOS_GROUP=DEFAULT_GROUP
 #### 基本停止
 
 ```bash
-./scripts/stop_services.sh
+docker-compose down
 ```
 
 #### 停止并删除数据卷
 
 ```bash
-./scripts/stop_services.sh -v
+docker-compose down -v
 ```
 
-⚠️ **警告**: 使用 `-v` 选项会删除所有数据，包括数据库数据！
+⚠️ **警告**: 使用 `-v` 选项会删除所有数据卷，包括数据库数据！
 
 #### 只停止特定服务
 
 ```bash
-./scripts/stop_services.sh --only mysql
+docker-compose stop mariadb
 ```
 
 #### 设置停止超时时间
 
 ```bash
-./scripts/stop_services.sh --timeout 30
+docker-compose stop --timeout 30
 ```
 
 ### 重启服务
@@ -180,26 +233,38 @@ NACOS_GROUP=DEFAULT_GROUP
 #### 基本重启
 
 ```bash
-./scripts/restart_services.sh
+docker-compose restart
 ```
 
 #### 重新构建并重启
 
 ```bash
-./scripts/restart_services.sh -b
+docker-compose up -d --build
 ```
 
-#### 快速重启（跳过健康检查）
+#### 重启特定服务
 
 ```bash
-./scripts/restart_services.sh --quick
+docker-compose restart gateway-service
 ```
 
-#### 只重启特定服务
+### 本地开发启动脚本
+
+对于本地开发环境，可以使用以下脚本：
+
+#### 启动本地服务（Linux/macOS）
 
 ```bash
-./scripts/restart_services.sh --only gateway-service
+./scripts/start_services_local.sh
 ```
+
+#### 启动本地服务（Windows）
+
+```bash
+scripts\start_services_local.bat
+```
+
+这些脚本会自动设置必要的环境变量（如 `*_SERVICE_IP=127.0.0.1`），方便本地开发。
 
 ## Docker Compose 配置
 
@@ -257,6 +322,60 @@ volumes:
   nacos_logs:      # Nacos 日志
   jaeger_data:     # Jaeger 数据
 ```
+
+### 服务间调用环境变量
+
+在 `docker-compose.yml` 中，每个服务都需要配置其他服务的地址，用于服务间调用：
+
+```yaml
+services:
+  gateway-service:
+    environment:
+      # 服务自身注册信息
+      SERVICE_NAME: gateway-service
+      SERVICE_PORT: 8000
+      SERVICE_IP: 172.20.0.100
+      
+      # 服务间调用配置（用于调用其他服务）
+      AUTH_SERVICE_IP: auth-service      # Docker 环境使用服务名
+      AUTH_SERVICE_PORT: 8001
+      HOST_SERVICE_IP: host-service
+      HOST_SERVICE_PORT: 8003
+      
+  auth-service:
+    environment:
+      # 服务自身注册信息
+      SERVICE_NAME: auth-service
+      SERVICE_PORT: 8001
+      SERVICE_IP: 172.20.0.101
+      
+      # 服务间调用配置
+      GATEWAY_SERVICE_IP: gateway-service
+      GATEWAY_SERVICE_PORT: 8000
+      HOST_SERVICE_IP: host-service
+      HOST_SERVICE_PORT: 8003
+      
+  host-service:
+    environment:
+      # 服务自身注册信息
+      SERVICE_NAME: host-service
+      SERVICE_PORT: 8003
+      SERVICE_IP: 172.20.0.103
+      
+      # 服务间调用配置
+      GATEWAY_SERVICE_IP: gateway-service
+      GATEWAY_SERVICE_PORT: 8000
+      AUTH_SERVICE_IP: auth-service
+      AUTH_SERVICE_PORT: 8001
+```
+
+**配置说明**:
+
+- **`*_SERVICE_IP`**：在 Docker 环境中使用服务名（如 `auth-service`），Docker DNS 会自动解析
+- **`*_SERVICE_PORT`**：对应服务的端口号
+- **自动回退**：如果未配置，代码会根据运行环境自动选择：
+  - Docker 环境：使用服务名（如 `auth-service`）
+  - 本地环境：使用 `127.0.0.1`
 
 ## 常用操作
 
@@ -372,11 +491,58 @@ docker system prune -f
 2. **测试服务连通性**
 
    ```bash
-   docker-compose exec gateway-service ping mysql
+   docker-compose exec gateway-service ping auth-service
    docker-compose exec gateway-service curl http://auth-service:8001/health
+   docker-compose exec gateway-service curl http://host-service:8003/health
    ```
 
-### Nacos 注册失败
+3. **检查服务间调用环境变量**
+
+   ```bash
+   # 检查 Gateway Service 的环境变量
+   docker-compose exec gateway-service env | grep SERVICE
+   
+   # 检查 Auth Service 的环境变量
+   docker-compose exec auth-service env | grep SERVICE
+   
+   # 检查 Host Service 的环境变量
+   docker-compose exec host-service env | grep SERVICE
+   ```
+
+4. **验证服务发现配置**
+
+   ```bash
+   # 检查服务是否正确注册到 Nacos
+   curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=gateway-service
+   curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=auth-service
+   curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=host-service
+   ```
+
+5. **检查服务日志中的连接错误**
+
+   ```bash
+   # 查看 Gateway Service 日志中的连接错误
+   docker-compose logs gateway-service | grep -i "connection\|timeout\|refused"
+   
+   # 查看 Auth Service 日志
+   docker-compose logs auth-service | grep -i "connection\|timeout\|refused"
+   ```
+
+6. **本地开发环境特殊说明**
+
+   如果是在本地开发环境（非 Docker），确保：
+
+   - 使用 `start_services_local.*` 脚本启动服务（会自动设置 `*_SERVICE_IP=127.0.0.1`）
+   - 或在 `.env` 文件中手动配置：
+
+     ```bash
+     AUTH_SERVICE_IP=127.0.0.1
+     AUTH_SERVICE_PORT=8001
+     HOST_SERVICE_IP=127.0.0.1
+     HOST_SERVICE_PORT=8003
+     ```
+
+<!-- ### Nacos 注册失败
 
 1. **检查 Nacos 是否启动**
 
@@ -390,7 +556,7 @@ docker system prune -f
    ```bash
    docker-compose logs nacos
    docker-compose logs gateway-service | grep -i nacos
-   ```
+   ``` -->
 
 ## 性能优化
 
@@ -481,7 +647,7 @@ docker run --rm -v intel-cw-ms_mysql_data:/data -v $(pwd):/backup \
   alpine tar xzf /backup/mysql_data_backup.tar.gz -C /data
 ```
 
-## 监控和告警
+<!-- ## 监控和告警
 
 ### Prometheus 指标
 
@@ -505,7 +671,7 @@ docker run --rm -v intel-cw-ms_mysql_data:/data -v $(pwd):/backup \
 - Gateway: <http://localhost:8000/health>
 - Auth Service: <http://localhost:8001/health>
 - Admin Service: <http://localhost:8002/health>
-- Host Service: <http://localhost:8003/health>
+- Host Service: <http://localhost:8003/health> -->
 
 ## 升级和迁移
 
@@ -529,36 +695,45 @@ docker-compose up -d --build
 
 ## 附录
 
-### 脚本选项参考
+### Docker Compose 常用命令参考
 
-#### start_services.sh
+#### 启动相关命令
 
-- `-h, --help`: 显示帮助信息
-- `-b, --build`: 重新构建镜像
-- `-d, --detach`: 后台运行（默认）
-- `-f, --foreground`: 前台运行
-- `--no-cache`: 构建时不使用缓存
-- `--pull`: 构建前拉取最新基础镜像
-- `--only <service>`: 只启动指定服务
-- `--skip <service>`: 跳过指定服务
+- `docker-compose up -d`: 后台启动所有服务
+- `docker-compose up`: 前台启动所有服务（查看日志）
+- `docker-compose up -d --build`: 重新构建并启动
+- `docker-compose up -d <service>`: 只启动指定服务
 
-#### stop_services.sh
+#### 停止相关命令
 
-- `-h, --help`: 显示帮助信息
-- `-v, --volumes`: 同时删除数据卷
-- `-r, --remove-orphans`: 删除孤立容器
-- `--only <service>`: 只停止指定服务
-- `--timeout <seconds>`: 设置停止超时时间
+- `docker-compose down`: 停止并删除容器
+- `docker-compose down -v`: 停止并删除容器和数据卷
+- `docker-compose stop`: 停止容器（不删除）
+- `docker-compose stop <service>`: 停止指定服务
 
-#### restart_services.sh
+#### 重启相关命令
 
-- `-h, --help`: 显示帮助信息
-- `-b, --build`: 重新构建镜像
-- `--no-cache`: 构建时不使用缓存
-- `--pull`: 构建前拉取最新基础镜像
-- `--only <service>`: 只重启指定服务
-- `--timeout <seconds>`: 设置停止超时时间
-- `--quick`: 快速重启（不等待健康检查）
+- `docker-compose restart`: 重启所有服务
+- `docker-compose restart <service>`: 重启指定服务
+- `docker-compose up -d --build`: 重新构建并重启
+
+#### 日志查看命令
+
+- `docker-compose logs -f`: 查看所有服务日志（实时）
+- `docker-compose logs -f <service>`: 查看指定服务日志
+- `docker-compose logs --tail=100 <service>`: 查看最近100行日志
+
+#### 镜像构建命令
+
+- `docker-compose build`: 构建所有服务镜像
+- `docker-compose build --no-cache`: 不使用缓存构建
+- `docker-compose build <service>`: 构建指定服务镜像
+
+#### 其他实用命令
+
+- `docker-compose ps`: 查看服务状态
+- `docker-compose config`: 查看最终配置
+- `docker-compose exec <service> <command>`: 在容器中执行命令
 
 ### 常见问题
 
@@ -571,8 +746,8 @@ docker-compose logs -f [service_name]
 **Q: 如何重置所有数据？**
 
 ```bash
-./scripts/stop_services.sh -v
-./scripts/start_services.sh -b
+docker-compose down -v
+docker-compose up -d --build
 ```
 
 **Q: 如何只启动基础设施服务？**
@@ -586,9 +761,3 @@ docker-compose up -d mysql redis nacos jaeger
 ```bash
 docker-compose up -d --no-deps --build [service_name]
 ```
-
----
-
-**最后更新**: 2025-01-29
-**版本**: 1.0.0
-**维护者**: Intel EC 开发团队

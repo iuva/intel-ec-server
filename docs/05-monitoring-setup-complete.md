@@ -31,8 +31,7 @@
   - 只保留 `intel-cw-microservices.json`
 
 ### 修复脚本
-- `scripts/fix_grafana_dashboard_uid.py` - 自动修复仪表盘 datasource 格式
-- `scripts/fix_grafana_uid_complete.sh` - 完整修复流程脚本
+- `scripts/fix_grafana_dashboard_uid.py` - 自动修复仪表盘 datasource 格式（如果存在）
 
 详细修复说明请查看: [GRAFANA_UID_FIX.md](./GRAFANA_UID_FIX.md)
 
@@ -483,12 +482,12 @@ curl http://localhost:8000/health
 如果你刚刚拉取了最新的配置修复，运行以下命令应用修复：
 
 ```bash
-# 方式1: 使用自动化脚本（推荐）
-bash scripts/apply_monitoring_fix.sh
+# 方式1: 使用验证脚本（推荐）
+bash scripts/verify_monitoring.sh
 
 # 方式2: 手动执行
 # 1. 验证配置
-bash scripts/verify_monitoring_fix.sh
+bash scripts/verify_monitoring.sh
 
 # 2. 重启服务
 docker-compose restart prometheus grafana

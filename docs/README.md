@@ -256,17 +256,3 @@ XX-topic-name.md
 | Gateway Service README | services/gateway-service/README.md | 网关服务使用说明 |
 | Auth Service README | services/auth-service/README.md | 认证服务使用说明 |
 | Host Service README | services/host-service/README.md | 主机服务使用说明 |
-
----
-
-## 📧 联系我们
-
-如果您对文档有任何疑问或建议，请：
-
-1. 提交 Issue 到项目仓库
-2. 参与文档贡献
-3. 加入项目讨论组
-
----
-
-**📚 持续更新中... | 最后更新: 2025-01-29**

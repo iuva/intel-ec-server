@@ -534,9 +534,3 @@ LOG_LEVEL: INFO
 - [Loguru 官方文档](https://loguru.readthedocs.io/)
 - [Docker Compose Logs 文档](https://docs.docker.com/compose/reference/logs/)
 - [Docker Logs 文档](https://docs.docker.com/engine/reference/commandline/logs/)
-
----
-
-**最后更新**: 2025-11-01  
-**维护者**: Intel EC 开发团队
-

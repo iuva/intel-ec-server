@@ -235,7 +235,7 @@ NACOS_AUTH_TOKEN=your-base64-encoded-token-here
 使用脚本生成 Token：
 
 ```bash
-./scripts/generate_nacos_token.sh
+./scripts/generate_token.sh
 ```
 
 ## ✅ 配置验证
@@ -259,7 +259,7 @@ redis-cli -h your_redis_host -p 6379 -a your_***REMOVED***word ping
 ./scripts/verify_setup.sh
 
 # 验证外部数据库连接
-./scripts/verify_external_db.sh
+./scripts/verify_setup.sh
 ```
 
 ## 🐛 常见问题
@@ -331,7 +331,3 @@ redis-cli -h your_redis_host -p 6379 -a your_***REMOVED***word ping
 - [Nacos 故障排除](./10-nacos-troubleshooting.md) - Nacos 常见问题
 - [部署指南](./03-deployment-guide.md) - 生产环境配置
 
----
-
-**最后更新**: 2025-11-01  
-**维护者**: Intel EC 开发团队
