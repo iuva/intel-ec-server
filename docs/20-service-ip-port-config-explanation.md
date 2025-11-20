@@ -40,6 +40,22 @@ await nacos_manager.register_service(
 服务注册 = 把自己的电话号码写到"电话簿"里（需要自己的信息）
 ```
 
+## 🌐 服务间调用专用变量
+
+为了兼容 Docker 网络和本地开发环境，所有服务在调用彼此前需要通过以下变量构建后备地址：
+
+| 变量 | 作用 | Docker 默认值 | 本地默认值 |
+| --- | --- | --- | --- |
+| `GATEWAY_SERVICE_IP` / `GATEWAY_SERVICE_PORT` | 指向网关（供 host/auth 调用） | `gateway-service:8000` | `127.0.0.1:8000` |
+| `AUTH_SERVICE_IP` / `AUTH_SERVICE_PORT` | 指向认证服务（供 gateway/host 调用） | `auth-service:8001` | `127.0.0.1:8001` |
+| `HOST_SERVICE_IP` / `HOST_SERVICE_PORT` | 指向主机服务（供 gateway 调用） | `host-service:8003` | `127.0.0.1:8003` |
+
+- **本地开发**：脚本 `start_services_local.*` 会自动将这些变量设置为 `127.0.0.1`，无需手动修改。
+- **Docker 环境**：在 `docker-compose.yml` 中将 `*_SERVICE_IP` 设置为对应的服务名（如 `auth-service`），即可通过 Docker DNS 互相访问。
+- **优先级**：`*_SERVICE_IP` + `*_SERVICE_PORT` > 自动检测（Docker 服务名 / `127.0.0.1`）。
+
+> 这些变量仅用于“如何访问其他服务”，与自身在 Nacos 中注册使用的 `SERVICE_IP`、`SERVICE_PORT` 互不影响。
+
 ## 🤖 自动检测功能（已实现）
 
 ### 当前实现的自动检测逻辑

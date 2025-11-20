@@ -62,11 +62,13 @@ uri = f"ws://localhost:8000/api/v1/ws/host?token={token}"
 ### 连接端点
 
 **直接连接 Host Service:**
+
 ```
 ws://localhost:8003/api/v1/ws/host
 ```
 
 **通过 Gateway 连接:**
+
 ```
 ws://localhost:8000/api/v1/ws/host
 ```
@@ -81,16 +83,19 @@ ws://localhost:8000/api/v1/ws/host
 ### ⚠️ 重要变更
 
 **新版本 (v1.2.0+):**
+
 - ✅ **不再需要** 在 URL 中传递 `host_id`
 - ✅ `host_id` 自动从 JWT token 的 `sub` 字段中提取
 - ✅ 更安全、更符合标准
 
 **旧版本 (已废弃):**
+
 ```
 ❌ ws://localhost:8003/api/v1/ws/host/{host_id}?token=xxx
 ```
 
 **新版本 (推荐):**
+
 ```
 ✅ ws://localhost:8003/api/v1/ws/host?token=xxx
 ```
@@ -191,6 +196,7 @@ ws.onclose = (event) => {
 ### Token 获取
 
 #### 管理员Token
+
 ```bash
 curl -X POST 'http://localhost:8000/api/v1/auth/admin/login' \
   -H 'Content-Type: application/json' \
@@ -201,6 +207,7 @@ curl -X POST 'http://localhost:8000/api/v1/auth/admin/login' \
 ```
 
 #### 设备Token
+
 ```bash
 curl -X POST 'http://localhost:8000/api/v1/auth/device/login' \
   -H 'Content-Type: application/json' \
@@ -230,11 +237,13 @@ JWT Token 必须包含以下字段：
 ### 认证方式
 
 #### 方式1: 查询参数
+
 ```
 ws://localhost:8003/api/v1/ws/host?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 #### 方式2: Authorization Header (推荐)
+
 ```python
 import websockets
 
@@ -247,6 +256,7 @@ async with websockets.connect(
 ```
 
 #### 方式3: X-Token Header
+
 ```python
 async with websockets.connect(
     "ws://localhost:8003/api/v1/ws/host",
@@ -380,6 +390,78 @@ asyncio.run(main())
 
 ---
 
+## 🔄 消息流向全景
+
+为了方便 Agent、Browser 插件以及后端排查问题，本节整理了最重要的消息流向。所有消息都遵循 [消息类型](#-消息类型) 中的格式，以下流程引用 `MessageType` 枚举值，方便与代码对应。
+
+### 1. 连接建立与认证（Server ↔ Agent）
+
+```
+Browser/Agent ──► Gateway/Host Service ──► 验证 JWT
+                             │
+                             └──► `welcome`（Server → Agent）
+```
+
+1. Agent 通过 Gateway 或 Host Service 发起 WebSocket 连接。
+2. 服务端验证 Token，提取 `host_id`/`agent_id`。
+3. 连接建立成功后发送 `welcome`，携带 `agent_id`、当前时间等信息。
+
+### 2. 心跳与离线判定（Agent ↔ Server）
+
+```
+Agent ──► `heartbeat`
+Server ──► `heartbeat_ack`
+Server ──► `heartbeat_timeout_warning`（超时 1 次）
+Server ──► `host_offline_notification`（超时 2 次仍未恢复）
+```
+
+- 默认 30~60s 发送一次 `heartbeat`。
+- Server 每次收到心跳后返回 `heartbeat_ack`。
+- 如果 60s 内未收到心跳，会先推送 `heartbeat_timeout_warning`，提醒 Agent 10 秒内自检。
+- 如果再次超时，Server 会主动关闭连接，并广播 `host_offline_notification`，驱动 host 状态更新。
+
+### 3. 状态同步 & 审批场景（Agent → Server）
+
+```
+Agent ──► `status_update`
+Server ──► 更新 host_rec / host_exec_log
+Server ──► `status_update_ack`
+```
+
+- Agent 上报运行状态、资源占用、任务进度等。
+- 服务端写入数据库，并在需要时触发审批链（详见 `docs/host-state-transition-rules.md`）。
+- 成功后返回 `status_update_ack`，避免重复上报。
+
+### 4. 命令下发与执行结果（Server → Agent）
+
+```
+控制台/API ──► Server ──► `command`
+Agent ──► 执行指令
+Agent ──► `command_response`（成功或失败）
+```
+
+- 控制台通过 `POST /api/v1/host/ws/send` / `send-to-hosts` / `broadcast` 提交命令。
+- Server 将命令序列化成 `command` 推送给指定 Agent。
+- Agent 执行后用同一个 `command_id` 回传 `command_response`，便于审计。
+- 如果 Agent 在执行过程中检测到 VNC/测试任务启动结果，会额外发送 `connection_result` 告知浏览器插件。
+
+### 5. 浏览器 VNC 连接与日志监控（Browser → Server → Agent）
+
+```
+Browser ──► HTTP `/api/v1/browser/vnc/report` 上报结果
+Server ──► 更新 host_exec_log / host_state
+Server ──► `connection_notification`（Server → Agent）
+Agent ──► 启动日志监控/回放
+```
+
+- 浏览器插件在 VNC 链接成功后通过 HTTP 报告状态。
+- Server 写入数据库并派发 `connection_notification` 给对应 Agent，携带 `host_id`、动作（`start_log_monitoring`）等信息。
+- Agent 收到通知后进入日志监控模式，配合浏览器实时展示。
+
+> 📌 提示：更多状态流转可参考 `docs/host-state-transition-rules.md`，WebSocket 消息是其中的关键触发器。
+
+---
+
 ## 📨 消息类型
 
 ### 消息格式规范
@@ -406,11 +488,15 @@ asyncio.run(main())
 | `status_update_ack` | Server → Client | 状态更新确认 | [示例](#status_update_ack-状态更新确认) |
 | `command` | Server → Client | 执行命令 | [示例](#command-命令) |
 | `command_response` | Client → Server | 命令执行结果 | [示例](#command_response-命令响应) |
-| `notification` | Server → Client | 系统通知 | [示例](#notification-通知) |
+| `notification` | Server → Client | 系统通知/公告 | [示例](#notification-通知) |
 | `error` | Server → Client | 错误消息 | [示例](#error-错误) |
 | `config_update` | Server → Client | 配置更新 | [示例](#config_update-配置更新) |
 | `log` | Client → Server | 日志上报 | [示例](#log-日志) |
 | `metric` | Client → Server | 指标数据 | [示例](#metric-指标) |
+| `connection_result` | Client → Server | Agent 上报连接结果（如 VNC） | [示例](#connection_result-连接结果) |
+| `heartbeat_timeout_warning` | Server → Client | 心跳超时预警 | [示例](#heartbeat_timeout_warning-心跳超时预警) |
+| `host_offline_notification` | Server → Client | Host 下线通知 | [示例](#host_offline_notification-host-下线通知) |
+| `connection_notification` | Server → Client | 连接成功后通知 Agent 开启日志监控 | [示例](#connection_notification-连接通知) |
 
 ### 消息类型详解
 
@@ -520,6 +606,7 @@ asyncio.run(main())
 ```
 
 **失败响应:**
+
 ```json
 {
   "type": "command_response",
@@ -621,6 +708,73 @@ asyncio.run(main())
 }
 ```
 
+#### `connection_result` 连接结果
+
+Agent 在完成某些操作（例如代理 VNC、执行远控指令）后需要把成功/失败情况告诉服务器，便于浏览器或控制台更新 UI。
+
+```json
+{
+  "type": "connection_result",
+  "host_id": "1846486359367955051",
+  "task_id": "case-20250129-001",
+  "success": true,
+  "message": "VNC 连接成功",
+  "details": {
+    "user": "qa_user",
+    "ip": "10.1.2.3",
+    "session_id": "vnc-aaa-bbb"
+  },
+  "timestamp": "2025-10-28T10:00:05+00:00"
+}
+```
+
+#### `heartbeat_timeout_warning` 心跳超时预警
+
+当 Server 超过阈值未收到心跳，会先发送警告，让 Agent 有 10 秒缓冲时间打印日志或尝试自检。若仍未恢复，将触发下线流程。
+
+```json
+{
+  "type": "heartbeat_timeout_warning",
+  "message": "60 秒内未收到心跳，请检查网络/进程状态",
+  "timeout": 60,
+  "host_id": "1846486359367955051",
+  "timestamp": "2025-10-28T10:02:00+00:00"
+}
+```
+
+#### `host_offline_notification` Host 下线通知
+
+的确确认 Agent 已经掉线时推送。Agent 收到后应停止本地任务并更新埋点；Browser/控制台也会据此刷新 host 状态。
+
+```json
+{
+  "type": "host_offline_notification",
+  "host_id": "1846486359367955051",
+  "message": "Host 已离线，日志监控已停止",
+  "reason": "heartbeat_timeout",
+  "timestamp": "2025-10-28T10:02:15+00:00"
+}
+```
+
+#### `connection_notification` 连接通知
+
+当浏览器 VNC 报告成功，Server 会把这个通知推送给 Agent，指导其开始日志监控或执行后续动作。
+
+```json
+{
+  "type": "connection_notification",
+  "host_id": "1846486359367955051",
+  "action": "start_log_monitoring",
+  "message": "VNC 连接成功，请开始日志监控",
+  "details": {
+    "browser_user": "qa_admin",
+    "case_id": "case-20250129-001",
+    "ip": "10.1.2.3"
+  },
+  "timestamp": "2025-10-28T10:00:12+00:00"
+}
+```
+
 ---
 
 ## 🌐 获取在线Host
@@ -635,6 +789,7 @@ curl -X GET 'http://localhost:8000/api/v1/host/ws/hosts' \
 ```
 
 **响应:**
+
 ```json
 {
   "code": 200,
@@ -659,6 +814,7 @@ curl -X GET 'http://localhost:8000/api/v1/host/ws/status/1846486359367955051' \
 ```
 
 **响应:**
+
 ```json
 {
   "code": 200,
@@ -748,6 +904,7 @@ curl -X POST 'http://localhost:8000/api/v1/host/ws/send' \
 ```
 
 **响应:**
+
 ```json
 {
   "code": 200,
@@ -781,6 +938,7 @@ curl -X POST 'http://localhost:8000/api/v1/host/ws/send-to-hosts' \
 ```
 
 **响应:**
+
 ```json
 {
   "code": 200,
@@ -895,6 +1053,7 @@ curl -X POST 'http://localhost:8000/api/v1/host/ws/broadcast?exclude_host_id=184
 ```
 
 **响应:**
+
 ```json
 {
   "code": 200,
@@ -1202,10 +1361,12 @@ if __name__ == "__main__":
 **症状**: `InvalidStatusCode: server rejected WebSocket connection: HTTP 401`
 
 **原因**:
+
 - Token无效或已过期
 - Token未正确传递
 
 **解决方案**:
+
 ```python
 # 1. 检查Token是否有效
 async def verify_token(token: str):
@@ -1238,6 +1399,7 @@ async def get_new_token():
 **原因**: 目标Host没有建立WebSocket连接
 
 **解决方案**:
+
 ```python
 # 1. 检查Host连接状态
 async def check_host_connected(token: str, host_id: str) -> bool:
@@ -1266,6 +1428,7 @@ async def wait_for_host(token: str, host_id: str, timeout: int = 60):
 **原因**: Host超过60秒未发送心跳
 
 **解决方案**:
+
 1. 检查网络连接稳定性
 2. 调整心跳间隔（建议30秒）
 3. 增加错误重试机制
@@ -1343,7 +1506,14 @@ wscat -c "ws://localhost:8003/api/v1/ws/host?token=$TOKEN"
 
 ## 📝 更新历史
 
+### v1.3.0 (2025-11-19)
+
+- ✅ 新增“消息流向全景”章节，覆盖连接、心跳、状态同步、命令、VNC 日志监控等链路
+- ✅ 补充 `connection_result`、`heartbeat_timeout_warning`、`host_offline_notification`、`connection_notification` 的使用说明
+- ✅ 更新消息类型总表，指明方向与业务场景
+
 ### v1.2.0 (2025-10-28)
+
 - ✅ 完整的WebSocket使用指南
 - ✅ 新增从Token获取host_id的认证优化
 - ✅ 心跳检测详细说明
@@ -1357,4 +1527,3 @@ wscat -c "ws://localhost:8003/api/v1/ws/host?token=$TOKEN"
 **作者**: Intel EC开发团队  
 **最后更新**: 2025-10-28  
 **文档版本**: 1.0
-

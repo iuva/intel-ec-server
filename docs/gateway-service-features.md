@@ -245,12 +245,16 @@ Gateway 使用静态配置方式管理后端服务地址，通过环境变量配
 **环境变量配置**:
 
 ```bash
+# 网关服务自身（供其他服务引用）
+GATEWAY_SERVICE_IP=gateway-service
+GATEWAY_SERVICE_PORT=8000
+
 # 认证服务
-SERVICE_HOST_AUTH=auth-service
+AUTH_SERVICE_IP=auth-service
 AUTH_SERVICE_PORT=8001
 
 # 主机服务
-SERVICE_HOST_HOST=host-service
+HOST_SERVICE_IP=host-service
 HOST_SERVICE_PORT=8003
 ```
 

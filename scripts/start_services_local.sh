@@ -46,19 +46,24 @@ load_env_file() {
         # 本地开发特定配置：设置服务主机地址为 localhost
         # Docker 启动时使用默认值（auth-service, host-service）
         echo -e "${BLUE}🔧 配置本地服务连接...${NC}"
-        export SERVICE_HOST_AUTH="127.0.0.1"
-        export SERVICE_HOST_HOST="127.0.0.1"
+        export GATEWAY_SERVICE_IP="127.0.0.1"
+        export AUTH_SERVICE_IP="127.0.0.1"
+        export HOST_SERVICE_IP="127.0.0.1"
         
         # 本地开发特定配置：Jaeger 追踪端点
         # Docker 启动时使用 jaeger:4317，本地开发使用 localhost:4317
         export JAEGER_ENDPOINT="localhost:4317"
         
         echo -e "${GREEN}✓ 环境变量加载成功${NC}"
-        echo -e "${GREEN}  • SERVICE_HOST_AUTH: $SERVICE_HOST_AUTH${NC}"
-        echo -e "${GREEN}  • SERVICE_HOST_HOST: $SERVICE_HOST_HOST${NC}"
+        echo -e "${GREEN}  • GATEWAY_SERVICE_IP: $GATEWAY_SERVICE_IP${NC}"
+        echo -e "${GREEN}  • AUTH_SERVICE_IP: $AUTH_SERVICE_IP${NC}"
+        echo -e "${GREEN}  • HOST_SERVICE_IP: $HOST_SERVICE_IP${NC}"
         echo -e "${GREEN}  • JAEGER_ENDPOINT: $JAEGER_ENDPOINT${NC}"
     else
         echo -e "${YELLOW}⚠️  警告：.env 文件不存在，使用默认环境变量${NC}"
+        export GATEWAY_SERVICE_IP="127.0.0.1"
+        export AUTH_SERVICE_IP="127.0.0.1"
+        export HOST_SERVICE_IP="127.0.0.1"
     fi
 }
 

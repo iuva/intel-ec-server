@@ -196,6 +196,17 @@ SERVICE_PORT=8000 GATEWAY_SERVICE_PORT=8000 \
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+> **⚠️ 重要：AUTH_SERVICE_URL 配置**
+>
+> 本地运行 Gateway 时，默认的 `http://auth-service:8001` 仅在 Docker 网络可解析。  
+> 请在 `.env` 中显式添加：
+>
+> ```bash
+> AUTH_SERVICE_URL=http://localhost:8001
+> ```
+>
+> 修改后重启 Gateway，令牌验证才能转发到本地运行的 Auth Service。
+
 **访问地址**:
 
 - API 文档: <http://localhost:8000/docs>

@@ -70,16 +70,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
         }
 
         # ✅ 从配置读取认证服务 URL 和端口（兼容 Docker 和本地开发）
-        # 优先级：AUTH_SERVICE_URL > (AUTH_SERVICE_HOST + AUTH_SERVICE_PORT) > 默认值
+        # 优先级：AUTH_SERVICE_URL > (AUTH_SERVICE_IP + AUTH_SERVICE_PORT) > 自动判定（Docker/本地）
         auth_service_url = os.getenv("AUTH_SERVICE_URL")
         if auth_service_url:
             # 如果设置了完整的 URL，直接使用
-            self.auth_service_url = auth_service_url
+            self.auth_service_url = auth_service_url.rstrip("/")
         else:
-            # 否则从主机名和端口构建
-            auth_service_host = os.getenv("AUTH_SERVICE_HOST", "auth-service")
-            auth_service_port = int(os.getenv("AUTH_SERVICE_PORT", "8001"))
+            # 否则从 IP 和端口构建（根据运行环境自动选择默认值）
+            is_docker_env = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
+
+            auth_service_host = (
+                os.getenv("AUTH_SERVICE_IP")
+                or ("auth-service" if is_docker_env else "127.0.0.1")
+            )
+            auth_service_port = int(
+                os.getenv("AUTH_SERVICE_PORT", "8001")
+            )
+
             self.auth_service_url = f"http://{auth_service_host}:{auth_service_port}"
+
+        logger.info(
+            "认证中间件初始化完成",
+            extra={
+                "auth_service_url": self.auth_service_url,
+            },
+        )
 
         # ✅ 从配置读取 HTTP 客户端超时配置
         auth_timeout = float(os.getenv("AUTH_MIDDLEWARE_TIMEOUT", "10.0"))

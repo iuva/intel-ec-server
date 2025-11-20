@@ -32,16 +32,19 @@ if exist "%ENV_FILE%" (
     
     REM 本地开发特定配置：设置服务主机地址为 localhost
     echo [INFO] 配置本地服务连接...
-    set "SERVICE_HOST_AUTH=127.0.0.1"
-    set "SERVICE_HOST_HOST=127.0.0.1"
+    set "GATEWAY_SERVICE_IP=127.0.0.1"
+    set "AUTH_SERVICE_IP=127.0.0.1"
+    set "HOST_SERVICE_IP=127.0.0.1"
     echo [OK] 本地服务地址已配置
-    echo   - SERVICE_HOST_AUTH: !SERVICE_HOST_AUTH!
-    echo   - SERVICE_HOST_HOST: !SERVICE_HOST_HOST!
+    echo   - GATEWAY_SERVICE_IP: !GATEWAY_SERVICE_IP!
+    echo   - AUTH_SERVICE_IP: !AUTH_SERVICE_IP!
+    echo   - HOST_SERVICE_IP: !HOST_SERVICE_IP!
 ) else (
     echo [WARNING] .env 文件不存在，使用默认环境变量
     REM 即使没有 .env，也要设置本地开发配置
-    set "SERVICE_HOST_AUTH=127.0.0.1"
-    set "SERVICE_HOST_HOST=127.0.0.1"
+    set "GATEWAY_SERVICE_IP=127.0.0.1"
+    set "AUTH_SERVICE_IP=127.0.0.1"
+    set "HOST_SERVICE_IP=127.0.0.1"
 )
 goto :EOF
 

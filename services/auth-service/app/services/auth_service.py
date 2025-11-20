@@ -64,10 +64,7 @@ class AuthService:
                 "",
             ):
                 logger.error("生产环境必须设置 JWT_SECRET_KEY 环境变量，且不能使用默认值")
-                raise ValueError(
-                    "生产环境必须设置 JWT_SECRET_KEY 环境变量。"
-                    "请在 .env 文件中设置 JWT_SECRET_KEY，或通过环境变量传递。"
-                )
+                raise ValueError("生产环境必须设置 JWT_SECRET_KEY 环境变量，请在 .env 中配置 JWT_SECRET_KEY 或通过环境变量传递。")
         # 开发环境：如果没有设置，使用默认值并警告
         elif not jwt_secret_key or jwt_secret_key in (
             "your-secret-key-change-in-production",
@@ -76,8 +73,7 @@ class AuthService:
             "",
         ):
             logger.warning(
-                "JWT_SECRET_KEY 未设置或使用默认值，这在生产环境中是不安全的。"
-                "请设置 JWT_SECRET_KEY 环境变量。"
+                "JWT_SECRET_KEY 未设置或使用默认值，这在生产环境中是不安全的，请设置该环境变量。"
             )
             jwt_secret_key = "your-secret-key-change-in-production"
 
@@ -574,6 +570,7 @@ class AuthService:
 
                 token_type = "bearer"
                 return LoginResponse(
+                    access_token=access_token,
                     token=access_token,
                     refresh_token=refresh_token,
                     token_type=token_type,
@@ -751,6 +748,7 @@ class AuthService:
 
                 token_type = "bearer"
                 return LoginResponse(
+                    access_token=access_token,
                     token=access_token,
                     refresh_token=refresh_token,
                     token_type=token_type,

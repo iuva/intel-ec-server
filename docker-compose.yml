@@ -181,8 +181,11 @@ services:
       SERVICE_PORT: 8000
       GATEWAY_SERVICE_PORT: 8000
       SERVICE_IP: 172.20.0.100
-      SERVICE_HOST_AUTH: auth-service
-      SERVICE_HOST_HOST: host-service
+      GATEWAY_SERVICE_IP: gateway-service
+      AUTH_SERVICE_IP: auth-service
+      AUTH_SERVICE_PORT: 8001
+      HOST_SERVICE_IP: host-service
+      HOST_SERVICE_PORT: 8003
       # MariaDB配置（使用Docker网络服务名）
       MARIADB_HOST: intel-mariadb
       MARIADB_PORT: "3306"
@@ -260,6 +263,11 @@ services:
       SERVICE_PORT: 8001
       AUTH_SERVICE_PORT: 8001
       SERVICE_IP: 172.20.0.101
+      GATEWAY_SERVICE_IP: gateway-service
+      GATEWAY_SERVICE_PORT: 8000
+      AUTH_SERVICE_IP: auth-service
+      HOST_SERVICE_IP: host-service
+      HOST_SERVICE_PORT: 8003
       # MariaDB配置（使用Docker网络服务名）
       MARIADB_HOST: intel-mariadb
       MARIADB_PORT: "3306"
@@ -330,6 +338,11 @@ services:
       SERVICE_PORT: 8003
       HOST_SERVICE_PORT: 8003
       SERVICE_IP: 172.20.0.103
+      GATEWAY_SERVICE_IP: gateway-service
+      GATEWAY_SERVICE_PORT: 8000
+      AUTH_SERVICE_IP: auth-service
+      AUTH_SERVICE_PORT: 8001
+      HOST_SERVICE_IP: host-service
       # MariaDB配置（使用Docker网络服务名）
       MARIADB_HOST: intel-mariadb
       MARIADB_PORT: "3306"

@@ -48,22 +48,28 @@ class ServiceDiscovery:
         # 服务地址缓存: {service_name: {"url": "http://...", "timestamp": 123456}}
         self._cache: Dict[str, Dict[str, Any]] = {}
 
-        # 后备静态服务地址（环境变量优先）
-        # ✅ 修复：本地开发环境使用 127.0.0.1，Docker 环境使用服务名
-        # 检查是否在 Docker 环境中（通过检查环境变量或文件系统）
-        is_docker = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
-        auth_host = os.getenv("SERVICE_HOST_AUTH", "127.0.0.1" if not is_docker else "auth-service")
-        host_host = os.getenv("SERVICE_HOST_HOST", "127.0.0.1" if not is_docker else "host-service")
+        # 是否运行在 Docker 环境（影响默认回退 IP）
+        self._is_docker = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
 
-        self._fallback_urls = {
-            "auth-service": auth_host,
-            "host-service": host_host,
+        # 后备静态服务地址（环境变量优先）
+        self._service_ip_envs = {
+            "gateway-service": os.getenv("GATEWAY_SERVICE_IP"),
+            "auth-service": os.getenv("AUTH_SERVICE_IP"),
+            "host-service": os.getenv("HOST_SERVICE_IP"),
+        }
+
+        # Docker 默认服务名（用于容器间通信）
+        self._default_service_hosts = {
+            "gateway-service": "gateway-service",
+            "auth-service": "auth-service",
+            "host-service": "host-service",
         }
 
         # ✅ 从环境变量读取服务端口映射（用于后备地址）
         self._service_ports = {
-            "auth-service": int(os.getenv("SERVICE_PORT_AUTH", "8001")),
-            "host-service": int(os.getenv("SERVICE_PORT_HOST", "8003")),
+            "gateway-service": int(os.getenv("GATEWAY_SERVICE_PORT", "8000")),
+            "auth-service": int(os.getenv("AUTH_SERVICE_PORT", "8001")),
+            "host-service": int(os.getenv("HOST_SERVICE_PORT", "8003")),
         }
 
         logger.info(
@@ -71,7 +77,7 @@ class ServiceDiscovery:
             extra={
                 "nacos_enabled": nacos_manager is not None,
                 "cache_ttl": cache_ttl,
-                "fallback_urls": self._fallback_urls,
+                "service_ip_envs": self._service_ip_envs,
             },
         )
 
@@ -216,9 +222,15 @@ class ServiceDiscovery:
         full_service_name = short_to_full.get(service_name, service_name)
 
         # 获取后备主机名
-        fallback_host = self._fallback_urls.get(full_service_name, full_service_name)
+        ip_override = self._service_ip_envs.get(full_service_name)
+        if ip_override:
+            fallback_host = ip_override
+        else:
+            if self._is_docker:
+                fallback_host = self._default_service_hosts.get(full_service_name, full_service_name)
+            else:
+                fallback_host = "127.0.0.1"
 
-        # ✅ 从配置读取端口（支持环境变量覆盖）
         port = self._service_ports.get(full_service_name, 8000)
 
         return f"http://{fallback_host}:{port}"
