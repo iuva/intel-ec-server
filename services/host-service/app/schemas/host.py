@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class HostBase(BaseModel):
@@ -668,7 +668,7 @@ class AdminOtaDeployRequest(BaseModel):
     id: int = Field(..., description="配置ID（主键）", gt=0)
     conf_ver: str = Field(..., description="配置版本号", min_length=1)
     conf_name: str = Field(..., description="配置名称", min_length=1)
-    conf_url: HttpUrl = Field(..., description="OTA 包下载地址")
+    conf_url: str = Field(..., description="OTA 包下载地址（字符串，允许任意格式）")
     conf_md5: str = Field(
         ...,
         description="OTA 包 MD5 校验值（32位十六进制）",
