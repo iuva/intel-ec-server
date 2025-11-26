@@ -69,14 +69,15 @@ async def list_ota_configs(
     业务逻辑：
     - 查询 sys_conf 表
     - 条件：conf_key = "ota", state_flag = 0, del_flag = 0
-    - 返回：conf_ver, conf_name, conf_json 数据列表（包含 conf_url, conf_md5）
+    - 返回：conf_ver, conf_name, conf_url, conf_md5 数据列表
 
     ## 返回字段
     - `ota_configs`: OTA 配置列表，每个配置包含：
         - `id`: 配置ID（主键）
         - `conf_ver`: 配置版本号
         - `conf_name`: 配置名称
-    - `conf_json`: 配置 JSON（包含 `conf_url`, `conf_md5`）
+        - `conf_url`: OTA 包下载地址
+        - `conf_md5`: OTA 包 MD5 校验值
     - `total`: 配置总数
 
     Args:

@@ -633,7 +633,8 @@ class AdminOtaConfigInfo(BaseModel):
     id: str = Field(description="配置ID（主键）")
     conf_ver: Optional[str] = Field(default=None, description="配置版本号")
     conf_name: Optional[str] = Field(default=None, description="配置名称")
-    conf_json: Optional[Dict[str, Any]] = Field(default=None, description="配置 JSON")
+    conf_url: Optional[str] = Field(default=None, description="OTA 包下载地址")
+    conf_md5: Optional[str] = Field(default=None, description="OTA 包 MD5 校验值")
 
     model_config = {"from_attributes": True}
 

@@ -47,14 +47,15 @@ class AdminOtaService:
         业务逻辑：
         - 查询 sys_conf 表
         - 条件：conf_key = "ota", state_flag = 0, del_flag = 0
-        - 返回：id, conf_ver, conf_name, conf_json 数据列表
+        - 返回：id, conf_ver, conf_name, conf_url, conf_md5 数据列表
 
         Returns:
             List[Dict[str, Any]]: OTA 配置列表，每个配置包含：
                 - id: 配置ID（主键）
                 - conf_ver: 配置版本号
                 - conf_name: 配置名称
-                - conf_json: 配置 JSON
+                - conf_url: OTA 包下载地址
+                - conf_md5: OTA 包 MD5 校验值
 
         Raises:
             BusinessError: 查询失败时抛出业务异常
@@ -84,11 +85,13 @@ class AdminOtaService:
             # 转换为字典列表
             ota_configs = []
             for row in rows:
+                json_data = row.conf_json or {}
                 ota_config = {
                     "id": str(row.id),  # ✅ 转换为字符串避免精度丢失
                     "conf_ver": row.conf_ver,
                     "conf_name": row.conf_name,
-                    "conf_json": row.conf_json,
+                    "conf_url": json_data.get("conf_url"),
+                    "conf_md5": json_data.get("conf_md5"),
                 }
                 ota_configs.append(ota_config)
 
