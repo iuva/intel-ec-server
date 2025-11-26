@@ -4,10 +4,14 @@
 """
 
 import os
+import re
 import sys
+from pathlib import Path as SysPath
+from typing import Iterator, Tuple
 
-from fastapi import APIRouter, Depends, File, Path, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Request, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
+from starlette.responses import Response
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -129,40 +133,123 @@ async def upload_file(
     )
 
 
+def _parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
+    """解析 Range 头，返回起始和结束字节范围（包含）"""
+
+    range_match = re.match(r"bytes=(\d*)-(\d*)", range_header)
+    if not range_match:
+        raise HTTPException(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            detail="Range header 格式错误，示例：bytes=0-1023",
+        )
+
+    start_str, end_str = range_match.groups()
+
+    if start_str == "" and end_str == "":
+        raise HTTPException(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            detail="Range header 必须包含开始或结束位置",
+        )
+
+    if start_str == "":
+        # 形如 bytes=-500 表示最后 500 字节
+        length = int(end_str)
+        if length <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+                detail="Range 长度必须大于 0",
+            )
+        start = max(file_size - length, 0)
+        end = file_size - 1
+    else:
+        start = int(start_str)
+        if end_str == "":
+            end = file_size - 1
+        else:
+            end = int(end_str)
+
+    if start >= file_size or start < 0:
+        raise HTTPException(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            detail="Range 起始位置超出文件大小",
+        )
+
+    end = min(end, file_size - 1)
+
+    if end < start:
+        raise HTTPException(
+            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+            detail="Range 结束位置必须大于等于起始位置",
+        )
+
+    return start, end
+
+
+def _file_chunk_generator(file_path: SysPath, start: int, end: int, chunk_size: int = 1024 * 1024) -> Iterator[bytes]:
+    """生成器：按 Range 输出文件内容"""
+
+    with open(file_path, "rb") as file_obj:
+        file_obj.seek(start)
+        bytes_left = end - start + 1
+
+        while bytes_left > 0:
+            read_size = min(chunk_size, bytes_left)
+            data = file_obj.read(read_size)
+            if not data:
+                break
+            bytes_left -= len(data)
+            yield data
+
+
 @router.get(
     "/{filename}",
-    summary="获取文件",
-    description="通过文件名获取上传的文件",
+    summary="获取文件（支持断点续传）",
+    description=(
+        "通过 `saved_filename` 获取上传的文件内容，默认返回完整文件。\n\n"
+        "### Range 下载说明\n"
+        "- 支持标准 HTTP Range 请求头，格式：`Range: bytes=start-end`\n"
+        "- 例如：`Range: bytes=0-1048575` 可获取前 1MB，用于断点续传\n"
+        "- 响应会携带 `Accept-Ranges: bytes`、`Content-Range`、`Content-Length`\n"
+        "- 当 Range 合法时返回 `206 Partial Content`，否则返回 `416`\n"
+        "- 未携带 Range 时返回完整文件（200 OK）"
+    ),
     responses={
         200: {
-            "description": "文件获取成功",
+            "description": "返回完整文件内容",
+            "content": {"application/octet-stream": {}},
+        },
+        206: {
+            "description": "返回部分内容（断点续传），包含 Content-Range 头",
             "content": {"application/octet-stream": {}},
         },
         404: {
             "description": "文件不存在",
         },
+        416: {
+            "description": "Range 请求范围无效",
+        },
     },
 )
 @handle_api_errors
 async def get_file(
+    request: Request,
     filename: str = Path(..., description="保存的文件名（由上传接口返回的 saved_filename）"),
     file_manage_service: FileManageService = Depends(get_file_manage_service),
     current_user: dict = Depends(get_current_user),
-) -> FileResponse:
-    """获取上传的文件
-
-    通过保存的文件名获取文件内容，支持直接通过 URL 访问。
+) -> Response:
+    """获取上传的文件，支持 HTTP Range 断点续传
 
     Args:
+        request: FastAPI 请求对象，用于读取 Range 头
         filename: 保存的文件名（由上传接口返回的 saved_filename）
         file_manage_service: 文件管理服务实例
         current_user: 当前用户信息
 
     Returns:
-        FileResponse: 文件响应对象
+        Response: 根据是否携带 Range 返回 FileResponse 或 StreamingResponse
 
     Raises:
-        HTTPException: 文件不存在时返回 404
+        HTTPException: 文件不存在 (404) 或 Range 无效 (416)
     """
     logger.info(
         "获取文件",
@@ -176,9 +263,38 @@ async def get_file(
     # 获取文件路径
     file_path = file_manage_service.get_file_path(filename)
 
-    # 返回文件响应
-    return FileResponse(
-        path=str(file_path),
-        filename=filename,
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+
+    file_size = file_path.stat().st_size
+    range_header = request.headers.get("range")
+    if not range_header:
+        full_headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Range": f"bytes 0-{file_size - 1}/{file_size}",
+        }
+        full_response = FileResponse(
+            path=str(file_path),
+            filename=filename,
+            media_type="application/octet-stream",
+            headers=full_headers,
+        )
+        return full_response
+
+    start, end = _parse_range_header(range_header, file_size)
+    content_length = end - start + 1
+    content_range_value = f"bytes {start}-{end}/{file_size}"
+
+    streaming_response = StreamingResponse(
+        _file_chunk_generator(file_path, start, end),
+        status_code=status.HTTP_206_PARTIAL_CONTENT,
         media_type="application/octet-stream",
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Range": content_range_value,
+            "Content-Length": str(content_length),
+        },
     )
+
+    return streaming_response

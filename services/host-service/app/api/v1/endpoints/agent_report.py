@@ -407,7 +407,8 @@ async def report_testcase_result(
     ## 响应说明
     - `conf_name`: 配置名称
     - `conf_ver`: 配置版本号
-    - `conf_val`: 配置内容
+    - `conf_url`: OTA 包下载地址
+    - `conf_md5`: OTA 包 MD5 校验值
     """,
 )
 @handle_api_errors

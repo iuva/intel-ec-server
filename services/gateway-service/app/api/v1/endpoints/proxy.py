@@ -12,7 +12,7 @@ from typing import Any, Union
 # 使用 try-except 方式处理路径导入
 try:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from fastapi import APIRouter, Depends, Path, Request, WebSocket
+    from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -25,7 +25,7 @@ except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from fastapi import APIRouter, Depends, Path, Request, WebSocket
+    from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -39,6 +39,18 @@ except ImportError:
 logger = get_logger(__name__)
 
 router = APIRouter()
+HOP_BY_HOP_RESPONSE_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "date",
+    "server",
+}
 
 
 @router.websocket("/ws/{hostname}/{apiurl:path}")
@@ -418,9 +430,36 @@ async def proxy_request(
             raw_body=raw_body,
         )
 
-        # 返回响应
-        logger.info(f"转发成功，返回响应: {response.get('status_code')}")
-        return response.get("body", {})
+        status_code = response.get("status_code", 200)
+        response_headers = response.get("headers") or {}
+        is_json_response = response.get("is_json", False)
+        body = response.get("body")
+        raw_body = response.get("raw_body")
+
+        if is_json_response and isinstance(body, (dict, list)):
+            proxy_response: Response = JSONResponse(content=body, status_code=status_code)
+        else:
+            if raw_body is not None:
+                content_bytes = raw_body
+            elif isinstance(body, bytes):
+                content_bytes = body
+            elif isinstance(body, str):
+                content_bytes = body.encode("utf-8")
+            elif body is None:
+                content_bytes = b""
+            else:
+                content_bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+            media_type = response_headers.get("content-type")
+            proxy_response = Response(content=content_bytes, status_code=status_code, media_type=media_type)
+
+        for header_name, header_value in response_headers.items():
+            if header_name.lower() in HOP_BY_HOP_RESPONSE_HEADERS:
+                continue
+            proxy_response.headers[header_name] = header_value
+
+        logger.info(f"转发成功，返回响应: {status_code}")
+        return proxy_response
 
     except ServiceNotFoundError as e:
         logger.warning(

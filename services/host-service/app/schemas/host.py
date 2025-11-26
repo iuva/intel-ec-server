@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class HostBase(BaseModel):
@@ -621,7 +621,8 @@ class OtaConfigItem(BaseModel):
 
     conf_name: Optional[str] = Field(default=None, description="配置名称")
     conf_ver: Optional[str] = Field(default=None, description="配置版本")
-    conf_val: Optional[str] = Field(default=None, description="配置内容")
+    conf_url: Optional[str] = Field(default=None, description="OTA 包下载 URL")
+    conf_md5: Optional[str] = Field(default=None, description="OTA 包 MD5 校验值")
 
     model_config = {"from_attributes": True}
 
@@ -632,7 +633,6 @@ class AdminOtaConfigInfo(BaseModel):
     id: str = Field(description="配置ID（主键）")
     conf_ver: Optional[str] = Field(default=None, description="配置版本号")
     conf_name: Optional[str] = Field(default=None, description="配置名称")
-    conf_val: Optional[str] = Field(default=None, description="配置值")
     conf_json: Optional[Dict[str, Any]] = Field(default=None, description="配置 JSON")
 
     model_config = {"from_attributes": True}
@@ -667,7 +667,14 @@ class AdminOtaDeployRequest(BaseModel):
     id: int = Field(..., description="配置ID（主键）", gt=0)
     conf_ver: str = Field(..., description="配置版本号", min_length=1)
     conf_name: str = Field(..., description="配置名称", min_length=1)
-    conf_val: str = Field(..., description="配置值", min_length=1)
+    conf_url: HttpUrl = Field(..., description="OTA 包下载地址")
+    conf_md5: str = Field(
+        ...,
+        description="OTA 包 MD5 校验值（32位十六进制）",
+        min_length=32,
+        max_length=32,
+        pattern=r"^[a-fA-F0-9]{32}$",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -678,7 +685,8 @@ class AdminOtaDeployResponse(BaseModel):
     id: str = Field(description="配置ID（主键）")
     conf_ver: str = Field(description="配置版本号")
     conf_name: str = Field(description="配置名称")
-    conf_val: str = Field(description="配置值")
+    conf_url: str = Field(description="OTA 包下载地址")
+    conf_md5: str = Field(description="OTA 包 MD5 校验值")
     broadcast_count: int = Field(description="广播消息成功发送的主机数量")
 
     model_config = {"from_attributes": True}

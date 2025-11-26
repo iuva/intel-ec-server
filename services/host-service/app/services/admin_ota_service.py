@@ -47,14 +47,13 @@ class AdminOtaService:
         业务逻辑：
         - 查询 sys_conf 表
         - 条件：conf_key = "ota", state_flag = 0, del_flag = 0
-        - 返回：id, conf_ver, conf_name, conf_val, conf_json 数据列表
+        - 返回：id, conf_ver, conf_name, conf_json 数据列表
 
         Returns:
             List[Dict[str, Any]]: OTA 配置列表，每个配置包含：
                 - id: 配置ID（主键）
                 - conf_ver: 配置版本号
                 - conf_name: 配置名称
-                - conf_val: 配置值
                 - conf_json: 配置 JSON
 
         Raises:
@@ -69,7 +68,6 @@ class AdminOtaService:
                 SysConf.id,
                 SysConf.conf_ver,
                 SysConf.conf_name,
-                SysConf.conf_val,
                 SysConf.conf_json,
             ).where(
                 and_(
@@ -90,7 +88,6 @@ class AdminOtaService:
                     "id": str(row.id),  # ✅ 转换为字符串避免精度丢失
                     "conf_ver": row.conf_ver,
                     "conf_name": row.conf_name,
-                    "conf_val": row.conf_val,
                     "conf_json": row.conf_json,
                 }
                 ota_configs.append(ota_config)
@@ -114,21 +111,23 @@ class AdminOtaService:
         config_id: int,
         conf_ver: str,
         conf_name: str,
-        conf_val: str,
+        conf_url: str,
+        conf_md5: str,
         operator_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """下发 OTA 配置
 
         业务逻辑：
-        1. 更新 sys_conf 表：根据 id 更新 conf_ver, conf_name, conf_val
-        2. 通过 websocket 广播消息：conf_ver 和 conf_val 到所有 host
+        1. 更新 sys_conf 表：根据 id 更新 conf_ver, conf_name, conf_json
+        2. 通过 websocket 广播消息：conf_ver、conf_url、conf_md5 到所有 host
         3. 注册回调处理器：当 host websocket 回调通知时，在 host_upd 表新增记录
 
         Args:
             config_id: 配置ID（主键）
             conf_ver: 配置版本号
             conf_name: 配置名称
-            conf_val: 配置值
+            conf_url: OTA 包下载地址
+            conf_md5: OTA 包 MD5 校验值
             operator_id: 操作人ID（可选）
 
         Returns:
@@ -136,7 +135,8 @@ class AdminOtaService:
                 - id: 配置ID
                 - conf_ver: 配置版本号
                 - conf_name: 配置名称
-                - conf_val: 配置值
+                - conf_url: 下载地址
+                - conf_md5: 校验值
                 - broadcast_count: 广播消息成功发送的主机数量
 
         Raises:
@@ -179,7 +179,11 @@ class AdminOtaService:
                 .values(
                     conf_ver=conf_ver,
                     conf_name=conf_name,
-                    conf_val=conf_val,
+                    conf_val=None,
+                    conf_json={
+                        "conf_url": conf_url,
+                        "conf_md5": conf_md5,
+                    },
                     updated_by=operator_id,
                 )
             )
@@ -207,8 +211,9 @@ class AdminOtaService:
         broadcast_message = {
             "type": "ota_deploy",
             "conf_ver": conf_ver,
-            "conf_val": conf_val,
             "conf_name": conf_name,
+            "conf_url": conf_url,
+            "conf_md5": conf_md5,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -230,7 +235,8 @@ class AdminOtaService:
             "id": str(config_id),  # ✅ 转换为字符串避免精度丢失
             "conf_ver": conf_ver,
             "conf_name": conf_name,
-            "conf_val": conf_val,
+            "conf_url": conf_url,
+            "conf_md5": conf_md5,
             "broadcast_count": broadcast_count,
         }
 

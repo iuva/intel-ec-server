@@ -200,14 +200,18 @@ class AgentReportService:
                 },
             )
 
-            return [
-                {
-                    "conf_name": record.conf_name,
-                    "conf_ver": record.conf_ver,
-                    "conf_val": record.conf_val,
-                }
-                for record in records
-            ]
+            ota_configs = []
+            for record in records:
+                conf_data = record.conf_json or {}
+                ota_configs.append(
+                    {
+                        "conf_name": record.conf_name,
+                        "conf_ver": record.conf_ver,
+                        "conf_url": conf_data.get("conf_url"),
+                        "conf_md5": conf_data.get("conf_md5"),
+                    }
+                )
+            return ota_configs
 
     async def _get_hardware_template(self) -> Optional[Dict[str, Any]]:
         """获取硬件模板配置

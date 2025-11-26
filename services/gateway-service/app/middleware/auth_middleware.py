@@ -65,6 +65,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/refresh",  # ✅ Token 刷新端点
             "/api/v1/auth/auto-refresh",  # ✅ 自动续期端点
             "/api/v1/auth/introspect",  # Token 验证端点
+            # 浏览器插件接口（不需要认证）
+            "/api/v1/host/hosts/available",  # 查询可用主机列表
+            "/api/v1/host/hosts/retry-vnc",  # 获取重试 VNC 列表
+            "/api/v1/host/hosts/release",  # 释放主机
+            "/api/v1/host/vnc/report",  # 上报 VNC 连接结果
+            "/api/v1/host/vnc/connect",  # 获取 VNC 连接信息
             # ⚠️ WebSocket 路由需要在路由级别进行认证检查，
             # 不能在中间件级别设为公开路径，否则无法强制认证
         }
@@ -111,6 +117,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             响应对象
         """
+        # ✅ 处理 OPTIONS 预检请求（CORS 预检请求）
+        # OPTIONS 请求应该直接通过，由 CORS 中间件处理
+        if request.method == "OPTIONS":
+            logger.debug(
+                "OPTIONS 预检请求，跳过认证检查",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                },
+            )
+            return await call_next(request)
+
         # 获取 Authorization 头（使用多种方式确保兼容性）
         # Starlette 的 headers 对象是大小写不敏感的，但为了确保兼容性，使用多种方式提取
         auth_header = None

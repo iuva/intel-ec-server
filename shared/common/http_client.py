@@ -3,6 +3,7 @@
 提供统一的异步 HTTP 客户端，支持连接池、超时配置、重试机制和指标收集。
 """
 
+import json
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -206,10 +207,13 @@ class AsyncHTTPClient:
 
             # 解析响应体
             content_type = response.headers.get("content-type", "")
+            raw_content = response.content
+            is_json = False
             try:
-                if "application/json" in content_type:
+                if "application/json" in content_type.lower():
                     try:
                         body = response.json()
+                        is_json = True
                     except Exception as json_error:
                         # JSON 解析失败，使用文本
                         logger.warning(
@@ -224,7 +228,7 @@ class AsyncHTTPClient:
                         )
                         body = response.text
                 else:
-                    body = response.text
+                    body = raw_content
             except Exception as parse_error:
                 # 如果解析失败，使用原始文本
                 logger.warning(
@@ -239,12 +243,18 @@ class AsyncHTTPClient:
                 )
                 # 尝试获取原始文本
                 try:
-                    body = response.text
+                    body = raw_content or response.text
                 except Exception:
                     # 如果连文本都获取不到，使用空字符串
                     body = ""
 
-            result = {"status_code": status_code, "headers": dict(response.headers), "body": body}
+            result = {
+                "status_code": status_code,
+                "headers": dict(response.headers),
+                "body": body,
+                "raw_body": raw_content,
+                "is_json": is_json,
+            }
 
             success = 200 <= status_code < 400
 
@@ -306,16 +316,27 @@ class AsyncHTTPClient:
                 error_code = "NETWORK_ERROR"
                 message = "网络错误"
 
-            return {
+            error_body = {
                 "status_code": status_code,
-                "headers": {},
+                "headers": {"content-type": "application/json"},
                 "body": {
                     "code": status_code,
                     "message": message,
                     "error_code": error_code,
                     "details": {"url": url, "error": str(e)},
                 },
+                "raw_body": json.dumps(
+                    {
+                        "code": status_code,
+                        "message": message,
+                        "error_code": error_code,
+                        "details": {"url": url, "error": str(e)},
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8"),
+                "is_json": True,
             }
+            return error_body
 
         except Exception as e:
             duration = perf_counter() - start_time

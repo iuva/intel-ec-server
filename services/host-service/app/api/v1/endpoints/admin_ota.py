@@ -69,15 +69,14 @@ async def list_ota_configs(
     业务逻辑：
     - 查询 sys_conf 表
     - 条件：conf_key = "ota", state_flag = 0, del_flag = 0
-    - 返回：conf_ver, conf_name, conf_val, conf_json 数据列表
+    - 返回：conf_ver, conf_name, conf_json 数据列表（包含 conf_url, conf_md5）
 
     ## 返回字段
     - `ota_configs`: OTA 配置列表，每个配置包含：
         - `id`: 配置ID（主键）
         - `conf_ver`: 配置版本号
         - `conf_name`: 配置名称
-        - `conf_val`: 配置值
-        - `conf_json`: 配置 JSON
+    - `conf_json`: 配置 JSON（包含 `conf_url`, `conf_md5`）
     - `total`: 配置总数
 
     Args:
@@ -150,21 +149,23 @@ async def deploy_ota_config(
     """下发 OTA 配置（管理后台）
 
     业务逻辑：
-    1. 更新 sys_conf 表：根据 id 更新 conf_ver, conf_name, conf_val
-    2. 通过 websocket 广播消息：conf_ver 和 conf_val 到所有 host
+    1. 更新 sys_conf 表：根据 id 更新 conf_ver, conf_name, conf_json（包含 conf_url 和 conf_md5）
+    2. 通过 websocket 广播消息：conf_ver、conf_url、conf_md5 到所有 host
     3. 注册回调处理器：当 host websocket 回调通知时，在 host_upd 表新增记录
 
     ## 请求参数
     - `id`: 配置ID（主键，必填）
     - `conf_ver`: 配置版本号（必填）
     - `conf_name`: 配置名称（必填）
-    - `conf_val`: 配置值（必填）
+    - `conf_url`: OTA 包下载地址（必填）
+    - `conf_md5`: OTA 包 MD5（必填）
 
     ## 返回字段
     - `id`: 配置ID（主键）
     - `conf_ver`: 配置版本号
     - `conf_name`: 配置名称
-    - `conf_val`: 配置值
+    - `conf_url`: OTA 包下载地址
+    - `conf_md5`: OTA 包 MD5
     - `broadcast_count`: 广播消息成功发送的主机数量
 
     Args:
@@ -202,7 +203,8 @@ async def deploy_ota_config(
         config_id=deploy_data.id,
         conf_ver=deploy_data.conf_ver,
         conf_name=deploy_data.conf_name,
-        conf_val=deploy_data.conf_val,
+        conf_url=str(deploy_data.conf_url),
+        conf_md5=deploy_data.conf_md5,
         operator_id=operator_id,
     )
 
@@ -211,7 +213,8 @@ async def deploy_ota_config(
         id=deploy_result["id"],
         conf_ver=deploy_result["conf_ver"],
         conf_name=deploy_result["conf_name"],
-        conf_val=deploy_result["conf_val"],
+        conf_url=deploy_result["conf_url"],
+        conf_md5=deploy_result["conf_md5"],
         broadcast_count=deploy_result["broadcast_count"],
     )
 
