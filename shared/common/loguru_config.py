@@ -7,7 +7,7 @@
 import logging
 import os
 import sys
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from loguru import logger
 
@@ -299,6 +299,47 @@ def log_database_query(query: str, duration_ms: float, rows_affected: Optional[i
             "query": query,
             "duration_ms": duration_ms,
             "rows_affected": rows_affected,
+        },
+    )
+
+
+def log_slow_query(
+    sql: str,
+    duration_ms: float,
+    operation: str,
+    table: str,
+    sql_hash: str,
+    parameters: Optional[Dict[str, Any]] = None,
+) -> None:
+    """记录慢查询
+
+    Args:
+        sql: SQL语句
+        duration_ms: 执行时间（毫秒）
+        operation: 操作类型（select, insert, update, delete等）
+        table: 表名
+        sql_hash: SQL哈希值（用于去重）
+        parameters: SQL参数（可选）
+    """
+    import traceback
+
+    # 获取调用堆栈（排除当前函数和监控模块）
+    stack_trace = []
+    for frame in traceback.extract_stack()[:-2]:  # 排除当前函数和监控函数
+        if "sql_performance" not in frame.filename:
+            stack_trace.append(f"{frame.filename}:{frame.lineno} in {frame.name}")
+
+    logger.warning(
+        f"慢查询检测: {operation.upper()} on {table} ({duration_ms:.2f}ms)",
+        extra={
+            "sql": sql,
+            "duration_ms": duration_ms,
+            "duration_seconds": duration_ms / 1000.0,
+            "operation": operation,
+            "table": table,
+            "sql_hash": sql_hash,
+            "parameters": parameters,
+            "stack_trace": stack_trace[-5:],  # 只保留最近5层堆栈
         },
     )
 

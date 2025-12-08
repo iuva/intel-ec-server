@@ -75,6 +75,8 @@ class ServiceConfig:
         http_max_connections: int = 100,
         http_max_retries: int = 0,
         http_retry_delay: float = 0.0,
+        db_pool_size: int = 300,
+        db_max_overflow: int = 500,
         health_check_timeout: float = 5.0,
         health_check_connect_timeout: float = 2.0,
         health_check_max_keepalive_connections: int = 5,
@@ -122,6 +124,14 @@ class ServiceConfig:
         self.http_max_connections = http_max_connections
         self.http_max_retries = http_max_retries
         self.http_retry_delay = http_retry_delay
+
+        # 数据库连接池配置（支持高并发）
+        self.db_pool_size = db_pool_size
+        self.db_max_overflow = db_max_overflow
+
+        # SQL性能监控配置
+        self.enable_sql_monitoring = os.getenv("ENABLE_SQL_MONITORING", "true").lower() == "true"
+        self.slow_query_threshold = float(os.getenv("SLOW_QUERY_THRESHOLD", "2.0"))
 
         # 健康检查 HTTP 客户端配置
         self.health_check_timeout = health_check_timeout
@@ -242,6 +252,10 @@ class ServiceConfig:
         health_check_max_retries = parse_int_env("HEALTH_CHECK_MAX_RETRIES", 1)
         health_check_retry_delay = parse_float_env("HEALTH_CHECK_RETRY_DELAY", 0.0)
 
+        # 数据库连接池配置（支持2000并发，默认值已优化）
+        db_pool_size = parse_int_env("DB_POOL_SIZE", 300)
+        db_max_overflow = parse_int_env("DB_MAX_OVERFLOW", 500)
+
         return ServiceConfig(
             service_name=service_name,
             service_port=service_port,
@@ -267,6 +281,8 @@ class ServiceConfig:
             health_check_max_connections=health_check_max_connections,
             health_check_max_retries=health_check_max_retries,
             health_check_retry_delay=health_check_retry_delay,
+            db_pool_size=db_pool_size,
+            db_max_overflow=db_max_overflow,
         )
 
 
@@ -302,6 +318,7 @@ class ServiceLifecycleManager:
         self.shutdown_handlers = shutdown_handlers or []
         self.nacos_manager: Optional[NacosManager] = None
         self.heartbeat_task: Optional[asyncio.Task] = None
+        self.pool_monitor_task: Optional[asyncio.Task] = None
 
     async def startup(self, app: FastAPI) -> None:
         """
@@ -328,6 +345,11 @@ class ServiceLifecycleManager:
             await init_databases(
                 mariadb_url=self.config.mariadb_url,
                 redis_url=self.config.redis_url,
+                pool_size=self.config.db_pool_size,
+                max_overflow=self.config.db_max_overflow,
+                enable_sql_monitoring=self.config.enable_sql_monitoring,
+                slow_query_threshold=self.config.slow_query_threshold,
+                service_name=self.config.service_name,
             )
             logger.info("数据库连接初始化成功")
 
@@ -372,7 +394,12 @@ class ServiceLifecycleManager:
                 await self._init_nacos(app)
                 logger.info("Nacos 初始化完成")
 
-            # 6. 设置 Nacos 管理器到服务发现实例（仅在启用Nacos时）
+            # 6. 启动数据库连接池监控任务
+            self.pool_monitor_task = asyncio.create_task(self._monitor_pool_status())
+            app.state.pool_monitor_task = self.pool_monitor_task
+            logger.info("数据库连接池监控任务已启动")
+
+            # 7. 设置 Nacos 管理器到服务发现实例（仅在启用Nacos时）
             if (
                 self.config.enable_nacos
                 and hasattr(app.state, "service_discovery")
@@ -382,7 +409,7 @@ class ServiceLifecycleManager:
                 app.state.service_discovery.set_nacos_manager(self.nacos_manager)
                 logger.info("✅ 服务发现已连接到 Nacos")
 
-            # 6. 执行自定义启动处理器
+            # 8. 执行自定义启动处理器
             for handler in self.startup_handlers:
                 if asyncio.iscoroutinefunction(handler):
                     await handler(app)
@@ -453,6 +480,22 @@ class ServiceLifecycleManager:
         except Exception as e:
             logger.warning(f"Nacos 初始化失败: {e!s}, 继续运行...")
 
+    async def _monitor_pool_status(self) -> None:
+        """定期监控数据库连接池状态"""
+        import time
+        from shared.common.database import mariadb_manager
+
+        while True:
+            try:
+                await asyncio.sleep(30)  # 每30秒监控一次
+                mariadb_manager.log_pool_status()
+            except asyncio.CancelledError:
+                logger.info("数据库连接池监控任务已取消")
+                break
+            except Exception as e:
+                logger.error(f"数据库连接池监控异常: {e!s}", exc_info=True)
+                await asyncio.sleep(30)  # 出错后等待30秒再继续
+
     async def shutdown(self, app: Optional[FastAPI] = None) -> None:
         """
         执行服务关闭流程
@@ -468,6 +511,15 @@ class ServiceLifecycleManager:
         logger.info(f"{self.config.service_name} 关闭中...")
 
         try:
+            # 0. 停止连接池监控任务
+            if self.pool_monitor_task and not self.pool_monitor_task.done():
+                self.pool_monitor_task.cancel()
+                try:
+                    await self.pool_monitor_task
+                except asyncio.CancelledError:
+                    ***REMOVED***
+                logger.info("数据库连接池监控任务已停止")
+
             # 1. 执行自定义关闭处理器
             for handler in self.shutdown_handlers:
                 if asyncio.iscoroutinefunction(handler):
