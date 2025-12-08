@@ -5,7 +5,6 @@
 """
 
 import asyncio
-import contextlib
 import json
 import os
 import re
@@ -401,8 +400,8 @@ class ProxyService:
                     "url": full_url,
                     "has_json": "json" in request_kwargs,
                     "has_data": "data" in request_kwargs,
-                    "timeout": 15.0,
-                    "connect_timeout": 5.0,
+                    "timeout": self.http_client_config.timeout,
+                    "connect_timeout": self.http_client_config.connect_timeout,
                 },
             )
 
@@ -459,8 +458,12 @@ class ProxyService:
                     )
 
                 return response
+            except BusinessError:
+                # ✅ BusinessError 是业务错误（如 4xx），不应该记录为 ERROR
+                # 直接重新抛出，由上层处理
+                raise
             except Exception as http_error:
-                # 添加详细的连接错误日志
+                # 添加详细的连接错误日志（只记录真正的系统错误）
                 logger.error(
                     f"HTTP 请求异常: {method} {full_url}",
                     extra={
@@ -524,14 +527,17 @@ class ProxyService:
         path: str,
         client_websocket: Any,  # WebSocket
         service_url: Optional[str] = None,
+        session_key: Optional[str] = None,
     ) -> None:
-        """转发 WebSocket 连接到后端服务
+        """转发 WebSocket 连接到后端服务（支持会话粘性）
 
         Args:
             service_name: 后端服务名称
             path: 请求路径
             client_websocket: 客户端 WebSocket 连接
             service_url: 服务 URL（可选，如果不提供则通过服务发现获取）
+            session_key: 会话键（如 host_id），用于会话粘性。如果提供，会使用
+                         基于哈希的会话粘性确保同一 session_key 总是路由到同一实例
 
         Raises:
             ServiceNotFoundError: 服务不存在
@@ -579,9 +585,39 @@ class ProxyService:
                     "created_at": asyncio.get_event_loop().time(),
                 }
 
-            resolved_service_url = service_url
-            if not resolved_service_url:
+            # ✅ 如果提供了会话键，使用会话粘性选择实例
+            if session_key and self.service_discovery:
+                try:
+                    resolved_service_url = await self.service_discovery.get_websocket_service_url(
+                        service_name, session_key
+                    )
+                    logger.info(
+                        "使用会话粘性选择 WebSocket 实例",
+                        extra={
+                            "service_name": service_name,
+                            "session_key": session_key,
+                            "selected_url": resolved_service_url,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "会话粘性选择失败，使用默认方式",
+                        extra={
+                            "service_name": service_name,
+                            "session_key": session_key,
+                            "error": str(e),
+                        },
+                        exc_info=True,
+                    )
+                    # 回退到默认方式
+                    if not service_url:
+                        resolved_service_url = await self.get_service_url(service_name)
+                    else:
+                        resolved_service_url = service_url
+            elif not service_url:
                 resolved_service_url = await self.get_service_url(service_name)
+            else:
+                resolved_service_url = service_url
 
             # 构建 WebSocket URL（转换 http -> ws，添加服务标识符前缀）
             ws_url = resolved_service_url.replace("http://", "ws://").replace("https://", "wss://")
@@ -725,8 +761,6 @@ class ProxyService:
                 # ✅ 确保在异常情况下也关闭客户端 WebSocket
                 try:
                     if hasattr(client_websocket, "client_state"):
-                        from starlette.websockets import WebSocketState
-
                         if client_websocket.client_state != WebSocketState.DISCONNECTED:
                             await client_websocket.close(code=1008, reason="Authentication failed")
                     elif not getattr(client_websocket, "closed", True):
@@ -757,8 +791,6 @@ class ProxyService:
                 # ✅ 确保在异常情况下也关闭客户端 WebSocket
                 try:
                     if hasattr(client_websocket, "client_state"):
-                        from starlette.websockets import WebSocketState
-
                         if client_websocket.client_state != WebSocketState.DISCONNECTED:
                             await client_websocket.close(code=1008, reason="Unauthorized")
                     elif not getattr(client_websocket, "closed", True):

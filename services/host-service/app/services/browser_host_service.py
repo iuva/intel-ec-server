@@ -513,13 +513,88 @@ class BrowserHostService:
 
         except Exception as e:
             logger.error(
-                f"更新TCP状态异常: host_id={host_id}, tcp_state={tcp_state}, 错误类型={type(e).__name__}, 错误消息={e}",
-                extra={
-                    "host_id": host_id,
-                    "tcp_state": tcp_state,
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                },
+                f"更新TCP状态失败: host_id={host_id}, tcp_state={tcp_state}, 错误: {e!s}",
+                exc_info=True,
+            )
+            return False
+
+    async def update_agent_version(self, host_id: str, agent_version: str) -> bool:
+        """更新 Agent 版本号
+
+        Args:
+            host_id: 主机ID（字符串，转换为整数）
+            agent_version: Agent 版本号（最大长度10）
+
+        Returns:
+            是否更新成功
+        """
+        try:
+            # 验证版本号长度
+            if len(agent_version) > 10:
+                logger.warning(
+                    f"Agent版本号长度超过限制: host_id={host_id}, version={agent_version}, length={len(agent_version)}",
+                    extra={
+                        "host_id": host_id,
+                        "agent_version": agent_version,
+                        "version_length": len(agent_version),
+                    },
+                )
+                # 截断到10个字符
+                agent_version = agent_version[:10]
+
+            # 转换 host_id 为整数
+            try:
+                host_id_int = int(host_id)
+            except (ValueError, TypeError):
+                logger.error(
+                    f"Host ID 格式错误: host_id={host_id}",
+                    extra={
+                        "host_id": host_id,
+                        "error": "not a valid integer",
+                    },
+                )
+                return False
+
+            # 更新 agent_ver
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                stmt = (
+                    update(HostRec)
+                    .where(
+                        and_(
+                            HostRec.id == host_id_int,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    .values(agent_ver=agent_version)
+                )
+
+                result = await session.execute(stmt)
+                await session.commit()
+
+                if result.rowcount > 0:
+                    logger.info(
+                        f"Agent版本号已更新: host_id={host_id}, agent_version={agent_version}",
+                        extra={
+                            "host_id": host_id,
+                            "agent_version": agent_version,
+                        },
+                    )
+                    return True
+                logger.warning(
+                    f"Agent版本号更新无匹配行: host_id={host_id}, agent_version={agent_version}",
+                    extra={
+                        "host_id": host_id,
+                        "host_id_int": host_id_int,
+                        "agent_version": agent_version,
+                        "reason": "记录不存在或已删除",
+                    },
+                )
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"更新Agent版本号失败: host_id={host_id}, agent_version={agent_version}, 错误: {e!s}",
                 exc_info=True,
             )
             return False

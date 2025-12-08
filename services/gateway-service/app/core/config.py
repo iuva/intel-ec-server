@@ -52,11 +52,11 @@ class GatewayConfig(BaseSettings):
     rate_limit_requests: int = Field(default=100, description="限流请求数")
     rate_limit_period: int = Field(default=60, description="限流时间窗口（秒）")
 
-    # HTTP 客户端配置
-    http_timeout: float = Field(default=15.0, description="网关转发请求超时时间（秒）")
-    http_connect_timeout: float = Field(default=5.0, description="网关转发连接超时时间（秒）")
-    http_max_keepalive_connections: int = Field(default=20, description="HTTP 客户端保持活动连接数")
-    http_max_connections: int = Field(default=100, description="HTTP 客户端最大连接数")
+    # HTTP 客户端配置（优化：支持2000并发）
+    http_timeout: float = Field(default=30.0, description="网关转发请求超时时间（秒）")
+    http_connect_timeout: float = Field(default=10.0, description="网关转发连接超时时间（秒）")
+    http_max_keepalive_connections: int = Field(default=1000, description="HTTP 客户端保持活动连接数")
+    http_max_connections: int = Field(default=2500, description="HTTP 客户端最大连接数")
     http_max_retries: int = Field(default=0, description="HTTP 客户端最大重试次数")
     http_retry_delay: float = Field(default=0.0, description="HTTP 客户端重试延迟（秒）")
 

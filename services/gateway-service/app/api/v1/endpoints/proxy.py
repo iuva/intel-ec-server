@@ -218,23 +218,42 @@ async def websocket_proxy(
         if not backend_path.startswith("?"):
             backend_path = f"{backend_path}?{query_params}"
 
+        # ✅ 提取 host_id 作为会话键（用于会话粘性）
+        session_key = None
+        try:
+            # 优先从查询参数获取 host_id
+            host_id_from_query = websocket.query_params.get("host_id")
+            if host_id_from_query:
+                session_key = str(host_id_from_query)
+            elif user_id:
+                # 如果没有查询参数，使用 user_id（实际是 host_rec.id）
+                session_key = str(user_id)
+        except Exception as e:
+            logger.debug(
+                "提取会话键失败，将使用默认负载均衡",
+                extra={"error": str(e)},
+            )
+
         logger.info(
             "WebSocket 代理参数准备",
             extra={
                 "hostname": hostname,
                 "apiurl": apiurl,
                 "user_id": user_id,
+                "session_key": session_key,
                 "backend_path": backend_path[:100],  # 避免日志过长
                 "has_host_id": bool(user_id),
+                "has_session_key": bool(session_key),
             },
         )
 
-        # 转发到后端服务
+        # 转发到后端服务（传递 session_key 实现会话粘性）
         await proxy_service.forward_websocket(
             service_name=service_short_name,
             path=backend_path,
             client_websocket=websocket,
             service_url=service_url,
+            session_key=session_key,  # ✅ 传递会话键实现会话粘性
         )
 
     except Exception as e:

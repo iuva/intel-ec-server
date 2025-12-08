@@ -6,13 +6,22 @@
 - 本地数据库过滤和查询
 """
 
+import asyncio
 import os
-from typing import List, Optional, cast
+import time
+from typing import List, Optional, cast, TYPE_CHECKING
 
 import httpx
 from app.models.host_rec import HostRec
 from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, HardwareHostData, QueryAvailableHostsRequest
 from sqlalchemy import and_, select
+from sqlalchemy.exc import OperationalError
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+# 全局 HTTP 客户端连接池（复用连接，提高性能）
+_http_client: Optional["httpx.AsyncClient"] = None
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -45,6 +54,25 @@ class HostDiscoveryService:
             hardware_api_url: 硬件接口基础 URL。如果不提供，将使用默认值
         """
         self.hardware_api_url = hardware_api_url or "http://hardware-service:8000"
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """获取或创建 HTTP 客户端连接池（单例模式）
+
+        Returns:
+            httpx.AsyncClient: HTTP 客户端实例
+        """
+        global _http_client
+        if _http_client is None:
+            # 创建带连接池的 HTTP 客户端，优化高并发性能
+            _http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0, connect=5.0),  # 总超时10秒，连接超时5秒
+                limits=httpx.Limits(
+                    max_keepalive_connections=50,  # 保持连接数
+                    max_connections=200,  # 最大连接数
+                ),
+            )
+        return _http_client
 
     @monitor_operation("query_available_hosts", record_duration=True)
     @handle_service_errors(error_message="查询可用主机列表失败", error_code="QUERY_HOSTS_FAILED")
@@ -58,7 +86,7 @@ class HostDiscoveryService:
         1. 根据 last_id 计算初始偏移量（用于从外部接口查询）
         2. 调用外部硬件接口分页获取主机列表
         3. 根据 hardware_id 查询 host_rec 表进行过滤
-        4. 过滤条件：appr_state=1（启用）, host_state=0（空闲），del_flag=0（未删除）
+        4. 过滤条件：appr_state=1（启用）, host_state=0（空闲），tcp_state=2（监听/连接正常），del_flag=0（未删除）
         5. 收集满足分页大小的结果后返回
         6. 每个用户独立处理，无全局状态污染
 
@@ -76,6 +104,8 @@ class HostDiscoveryService:
         Raises:
             BusinessError: 当外部接口调用失败或数据查询失败时
         """
+        operation_start_time = time.time()
+
         logger.info(
             "开始查询可用主机列表",
             extra={
@@ -104,116 +134,143 @@ class HostDiscoveryService:
         limit = 100  # 每次请求 100 条
         max_iterations = 100  # 最多迭代 100 次，防止无限循环
 
-        # 循环获取外部接口数据并过滤，直到满足分页要求
-        for iteration in range(max_iterations):
-            logger.debug(
-                "调用外部接口获取硬件主机列表",
-                extra={
-                    "iteration": iteration,
-                    "skip": skip,
-                    "limit": limit,
-                    "current_available_count": len(all_available_hosts),
-                },
-            )
-
-            # 步骤 2: 调用外部硬件接口获取主机列表
-            hardware_hosts = await self._fetch_hardware_hosts(
-                request.tc_id,
-                skip,
-                limit,
-            )
-
-            # 如果外部接口返回空，停止循环
-            if not hardware_hosts:
-                logger.info(
-                    "外部接口返回数据为空或已到达末尾",
+        # 优化：在循环外创建数据库会话，复用连接，减少连接池压力
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 记录连接池状态（连接获取前）
+            pool_status_before = mariadb_manager.get_pool_status()
+            if pool_status_before["usage_percent"] >= 80:
+                logger.warning(
+                    "数据库连接池使用率较高，开始查询",
                     extra={
-                        "iteration": iteration,
-                        "skip": skip,
-                        "total_available": len(all_available_hosts),
+                        "usage_percent": pool_status_before["usage_percent"],
+                        "checked_out": pool_status_before["checked_out"],
+                        "max_connections": pool_status_before["max_connections"],
                     },
                 )
-                break
 
-            # 步骤 3: 提取硬件 ID 列表用于查询本地数据库
-            hardware_ids = [host.hardware_id for host in hardware_hosts]
-
-            # 步骤 4: 查询 host_rec 表，获取可用的主机
-            available_hosts = await self._filter_available_hosts(hardware_ids)
-
-            logger.debug(
-                "本轮过滤完成",
-                extra={
-                    "iteration": iteration,
-                    "fetched_hardware_count": len(hardware_hosts),
-                    "available_count": len(available_hosts),
-                    "total_available": len(all_available_hosts) + len(available_hosts),
-                },
-            )
-
-            # 步骤 5: 添加新数据，同时跳过在 last_id 之后的数据
-            for host in available_hosts:
-                # 如果指定了 last_id，跳过所有 ID 小于等于 last_id 的记录
-                # 注意：由于 ID 是字符串，需要转换为整数进行比较
-                if request.last_id is not None:
-                    try:
-                        host_id_int = int(host.host_rec_id)
-                        last_id_int = int(request.last_id)
-                        if host_id_int <= last_id_int:
-                            logger.debug(
-                                "跳过已处理的记录",
-                                extra={
-                                    "host_rec_id": host.host_rec_id,
-                                    "last_id": request.last_id,
-                                },
-                            )
-                            continue
-                    except (ValueError, TypeError):
-                        # 如果转换失败，使用字符串比较（降级方案）
-                        if host.host_rec_id <= request.last_id:
-                            logger.debug(
-                                "跳过已处理的记录（字符串比较）",
-                                extra={
-                                    "host_rec_id": host.host_rec_id,
-                                    "last_id": request.last_id,
-                                },
-                            )
-                            continue
-
-                # 检查是否已经添加过（本次查询中的去重）
-                if host.host_rec_id in seen_ids:
-                    logger.debug(
-                        "跳过重复的记录",
-                        extra={"host_rec_id": host.host_rec_id},
-                    )
-                    continue
-
-                all_available_hosts.append(host)
-                seen_ids.add(host.host_rec_id)
-
-                # 如果已经达到要求的数量，可以提前退出
+            # 循环获取外部接口数据并过滤，直到满足分页要求
+            for iteration in range(max_iterations):
+                # 如果已经收集到足够的数据，提前退出循环
                 if len(all_available_hosts) >= request.page_size:
                     logger.info(
-                        "已获得足够的数据用于分页",
+                        "已获得足够的数据用于分页，提前退出循环",
                         extra={
                             "iteration": iteration,
                             "required_size": request.page_size,
                             "actual_count": len(all_available_hosts),
+                            "skip": skip,
                         },
                     )
                     break
 
-            # 如果已经收集到足够的数据，停止循环
-            if len(all_available_hosts) >= request.page_size:
-                break
+                # 只在第一次或每10次迭代时记录详细日志，减少日志量
+                if iteration == 0 or iteration % 10 == 0:
+                    logger.debug(
+                        "调用外部接口获取硬件主机列表",
+                        extra={
+                            "iteration": iteration,
+                            "skip": skip,
+                            "limit": limit,
+                            "current_available_count": len(all_available_hosts),
+                        },
+                    )
 
-            # 准备下一页请求
-            skip += limit
+                # 步骤 2: 调用外部硬件接口获取主机列表
+                hardware_hosts = await self._fetch_hardware_hosts(
+                    request.tc_id,
+                    skip,
+                    limit,
+                )
 
-        # 步骤 6: 进行分页切片 - 返回前 page_size 条数据
+                # 如果外部接口返回空，停止循环
+                if not hardware_hosts:
+                    logger.info(
+                        "外部接口返回数据为空或已到达末尾",
+                        extra={
+                            "iteration": iteration,
+                            "skip": skip,
+                            "total_available": len(all_available_hosts),
+                        },
+                    )
+                    break
+
+                # 步骤 3: 提取硬件 ID 列表用于查询本地数据库
+                hardware_ids = [host.hardware_id for host in hardware_hosts if host.hardware_id]
+
+                # 步骤 4: 查询 host_rec 表，获取可用的主机（优化：复用会话，减少连接占用）
+                query_start_time = time.time()
+                available_hosts = await self._filter_available_hosts_in_session(session, hardware_ids)
+                query_duration = time.time() - query_start_time
+
+                # 记录查询性能（如果查询时间超过阈值）
+                if query_duration > 0.5:  # 超过500ms记录警告
+                    logger.warning(
+                        "数据库查询耗时较长",
+                        extra={
+                            "iteration": iteration,
+                            "query_duration_ms": round(query_duration * 1000, 2),
+                            "hardware_ids_count": len(hardware_ids),
+                            "available_count": len(available_hosts),
+                        },
+                    )
+
+                logger.debug(
+                    "本轮过滤完成",
+                    extra={
+                        "iteration": iteration,
+                        "fetched_hardware_count": len(hardware_hosts),
+                        "available_count": len(available_hosts),
+                        "total_available_before": len(all_available_hosts),
+                        "query_duration_ms": round(query_duration * 1000, 2),
+                    },
+                )
+
+                # 步骤 5: 添加新数据，同时跳过在 last_id 之后的数据
+                for host in available_hosts:
+                    # 如果指定了 last_id，跳过所有 ID 小于等于 last_id 的记录
+                    # 注意：由于 ID 是字符串，需要转换为整数进行比较
+                    if request.last_id is not None:
+                        try:
+                            host_id_int = int(host.host_rec_id)
+                            last_id_int = int(request.last_id)
+                            if host_id_int <= last_id_int:
+                                continue
+                        except (ValueError, TypeError):
+                            # 如果转换失败，使用字符串比较（降级方案）
+                            if host.host_rec_id <= request.last_id:
+                                continue
+
+                    # 检查是否已经添加过（本次查询中的去重）
+                    if host.host_rec_id in seen_ids:
+                        continue
+
+                    all_available_hosts.append(host)
+                    seen_ids.add(host.host_rec_id)
+
+                    # 如果已经达到要求的数量，可以提前退出内层循环
+                    if len(all_available_hosts) >= request.page_size:
+                        break
+
+                # 准备下一页请求（在检查是否提前退出之前）
+                skip += limit
+
+            # 记录连接池状态（连接释放后）
+            pool_status_after = mariadb_manager.get_pool_status()
+            if pool_status_after["usage_percent"] >= 80:
+                logger.warning(
+                    "数据库连接池使用率较高，查询完成",
+                    extra={
+                        "usage_percent": pool_status_after["usage_percent"],
+                        "checked_out": pool_status_after["checked_out"],
+                        "max_connections": pool_status_after["max_connections"],
+                    },
+                )
+
+        # 步骤 7: 进行分页切片 - 返回前 page_size 条数据
         paginated_hosts = all_available_hosts[: request.page_size]
 
-        # 步骤 7: 确定是否有下一页
+        # 步骤 8: 确定是否有下一页
         has_next = len(all_available_hosts) > request.page_size
 
         # 确定下一页的 last_id
@@ -221,6 +278,9 @@ class HostDiscoveryService:
         if paginated_hosts:
             last_id = paginated_hosts[-1].host_rec_id
 
+        operation_duration = time.time() - operation_start_time
+
+        # 记录操作总耗时
         logger.info(
             "查询可用主机列表完成",
             extra={
@@ -230,8 +290,20 @@ class HostDiscoveryService:
                 "returned_count": len(paginated_hosts),
                 "has_next": has_next,
                 "last_id": last_id,
+                "operation_duration_ms": round(operation_duration * 1000, 2),
             },
         )
+
+        # 如果操作耗时超过2秒，记录警告
+        if operation_duration > 2.0:
+            logger.warning(
+                "查询可用主机列表耗时较长",
+                extra={
+                    "operation_duration_ms": round(operation_duration * 1000, 2),
+                    "returned_count": len(paginated_hosts),
+                    "page_size": request.page_size,
+                },
+            )
 
         return AvailableHostsListResponse(
             hosts=paginated_hosts,
@@ -404,56 +476,66 @@ class HostDiscoveryService:
         use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
 
         if use_mock:
-            logger.info(
-                "使用 Mock 硬件接口数据",
-                extra={
-                    "tc_id": tc_id,
-                    "skip": skip,
-                    "limit": limit,
-                },
-            )
+            # 减少Mock日志频率：只在第一次调用或每10次调用时记录
+            # 使用模块级变量跟踪调用次数（简单方案，生产环境可考虑更优雅的实现）
+            if not hasattr(self, "_mock_call_count"):
+                self._mock_call_count = 0
+            self._mock_call_count += 1
+
+            # 只在第一次或每10次调用时记录日志
+            if self._mock_call_count == 1 or self._mock_call_count % 10 == 0:
+                logger.debug(
+                    "使用 Mock 硬件接口数据",
+                    extra={
+                        "tc_id": tc_id,
+                        "skip": skip,
+                        "limit": limit,
+                        "call_count": self._mock_call_count,
+                    },
+                )
             return self._get_mock_hardware_hosts(skip=skip, limit=limit)
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                url = f"{self.hardware_api_url}/api/v1/hardware/hosts"
-                params = {
-                    "tc_id": tc_id,
-                    "skip": skip,
-                    "limit": limit,
-                }
+            # 使用连接池客户端，提高性能
+            client = await self._get_http_client()
+            url = f"{self.hardware_api_url}/api/v1/hardware/hosts"
+            params = {
+                "tc_id": tc_id,
+                "skip": skip,
+                "limit": limit,
+            }
 
-                logger.debug(
-                    "调用硬件接口",
+            logger.debug(
+                "调用硬件接口",
+                extra={
+                    "url": url,
+                    "params": params,
+                },
+            )
+
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+
+            # 解析响应数据
+            data = response.json()
+            hardware_hosts: List[HardwareHostData] = []
+
+            if isinstance(data, list):
+                # 响应格式：直接数组
+                hardware_hosts = [HardwareHostData(**item) for item in data]
+            elif isinstance(data, dict) and "data" in data:
+                # 响应格式：{ "data": [...] }
+                hardware_hosts = [HardwareHostData(**item) for item in data["data"]]
+            else:
+                logger.warning(
+                    "硬件接口返回数据格式不符合预期",
                     extra={
-                        "url": url,
-                        "params": params,
+                        "response_type": type(data).__name__,
+                        "response_keys": (list(data.keys()) if isinstance(data, dict) else "N/A"),
                     },
                 )
 
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-
-                # 解析响应数据
-                data = response.json()
-                hardware_hosts: List[HardwareHostData] = []
-
-                if isinstance(data, list):
-                    # 响应格式：直接数组
-                    hardware_hosts = [HardwareHostData(**item) for item in data]
-                elif isinstance(data, dict) and "data" in data:
-                    # 响应格式：{ "data": [...] }
-                    hardware_hosts = [HardwareHostData(**item) for item in data["data"]]
-                else:
-                    logger.warning(
-                        "硬件接口返回数据格式不符合预期",
-                        extra={
-                            "response_type": type(data).__name__,
-                            "response_keys": (list(data.keys()) if isinstance(data, dict) else "N/A"),
-                        },
-                    )
-
-                return hardware_hosts
+            return hardware_hosts
 
         except httpx.TimeoutException as e:
             logger.error(
@@ -487,17 +569,129 @@ class HostDiscoveryService:
                 http_status_code=502,  # Bad Gateway
             )
 
+    async def _filter_available_hosts_in_session(
+        self,
+        session: "AsyncSession",
+        hardware_ids: List[str],
+    ) -> List[AvailableHostInfo]:
+        """根据条件过滤可用的主机（使用已有会话，优化连接池使用）
+
+        这是 _filter_available_hosts 的优化版本，接受已有会话参数，
+        避免在循环中重复创建数据库连接。
+
+        Args:
+            session: 数据库会话（已创建）
+            hardware_ids: 硬件 ID 列表
+
+        Returns:
+            可用主机列表
+        """
+        if not hardware_ids:
+            return []
+
+        # 批量查询优化：如果 hardware_ids 太多，分批查询
+        batch_size = 500
+        all_available_hosts: List[AvailableHostInfo] = []
+
+        try:
+            total_query_time = 0.0
+
+            # 分批处理 hardware_ids
+            for i in range(0, len(hardware_ids), batch_size):
+                batch_ids = hardware_ids[i:i + batch_size]
+                batch_start_time = time.time()
+
+                # 构建查询条件（使用索引优化）
+                # 使用复合索引：ix_host_rec_hardware_id_state (hardware_id, host_state, appr_state, tcp_state, del_flag)
+                stmt = select(HostRec).where(
+                    and_(
+                        HostRec.hardware_id.in_(batch_ids),
+                        HostRec.appr_state == 1,  # 启用状态
+                        HostRec.host_state == 0,  # 空闲状态
+                        HostRec.tcp_state == 2,  # 监听/连接正常
+                        HostRec.del_flag == 0,  # 未删除
+                    )
+                ).limit(1000)  # 限制单次查询结果数量
+
+                result = await session.execute(stmt)
+                host_recs = result.scalars().all()
+                batch_duration = time.time() - batch_start_time
+                total_query_time += batch_duration
+
+                # 记录慢查询（单批次超过200ms）
+                if batch_duration > 0.2:
+                    logger.warning(
+                        "数据库批次查询耗时较长",
+                        extra={
+                            "batch_index": i // batch_size + 1,
+                            "batch_size": len(batch_ids),
+                            "batch_duration_ms": round(batch_duration * 1000, 2),
+                            "result_count": len(host_recs),
+                        },
+                    )
+
+                # 转换为响应格式
+                batch_hosts: List[AvailableHostInfo] = [
+                    AvailableHostInfo(
+                        host_rec_id=str(host_rec.id),
+                        hardware_id=cast(str, host_rec.hardware_id),
+                        user_name=host_rec.host_acct or "",
+                        host_ip=cast(str, host_rec.host_ip),
+                        appr_state=cast(int, host_rec.appr_state or 0),
+                        host_state=cast(int, host_rec.host_state or 0),
+                    )
+                    for host_rec in host_recs
+                    if host_rec.hardware_id  # 确保 hardware_id 不为空
+                ]
+
+                all_available_hosts.extend(batch_hosts)
+
+            logger.debug(
+                "host_rec 表查询完成（复用会话）",
+                extra={
+                    "requested_hardware_ids": len(hardware_ids),
+                    "available_hosts": len(all_available_hosts),
+                    "batches": (len(hardware_ids) + batch_size - 1) // batch_size,
+                    "total_query_duration_ms": round(total_query_time * 1000, 2),
+                    "avg_query_duration_ms": round(
+                        (total_query_time / max(1, (len(hardware_ids) + batch_size - 1) // batch_size)) * 1000,
+                        2,
+                    ),
+                },
+            )
+
+            return all_available_hosts
+
+        except Exception as e:
+            logger.error(
+                "数据库查询失败",
+                extra={
+                    "requested_hardware_ids": len(hardware_ids),
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            raise
+
     async def _filter_available_hosts(
         self,
         hardware_ids: List[str],
     ) -> List[AvailableHostInfo]:
-        """根据条件过滤可用的主机
+        """根据条件过滤可用的主机（批量查询优化）
 
         过滤条件：
         - hardware_id 在指定列表中
         - appr_state = 1（启用状态）
         - host_state = 0（空闲状态）
+        - tcp_state = 2（监听/连接正常）
         - del_flag = 0（未删除）
+
+        性能优化：
+        - 使用 hardware_id 索引加速查询
+        - 批量查询，减少数据库往返次数
+        - 限制查询结果数量，避免内存溢出
+        - 添加数据库连接重试机制，处理连接丢失问题
 
         Args:
             hardware_ids: 硬件 ID 列表
@@ -508,41 +702,112 @@ class HostDiscoveryService:
         if not hardware_ids:
             return []
 
-        session_factory = mariadb_manager.get_session()
-        async with session_factory() as session:
-            # 构建查询条件
-            stmt = select(HostRec).where(
-                and_(
-                    HostRec.hardware_id.in_(hardware_ids),
-                    HostRec.appr_state == 1,  # 启用状态
-                    HostRec.host_state == 0,  # 空闲状态
-                    HostRec.del_flag == 0,  # 未删除
+        # 批量查询优化：如果 hardware_ids 太多，分批查询
+        # 避免 SQL IN 子句过长（MySQL/MariaDB 限制）
+        batch_size = 500
+        all_available_hosts: List[AvailableHostInfo] = []
+
+        # 重试配置
+        max_retries = 3
+        retry_delay = 1.0  # 初始重试延迟（秒）
+
+        for attempt in range(max_retries):
+            try:
+                session_factory = mariadb_manager.get_session()
+                async with session_factory() as session:
+                    # 分批处理 hardware_ids
+                    for i in range(0, len(hardware_ids), batch_size):
+                        batch_ids = hardware_ids[i:i + batch_size]
+
+                        # 构建查询条件（使用索引优化）
+                        stmt = select(HostRec).where(
+                            and_(
+                                HostRec.hardware_id.in_(batch_ids),
+                                HostRec.appr_state == 1,  # 启用状态
+                                HostRec.host_state == 0,  # 空闲状态
+                                HostRec.tcp_state == 2,  # 监听/连接正常
+                                HostRec.del_flag == 0,  # 未删除
+                            )
+                        ).limit(1000)  # 限制单次查询结果数量
+
+                        result = await session.execute(stmt)
+                        host_recs = result.scalars().all()
+
+                        # 转换为响应格式
+                        batch_hosts: List[AvailableHostInfo] = [
+                            AvailableHostInfo(
+                                host_rec_id=str(host_rec.id),  # ✅ 转换为字符串避免精度丢失
+                                hardware_id=cast(str, host_rec.hardware_id),
+                                user_name=host_rec.host_acct or "",
+                                host_ip=cast(str, host_rec.host_ip),
+                                appr_state=cast(int, host_rec.appr_state or 0),
+                                host_state=cast(int, host_rec.host_state or 0),
+                            )
+                            for host_rec in host_recs
+                            if host_rec.hardware_id  # 确保 hardware_id 不为空
+                        ]
+
+                        all_available_hosts.extend(batch_hosts)
+
+                    logger.debug(
+                        "host_rec 表查询完成",
+                        extra={
+                            "requested_hardware_ids": len(hardware_ids),
+                            "available_hosts": len(all_available_hosts),
+                            "batches": (len(hardware_ids) + batch_size - 1) // batch_size,
+                            "attempt": attempt + 1,
+                        },
+                    )
+
+                    return all_available_hosts
+
+            except OperationalError as e:
+                # 数据库连接错误，尝试重试
+                error_code = getattr(e.orig, "args", [None])[0] if hasattr(e, "orig") else None
+                is_connection_lost = (
+                    error_code == 2013  # Lost connection to MySQL server during query
+                    or "Lost connection" in str(e)
+                    or "Connection lost" in str(e)
                 )
-            )
 
-            result = await session.execute(stmt)
-            host_recs = result.scalars().all()
+                if is_connection_lost and attempt < max_retries - 1:
+                    # 计算指数退避延迟
+                    delay = retry_delay * (2 ** attempt)
+                    logger.warning(
+                        "数据库连接丢失，准备重试",
+                        extra={
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "delay_seconds": delay,
+                            "error_code": error_code,
+                            "error_message": str(e),
+                        },
+                    )
+                    await asyncio.sleep(delay)
+                    # 清空已收集的结果，重新开始查询
+                    all_available_hosts = []
+                    continue
+                else:
+                    # 重试次数已用完或不是连接丢失错误，重新抛出异常
+                    logger.error(
+                        "数据库查询失败，无法重试",
+                        extra={
+                            "attempt": attempt + 1,
+                            "max_retries": max_retries,
+                            "error_code": error_code,
+                            "error_message": str(e),
+                            "is_connection_lost": is_connection_lost,
+                        },
+                        exc_info=True,
+                    )
+                    raise
 
-            # 转换为响应格式
-            available_hosts: List[AvailableHostInfo] = [
-                AvailableHostInfo(
-                    host_rec_id=str(host_rec.id),  # ✅ 转换为字符串避免精度丢失
-                    hardware_id=cast(str, host_rec.hardware_id),
-                    user_name=host_rec.host_acct or "",
-                    host_ip=cast(str, host_rec.host_ip),
-                    appr_state=cast(int, host_rec.appr_state or 0),
-                    host_state=cast(int, host_rec.host_state or 0),
-                )
-                for host_rec in host_recs
-                if host_rec.hardware_id  # 确保 hardware_id 不为空
-            ]
-
-            logger.debug(
-                "host_rec 表查询完成",
-                extra={
-                    "requested_hardware_ids": len(hardware_ids),
-                    "available_hosts": len(available_hosts),
-                },
-            )
-
-            return available_hosts
+        # 如果所有重试都失败，返回空列表（不应该到达这里，因为会抛出异常）
+        logger.error(
+            "数据库查询失败，所有重试均失败",
+            extra={
+                "requested_hardware_ids": len(hardware_ids),
+                "max_retries": max_retries,
+            },
+        )
+        return []

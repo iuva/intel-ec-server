@@ -33,6 +33,7 @@ class MessageType(str, Enum):
     HEARTBEAT_TIMEOUT_WARNING = "heartbeat_timeout_warning"  # 心跳超时警告
     HOST_OFFLINE_NOTIFICATION = "host_offline_notification"  # Host下线通知
     CONNECTION_NOTIFICATION = "connection_notification"  # 连接通知（VNC连接成功时通知Agent进行日志监控）
+    VERSION_UPDATE = "version_update"  # Agent版本更新
 
 
 class BaseMessage(BaseModel):
@@ -181,6 +182,20 @@ class ConnectionNotificationMessage(BaseMessage):
     details: Optional[Dict[str, Any]] = Field(default=None, description="附加信息（如用户ID、测试ID等）")
 
 
+class VersionUpdateMessage(BaseMessage):
+    """版本更新消息 - Agent → Server
+
+    Agent 上报当前版本号，用于更新 host_rec 表的 agent_ver 字段
+
+    Note:
+        - agent_id 从 WebSocket 连接时的 token 中获取，不需要在消息中传递
+        - 消息中只需要包含 version 字段
+    """
+
+    type: MessageType = Field(default=MessageType.VERSION_UPDATE, description="消息类型")
+    version: str = Field(..., max_length=10, description="Agent 版本号")
+
+
 # 消息类型映射
 MESSAGE_TYPE_MAP = {
     MessageType.WELCOME: WelcomeMessage,
@@ -195,6 +210,7 @@ MESSAGE_TYPE_MAP = {
     MessageType.HEARTBEAT_TIMEOUT_WARNING: HeartbeatTimeoutWarningMessage,
     MessageType.HOST_OFFLINE_NOTIFICATION: HostOfflineNotificationMessage,
     MessageType.CONNECTION_NOTIFICATION: ConnectionNotificationMessage,
+    MessageType.VERSION_UPDATE: VersionUpdateMessage,
 }
 
 

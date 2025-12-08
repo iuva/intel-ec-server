@@ -148,6 +148,23 @@ db_connections_active = Gauge("db_connections_active", "Number of active databas
 
 db_connections_idle = Gauge("db_connections_idle", "Number of idle database connections", registry=registry)
 
+# 慢查询计数器
+db_slow_queries_total = Counter(
+    "db_slow_queries_total",
+    "Total number of slow database queries",
+    ["operation", "table", "service", "sql_hash"],
+    registry=registry,
+)
+
+# 慢查询响应时间直方图
+db_slow_query_duration_seconds = Histogram(
+    "db_slow_query_duration_seconds",
+    "Slow database query duration in seconds",
+    ["operation", "table", "service", "sql_hash"],
+    buckets=(2.0, 3.0, 5.0, 10.0, 15.0, 30.0, 60.0),
+    registry=registry,
+)
+
 # ==================== 缓存指标 ====================
 
 # 缓存操作总数

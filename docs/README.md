@@ -121,6 +121,19 @@
 
 ---
 
+### ⚡ 性能优化
+
+| 文档 | 说明 |
+|------|------|
+| [performance/optimization-summary.md](./performance/optimization-summary.md) | **性能优化总结** - 2000并发支持、连接池配置、查询优化 |
+| [performance/service-optimization-plan.md](./performance/service-optimization-plan.md) | **服务优化方案** - 性能瓶颈分析、优化建议、实施计划 |
+| [performance/k6-load-test-analysis.md](./performance/k6-load-test-analysis.md) | **k6 负载测试分析** - 测试结果分析、性能瓶颈识别 |
+| [performance/database-connection-pool-diagnosis.md](./performance/database-connection-pool-diagnosis.md) | **数据库连接池诊断** - 连接池监控、问题排查 |
+| [performance/mysql-2000-concurrency-windows-optimization.md](./performance/mysql-2000-concurrency-windows-optimization.md) | **MySQL 2000并发优化** - Windows服务器配置、连接池优化 |
+| [performance/mysql-2000-concurrency-quick-start.md](./performance/mysql-2000-concurrency-quick-start.md) | **MySQL 2000并发快速配置** - 快速开始指南 |
+
+---
+
 ### 🔧 故障排除
 
 | 文档 | 说明 |
@@ -232,6 +245,10 @@ XX-topic-name.md
   - ✅ 新增共享模块和工具类文档
   - ✅ 新增测试文档
   - ✅ 新增脚本使用指南
+  - ✅ 清理修复文档（删除已完成的临时修复文档）
+  - ✅ 合并性能分析文档（删除v2、v3版本，保留最新总结）
+  - ✅ 更新性能优化文档为2000并发支持
+  - ✅ 新增性能优化文档索引
 - **2025-11-01**: 
   - ✅ 合并重复API文档
   - ✅ 删除Admin Service相关文档引用（服务已移除）

@@ -160,7 +160,7 @@ ab -n 1000 -c 10 http://localhost:8003/api/v1/host/hosts/available
 # Ubuntu/Debian
 sudo apt-get install wrk
 
-# macOS
+# macOSt
 brew install wrk
 ```
 

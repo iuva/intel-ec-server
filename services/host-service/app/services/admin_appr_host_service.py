@@ -6,7 +6,7 @@
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, desc, func, select, update
 
@@ -36,6 +36,7 @@ try:
     from shared.common.decorators import handle_service_errors
     from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.http_client import get_http_client
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
@@ -66,6 +67,7 @@ except ImportError:
     from shared.common.decorators import handle_service_errors
     from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
+    from shared.common.http_client import get_http_client
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
@@ -242,6 +244,219 @@ def _build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
 """
 
     return table_html
+
+
+def _get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) -> str:
+    """从硬件信息中提取配置名称
+
+    Args:
+        hw_info: 硬件信息字典（包含 dmr_config）
+        host_rec: 主机记录对象
+
+    Returns:
+        配置名称字符串
+    """
+    # 优先从 dmr_config 中提取 host_name
+    try:
+        dmr_config = hw_info.get("dmr_config", {})
+        mainboard = dmr_config.get("mainboard", {})
+        board = mainboard.get("board", {})
+        board_meta_data = board.get("board_meta_data", {})
+        host_name = board_meta_data.get("host_name")
+        if host_name:
+            return host_name
+    except Exception:
+        ***REMOVED***
+
+    # 如果无法从 dmr_config 提取，使用 host_rec 的字段
+    if host_rec.host_ip:
+        return f"Host-{host_rec.host_ip}"
+    elif host_rec.mg_id:
+        return f"Host-{host_rec.mg_id}"
+    else:
+        return f"Host-{host_rec.id}"
+
+
+async def _call_hardware_api(
+    hardware_id: Optional[str],
+    name: str,
+    dmr_config: Dict[str, Any],
+    locale: str = "zh_CN",
+) -> str:
+    """调用外部硬件接口（新增或修改）
+
+    Args:
+        hardware_id: 硬件ID（如果为 None 则调用新增接口，否则调用修改接口）
+        name: 配置名称
+        dmr_config: DMR硬件配置
+        locale: 语言偏好
+
+    Returns:
+        返回的 hardware_id（新增时返回新ID，修改时返回原ID）
+
+    Raises:
+        BusinessError: 接口调用失败时
+    """
+    # 检查是否使用 Mock 数据
+    use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
+
+    if use_mock:
+        logger.info(
+            "使用 Mock 硬件接口数据",
+            extra={
+                "hardware_id": hardware_id,
+                "name": name,
+                "is_new": hardware_id is None,
+            },
+        )
+        # 返回模拟的 hardware_id
+        if hardware_id:
+            return hardware_id
+        else:
+            # 生成模拟的 hardware_id
+            import uuid
+            return f"mock-hardware-{uuid.uuid4().hex[:8]}"
+
+    # 获取硬件接口 URL
+    hardware_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
+    http_client = get_http_client()
+
+    try:
+        if hardware_id is None:
+            # 新增硬件：POST /api/v1/hardware/
+            url = f"{hardware_api_url}/api/v1/hardware/"
+            request_body = {
+                "name": name,
+                "dmr_config": dmr_config,
+            }
+
+            logger.info(
+                "调用外部硬件接口（新增）",
+                extra={
+                    "url": url,
+                    "name": name,
+                },
+            )
+
+            response = await http_client.request("POST", url, json=request_body)
+
+            if response["status_code"] not in (200, 201):
+                error_msg = (
+                    response["body"].get("message", "未知错误")
+                    if isinstance(response["body"], dict)
+                    else str(response["body"])
+                )
+                raise BusinessError(
+                    message=f"调用硬件接口失败（新增）: {error_msg}",
+                    message_key="error.hardware.create_failed",
+                    error_code="HARDWARE_CREATE_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                    details={
+                        "url": url,
+                        "status_code": response["status_code"],
+                        "response": response["body"],
+                    },
+                )
+
+            # 从响应中提取 hardware_id
+            response_body = response["body"]
+            if isinstance(response_body, dict):
+                new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
+                if not new_hardware_id:
+                    raise BusinessError(
+                        message="硬件接口返回数据格式错误：缺少 hardware_id 字段",
+                        message_key="error.hardware.invalid_response",
+                        error_code="HARDWARE_INVALID_RESPONSE",
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=500,
+                    )
+                logger.info(
+                    "硬件接口调用成功（新增）",
+                    extra={
+                        "hardware_id": new_hardware_id,
+                        "name": name,
+                    },
+                )
+                return str(new_hardware_id)
+            else:
+                raise BusinessError(
+                    message="硬件接口返回数据格式错误：响应不是 JSON 格式",
+                    message_key="error.hardware.invalid_response",
+                    error_code="HARDWARE_INVALID_RESPONSE",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                )
+
+        else:
+            # 修改硬件：PUT /api/v1/hardware/{hardware_id}
+            url = f"{hardware_api_url}/api/v1/hardware/{hardware_id}"
+            request_body = {
+                "dmr_config": dmr_config,
+            }
+
+            logger.info(
+                "调用外部硬件接口（修改）",
+                extra={
+                    "url": url,
+                    "hardware_id": hardware_id,
+                },
+            )
+
+            response = await http_client.request("PUT", url, json=request_body)
+
+            if response["status_code"] not in (200, 204):
+                error_msg = (
+                    response["body"].get("message", "未知错误")
+                    if isinstance(response["body"], dict)
+                    else str(response["body"])
+                )
+                raise BusinessError(
+                    message=f"调用硬件接口失败（修改）: {error_msg}",
+                    message_key="error.hardware.update_failed",
+                    error_code="HARDWARE_UPDATE_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                    details={
+                        "url": url,
+                        "hardware_id": hardware_id,
+                        "status_code": response["status_code"],
+                        "response": response["body"],
+                    },
+                )
+
+            logger.info(
+                "硬件接口调用成功（修改）",
+                extra={
+                    "hardware_id": hardware_id,
+                },
+            )
+            return hardware_id
+
+    except BusinessError:
+        raise
+    except Exception as e:
+        logger.error(
+            "调用硬件接口异常",
+            extra={
+                "hardware_id": hardware_id,
+                "name": name,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
+            exc_info=True,
+        )
+        raise BusinessError(
+            message=f"调用硬件接口异常: {str(e)}",
+            message_key="error.hardware.api_error",
+            error_code="HARDWARE_API_ERROR",
+            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+            http_status_code=500,
+            details={
+                "hardware_id": hardware_id,
+                "error": str(e),
+            },
+        )
 
 
 class AdminApprHostService:
@@ -732,6 +947,8 @@ class AdminApprHostService:
                 latest_hw_ids_to_update: List[int] = []
                 other_hw_ids_to_update: List[int] = []
                 host_updates: Dict[int, Dict[str, Any]] = {}
+                # 存储 hardware_id 到 hw_rec_id 的映射（用于更新 host_hw_rec 表）
+                hw_rec_hardware_id_map: Dict[int, str] = {}
 
                 # 处理每个主机
                 for host_id in host_ids_to_process:
@@ -779,17 +996,93 @@ class AdminApprHostService:
                         if len(hw_recs) > 1:
                             other_hw_ids_to_update.extend([hw.id for hw in hw_recs[1:]])
 
-                        # 6. 收集主机更新信息
+                        # 6. 调用外部硬件接口（新增或修改）
+                        hardware_id_result: Optional[str] = None
+                        # 初始化 hardware_id_result 为 None，如果外部接口调用成功，会更新此值
+                        if latest_hw_rec.hw_info:
+                            try:
+                                # 提取 dmr_config
+                                dmr_config = latest_hw_rec.hw_info.get("dmr_config")
+                                if not dmr_config:
+                                    raise BusinessError(
+                                        message="硬件信息中缺少 dmr_config 字段",
+                                        message_key="error.hardware.missing_dmr_config",
+                                        error_code="MISSING_DMR_CONFIG",
+                                        code=ServiceErrorCodes.VALIDATION_ERROR,
+                                        http_status_code=400,
+                                    )
+
+                                # 提取配置名称
+                                name = _get_hardware_name_from_hw_info(latest_hw_rec.hw_info, host_rec)
+
+                                # 判断是新增还是修改（通过 host_rec.hardware_id 是否为空）
+                                existing_hardware_id = host_rec.hardware_id
+
+                                # 调用外部硬件接口
+                                hardware_id_result = await _call_hardware_api(
+                                    hardware_id=existing_hardware_id,
+                                    name=name,
+                                    dmr_config=dmr_config,
+                                    locale=locale,
+                                )
+
+                                logger.info(
+                                    "外部硬件接口调用成功",
+                                    extra={
+                                        "host_id": host_id,
+                                        "hardware_id": hardware_id_result,
+                                        "is_new": existing_hardware_id is None,
+                                    },
+                                )
+
+                            except BusinessError:
+                                # 业务错误直接抛出
+                                raise
+                            except Exception as e:
+                                logger.error(
+                                    "调用外部硬件接口失败",
+                                    extra={
+                                        "host_id": host_id,
+                                        "error": str(e),
+                                        "error_type": type(e).__name__,
+                                    },
+                                    exc_info=True,
+                                )
+                                raise BusinessError(
+                                    message=f"调用外部硬件接口失败: {str(e)}",
+                                    message_key="error.hardware.api_call_failed",
+                                    error_code="HARDWARE_API_CALL_FAILED",
+                                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                                    http_status_code=500,
+                                    details={
+                                        "host_id": host_id,
+                                        "error": str(e),
+                                    },
+                                )
+                        else:
+                            logger.warning(
+                                "硬件记录中缺少 hw_info，跳过外部硬件接口调用",
+                                extra={
+                                    "host_id": host_id,
+                                    "hw_rec_id": latest_hw_id,
+                                },
+                            )
+
+                        # 7. 收集主机更新信息（包含 hardware_id）
                         host_updates[host_id] = {
                             "appr_state": APPR_STATE_ENABLE,
                             "host_state": HOST_STATE_FREE,
                             "hw_id": latest_hw_id,
                             "subm_time": now,
                         }
+                        # 如果外部接口返回了 hardware_id，更新到 host_rec
+                        if hardware_id_result:
+                            host_updates[host_id]["hardware_id"] = hardware_id_result
 
-                        # 7. TODO: 调用外部 API 同步 host_hw_rec 最新数据的 hw_info
-                        # TODO: 实现外部 API 调用逻辑
-                        # 示例：await external_api.sync_hardware_info(latest_hw_rec.hw_info)
+                        # 8. 收集硬件记录更新信息（包含 hardware_id）
+                        # 如果外部接口返回了 hardware_id，需要更新到 host_hw_rec
+                        if hardware_id_result:
+                            hw_rec_hardware_id_map[latest_hw_id] = hardware_id_result
 
                         results.append(
                             {
@@ -797,6 +1090,7 @@ class AdminApprHostService:
                                 "success": True,
                                 "message": t("success.host.approved", locale=locale, default="主机启用成功"),
                                 "hw_id": latest_hw_id,
+                                "hardware_id": hardware_id_result,
                             }
                         )
                         success_count += 1
@@ -830,16 +1124,37 @@ class AdminApprHostService:
                 # 批量更新操作
                 if latest_hw_ids_to_update:
                     # 批量更新最新硬件记录
-                    update_latest_stmt = (
-                        update(HostHwRec)
-                        .where(HostHwRec.id.in_(latest_hw_ids_to_update))
-                        .values(
-                            sync_state=2,
-                            appr_time=now,
-                            appr_by=appr_by,
+                    # 如果有 hardware_id 需要更新，需要逐个更新（因为每个记录的 hardware_id 可能不同）
+                    if hw_rec_hardware_id_map:
+                        # 逐个更新包含 hardware_id 的记录
+                        for hw_rec_id in latest_hw_ids_to_update:
+                            update_values = {
+                                "sync_state": 2,
+                                "appr_time": now,
+                                "appr_by": appr_by,
+                            }
+                            # 如果该记录有 hardware_id，添加到更新值中
+                            if hw_rec_id in hw_rec_hardware_id_map:
+                                update_values["hardware_id"] = hw_rec_hardware_id_map[hw_rec_id]
+
+                            update_stmt = (
+                                update(HostHwRec)
+                                .where(HostHwRec.id == hw_rec_id)
+                                .values(**update_values)
+                            )
+                            await session.execute(update_stmt)
+                    else:
+                        # 没有 hardware_id 需要更新，使用批量更新
+                        update_latest_stmt = (
+                            update(HostHwRec)
+                            .where(HostHwRec.id.in_(latest_hw_ids_to_update))
+                            .values(
+                                sync_state=2,
+                                appr_time=now,
+                                appr_by=appr_by,
+                            )
                         )
-                    )
-                    await session.execute(update_latest_stmt)
+                        await session.execute(update_latest_stmt)
 
                 if other_hw_ids_to_update:
                     # 批量更新其他硬件记录

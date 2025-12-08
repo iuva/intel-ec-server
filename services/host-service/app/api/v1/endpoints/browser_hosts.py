@@ -114,6 +114,7 @@ async def query_available_hosts(
     3. 过滤条件：
        - appr_state = 1（启用状态）
        - host_state = 0（空闲状态）
+       - tcp_state = 2（监听/连接正常）
        - del_flag = 0（未删除）
     4. 根据 last_id 跳过已处理的记录
     5. 收集满足 page_size 数量的结果后返回

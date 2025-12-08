@@ -1,0 +1,63 @@
+# prometheus/alerts/performance_alerts.yml
+groups:
+  - name: performance_alerts
+    rules:
+      # 响应时间告警
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_seconds_bucket{service="host-service"}[5m])
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "响应时间过高"
+          description: "P95 响应时间超过 1 秒，当前值: {{ $value }}s"
+      
+      # 错误率告警
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{service="host-service",status=~"5.."}[5m]) /
+          rate(http_requests_total{service="host-service"}[5m]) > 0.01
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "错误率过高"
+          description: "错误率超过 1%，当前值: {{ $value | humanizePercentage }}"
+      
+      # CPU使用率告警
+      - alert: HighCPUUsage
+        expr: |
+          rate(process_cpu_seconds_total{service="host-service"}[5m]) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU使用率过高"
+          description: "CPU使用率超过 85%，当前值: {{ $value }}%"
+      
+      # 内存使用率告警
+      - alert: HighMemoryUsage
+        expr: |
+          process_resident_memory_bytes{service="host-service"} / 
+          node_memory_MemTotal_bytes * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "内存使用率超过 85%，当前值: {{ $value }}%"
+      
+      # 数据库连接数告警
+      - alert: HighDatabaseConnections
+        expr: |
+          db_connections_active{service="host-service"} / 
+          db_connections_max{service="host-service"} * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库连接数过高"
+          description: "数据库连接数超过 80%，当前值: {{ $value }}%"

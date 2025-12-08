@@ -14,7 +14,7 @@ except ImportError:
     import os
     import sys
 
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../")))
     from shared.common.database import BaseDBModel
 
 
@@ -43,7 +43,7 @@ class HostRec(BaseDBModel):
 
     # mongodb 主键;mongo db 硬件 id
     hardware_id: Mapped[Optional[str]] = mapped_column(
-        VARCHAR(64), nullable=True, comment="mongodb 主键;mongo db 硬件 id"
+        VARCHAR(64), nullable=True, index=True, comment="mongodb 主键;mongo db 硬件 id"
     )
 
     # ip 地址
@@ -110,4 +110,5 @@ class HostRec(BaseDBModel):
     __table_args__ = (
         Index("ix_host_rec_host_state_appr_del", "host_state", "appr_state", "del_flag"),
         Index("ix_host_rec_created_time", "created_time"),
+        Index("ix_host_rec_hardware_id_state", "hardware_id", "host_state", "appr_state", "tcp_state", "del_flag"),
     )

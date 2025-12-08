@@ -81,17 +81,30 @@ else:
             "请设置 JWT_SECRET_KEY 环境变量。"
         )
 
-# ✅ 修复：根据 Nacos 开关配置初始化服务发现
-# 如果 Nacos 关闭，不创建服务发现实例，直接使用后备地址
+# ✅ 修复：始终初始化服务发现，支持本地多实例配置
+# 即使 Nacos 未启用，也可以使用环境变量配置的多实例（如 HOST_SERVICE_INSTANCES）
+# 从环境变量读取负载均衡策略（默认：round_robin 轮询）
+load_balance_strategy = os.getenv("LOAD_BALANCE_STRATEGY", "round_robin")
+
+# 初始化服务发现（在 create_service_lifespan 之前）
+# 注意：Nacos 管理器将在 lifespan 中初始化（如果启用），这里先初始化服务发现实例
+# 如果没有 Nacos，服务发现会使用本地多实例配置（如 HOST_SERVICE_INSTANCES）
+service_discovery = init_service_discovery(
+    nacos_manager=None,  # Nacos 管理器稍后在 lifespan 中设置
+    cache_ttl=30,
+    load_balance_strategy=load_balance_strategy,
+)
+
 if config.enable_nacos:
-    # 初始化服务发现（在 create_service_lifespan 之前）
-    # 注意：Nacos 管理器将在 lifespan 中初始化，这里只初始化服务发现实例
-    service_discovery = init_service_discovery(cache_ttl=30)
-    logger.info("✅ 服务发现已初始化（Nacos 已启用）")
+    logger.info(
+        "✅ 服务发现已初始化（Nacos 已启用，将在 lifespan 中连接）",
+        extra={"load_balance_strategy": load_balance_strategy},
+    )
 else:
-    # Nacos 关闭，不创建服务发现实例，使用后备地址
-    service_discovery = None
-    # logger.info("⚠️ 服务发现未初始化（Nacos 已关闭，将使用后备地址）")
+    logger.info(
+        "✅ 服务发现已初始化（Nacos 未启用，将使用本地多实例配置或后备地址）",
+        extra={"load_balance_strategy": load_balance_strategy},
+    )
 
 # 创建 FastAPI 应用
 app = FastAPI(

@@ -20,6 +20,7 @@ services:
       MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
       MARIADB_CHARSET: utf8mb4
       MARIADB_COLLATION: utf8mb4_unicode_ci
+      MYSQL_MAX_CONNECTIONS: ${MYSQL_MAX_CONNECTIONS:-500}
     ports:
       - "${MARIADB_PORT:-3306}:3306"
     volumes:

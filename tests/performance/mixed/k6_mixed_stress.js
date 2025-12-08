@@ -40,7 +40,10 @@ export function browserApi() {
     user_name: 'stress_user',
     page_size: 20,
   });
-  const res = http.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
+  const res = http.post(url, payload, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: '30s',  // HTTP 请求超时时间
+  });
   check(res, { 'status 200': (r) => r.status === 200 });
   sleep(1);
 }
@@ -51,7 +54,10 @@ export function adminApi() {
   if (TOKEN) {
     headers.Authorization = `Bearer ${TOKEN}`;
   }
-  const res = http.get(url, { headers });
+  const res = http.get(url, {
+    headers,
+    timeout: '30s',  // HTTP 请求超时时间
+  });
   check(res, { 'status 200': (r) => r.status === 200 });
   sleep(1);
 }
