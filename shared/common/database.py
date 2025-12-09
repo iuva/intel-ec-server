@@ -3,7 +3,9 @@ MariaDB 数据库管理器 - 异步 SQLAlchemy 集成
 """
 
 import logging
+import os
 import random
+import ssl
 import time
 from datetime import datetime
 from typing import AsyncGenerator, Optional
@@ -138,6 +140,71 @@ class MariaDBManager:
                 timeout_params = f"?connect_timeout={connect_timeout}"
                 database_url_with_timeout = database_url + timeout_params
 
+            # ✅ 从环境变量读取 SSL 配置并动态创建 SSL 上下文
+            connect_args = {}
+            ssl_enabled = os.getenv("MARIADB_SSL_ENABLED", "false").lower() in ("true", "1", "yes")
+
+            if ssl_enabled:
+                # 读取 SSL 配置
+                ssl_ca = os.getenv("MARIADB_SSL_CA", "")
+                ssl_cert = os.getenv("MARIADB_SSL_CERT", "")
+                ssl_key = os.getenv("MARIADB_SSL_KEY", "")
+                ssl_verify_cert = os.getenv("MARIADB_SSL_VERIFY_CERT", "true").lower() in ("true", "1", "yes")
+                ssl_verify_identity = os.getenv("MARIADB_SSL_VERIFY_IDENTITY", "false").lower() in ("true", "1", "yes")
+
+                # 创建 SSL 上下文
+                ssl_context = ssl.create_default_context()
+
+                if not ssl_verify_cert:
+                    # 不验证证书：开发/测试环境
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+                    logger.info(
+                        "MariaDB SSL 已启用（不验证证书）",
+                        extra={
+                            "ssl_enabled": True,
+                            "ssl_verify_cert": False,
+                        },
+                    )
+                else:
+                    # 验证证书：生产环境
+                    ssl_context.check_hostname = ssl_verify_identity
+                    ssl_context.verify_mode = ssl.CERT_REQUIRED
+                    logger.info(
+                        "MariaDB SSL 已启用（验证证书）",
+                        extra={
+                            "ssl_enabled": True,
+                            "ssl_verify_cert": True,
+                            "ssl_verify_identity": ssl_verify_identity,
+                        },
+                    )
+
+                # 加载证书文件
+                if ssl_ca:
+                    try:
+                        ssl_context.load_verify_locations(ssl_ca)
+                        logger.debug(f"已加载 SSL CA 证书: {ssl_ca}")
+                    except Exception as e:
+                        logger.warning(
+                            f"加载 SSL CA 证书失败: {ssl_ca}",
+                            extra={"error": str(e)},
+                        )
+
+                if ssl_cert and ssl_key:
+                    try:
+                        ssl_context.load_cert_chain(ssl_cert, ssl_key)
+                        logger.debug(f"已加载 SSL 客户端证书: {ssl_cert}, {ssl_key}")
+                    except Exception as e:
+                        logger.warning(
+                            f"加载 SSL 客户端证书失败: {ssl_cert}, {ssl_key}",
+                            extra={"error": str(e)},
+                        )
+
+                # 将 SSL 上下文添加到 connect_args
+                connect_args["ssl"] = ssl_context
+            else:
+                logger.debug("MariaDB SSL 未启用")
+
             # 保存连接池配置用于监控
             self._pool_size = pool_size
             self._max_overflow = max_overflow
@@ -145,6 +212,7 @@ class MariaDBManager:
             # 创建异步引擎
             self.engine = create_async_engine(
                 database_url_with_timeout,
+                connect_args=connect_args if connect_args else {},
                 pool_size=pool_size,
                 max_overflow=max_overflow,
                 pool_pre_ping=pool_pre_ping,
@@ -367,14 +435,20 @@ class MariaDBManager:
         self, base_factory: async_sessionmaker[AsyncSession]
     ) -> async_sessionmaker[AsyncSession]:
         """创建带监控的会话工厂，记录连接获取时间
-        
+
         使用 SQLAlchemy 事件监听器监控连接获取，更可靠且不侵入代码逻辑。
         """
         from sqlalchemy import event
-        from sqlalchemy.pool import Pool
+
+        # 确保 engine 存在
+        if not self.engine:
+            return base_factory
+
+        # 保存 engine 引用以避免类型检查问题
+        engine = self.engine
 
         # 监听连接池的 checkout 事件（连接被取出时）
-        @event.listens_for(self.engine.sync_engine, "checkout")
+        @event.listens_for(engine.sync_engine, "checkout")
         def on_checkout(dbapi_conn, connection_record, connection_proxy):
             """连接被取出时记录等待时间"""
             start_time = getattr(connection_record, "_checkout_start_time", None)
@@ -383,10 +457,15 @@ class MariaDBManager:
                 # 避免在事件监听器中调用可能触发连接池操作的方法
                 # 直接访问连接池属性获取状态
                 try:
-                    pool = self.engine.pool
-                    checked_out = pool.checkedout() if hasattr(pool, "checkedout") else 0
-                    max_connections = self._pool_size + self._max_overflow
-                    usage_percent = (checked_out / max_connections * 100) if max_connections > 0 else 0.0
+                    if engine and engine.pool:
+                        pool = engine.pool
+                        checked_out = pool.checkedout() if hasattr(pool, "checkedout") else 0
+                        max_connections = self._pool_size + self._max_overflow
+                        usage_percent = (checked_out / max_connections * 100) if max_connections > 0 else 0.0
+                    else:
+                        checked_out = 0
+                        max_connections = self._pool_size + self._max_overflow
+                        usage_percent = 0.0
                 except Exception:
                     # 如果获取状态失败，使用默认值
                     checked_out = 0

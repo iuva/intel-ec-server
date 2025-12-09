@@ -365,6 +365,14 @@ MARIADB_USER=intel_user
 MARIADB_PASSWORD=intel_***REMOVED***
 MARIADB_DATABASE=intel_cw
 
+# MariaDB SSL/TLS 配置（可选）
+# MARIADB_SSL_ENABLED=false
+# MARIADB_SSL_CA=./infrastructure/mysql/ssl/ca-cert.pem
+# MARIADB_SSL_CERT=./infrastructure/mysql/ssl/client-cert.pem
+# MARIADB_SSL_KEY=./infrastructure/mysql/ssl/client-key.pem
+# MARIADB_SSL_VERIFY_CERT=true
+# MARIADB_SSL_VERIFY_IDENTITY=false
+
 REDIS_HOST=redis
 REDIS_PORT=6379
 

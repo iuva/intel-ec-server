@@ -189,6 +189,9 @@ class ServiceConfig:
         redis_db_str = os.getenv("REDIS_DB", "0")
         redis_username = os.getenv("REDIS_USERNAME")
 
+        # Redis SSL 配置
+        redis_ssl_enabled = os.getenv("REDIS_SSL_ENABLED", "false").lower() in ("true", "1", "yes")
+
         try:
             redis_host, redis_port, redis_db = validate_redis_config(redis_host, redis_port_str, redis_db_str)
             redis_url = build_redis_url(
@@ -197,10 +200,12 @@ class ServiceConfig:
                 ***REMOVED***word=redis_***REMOVED***word if redis_***REMOVED***word else None,
                 db=redis_db,
                 username=redis_username,
+                ssl_enabled=redis_ssl_enabled,  # ✅ 传递 SSL 配置
             )
         except ValueError as e:
             logger.warning(f"Redis 配置验证失败: {e}, 使用默认配置")
-            redis_url = f"redis://{redis_host}:6379/0"
+            protocol = "rediss://" if redis_ssl_enabled else "redis://"
+            redis_url = f"{protocol}{redis_host}:6379/0"
 
         # JWT和Jaeger配置
         jwt_secret_key = os.getenv("JWT_SECRET_KEY")
@@ -487,7 +492,6 @@ class ServiceLifecycleManager:
 
     async def _monitor_pool_status(self) -> None:
         """定期监控数据库连接池状态"""
-        import time
         from shared.common.database import mariadb_manager
 
         while True:

@@ -109,6 +109,7 @@
 | └─ [release-hosts-api.md](./api/release-hosts-api.md) | **释放主机 API** - 释放主机资源接口文档 |
 | └─ [retry-vnc-api.md](./api/retry-vnc-api.md) | **重试 VNC API** - 获取重试 VNC 连接列表接口文档 |
 | └─ [vnc-report-api-update.md](./api/vnc-report-api-update.md) | **上报 VNC 连接结果 API** - VNC 连接结果上报接口文档 |
+| [41-approve-hosts-interface-logic.md](./41-approve-hosts-interface-logic.md) | **approve_hosts 接口详细逻辑** - 同意启用主机接口完整流程、外部硬件接口调用、邮件通知机制 |
 
 ---
 
@@ -118,6 +119,7 @@
 |------|------|
 | [database/](./database/) | **数据库脚本目录** |
 | └─ [index-optimization-recommendations.md](./database/index-optimization-recommendations.md) | **索引优化建议** - 查询模式分析、索引建议、性能优化 |
+| [43-mariadb-ssl-configuration.md](./43-mariadb-ssl-configuration.md) | **MariaDB SSL 配置指南** - SSL/TLS 加密连接配置、自签名证书生成、客户端连接配置 |
 
 ---
 
@@ -139,6 +141,7 @@
 | 文档 | 说明 |
 |------|------|
 | [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md) | **Nacos 故障排除** - 服务注册失败、服务发现问题、常见错误解决 |
+| [42-windows-pip-encoding-fix.md](./42-windows-pip-encoding-fix.md) | **Windows pip 编码错误修复** - UnicodeDecodeError 解决方案、环境变量设置、安装脚本 |
 
 ---
 
@@ -195,9 +198,9 @@
 | **监控追踪** | [05-monitoring-setup-complete.md](./05-monitoring-setup-complete.md), [06-grafana-dashboard-guide.md](./06-grafana-dashboard-guide.md), [07-monitoring-quick-reference.md](./07-monitoring-quick-reference.md), [11-jaeger-storage-config.md](./11-jaeger-storage-config.md), [23-monitoring-metrics-enhancement.md](./23-monitoring-metrics-enhancement.md) |
 | **代码质量** | [08-code-quality-setup.md](./08-code-quality-setup.md), [09-python38-compatibility.md](./09-python38-compatibility.md), [13-code-quality-tools-analysis.md](./13-code-quality-tools-analysis.md), [27-code-optimization.md](./27-code-optimization.md) |
 | **类型检查** | [16-pyright-troubleshooting.md](./16-pyright-troubleshooting.md), [17-pyright-overview.md](./17-pyright-overview.md) |
-| **API 文档** | [api/API_REFERENCE.md](./api/API_REFERENCE.md), [api/API_DOCUMENTATION_GUIDE.md](./api/API_DOCUMENTATION_GUIDE.md) |
+| **API 文档** | [api/API_REFERENCE.md](./api/API_REFERENCE.md), [api/API_DOCUMENTATION_GUIDE.md](./api/API_DOCUMENTATION_GUIDE.md), [41-approve-hosts-interface-logic.md](./41-approve-hosts-interface-logic.md) |
 | **认证安全** | [12-authentication-architecture.md](./12-authentication-architecture.md) |
-| **故障排除** | [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md) |
+| **故障排除** | [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md), [42-windows-pip-encoding-fix.md](./42-windows-pip-encoding-fix.md) |
 | **部署运维** | [03-deployment-guide.md](./03-deployment-guide.md) |
 | **WebSocket** | [18-websocket-usage.md](./18-websocket-usage.md) |
 | **测试** | [24-testing-websocket.md](./24-testing-websocket.md) |
@@ -232,6 +235,7 @@ XX-topic-name.md
 - **19**: 日志管理
 - **20-22, 25-26**: 基础设施和开发工具
 - **24**: 测试
+- **40-43**: 接口逻辑、性能监控、故障排除和数据库 SSL 配置
 
 ---
 
@@ -249,6 +253,15 @@ XX-topic-name.md
   - ✅ 合并性能分析文档（删除v2、v3版本，保留最新总结）
   - ✅ 更新性能优化文档为2000并发支持
   - ✅ 新增性能优化文档索引
+- **2025-01-29**: 
+  - ✅ 新增 approve_hosts 接口详细逻辑文档（41-approve-hosts-interface-logic.md）
+  - ✅ 整理接口完整业务流程、外部硬件接口调用、邮件通知机制
+  - ✅ 新增 Windows pip 编码错误修复文档（42-windows-pip-encoding-fix.md）
+  - ✅ 创建 Windows 安装脚本（PowerShell 和 CMD 版本）
+  - ✅ 新增 MariaDB SSL 配置指南（43-mariadb-ssl-configuration.md）
+  - ✅ 包含自签名证书生成、Docker 配置、Python 客户端连接完整方案
+  - ✅ 更新 .env.example 文件，添加 MariaDB SSL 配置选项
+  - ✅ 更新所有文档中的环境变量示例，包含 SSL 配置说明
 - **2025-11-01**: 
   - ✅ 合并重复API文档
   - ✅ 删除Admin Service相关文档引用（服务已移除）

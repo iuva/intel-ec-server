@@ -23,6 +23,7 @@ def build_redis_url(
     ***REMOVED***word: Optional[str] = None,
     db: int = 0,
     username: Optional[str] = None,
+    ssl_enabled: bool = False,
 ) -> str:
     """构建 Redis 连接 URL
 
@@ -34,9 +35,10 @@ def build_redis_url(
         ***REMOVED***word: Redis 密码（可选）
         db: 数据库编号，默认为 0
         username: Redis 用户名（可选，Redis 6.0+）
+        ssl_enabled: 是否启用 SSL/TLS（默认 False）
 
     Returns:
-        格式化的 Redis URL
+        格式化的 Redis URL（SSL 使用 rediss://，非 SSL 使用 redis://）
 
     Examples:
         >>> build_redis_url("localhost", 6379)
@@ -45,12 +47,18 @@ def build_redis_url(
         >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***")
         'redis://:***REMOVED***@localhost:6379/0'
 
-        >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***")
-        'redis://:p%40ss%21123@localhost:6379/0'
+        >>> build_redis_url("localhost", 6379, ssl_enabled=True)
+        'rediss://localhost:6379/0'
 
-        >>> build_redis_url("localhost", 6379, username="user", ***REMOVED***word="***REMOVED***")
-        'redis://user:***REMOVED***@localhost:6379/0'
+        >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***", ssl_enabled=True)
+        'rediss://:p%40ss%21123@localhost:6379/0'
+
+        >>> build_redis_url("localhost", 6379, username="user", ***REMOVED***word="***REMOVED***", ssl_enabled=True)
+        'rediss://user:***REMOVED***@localhost:6379/0'
     """
+    # 选择协议：SSL 使用 rediss://，非 SSL 使用 redis://
+    protocol = "rediss://" if ssl_enabled else "redis://"
+
     # 基础 URL
     if ***REMOVED***word:
         # URL 编码密码中的特殊字符
@@ -64,10 +72,10 @@ def build_redis_url(
             # 只有密码（Redis 5.x 及以下）
             auth_part = f":{encoded_***REMOVED***word}"
 
-        return f"redis://{auth_part}@{host}:{port}/{db}"
+        return f"{protocol}{auth_part}@{host}:{port}/{db}"
 
     # 无密码
-    return f"redis://{host}:{port}/{db}"
+    return f"{protocol}{host}:{port}/{db}"
 
 
 def validate_redis_config(
@@ -308,24 +316,105 @@ class RedisManager:
         encoding: str = "utf-8",
         decode_responses: bool = True,
         max_connections: int = 50,
+        ssl_ca_certs: Optional[str] = None,
+        ssl_certfile: Optional[str] = None,
+        ssl_keyfile: Optional[str] = None,
+        ssl_cert_reqs: Optional[str] = None,
+        ssl_check_hostname: bool = False,
     ) -> None:
         """连接到Redis服务器
 
         Args:
-            redis_url: Redis连接URL，格式：redis://host:port/db
+            redis_url: Redis连接URL，格式：redis://host:port/db 或 rediss://host:port/db（SSL）
             encoding: 字符编码
             decode_responses: 是否自动解码响应
             max_connections: 最大连接数
+            ssl_ca_certs: CA 证书文件路径（可选）
+            ssl_certfile: 客户端证书文件路径（可选）
+            ssl_keyfile: 客户端私钥文件路径（可选）
+            ssl_cert_reqs: SSL 证书验证要求（可选，none/optional/required）
+            ssl_check_hostname: 是否验证主机名（默认 False）
         """
+        import os
+        import ssl
+
         # 脱敏 URL 用于日志记录
         masked_url = mask_sensitive_info(redis_url)
 
         # 从 URL 中提取 host 和 port 用于诊断
-        # 格式: redis://[auth@]host:port/db
-        url_pattern = r"redis://(?:[^@]+@)?([^:]+):(\d+)"
+        # 格式: redis://[auth@]host:port/db 或 rediss://[auth@]host:port/db
+        url_pattern = r"rediss?://(?:[^@]+@)?([^:]+):(\d+)"
         match = re.match(url_pattern, redis_url)
         host = match.group(1) if match else "unknown"
         port = int(match.group(2)) if match else 6379
+
+        # ✅ 从环境变量读取 SSL 配置（如果未通过参数提供）
+        ssl_enabled = redis_url.startswith("rediss://")
+        if ssl_enabled:
+            # 如果 URL 使用 rediss://，则启用 SSL
+            if not ssl_ca_certs:
+                ssl_ca_certs = os.getenv("REDIS_SSL_CA", "")
+            if not ssl_certfile:
+                ssl_certfile = os.getenv("REDIS_SSL_CERT", "")
+            if not ssl_keyfile:
+                ssl_keyfile = os.getenv("REDIS_SSL_KEY", "")
+            if not ssl_cert_reqs:
+                ssl_cert_reqs = os.getenv("REDIS_SSL_VERIFY_CERT", "required")
+            ssl_check_hostname = os.getenv("REDIS_SSL_VERIFY_IDENTITY", "false").lower() in ("true", "1", "yes")
+
+        # 构建 SSL 参数字典
+        ssl_params = {}
+        if ssl_enabled:
+            # 创建 SSL 上下文
+            ssl_context = ssl.create_default_context()
+
+            # 设置证书验证要求
+            if ssl_cert_reqs:
+                cert_reqs_map = {
+                    "none": ssl.CERT_NONE,
+                    "optional": ssl.CERT_OPTIONAL,
+                    "required": ssl.CERT_REQUIRED,
+                }
+                ssl_context.verify_mode = cert_reqs_map.get(ssl_cert_reqs.lower(), ssl.CERT_REQUIRED)
+            else:
+                ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+            # 设置主机名验证
+            ssl_context.check_hostname = ssl_check_hostname
+
+            # 加载 CA 证书
+            if ssl_ca_certs:
+                try:
+                    ssl_context.load_verify_locations(ssl_ca_certs)
+                    logger.debug(f"已加载 Redis SSL CA 证书: {ssl_ca_certs}")
+                except Exception as e:
+                    logger.warning(
+                        f"加载 Redis SSL CA 证书失败: {ssl_ca_certs}",
+                        extra={"error": str(e)},
+                    )
+
+            # 加载客户端证书
+            if ssl_certfile and ssl_keyfile:
+                try:
+                    ssl_context.load_cert_chain(ssl_certfile, ssl_keyfile)
+                    logger.debug(f"已加载 Redis SSL 客户端证书: {ssl_certfile}, {ssl_keyfile}")
+                except Exception as e:
+                    logger.warning(
+                        f"加载 Redis SSL 客户端证书失败: {ssl_certfile}, {ssl_keyfile}",
+                        extra={"error": str(e)},
+                    )
+
+            # 将 SSL 上下文添加到参数
+            ssl_params["ssl"] = ssl_context
+
+            logger.info(
+                "Redis SSL 已启用",
+                extra={
+                    "ssl_enabled": True,
+                    "ssl_verify_cert": ssl_cert_reqs != "none",
+                    "ssl_verify_identity": ssl_check_hostname,
+                },
+            )
 
         try:
             # 记录连接尝试
@@ -336,6 +425,7 @@ class RedisManager:
                 encoding=encoding,
                 decode_responses=decode_responses,
                 max_connections=max_connections,
+                **ssl_params,  # ✅ 传递 SSL 参数
             )
 
             # 测试连接

@@ -28,6 +28,14 @@ MARIADB_PORT=3306                 # MariaDB 端口
 MARIADB_USER=your_username        # MariaDB 用户名
 MARIADB_PASSWORD=your_***REMOVED***word    # MariaDB 密码
 MARIADB_DATABASE=intel_cw         # 数据库名称
+
+# MariaDB SSL/TLS 配置（可选）
+MARIADB_SSL_ENABLED=false         # 是否启用 SSL 加密连接
+MARIADB_SSL_CA=./infrastructure/mysql/ssl/ca-cert.pem  # CA 证书路径
+MARIADB_SSL_CERT=./infrastructure/mysql/ssl/client-cert.pem  # 客户端证书路径
+MARIADB_SSL_KEY=./infrastructure/mysql/ssl/client-key.pem    # 客户端私钥路径
+MARIADB_SSL_VERIFY_CERT=true      # 是否验证服务器证书（生产环境建议 true）
+MARIADB_SSL_VERIFY_IDENTITY=false # 是否验证服务器身份
 ```
 
 #### 3. 主机地址配置说明
