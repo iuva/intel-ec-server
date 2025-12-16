@@ -5,10 +5,215 @@
 本文档提供Intel EC微服务系统的完整API参考，包括所有服务的端点说明、使用示例和最佳实践。
 
 **版本**: v1.0.0
-**更新时间**: 2025-11-01
+**更新时间**: 2025-01-29
 **兼容性**: OpenAPI 3.0
 
 > **注意**: Admin Service 已从项目中移除，相关功能已整合到其他服务中。
+
+---
+
+## 🎯 文档访问指南
+
+### 微服务文档端点
+
+#### Gateway Service (端口 8000)
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **OpenAPI JSON**: http://localhost:8000/openapi.json
+- **健康检查**: http://localhost:8000/health
+- **监控指标**: http://localhost:8000/metrics
+
+#### Auth Service (端口 8001)
+- **Swagger UI**: http://localhost:8001/docs
+- **ReDoc**: http://localhost:8001/redoc
+- **OpenAPI JSON**: http://localhost:8001/openapi.json
+- **健康检查**: http://localhost:8001/health
+- **监控指标**: http://localhost:8001/metrics
+
+#### Host Service (端口 8003)
+- **Swagger UI**: http://localhost:8003/docs
+- **ReDoc**: http://localhost:8003/redoc
+- **OpenAPI JSON**: http://localhost:8003/openapi.json
+- **健康检查**: http://localhost:8003/health
+- **监控指标**: http://localhost:8003/metrics
+
+### 🚀 启动服务并访问文档
+
+#### 1. 启动单个服务
+```bash
+# 启动网关服务
+cd services/gateway-service && python -m app.main
+
+# 启动认证服务
+cd services/auth-service && python -m app.main
+
+# 启动主机服务
+cd services/host-service && python -m app.main
+```
+
+#### 2. 启动所有服务 (Docker Compose)
+```bash
+# 在项目根目录
+docker-compose up -d gateway-service auth-service host-service
+```
+
+#### 3. 访问文档
+启动服务后，在浏览器中访问相应端口的 `/docs` 路径即可查看 Swagger UI 文档。
+
+### 📋 文档特性
+
+#### 自动生成特性
+- ✅ 基于 FastAPI 自动生成
+- ✅ 实时同步代码变更
+- ✅ 包含请求/响应示例
+- ✅ 支持在线测试接口
+
+#### 统一格式
+- ✅ 标准 OpenAPI 3.0 规范
+- ✅ 统一的响应格式
+- ✅ 错误响应文档化
+
+#### 安全特性
+- ✅ JWT 认证集成
+- ✅ 权限检查说明
+- ✅ 请求头示例
+
+### 🛠️ 生成静态文档
+
+#### 1. 使用脚本生成
+```bash
+# 生成所有服务的 OpenAPI 规范
+./scripts/generate_docs.sh
+```
+
+#### 2. 手动生成
+```bash
+# 获取服务的 OpenAPI JSON
+curl http://localhost:8001/openapi.json > auth-service-api.json
+curl http://localhost:8003/openapi.json > host-service-api.json
+
+# 使用 Swagger Codegen 生成客户端代码
+# JavaScript 客户端
+swagger-codegen generate -i auth-service-api.json -l javascript -o client-js
+
+# Python 客户端  
+swagger-codegen generate -i auth-service-api.json -l python -o client-py
+
+# TypeScript 客户端
+swagger-codegen generate -i auth-service-api.json -l typescript-angular -o client-ts
+```
+
+### 📚 文档维护规范
+
+#### 端点文档要求
+- ✅ 中文描述（函数docstring）
+- ✅ 参数类型和描述
+- ✅ 响应格式说明
+- ✅ 错误情况说明
+- ✅ 使用示例
+
+#### 版本管理
+- ✅ API 版本控制（v1）
+- ✅ 向后兼容性保证
+- ✅ 版本变更日志
+
+#### 更新流程
+1. 修改代码中的 docstring
+2. 更新响应模型的 Field 描述
+3. 重启服务验证文档
+4. 提交代码时包含文档更新
+
+### 🔍 API响应格式验证
+
+#### 错误响应格式规范
+
+所有API错误响应都应符合以下格式：
+
+```json
+{
+  "code": 401,
+  "message": "认证失败",
+  "error_code": "UNAUTHORIZED",
+  "details": null,
+  "timestamp": "2025-10-15T10:00:00Z"
+}
+```
+
+**禁止的格式**:
+```json
+{
+  "detail": {
+    "code": 401,
+    "message": "认证失败"
+  }
+}
+```
+
+#### 验证命令
+
+##### OAuth2认证端点
+```bash
+# 错误的客户端凭据 - 应返回统一错误格式
+curl -X POST http://localhost:8001/api/v1/oauth2/admin/token \
+  -H "Authorization: Basic d3JvbmdfY2xpZW50Ondyb25nX3NlY3JldA==" \
+  -d "grant_type=***REMOVED***word&username=admin&***REMOVED***word=wrong"
+
+# 缺少必需参数 - 应返回统一错误格式
+curl -X POST http://localhost:8001/api/v1/oauth2/admin/token \
+  -H "Authorization: Basic YWRtaW5fY2xpZW50OmFkbWluX3NlY3JldA==" \
+  -d "grant_type=***REMOVED***word"
+```
+
+##### 网关404响应
+```bash
+# 不存在的端点 - 不应包含available_endpoints字段
+curl http://localhost:8000/api/v1/nonexistent
+```
+
+#### 响应格式规范
+
+##### ErrorResponse模型
+- `code`: HTTP状态码 (int)
+- `message`: 错误消息 (str)
+- `error_code`: 错误类型编码 (str)
+- `details`: 附加信息 (Optional[Dict])
+- `timestamp`: 响应时间 (str)
+
+##### SuccessResponse模型
+- `code`: HTTP状态码 (int, 默认200)
+- `message`: 成功消息 (str, 默认"操作成功")
+- `data`: 响应数据 (Any)
+- `timestamp`: 响应时间 (str)
+- `request_id`: 请求ID (str)
+
+### 📄 特定API端点文档
+
+以下文档提供特定API端点的详细说明：
+- **[释放主机API](./release-hosts-api.md)** - 释放主机资源API
+- **[重试VNC列表API](./retry-vnc-api.md)** - 获取重试VNC连接列表API
+- **[上报VNC连接结果API](./vnc-report-api-update.md)** - VNC连接结果上报API
+
+### 📄 端点列表文档（自动生成）
+
+以下文档由脚本自动生成，包含各服务的完整端点列表：
+- **[网关服务端点列表](./gateway-service-endpoints.md)** - Gateway Service API端点
+- **[认证服务端点列表](./auth-service-endpoints.md)** - Auth Service API端点
+- **[主机服务端点列表](./host-service-endpoints.md)** - Host Service API端点
+
+### 📄 OpenAPI规范文件
+
+以下JSON文件包含完整的OpenAPI 3.0规范，可用于生成客户端代码：
+- **[网关服务OpenAPI规范](./gateway-service-openapi.json)**
+- **[认证服务OpenAPI规范](./auth-service-openapi.json)**
+- **[主机服务OpenAPI规范](./host-service-openapi.json)**
+
+### 📄 自动生成的API文档
+
+> **注意**: `API Documentation.md` 是由工具自动生成的OpenAPI文档，请勿手动编辑。如需更新，请修改代码中的API定义，然后重新生成文档。
+
+---
+
+## 🏗️ 架构概览
 
 ## 🏗️ 架构概览
 
@@ -434,20 +639,43 @@ asyncio.run(test_api())
 }
 ```
 
+## 🔍 故障排查
+
+### 文档无法访问
+1. 检查服务是否正常启动
+2. 确认端口配置正确
+3. 查看服务日志中的错误信息
+
+### 文档内容不完整
+1. 检查所有端点的 docstring
+2. 验证响应模型的 Field 描述
+3. 确认路由正确注册
+
+### 认证问题
+1. 某些端点可能需要认证
+2. 使用 JWT token 进行测试
+3. 检查认证中间件配置
+
+---
+
 ## 📚 相关资源
 
 ### 文档链接
 - [快速开始指南](../00-quick-start.md)
-- [项目架构说明](../01-project-overview.md)
+- [基础设施配置](../01-infrastructure-config.md)
 - [部署指南](../03-deployment-guide.md)
 - [监控配置](../05-monitoring-setup-complete.md)
 
 ### 开发资源
-- [代码规范](../python-code-standards.md)
+- [代码规范](../08-code-quality-setup.md)
 - [API设计规范](../api-design-standards.md)
-- [数据库规范](../mariadb-database.md)
+- [数据库规范](../43-mariadb-ssl-configuration.md)
 
 ### 工具和脚本
-- [开发环境脚本](../../scripts/dev_docs.sh)
-- [文档生成脚本](../../scripts/generate_docs.sh)
+- [脚本使用指南](../26-scripts-guide.md)
 - [代码质量检查](../../scripts/check_quality.sh)
+
+---
+
+**最后更新**: 2025-01-29  
+**文档版本**: 2.0.0（合并访问指南）

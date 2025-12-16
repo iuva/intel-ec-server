@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_OFFLINE
     from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
@@ -21,7 +22,6 @@ try:
         AdminHostInfo,
         AdminHostListRequest,
     )
-    from app.services.agent_websocket_manager import get_agent_websocket_manager
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -32,6 +32,7 @@ try:
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_OFFLINE
     from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
@@ -41,7 +42,6 @@ except ImportError:
         AdminHostInfo,
         AdminHostListRequest,
     )
-    from app.services.agent_websocket_manager import get_agent_websocket_manager
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -544,21 +544,23 @@ class AdminHostService:
         error_message="强制下线主机失败",
         error_code="FORCE_OFFLINE_HOST_FAILED",
     )
-    async def force_offline_host(self, host_id: int) -> dict:
+    async def force_offline_host(self, host_id: int, locale: str = "zh_CN") -> dict:
         """强制下线主机
 
         业务逻辑：
-        1. 更新 host_rec 表的 host_state 字段为 4（离线状态）
-        2. 通过 WebSocket 通知指定 host_id 的 Agent 强制下线
+        1. 检查主机是否存在且未删除
+        2. 检查主机状态是否为 0（空闲状态），只有空闲状态才能下线
+        3. 更新 host_rec 表的 host_state 字段为 4（离线状态）
 
         Args:
             host_id: 主机ID（host_rec.id）
+            locale: 语言偏好，用于错误消息多语言处理
 
         Returns:
-            dict: 包含更新后的主机ID、状态和WebSocket通知结果
+            dict: 包含更新后的主机ID和状态
 
         Raises:
-            BusinessError: 主机不存在或更新失败时
+            BusinessError: 主机不存在、主机状态不为空闲或更新失败时
         """
         logger.info(
             "开始强制下线主机",
@@ -570,18 +572,42 @@ class AdminHostService:
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
             # 1. 检查主机是否存在且未删除（使用工具函数）
-            host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
 
-            # 2. 更新主机状态为离线（host_state = 4）
+            # 2. 检查主机状态是否为 0（空闲状态），只有空闲状态才能下线
+            if host_rec.host_state != HOST_STATE_FREE:
+                logger.warning(
+                    "主机状态不允许强制下线",
+                    extra={
+                        "host_id": host_id,
+                        "current_host_state": host_rec.host_state,
+                        "required_host_state": HOST_STATE_FREE,
+                    },
+                )
+                raise BusinessError(
+                    message=f"主机状态不允许强制下线，当前状态：{host_rec.host_state}，需要状态：{HOST_STATE_FREE}（空闲）",
+                    message_key="error.host.force_offline_state_invalid",
+                    error_code="HOST_FORCE_OFFLINE_STATE_INVALID",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={
+                        "host_id": host_id,
+                        "current_host_state": host_rec.host_state,
+                        "required_host_state": HOST_STATE_FREE,
+                    },
+                )
+
+            # 3. 更新主机状态为离线（host_state = 4）
             update_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id == host_id,
                         HostRec.del_flag == 0,  # 只更新未删除的记录
+                        HostRec.host_state == HOST_STATE_FREE,  # 确保状态仍为 0（防止并发修改）
                     )
                 )
-                .values(host_state=4)  # 4 = 离线状态
+                .values(host_state=HOST_STATE_OFFLINE)  # 4 = 离线状态
             )
 
             logger.info(
@@ -589,8 +615,8 @@ class AdminHostService:
                 extra={
                     "host_id": host_id,
                     "old_host_state": host_rec.host_state,
-                    "new_host_state": 4,
-                    "operation": "UPDATE host_state = 4",
+                    "new_host_state": HOST_STATE_OFFLINE,
+                    "operation": f"UPDATE host_state = {HOST_STATE_OFFLINE}",
                 },
             )
 
@@ -602,13 +628,13 @@ class AdminHostService:
 
             if updated_count == 0:
                 logger.warning(
-                    "主机强制下线失败，记录可能已被删除",
+                    "主机强制下线失败，记录可能已被删除或状态已变更",
                     extra={
                         "host_id": host_id,
                     },
                 )
                 raise BusinessError(
-                    message=f"主机强制下线失败，记录可能已被删除（ID: {host_id}）",
+                    message=f"主机强制下线失败，记录可能已被删除或状态已变更（ID: {host_id}）",
                     message_key="error.host.force_offline_failed",
                     error_code="HOST_FORCE_OFFLINE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -616,68 +642,19 @@ class AdminHostService:
                     details={"host_id": host_id},
                 )
 
-            # 3. 通过 WebSocket 通知 Agent 强制下线
-            websocket_notified = False
-            try:
-                ws_manager = get_agent_websocket_manager()
-                host_id_str = str(host_id)
-
-                # 构建强制下线通知消息
-                offline_message = {
-                    "type": "host_offline_notification",
-                    "host_id": host_id_str,
-                    "message": "主机已强制下线",
-                    "reason": "管理员强制下线",
-                    "force": True,  # 标记为强制下线
-                }
-
-                # 发送消息
-                websocket_notified = await ws_manager.send_to_host(host_id_str, offline_message)
-
-                if websocket_notified:
-                    logger.info(
-                        "WebSocket强制下线通知已发送",
-                        extra={
-                            "host_id": host_id_str,
-                            "message_type": "host_offline_notification",
-                        },
-                    )
-                else:
-                    logger.warning(
-                        "WebSocket强制下线通知发送失败（Host未连接）",
-                        extra={
-                            "host_id": host_id_str,
-                            "message_type": "host_offline_notification",
-                        },
-                    )
-
-            except Exception as e:
-                # WebSocket通知失败不影响数据库更新，只记录警告
-                logger.warning(
-                    "WebSocket强制下线通知异常",
-                    extra={
-                        "host_id": host_id,
-                        "error": str(e),
-                        "error_type": type(e).__name__,
-                    },
-                    exc_info=True,
-                )
-
             logger.info(
                 "主机强制下线成功",
                 extra={
                     "host_id": host_id,
                     "old_host_state": host_rec.host_state,
-                    "new_host_state": 4,
+                    "new_host_state": HOST_STATE_OFFLINE,
                     "updated_count": updated_count,
-                    "websocket_notified": websocket_notified,
                 },
             )
 
             return {
                 "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
-                "host_state": 4,
-                "websocket_notified": websocket_notified,
+                "host_state": HOST_STATE_OFFLINE,
             }
 
     @handle_service_errors(

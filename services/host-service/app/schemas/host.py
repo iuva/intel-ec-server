@@ -381,7 +381,6 @@ class AdminHostForceOfflineResponse(BaseModel):
 
     id: str = Field(description="主机ID")
     host_state: int = Field(default=4, description="更新后的主机状态（4=离线）")
-    websocket_notified: bool = Field(description="是否成功发送WebSocket通知")
 
     model_config = {"from_attributes": True}
 

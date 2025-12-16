@@ -385,7 +385,7 @@ async def disable_host(
     "/force-offline",
     response_model=SuccessResponse,
     summary="强制下线主机",
-    description="强制下线主机（设置 host_state=4），并通知WebSocket",
+    description="强制下线主机（设置 host_state=4），仅允许空闲状态（host_state=0）的主机下线",
     responses={
         200: {
             "description": "强制下线成功",
@@ -397,7 +397,6 @@ async def disable_host(
                         "data": {
                             "id": "123",
                             "host_state": 4,
-                            "websocket_notified": True,
                         },
                     }
                 }
@@ -416,11 +415,19 @@ async def disable_host(
                                 "error_code": "HOST_NOT_FOUND",
                             },
                         },
+                        "state_invalid": {
+                            "summary": "主机状态不允许下线",
+                            "value": {
+                                "code": 53005,
+                                "message": "主机状态不允许强制下线，当前状态：2，需要状态：0（空闲）",
+                                "error_code": "HOST_FORCE_OFFLINE_STATE_INVALID",
+                            },
+                        },
                         "force_offline_failed": {
                             "summary": "强制下线失败",
                             "value": {
                                 "code": 53005,
-                                "message": "主机强制下线失败，记录可能已被删除（ID: 123）",
+                                "message": "主机强制下线失败，记录可能已被删除或状态已变更（ID: 123）",
                                 "error_code": "HOST_FORCE_OFFLINE_FAILED",
                             },
                         },
@@ -440,9 +447,9 @@ async def force_offline_host(
     """强制下线主机
 
     业务逻辑：
-    1. 更新 host_rec 表的 host_state 字段为 4（离线状态）
-    2. 通过 WebSocket 通知指定 host_id 的 Agent 强制下线
-    3. 如果 WebSocket 通知失败，不影响数据库更新，只记录警告
+    1. 检查主机是否存在且未删除
+    2. 检查主机状态是否为 0（空闲状态），只有空闲状态才能下线
+    3. 更新 host_rec 表的 host_state 字段为 4（离线状态）
 
     Args:
         request: 包含主机ID的请求对象
@@ -451,10 +458,10 @@ async def force_offline_host(
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 强制下线成功响应，包含WebSocket通知结果
+        SuccessResponse: 强制下线成功响应
 
     Raises:
-        BusinessError: 主机不存在或更新失败时
+        BusinessError: 主机不存在、主机状态不为空闲或更新失败时
     """
     logger.info(
         "接收管理后台主机强制下线请求",
@@ -464,15 +471,14 @@ async def force_offline_host(
         },
     )
 
-    # 调用服务层强制下线
-    result = await admin_host_service.force_offline_host(request.host_id)
+    # 调用服务层强制下线（传递 locale 参数用于多语言错误消息）
+    result = await admin_host_service.force_offline_host(request.host_id, locale=locale)
 
     logger.info(
         "管理后台主机强制下线完成",
         extra={
             "host_id": result["id"],
             "host_state": result["host_state"],
-            "websocket_notified": result["websocket_notified"],
             "user_id": current_user.get("user_id"),
         },
     )
@@ -481,7 +487,6 @@ async def force_offline_host(
         data=AdminHostForceOfflineResponse(
             id=result["id"],
             host_state=result["host_state"],
-            websocket_notified=result["websocket_notified"],
         ).model_dump(),
         message_key="success.host.force_offline",
         locale=locale,

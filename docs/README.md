@@ -1,7 +1,7 @@
 # Intel EC 微服务项目文档
 
 **项目**: Intel EC 微服务系统  
-**最后更新**: 2025-01-29
+**最后更新**: 2025-01-30
 
 ---
 
@@ -104,11 +104,8 @@
 | 文档 | 说明 |
 |------|------|
 | [api/](./api/) | **API 参考文档目录** |
-| └─ [API_DOCUMENTATION_GUIDE.md](./api/API_DOCUMENTATION_GUIDE.md) | **API 文档访问指南** - 如何查看和生成 API 文档、响应格式验证 |
-| └─ [API_REFERENCE.md](./api/API_REFERENCE.md) | **完整 API 参考** - 所有服务的 API 接口说明 |
-| └─ [release-hosts-api.md](./api/release-hosts-api.md) | **释放主机 API** - 释放主机资源接口文档 |
-| └─ [retry-vnc-api.md](./api/retry-vnc-api.md) | **重试 VNC API** - 获取重试 VNC 连接列表接口文档 |
-| └─ [vnc-report-api-update.md](./api/vnc-report-api-update.md) | **上报 VNC 连接结果 API** - VNC 连接结果上报接口文档 |
+| └─ [API_REFERENCE.md](./api/API_REFERENCE.md) | **完整 API 参考** - 所有服务的 API 接口说明、访问指南（Swagger UI、ReDoc、OpenAPI JSON） |
+| └─ [API Documentation.md](./api/API%20Documentation.md) | **自动生成的 API 文档** - 由 FastAPI 自动生成的 OpenAPI 规范文档 |
 | [41-approve-hosts-interface-logic.md](./41-approve-hosts-interface-logic.md) | **approve_hosts 接口详细逻辑** - 同意启用主机接口完整流程、外部硬件接口调用、邮件通知机制 |
 
 ---
@@ -127,12 +124,10 @@
 
 | 文档 | 说明 |
 |------|------|
-| [performance/optimization-summary.md](./performance/optimization-summary.md) | **性能优化总结** - 2000并发支持、连接池配置、查询优化 |
+| [performance/optimization-summary.md](./performance/optimization-summary.md) | **性能优化总结** - 2000并发支持、连接池配置、查询优化、MySQL/MariaDB Windows服务器配置 |
 | [performance/service-optimization-plan.md](./performance/service-optimization-plan.md) | **服务优化方案** - 性能瓶颈分析、优化建议、实施计划 |
-| [performance/k6-load-test-analysis.md](./performance/k6-load-test-analysis.md) | **k6 负载测试分析** - 测试结果分析、性能瓶颈识别 |
+| [performance/k6-load-test-analysis.md](./performance/k6-load-test-analysis.md) | **k6 负载测试分析** - 500并发和200并发测试结果分析、性能瓶颈识别 |
 | [performance/database-connection-pool-diagnosis.md](./performance/database-connection-pool-diagnosis.md) | **数据库连接池诊断** - 连接池监控、问题排查 |
-| [performance/mysql-2000-concurrency-windows-optimization.md](./performance/mysql-2000-concurrency-windows-optimization.md) | **MySQL 2000并发优化** - Windows服务器配置、连接池优化 |
-| [performance/mysql-2000-concurrency-quick-start.md](./performance/mysql-2000-concurrency-quick-start.md) | **MySQL 2000并发快速配置** - 快速开始指南 |
 
 ---
 
@@ -198,7 +193,7 @@
 | **监控追踪** | [05-monitoring-setup-complete.md](./05-monitoring-setup-complete.md), [06-grafana-dashboard-guide.md](./06-grafana-dashboard-guide.md), [07-monitoring-quick-reference.md](./07-monitoring-quick-reference.md), [11-jaeger-storage-config.md](./11-jaeger-storage-config.md), [23-monitoring-metrics-enhancement.md](./23-monitoring-metrics-enhancement.md) |
 | **代码质量** | [08-code-quality-setup.md](./08-code-quality-setup.md), [09-python38-compatibility.md](./09-python38-compatibility.md), [13-code-quality-tools-analysis.md](./13-code-quality-tools-analysis.md), [27-code-optimization.md](./27-code-optimization.md) |
 | **类型检查** | [16-pyright-troubleshooting.md](./16-pyright-troubleshooting.md), [17-pyright-overview.md](./17-pyright-overview.md) |
-| **API 文档** | [api/API_REFERENCE.md](./api/API_REFERENCE.md), [api/API_DOCUMENTATION_GUIDE.md](./api/API_DOCUMENTATION_GUIDE.md), [41-approve-hosts-interface-logic.md](./41-approve-hosts-interface-logic.md) |
+| **API 文档** | [api/API_REFERENCE.md](./api/API_REFERENCE.md), [41-approve-hosts-interface-logic.md](./41-approve-hosts-interface-logic.md) |
 | **认证安全** | [12-authentication-architecture.md](./12-authentication-architecture.md) |
 | **故障排除** | [10-nacos-troubleshooting.md](./10-nacos-troubleshooting.md), [42-windows-pip-encoding-fix.md](./42-windows-pip-encoding-fix.md) |
 | **部署运维** | [03-deployment-guide.md](./03-deployment-guide.md) |
@@ -253,6 +248,12 @@ XX-topic-name.md
   - ✅ 合并性能分析文档（删除v2、v3版本，保留最新总结）
   - ✅ 更新性能优化文档为2000并发支持
   - ✅ 新增性能优化文档索引
+  - ✅ 合并API文档（API_DOCUMENTATION_GUIDE合并到API_REFERENCE）
+  - ✅ 删除重复的性能测试文档（k6-load-test-analysis-200-concurrent合并到主文档）
+  - ✅ 删除重复的MySQL配置文档（合并到optimization-summary）
+  - ✅ 删除API endpoints和OpenAPI JSON文件（内容已包含在API_REFERENCE中）
+  - ✅ 删除gateway-service-features.md（内容已包含在其他文档中）
+  - ✅ 合并gateway-load-balancing故障排查文档
 - **2025-01-29**: 
   - ✅ 新增 approve_hosts 接口详细逻辑文档（41-approve-hosts-interface-logic.md）
   - ✅ 整理接口完整业务流程、外部硬件接口调用、邮件通知机制
