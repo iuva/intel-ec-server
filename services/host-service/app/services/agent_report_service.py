@@ -76,12 +76,14 @@ class AgentReportService:
         self,
         host_id: int,
         hardware_data: Dict[str, Any],
+        report_type: int = 0,
     ) -> Dict[str, Any]:
         """上报硬件信息
 
         Args:
             host_id: 主机ID（从token中获取）
             hardware_data: 硬件信息（动态JSON）
+            report_type: 上报类型（0-成功，1-异常）
 
         Returns:
             处理结果
@@ -95,6 +97,7 @@ class AgentReportService:
                 extra={
                     "host_id": host_id,
                     "hardware_keys": list(hardware_data.keys()),
+                    "report_type": report_type,
                 },
             )
 
@@ -116,7 +119,47 @@ class AgentReportService:
                     code=400,
                 )
 
-            # 3. 获取硬件模板
+            # 3. 获取当前生效的硬件记录
+            current_hw_rec = await self._get_current_hardware_record(host_id)
+
+            # 4. 根据 report_type 决定处理逻辑
+            if report_type == 1:
+                # 异常类型：直接设置 diff_state=3，跳过对比逻辑
+                logger.info(
+                    "硬件信息上报类型为异常，直接设置 diff_state=3",
+                    extra={
+                        "host_id": host_id,
+                        "report_type": report_type,
+                    },
+                )
+
+                diff_state = self.DIFF_STATE_FAILED  # 3
+                diff_details = {"report_type": "异常", "reason": "Agent 上报异常类型"}
+
+                # 更新数据库记录
+                result = await self._update_hardware_records(
+                    host_id=host_id,
+                    hardware_data=hardware_data,
+                    dmr_config=dmr_config,
+                    current_revision=current_revision,
+                    diff_state=diff_state,
+                    diff_details=diff_details,
+                    current_hw_rec=current_hw_rec,
+                )
+
+                logger.info(
+                    "硬件信息异常上报处理完成",
+                    extra={
+                        "host_id": host_id,
+                        "diff_state": diff_state,
+                        "result": result,
+                    },
+                )
+
+                return result
+
+            # 5. 正常类型（report_type=0）：走原来的对比逻辑
+            # 获取硬件模板
             hw_template = await self._get_hardware_template()
             if not hw_template:
                 raise BusinessError(
@@ -125,13 +168,10 @@ class AgentReportService:
                     code=500,
                 )
 
-            # 4. 验证硬件信息必填字段
+            # 6. 验证硬件信息必填字段
             self._validate_required_fields(dmr_config, hw_template)
 
-            # 5. 获取当前生效的硬件记录
-            current_hw_rec = await self._get_current_hardware_record(host_id)
-
-            # 6. 对比硬件信息
+            # 7. 对比硬件信息
             diff_state, diff_details = await self._compare_hardware(
                 current_revision=current_revision,
                 current_dmr_config=dmr_config,
@@ -139,7 +179,7 @@ class AgentReportService:
                 hw_template=hw_template,
             )
 
-            # 7. 更新数据库记录
+            # 8. 更新数据库记录
             result = await self._update_hardware_records(
                 host_id=host_id,
                 hardware_data=hardware_data,

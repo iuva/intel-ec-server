@@ -195,6 +195,7 @@ async def report_hardware(
             },
             "updated_by": "agent@intel.com",
             "tags": ["alive", "checked", "updated"],
+            "type": 0,
         },
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
@@ -204,7 +205,11 @@ async def report_hardware(
     """上报硬件信息
 
     Args:
-        hardware_data: 硬件信息（动态JSON）
+        hardware_data: 硬件信息（动态JSON），包含：
+            - dmr_config: DMR硬件配置（必需）
+            - type: 上报类型（可选，默认为0）
+                - 0: 成功，走正常对比逻辑
+                - 1: 异常，直接设置 diff_state=3
         agent_info: 当前Agent信息（从token中提取，包含host_id）
         agent_report_service: Agent硬件服务实例
 
@@ -217,11 +222,15 @@ async def report_hardware(
     # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
     host_id = agent_info["host_id"]
 
+    # 提取 type 参数（可选，默认为 0）
+    report_type = hardware_data.get("type", 0)
+
     logger.info(
         "收到硬件信息上报请求",
         extra={
             "host_id": host_id,
             "has_dmr_config": "dmr_config" in hardware_data,
+            "type": report_type,
         },
     )
 
@@ -229,6 +238,7 @@ async def report_hardware(
     result = await agent_report_service.report_hardware(
         host_id=host_id,
         hardware_data=hardware_data,
+        report_type=report_type,
     )
 
     response_data = HardwareReportResponse(**result)

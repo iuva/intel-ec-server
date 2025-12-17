@@ -6,7 +6,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path, Request
 from starlette.status import HTTP_200_OK
 
 # 使用 try-except 方式处理路径导入
@@ -226,22 +226,22 @@ async def list_hosts(
 @handle_api_errors
 async def delete_host(
     host_id: int = Path(..., description="主机ID（host_rec.id）", ge=1),
+    request: Request = ...,
     admin_host_service: AdminHostService = Depends(get_admin_host_service),
-    current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """删除主机（逻辑删除）
 
     业务逻辑：
     1. 逻辑删除 host_rec 表数据（设置 del_flag=1）
-    2. 删除后同步通知外部API（TODO: 需要实现）
+    2. 删除后同步通知外部API
     3. 如果外部API通知失败，回滚数据删除操作
     4. 如果回滚失败或通知失败，返回业务错误码
 
     Args:
         host_id: 主机ID（host_rec.id）
+        request: FastAPI Request 对象（用于从请求头获取 user_id）
         admin_host_service: 管理后台主机服务实例
-        current_user: 当前用户信息
         locale: 语言偏好
 
     Returns:
@@ -254,18 +254,16 @@ async def delete_host(
         "接收管理后台主机删除请求",
         extra={
             "host_id": host_id,
-            "user_id": current_user.get("user_id"),
         },
     )
 
-    # 调用服务层删除
-    deleted_id = await admin_host_service.delete_host(host_id)
+    # 调用服务层删除（传递 request 对象，从请求头获取 user_id）
+    deleted_id = await admin_host_service.delete_host(host_id, request=request, locale=locale)
 
     logger.info(
         "管理后台主机删除完成",
         extra={
             "host_id": deleted_id,
-            "user_id": current_user.get("user_id"),
         },
     )
 

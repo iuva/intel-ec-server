@@ -283,7 +283,9 @@ class AdminHostService:
         error_message="删除主机失败",
         error_code="DELETE_HOST_FAILED",
     )
-    async def delete_host(self, host_id: int) -> str:
+    async def delete_host(
+        self, host_id: int, request=None, user_id: Optional[int] = None, locale: str = "zh_CN"
+    ) -> str:
         """删除主机（逻辑删除）
 
         根据主机ID逻辑删除 host_rec 表数据。删除后需要同步通知外部API，
@@ -291,6 +293,9 @@ class AdminHostService:
 
         Args:
             host_id: 主机ID（host_rec.id）
+            request: FastAPI Request 对象（用于从请求头获取 user_id）
+            user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
+            locale: 语言偏好，用于错误消息多语言处理
 
         Returns:
             str: 已删除的主机ID（字符串格式，避免精度丢失）
@@ -307,8 +312,25 @@ class AdminHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除（使用工具函数）
-            await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
+            # 1. 检查主机是否存在且未删除，并获取 host_rec 对象（用于获取 hardware_id）
+            host_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id == host_id,
+                    HostRec.del_flag == 0,  # 只查询未删除的记录
+                )
+            )
+            host_result = await session.execute(host_stmt)
+            host_rec = host_result.scalar_one_or_none()
+
+            if not host_rec:
+                raise BusinessError(
+                    message=f"主机不存在或已被删除（ID: {host_id}）",
+                    message_key="error.host.not_found",
+                    error_code="HOST_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=404,
+                    details={"host_id": host_id},
+                )
 
             # 2. 执行逻辑删除（设置 del_flag = 1）
             update_stmt = (
@@ -360,19 +382,62 @@ class AdminHostService:
                 },
             )
 
-            # 3. 通知外部API（预留 TODO）
+            # 3. 通知外部API
             try:
-                # TODO: 调用外部API通知主机已删除
-                # 示例代码（待实现）:
-                # external_api_result = await self._notify_external_api_deletion(host_id, host_rec)
-                # if not external_api_result.get("success"):
-                #     raise Exception("外部API通知失败")
+                # 使用统一的外部接口调用客户端
+                from app.services.external_api_client import call_external_api
+
+                # 构建通知路径（根据实际外部API接口调整）
+                external_api_path = f"/api/v1/hardware/{host_rec.hardware_id}"
 
                 logger.info(
-                    "外部API通知（待实现）",
+                    "调用外部API通知主机删除",
                     extra={
                         "host_id": host_id,
-                        "note": "TODO: 实现外部API通知逻辑",
+                        "hardware_id": host_rec.hardware_id,
+                        "external_api_path": external_api_path,
+                        "user_id": user_id,
+                    },
+                )
+
+                # 调用外部接口通知主机已删除
+                response = await call_external_api(
+                    method="DELETE",
+                    url_path=external_api_path,
+                    request=request,
+                    user_id=user_id,
+                    locale=locale,
+                )
+
+                # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+                response_headers = response.get("headers", {})
+                response_body = response.get("body", {})
+                status_header = response_headers.get(":status") or response_headers.get("status")
+                status_code = response.get("status_code")
+                body_code = response_body.get("code") if isinstance(response_body, dict) else None
+
+                # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+                is_success = (
+                    (status_header and str(status_header) == "200")
+                    or (status_code and status_code == 200)
+                    or (body_code and body_code == 200)
+                )
+
+                if not is_success:
+                    error_msg = (
+                        response_body.get("message", "未知错误")
+                        if isinstance(response_body, dict)
+                        else str(response_body)
+                    )
+                    raise Exception(f"外部API通知失败: {error_msg}")
+
+                logger.info(
+                    "外部API通知成功",
+                    extra={
+                        "host_id": host_id,
+                        "status_header": status_header,
+                        "status_code": status_code,
+                        "body_code": body_code,
                     },
                 )
 
@@ -409,8 +474,10 @@ class AdminHostService:
                 # 抛出业务异常，返回删除失败
                 raise BusinessError(
                     message=f"主机删除失败：外部API通知失败（ID: {host_id}）",
+                    message_key="error.host.delete_external_api_failed",
                     error_code="HOST_DELETE_EXTERNAL_API_FAILED",
-                    code=500,
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
                     details={
                         "host_id": host_id,
                         "external_api_error": str(e),

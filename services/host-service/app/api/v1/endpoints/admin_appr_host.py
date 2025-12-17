@@ -6,7 +6,7 @@
 import os
 import sys
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Request
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -303,8 +303,8 @@ async def get_appr_host_detail(
 @handle_api_errors
 async def approve_hosts(
     request: AdminApprHostApproveRequest = Body(..., description="同意启用待审批主机请求数据"),
+    http_request: Request = ...,
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
-    current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
     """同意启用待审批主机（管理后台）
@@ -351,23 +351,24 @@ async def approve_hosts(
             "diff_type": request.diff_type,
             "host_ids": request.host_ids,
             "host_count": len(request.host_ids or []),
-            "user_id": current_user.get("user_id"),
         },
     )
 
-    # 获取当前用户ID
-    appr_by = current_user.get("user_id")
+    # 从请求头获取用户ID（Gateway 传递的）
+    from app.services.external_api_client import get_user_id_from_request
+
+    appr_by = get_user_id_from_request(http_request)
     if not appr_by:
         logger.warning(
-            "无法获取当前用户ID",
+            "无法从请求头获取用户ID",
             extra={
-                "current_user": current_user,
+                "path": http_request.url.path,
             },
         )
         appr_by = 0  # 如果无法获取用户ID，使用默认值
 
-    # 调用服务层处理（传入 locale 参数）
-    result = await admin_appr_host_service.approve_hosts(request, appr_by, locale=locale)
+    # 调用服务层处理（传入 locale 参数和 http_request 对象）
+    result = await admin_appr_host_service.approve_hosts(request, appr_by, locale=locale, http_request=http_request)
 
     logger.info(
         "管理后台同意启用主机处理完成",

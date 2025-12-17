@@ -36,7 +36,6 @@ try:
     from shared.common.decorators import handle_service_errors
     from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
-    from shared.common.http_client import get_http_client
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
@@ -67,7 +66,6 @@ except ImportError:
     from shared.common.decorators import handle_service_errors
     from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
-    from shared.common.http_client import get_http_client
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
     from shared.common.security import aes_decrypt
@@ -277,18 +275,41 @@ def _get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) 
         return f"Host-{host_rec.id}"
 
 
+def _build_hardware_head() -> Dict[str, str]:
+    """构建硬件接口 Head 参数（Mock 数据）
+
+    Returns:
+        Head 参数字典
+    """
+    return {
+        "ConfigName": "DMR-sample-1",
+        "Component": "bios.playform",
+        "Owner": "zeyichen",
+        "Project": "bios.oakstream_diamondrapids",
+        "Environment": "silicon",
+        "Milestone": "Alpha",
+        "SubComponent": "",
+        "Type": "hardware",
+        "Tag": "",
+    }
+
+
 async def _call_hardware_api(
     hardware_id: Optional[str],
-    name: str,
-    dmr_config: Dict[str, Any],
+    hw_info: Dict[str, Any],
+    request=None,
+    user_id: Optional[int] = None,
     locale: str = "zh_CN",
 ) -> str:
     """调用外部硬件接口（新增或修改）
 
+    使用统一的外部接口调用客户端，自动处理认证。
+
     Args:
         hardware_id: 硬件ID（如果为 None 则调用新增接口，否则调用修改接口）
-        name: 配置名称
-        dmr_config: DMR硬件配置
+        hw_info: 硬件信息（对应 host_hw_rec 表的 hw_info 字段）
+        request: FastAPI Request 对象（用于从请求头获取 user_id）
+        user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
         locale: 语言偏好
 
     Returns:
@@ -305,7 +326,6 @@ async def _call_hardware_api(
             "使用 Mock 硬件接口数据",
             extra={
                 "hardware_id": hardware_id,
-                "name": name,
                 "is_new": hardware_id is None,
             },
         )
@@ -317,34 +337,58 @@ async def _call_hardware_api(
             import uuid
             return f"mock-hardware-{uuid.uuid4().hex[:8]}"
 
-    # 获取硬件接口 URL
-    hardware_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
-    http_client = get_http_client()
-
+    # 使用统一的外部接口调用客户端
     try:
+        from app.services.external_api_client import call_external_api
+
+        # 构建 Head 参数（Mock 数据）
+        head_data = _build_hardware_head()
+
         if hardware_id is None:
             # 新增硬件：POST /api/v1/hardware/
-            url = f"{hardware_api_url}/api/v1/hardware/"
+            url_path = "/api/v1/hardware/"
             request_body = {
-                "name": name,
-                "dmr_config": dmr_config,
+                "Head": head_data,
+                "Payload": hw_info,
             }
 
             logger.info(
                 "调用外部硬件接口（新增）",
                 extra={
-                    "url": url,
-                    "name": name,
+                    "url_path": url_path,
+                    "user_id": user_id,
+                    "has_hw_info": bool(hw_info),
                 },
             )
 
-            response = await http_client.request("POST", url, json=request_body)
+            response = await call_external_api(
+                method="POST",
+                url_path=url_path,
+                request=request,
+                user_id=user_id,
+                json_data=request_body,
+                locale=locale,
+            )
 
-            if response["status_code"] not in (200, 201):
+            # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+            response_headers = response.get("headers", {})
+            response_body = response.get("body", {})
+            status_header = response_headers.get(":status") or response_headers.get("status")
+            status_code = response.get("status_code")
+            body_code = response_body.get("code") if isinstance(response_body, dict) else None
+
+            # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+            is_success = (
+                (status_header and str(status_header) == "200")
+                or (status_code and status_code == 200)
+                or (body_code and body_code == 200)
+            )
+
+            if not is_success:
                 error_msg = (
-                    response["body"].get("message", "未知错误")
-                    if isinstance(response["body"], dict)
-                    else str(response["body"])
+                    response_body.get("message", "未知错误")
+                    if isinstance(response_body, dict)
+                    else str(response_body)
                 )
                 raise BusinessError(
                     message=f"调用硬件接口失败（新增）: {error_msg}",
@@ -353,19 +397,25 @@ async def _call_hardware_api(
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
                     details={
-                        "url": url,
-                        "status_code": response["status_code"],
-                        "response": response["body"],
+                        "url_path": url_path,
+                        "status_header": status_header,
+                        "status_code": status_code,
+                        "body_code": body_code,
+                        "response": response_body,
                     },
                 )
 
-            # 从响应中提取 hardware_id
-            response_body = response["body"]
+            # 从响应中提取 hardware_id（直接提取 _id 字段）
             if isinstance(response_body, dict):
-                new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
+                # 直接提取 _id 字段
+                new_hardware_id = response_body.get("_id")
+                if not new_hardware_id:
+                    # 如果 _id 不存在，尝试其他字段名
+                    new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
+
                 if not new_hardware_id:
                     raise BusinessError(
-                        message="硬件接口返回数据格式错误：缺少 hardware_id 字段",
+                        message="硬件接口返回数据格式错误：缺少 _id 字段",
                         message_key="error.hardware.invalid_response",
                         error_code="HARDWARE_INVALID_RESPONSE",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -375,7 +425,6 @@ async def _call_hardware_api(
                     "硬件接口调用成功（新增）",
                     extra={
                         "hardware_id": new_hardware_id,
-                        "name": name,
                     },
                 )
                 return str(new_hardware_id)
@@ -390,26 +439,51 @@ async def _call_hardware_api(
 
         else:
             # 修改硬件：PUT /api/v1/hardware/{hardware_id}
-            url = f"{hardware_api_url}/api/v1/hardware/{hardware_id}"
+            url_path = f"/api/v1/hardware/{hardware_id}"
             request_body = {
-                "dmr_config": dmr_config,
+                "_id": {"$oid": hardware_id},
+                "Head": head_data,
+                "Payload": hw_info,
             }
 
             logger.info(
                 "调用外部硬件接口（修改）",
                 extra={
-                    "url": url,
+                    "url_path": url_path,
                     "hardware_id": hardware_id,
+                    "user_id": user_id,
+                    "has_hw_info": bool(hw_info),
                 },
             )
 
-            response = await http_client.request("PUT", url, json=request_body)
+            response = await call_external_api(
+                method="PUT",
+                url_path=url_path,
+                request=request,
+                user_id=user_id,
+                json_data=request_body,
+                locale=locale,
+            )
 
-            if response["status_code"] not in (200, 204):
+            # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+            response_headers = response.get("headers", {})
+            response_body = response.get("body", {})
+            status_header = response_headers.get(":status") or response_headers.get("status")
+            status_code = response.get("status_code")
+            body_code = response_body.get("code") if isinstance(response_body, dict) else None
+
+            # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+            is_success = (
+                (status_header and str(status_header) == "200")
+                or (status_code and status_code == 200)
+                or (body_code and body_code == 200)
+            )
+
+            if not is_success:
                 error_msg = (
-                    response["body"].get("message", "未知错误")
-                    if isinstance(response["body"], dict)
-                    else str(response["body"])
+                    response_body.get("message", "未知错误")
+                    if isinstance(response_body, dict)
+                    else str(response_body)
                 )
                 raise BusinessError(
                     message=f"调用硬件接口失败（修改）: {error_msg}",
@@ -418,10 +492,12 @@ async def _call_hardware_api(
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
                     details={
-                        "url": url,
+                        "url_path": url_path,
                         "hardware_id": hardware_id,
-                        "status_code": response["status_code"],
-                        "response": response["body"],
+                        "status_header": status_header,
+                        "status_code": status_code,
+                        "body_code": body_code,
+                        "response": response_body,
                     },
                 )
 
@@ -440,7 +516,8 @@ async def _call_hardware_api(
             "调用硬件接口异常",
             extra={
                 "hardware_id": hardware_id,
-                "name": name,
+                "user_id": user_id,
+                "has_hw_info": bool(hw_info),
                 "error": str(e),
                 "error_type": type(e).__name__,
             },
@@ -809,7 +886,7 @@ class AdminApprHostService:
         error_code="APPROVE_HOST_FAILED",
     )
     async def approve_hosts(
-        self, request: AdminApprHostApproveRequest, appr_by: int, locale: str = "zh_CN"
+        self, request: AdminApprHostApproveRequest, appr_by: int, locale: str = "zh_CN", http_request=None
     ) -> AdminApprHostApproveResponse:
         """同意启用主机（管理后台）
 
@@ -1001,28 +1078,15 @@ class AdminApprHostService:
                         # 初始化 hardware_id_result 为 None，如果外部接口调用成功，会更新此值
                         if latest_hw_rec.hw_info:
                             try:
-                                # 提取 dmr_config
-                                dmr_config = latest_hw_rec.hw_info.get("dmr_config")
-                                if not dmr_config:
-                                    raise BusinessError(
-                                        message="硬件信息中缺少 dmr_config 字段",
-                                        message_key="error.hardware.missing_dmr_config",
-                                        error_code="MISSING_DMR_CONFIG",
-                                        code=ServiceErrorCodes.VALIDATION_ERROR,
-                                        http_status_code=400,
-                                    )
-
-                                # 提取配置名称
-                                name = _get_hardware_name_from_hw_info(latest_hw_rec.hw_info, host_rec)
-
                                 # 判断是新增还是修改（通过 host_rec.hardware_id 是否为空）
                                 existing_hardware_id = host_rec.hardware_id
 
-                                # 调用外部硬件接口
+                                # 调用外部硬件接口（传递完整的 hw_info）
                                 hardware_id_result = await _call_hardware_api(
                                     hardware_id=existing_hardware_id,
-                                    name=name,
-                                    dmr_config=dmr_config,
+                                    hw_info=latest_hw_rec.hw_info,
+                                    request=http_request,
+                                    user_id=appr_by,
                                     locale=locale,
                                 )
 
