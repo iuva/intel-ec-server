@@ -368,19 +368,29 @@ class RedisManager:
             # 创建 SSL 上下文
             ssl_context = ssl.create_default_context()
 
-            # 设置证书验证要求
+            # ✅ 修复：必须先设置 check_hostname，再设置 verify_mode
+            # 当 verify_mode 为 CERT_NONE 时，必须先禁用 check_hostname
+            # 否则会报错：cannot set verify_mode to CERT_NONE when check_hostname is enabled
+
+            # 确定证书验证要求
             if ssl_cert_reqs:
                 cert_reqs_map = {
                     "none": ssl.CERT_NONE,
                     "optional": ssl.CERT_OPTIONAL,
                     "required": ssl.CERT_REQUIRED,
                 }
-                ssl_context.verify_mode = cert_reqs_map.get(ssl_cert_reqs.lower(), ssl.CERT_REQUIRED)
+                verify_mode_value = cert_reqs_map.get(ssl_cert_reqs.lower(), ssl.CERT_REQUIRED)
             else:
-                ssl_context.verify_mode = ssl.CERT_REQUIRED
+                verify_mode_value = ssl.CERT_REQUIRED
 
-            # 设置主机名验证
-            ssl_context.check_hostname = ssl_check_hostname
+            # 如果 verify_mode 为 CERT_NONE，必须先禁用 check_hostname
+            if verify_mode_value == ssl.CERT_NONE:
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            else:
+                # 先设置 verify_mode，再设置 check_hostname
+                ssl_context.verify_mode = verify_mode_value
+                ssl_context.check_hostname = ssl_check_hostname
 
             # 加载 CA 证书
             if ssl_ca_certs:
@@ -404,8 +414,29 @@ class RedisManager:
                         extra={"error": str(e)},
                     )
 
-            # 将 SSL 上下文添加到参数
-            ssl_params["ssl"] = ssl_context
+            # ✅ 修复：redis.from_url() 不接受 ssl 参数
+            # 由于 URL 使用 rediss://，SSL 会自动启用，不需要传递 ssl=True
+            # 我们只需要传递证书文件路径（如果提供）
+            # redis-py 支持这些参数：ssl_ca_certs, ssl_certfile, ssl_keyfile, ssl_cert_reqs
+
+            # 传递证书文件路径（如果提供）
+            if ssl_ca_certs:
+                ssl_params["ssl_ca_certs"] = ssl_ca_certs
+            if ssl_certfile:
+                ssl_params["ssl_certfile"] = ssl_certfile
+            if ssl_keyfile:
+                ssl_params["ssl_keyfile"] = ssl_keyfile
+
+            # 传递证书验证要求
+            # redis-py 的 ssl_cert_reqs 接受 ssl.CERT_NONE, ssl.CERT_OPTIONAL, ssl.CERT_REQUIRED
+            # 或者 None（表示不验证）
+            if verify_mode_value == ssl.CERT_NONE:
+                ssl_params["ssl_cert_reqs"] = None  # 不验证证书
+            else:
+                ssl_params["ssl_cert_reqs"] = verify_mode_value
+
+            # 传递主机名验证设置
+            ssl_params["ssl_check_hostname"] = ssl_check_hostname if verify_mode_value != ssl.CERT_NONE else False
 
             logger.info(
                 "Redis SSL 已启用",
