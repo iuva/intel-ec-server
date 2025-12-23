@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -19,7 +20,6 @@ try:
         http_client_requests_total,
     )
 except ImportError:
-    import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -58,6 +58,7 @@ class HTTPClientConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
     client_name: str = DEFAULT_HTTP_CLIENT_NAME
+    verify_ssl: bool = True  # SSL 证书验证（默认启用）
 
 
 class AsyncHTTPClient:
@@ -87,6 +88,7 @@ class AsyncHTTPClient:
         max_retries: int = 3,
         retry_delay: float = 1.0,
         client_name: str = DEFAULT_HTTP_CLIENT_NAME,
+        verify_ssl: Optional[bool] = None,
         config: Optional[HTTPClientConfig] = None,
     ):
         """初始化 HTTP 客户端
@@ -99,6 +101,7 @@ class AsyncHTTPClient:
             max_retries: 最大重试次数
             retry_delay: 重试延迟（秒）
             client_name: 客户端名称（用于指标标签）
+            verify_ssl: SSL 证书验证（None 时从环境变量读取，默认 True）
             config: 可选的配置对象（优先级最高）
         """
         if config is not None:
@@ -109,6 +112,12 @@ class AsyncHTTPClient:
             max_retries = config.max_retries
             retry_delay = config.retry_delay
             client_name = config.client_name or client_name
+            verify_ssl = config.verify_ssl if verify_ssl is None else verify_ssl
+
+        # 从环境变量读取 SSL 验证配置（如果未通过参数提供）
+        if verify_ssl is None:
+            verify_ssl_env = os.getenv("HTTP_CLIENT_VERIFY_SSL", "true").lower()
+            verify_ssl = verify_ssl_env in ("true", "1", "yes", "on", "enabled")
 
         self._client: Optional[AsyncClient] = None
         self.timeout = Timeout(timeout, connect=connect_timeout)
@@ -116,6 +125,7 @@ class AsyncHTTPClient:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.client_name = client_name or DEFAULT_HTTP_CLIENT_NAME
+        self.verify_ssl = verify_ssl
 
         logger.info(
             "HTTP 客户端配置初始化",
@@ -125,6 +135,7 @@ class AsyncHTTPClient:
                 "max_keepalive_connections": max_keepalive_connections,
                 "max_connections": max_connections,
                 "max_retries": max_retries,
+                "verify_ssl": verify_ssl,
                 "client_name": self.client_name,
             },
         )
@@ -137,10 +148,18 @@ class AsyncHTTPClient:
             AsyncClient 实例
         """
         if self._client is None:
-            self._client = AsyncClient(timeout=self.timeout, limits=self.limits, follow_redirects=True)
+            self._client = AsyncClient(
+                timeout=self.timeout,
+                limits=self.limits,
+                follow_redirects=True,
+                verify=self.verify_ssl,  # SSL 证书验证配置
+            )
             logger.debug(
                 "创建新的 AsyncClient 实例",
-                extra={"client_name": self.client_name},
+                extra={
+                    "client_name": self.client_name,
+                    "verify_ssl": self.verify_ssl,
+                },
             )
 
         return self._client

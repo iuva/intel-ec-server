@@ -32,6 +32,7 @@ try:
         AdminMaintainEmailResponse,
     )
 
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.email_sender import send_email
@@ -62,6 +63,7 @@ except ImportError:
         AdminMaintainEmailResponse,
     )
 
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.email_sender import send_email
@@ -300,10 +302,12 @@ async def _call_hardware_api(
     request=None,
     user_id: Optional[int] = None,
     locale: str = "zh_CN",
+    host_id: Optional[int] = None,
 ) -> str:
     """调用外部硬件接口（新增或修改）
 
     使用统一的外部接口调用客户端，自动处理认证。
+    新增硬件时使用 Redis 分布式锁防止并发创建。
 
     Args:
         hardware_id: 硬件ID（如果为 None 则调用新增接口，否则调用修改接口）
@@ -311,6 +315,7 @@ async def _call_hardware_api(
         request: FastAPI Request 对象（用于从请求头获取 user_id）
         user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
         locale: 语言偏好
+        host_id: 主机ID（用于生成分布式锁的键，仅在新增硬件时需要）
 
     Returns:
         返回的 hardware_id（新增时返回新ID，修改时返回原ID）
@@ -345,97 +350,174 @@ async def _call_hardware_api(
         head_data = _build_hardware_head()
 
         if hardware_id is None:
-            # 新增硬件：POST /api/v1/hardware/
-            url_path = "/api/v1/hardware/"
-            request_body = {
-                "Head": head_data,
-                "Payload": hw_info,
-            }
+            # ✅ 新增硬件：使用 Redis 分布式锁防止并发创建
+            lock_key = None
+            lock_value = None
 
-            logger.info(
-                "调用外部硬件接口（新增）",
-                extra={
-                    "url_path": url_path,
-                    "user_id": user_id,
-                    "has_hw_info": bool(hw_info),
-                },
-            )
+            if host_id is not None:
+                # 生成锁的键：基于 host_id，确保同一主机不会并发创建多个 hardware
+                lock_key = f"hardware_create_lock:{host_id}"
+                import uuid
 
-            response = await call_external_api(
-                method="POST",
-                url_path=url_path,
-                request=request,
-                user_id=user_id,
-                json_data=request_body,
-                locale=locale,
-            )
+                lock_value = str(uuid.uuid4())
 
-            # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
-            response_headers = response.get("headers", {})
-            response_body = response.get("body", {})
-            status_header = response_headers.get(":status") or response_headers.get("status")
-            status_code = response.get("status_code")
-            body_code = response_body.get("code") if isinstance(response_body, dict) else None
+                # 尝试获取锁（超时时间 30 秒）
+                lock_acquired = await redis_manager.acquire_lock(lock_key, timeout=30, lock_value=lock_value)
 
-            # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
-            is_success = (
-                (status_header and str(status_header) == "200")
-                or (status_code and status_code == 200)
-                or (body_code and body_code == 200)
-            )
+                if not lock_acquired:
+                    # 如果 Redis 不可用，记录警告但继续执行（降级处理）
+                    if not redis_manager.is_connected:
+                        logger.warning(
+                            "Redis 不可用，无法获取分布式锁，继续执行（降级处理）",
+                            extra={
+                                "host_id": host_id,
+                                "lock_key": lock_key,
+                            },
+                        )
+                    else:
+                        # Redis 可用但获取锁失败，说明其他实例正在处理
+                        logger.warning(
+                            "获取硬件创建锁失败，可能其他实例正在处理",
+                            extra={
+                                "host_id": host_id,
+                                "lock_key": lock_key,
+                            },
+                        )
+                        raise BusinessError(
+                            message=f"主机 {host_id} 正在创建硬件记录，请稍后重试",
+                            message_key="error.hardware.creation_in_progress",
+                            error_code="HARDWARE_CREATION_IN_PROGRESS",
+                            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                            http_status_code=409,  # Conflict
+                            details={
+                                "host_id": host_id,
+                                "lock_key": lock_key,
+                            },
+                        )
 
-            if not is_success:
-                error_msg = (
-                    response_body.get("message", "未知错误")
-                    if isinstance(response_body, dict)
-                    else str(response_body)
-                )
-                raise BusinessError(
-                    message=f"调用硬件接口失败（新增）: {error_msg}",
-                    message_key="error.hardware.create_failed",
-                    error_code="HARDWARE_CREATE_FAILED",
-                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                    http_status_code=500,
-                    details={
-                        "url_path": url_path,
-                        "status_header": status_header,
-                        "status_code": status_code,
-                        "body_code": body_code,
-                        "response": response_body,
+                logger.info(
+                    "已获取硬件创建锁",
+                    extra={
+                        "host_id": host_id,
+                        "lock_key": lock_key,
+                        "lock_value": lock_value[:8] if lock_value else None,
                     },
                 )
 
-            # 从响应中提取 hardware_id（直接提取 _id 字段）
-            if isinstance(response_body, dict):
-                # 直接提取 _id 字段
-                new_hardware_id = response_body.get("_id")
-                if not new_hardware_id:
-                    # 如果 _id 不存在，尝试其他字段名
-                    new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
+            try:
+                # 新增硬件：POST /api/v1/hardware/
+                url_path = "/api/v1/hardware/"
+                request_body = {
+                    "Head": head_data,
+                    "Payload": hw_info,
+                }
 
-                if not new_hardware_id:
+                logger.info(
+                    "调用外部硬件接口（新增）",
+                    extra={
+                        "url_path": url_path,
+                        "user_id": user_id,
+                        "has_hw_info": bool(hw_info),
+                        "host_id": host_id,
+                    },
+                )
+
+                response = await call_external_api(
+                    method="POST",
+                    url_path=url_path,
+                    request=request,
+                    user_id=user_id,
+                    json_data=request_body,
+                    locale=locale,
+                )
+
+                # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+                response_headers = response.get("headers", {})
+                response_body = response.get("body", {})
+                status_header = response_headers.get(":status") or response_headers.get("status")
+                status_code = response.get("status_code")
+                body_code = response_body.get("code") if isinstance(response_body, dict) else None
+
+                # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+                is_success = (
+                    (status_header and str(status_header) == "200")
+                    or (status_code and status_code == 200)
+                    or (body_code and body_code == 200)
+                )
+
+                if not is_success:
+                    error_msg = (
+                        response_body.get("message", "未知错误")
+                        if isinstance(response_body, dict)
+                        else str(response_body)
+                    )
                     raise BusinessError(
-                        message="硬件接口返回数据格式错误：缺少 _id 字段",
+                        message=f"调用硬件接口失败（新增）: {error_msg}",
+                        message_key="error.hardware.create_failed",
+                        error_code="HARDWARE_CREATE_FAILED",
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=500,
+                        details={
+                            "url_path": url_path,
+                            "status_header": status_header,
+                            "status_code": status_code,
+                            "body_code": body_code,
+                            "response": response_body,
+                        },
+                    )
+
+                # 从响应中提取 hardware_id（直接提取 _id 字段）
+                if isinstance(response_body, dict):
+                    # 直接提取 _id 字段
+                    new_hardware_id = response_body.get("_id")
+                    if not new_hardware_id:
+                        # 如果 _id 不存在，尝试其他字段名
+                        new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
+
+                    if not new_hardware_id:
+                        raise BusinessError(
+                            message="硬件接口返回数据格式错误：缺少 _id 字段",
+                            message_key="error.hardware.invalid_response",
+                            error_code="HARDWARE_INVALID_RESPONSE",
+                            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                            http_status_code=500,
+                        )
+                    logger.info(
+                        "硬件接口调用成功（新增）",
+                        extra={
+                            "hardware_id": new_hardware_id,
+                            "host_id": host_id,
+                        },
+                    )
+                    return str(new_hardware_id)
+                else:
+                    raise BusinessError(
+                        message="硬件接口返回数据格式错误：响应不是 JSON 格式",
                         message_key="error.hardware.invalid_response",
                         error_code="HARDWARE_INVALID_RESPONSE",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                         http_status_code=500,
                     )
-                logger.info(
-                    "硬件接口调用成功（新增）",
-                    extra={
-                        "hardware_id": new_hardware_id,
-                    },
-                )
-                return str(new_hardware_id)
-            else:
-                raise BusinessError(
-                    message="硬件接口返回数据格式错误：响应不是 JSON 格式",
-                    message_key="error.hardware.invalid_response",
-                    error_code="HARDWARE_INVALID_RESPONSE",
-                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                    http_status_code=500,
-                )
+            finally:
+                # 释放锁
+                if lock_key and lock_value:
+                    lock_released = await redis_manager.release_lock(lock_key, lock_value)
+                    if lock_released:
+                        logger.debug(
+                            "已释放硬件创建锁",
+                            extra={
+                                "host_id": host_id,
+                                "lock_key": lock_key,
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            "释放硬件创建锁失败",
+                            extra={
+                                "host_id": host_id,
+                                "lock_key": lock_key,
+                            },
+                        )
 
         else:
             # 修改硬件：PUT /api/v1/hardware/{hardware_id}
@@ -1013,6 +1095,18 @@ class AdminApprHostService:
                 hw_rec_result = await session.execute(hw_rec_stmt)
                 all_hw_recs = hw_rec_result.scalars().all()
 
+                logger.debug(
+                    "批量查询硬件记录完成",
+                    extra={
+                        "host_ids_count": len(host_ids_to_process),
+                        "found_hw_recs_count": len(all_hw_recs),
+                        "query_conditions": {
+                            "sync_state": 1,
+                            "del_flag": 0,
+                        },
+                    },
+                )
+
                 # 按 host_id 组织硬件记录
                 hw_recs_by_host: Dict[int, List[HostHwRec]] = {}
                 for hw_rec in all_hw_recs:
@@ -1033,11 +1127,21 @@ class AdminApprHostService:
                         # 1. 验证主机是否存在且未删除
                         host_rec = host_recs_map.get(host_id)
                         if not host_rec:
+                            error_message = t("error.host.not_found", locale=locale, host_id=host_id)
+                            logger.warning(
+                                "主机不存在或已删除，跳过审批",
+                                extra={
+                                    "host_id": host_id,
+                                    "diff_type": request.diff_type,
+                                    "appr_by": appr_by,
+                                    "error_message": error_message,
+                                },
+                            )
                             results.append(
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": t("error.host.not_found", locale=locale, host_id=host_id),
+                                    "message": error_message,
                                 }
                             )
                             failed_count += 1
@@ -1047,16 +1151,67 @@ class AdminApprHostService:
                         hw_recs = hw_recs_by_host.get(host_id, [])
 
                         if not hw_recs:
+                            # 调试：查询该主机的所有硬件记录（不限制 sync_state）以帮助排查问题
+                            debug_hw_stmt = (
+                                select(HostHwRec)
+                                .where(
+                                    and_(
+                                        HostHwRec.host_id == host_id,
+                                        HostHwRec.del_flag == 0,
+                                    )
+                                )
+                                .order_by(desc(HostHwRec.created_time), desc(HostHwRec.id))
+                            )
+                            debug_hw_result = await session.execute(debug_hw_stmt)
+                            debug_hw_recs = debug_hw_result.scalars().all()
+
+                            # 统计不同 sync_state 的记录数量
+                            sync_state_stats = {}
+                            for hw_rec in debug_hw_recs:
+                                sync_state = hw_rec.sync_state
+                                if sync_state not in sync_state_stats:
+                                    sync_state_stats[sync_state] = 0
+                                sync_state_stats[sync_state] += 1
+
+                            error_message = t(
+                                "error.host.hardware_not_found",
+                                locale=locale,
+                                host_id=host_id,
+                                default=f"未找到待审批的硬件记录（ID: {host_id}）",
+                            )
+                            logger.warning(
+                                "未找到待审批的硬件记录，跳过审批",
+                                extra={
+                                    "host_id": host_id,
+                                    "diff_type": request.diff_type,
+                                    "appr_by": appr_by,
+                                    "error_message": error_message,
+                                    "host_exists": True,  # 主机存在但硬件记录不存在
+                                    "debug_info": {
+                                        "total_hw_recs": len(debug_hw_recs),
+                                        "sync_state_stats": sync_state_stats,
+                                        "query_condition": {
+                                            "sync_state": 1,
+                                            "del_flag": 0,
+                                        },
+                                        "latest_hw_rec": {
+                                            "id": debug_hw_recs[0].id if debug_hw_recs else None,
+                                            "sync_state": debug_hw_recs[0].sync_state if debug_hw_recs else None,
+                                            "del_flag": debug_hw_recs[0].del_flag if debug_hw_recs else None,
+                                            "created_time": (
+                                                debug_hw_recs[0].created_time.isoformat()
+                                                if debug_hw_recs and debug_hw_recs[0].created_time
+                                                else None
+                                            ),
+                                        },
+                                    },
+                                },
+                            )
                             results.append(
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": t(
-                                        "error.host.hardware_not_found",
-                                        locale=locale,
-                                        host_id=host_id,
-                                        default=f"未找到待审批的硬件记录（ID: {host_id}）",
-                                    ),
+                                    "message": error_message,
                                 }
                             )
                             failed_count += 1
@@ -1066,14 +1221,8 @@ class AdminApprHostService:
                         latest_hw_rec = hw_recs[0]
                         latest_hw_id = latest_hw_rec.id
 
-                        # 4. 收集需要更新的数据
-                        latest_hw_ids_to_update.append(latest_hw_id)
-
-                        # 5. 收集其他需要更新的硬件记录ID
-                        if len(hw_recs) > 1:
-                            other_hw_ids_to_update.extend([hw.id for hw in hw_recs[1:]])
-
-                        # 6. 调用外部硬件接口（新增或修改）
+                        # 4. 调用外部硬件接口（新增或修改）
+                        # ✅ 修复：先调用外部接口，成功后再收集需要更新的数据
                         hardware_id_result: Optional[str] = None
                         # 初始化 hardware_id_result 为 None，如果外部接口调用成功，会更新此值
                         if latest_hw_rec.hw_info:
@@ -1088,6 +1237,7 @@ class AdminApprHostService:
                                     request=http_request,
                                     user_id=appr_by,
                                     locale=locale,
+                                    host_id=host_id,  # 传递 host_id 用于分布式锁
                                 )
 
                                 logger.info(
@@ -1100,7 +1250,7 @@ class AdminApprHostService:
                                 )
 
                             except BusinessError:
-                                # 业务错误直接抛出
+                                # 业务错误直接抛出，不收集更新数据
                                 raise
                             except Exception as e:
                                 logger.error(
@@ -1132,7 +1282,15 @@ class AdminApprHostService:
                                 },
                             )
 
-                        # 7. 收集主机更新信息（包含 hardware_id）
+                        # 5. ✅ 修复：只有外部接口调用成功（或跳过）后，才收集需要更新的数据
+                        # 收集需要更新的最新硬件记录ID
+                        latest_hw_ids_to_update.append(latest_hw_id)
+
+                        # 收集其他需要更新的硬件记录ID
+                        if len(hw_recs) > 1:
+                            other_hw_ids_to_update.extend([hw.id for hw in hw_recs[1:]])
+
+                        # 6. 收集主机更新信息（包含 hardware_id）
                         host_updates[host_id] = {
                             "appr_state": APPR_STATE_ENABLE,
                             "host_state": HOST_STATE_FREE,
@@ -1143,7 +1301,7 @@ class AdminApprHostService:
                         if hardware_id_result:
                             host_updates[host_id]["hardware_id"] = hardware_id_result
 
-                        # 8. 收集硬件记录更新信息（包含 hardware_id）
+                        # 7. 收集硬件记录更新信息（包含 hardware_id）
                         # 如果外部接口返回了 hardware_id，需要更新到 host_hw_rec
                         if hardware_id_result:
                             hw_rec_hardware_id_map[latest_hw_id] = hardware_id_result

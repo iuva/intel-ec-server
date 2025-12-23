@@ -39,6 +39,28 @@ _token_lock = asyncio.Lock()
 TOKEN_CACHE_KEY_PREFIX = "external_api_token"
 
 
+def _sanitize_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """脱敏响应头中的敏感信息
+
+    Args:
+        headers: 原始响应头（可能为 None）
+
+    Returns:
+        脱敏后的响应头
+    """
+    if not headers:
+        return {}
+    safe_headers = headers.copy()
+    # 转换为小写键以便查找
+    safe_headers = headers.copy()
+
+    sensitive_keys = ["authorization", "set-cookie", "cookie"]
+    for key in list(safe_headers.keys()):
+        if key.lower() in sensitive_keys:
+            safe_headers[key] = "***（已脱敏）"
+    return safe_headers
+
+
 def get_user_id_from_request(request) -> Optional[int]:
     """从请求头获取 user_id（Gateway 传递的）
 
@@ -181,7 +203,6 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
                         "cache_key": cache_key,
                     },
                 )
-                # 返回完整的 token 信息（从缓存中获取）
                 return {
                     "access_token": access_token,
                     "token_type": cached_token_data.get("token_type", "bearer"),
@@ -189,30 +210,61 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
                 }
 
         # 4. 请求登录接口获取 token
-        external_api_url = os.getenv("EXTERNAL_API_URL", "http://hardware-service:8000")
+        external_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
         login_url = f"{external_api_url}/api/v1/auth/login"
         request_body = {"email": user_email}
 
-        logger.info(
-            "请求外部 API token",
-            extra={
-                "user_id": user_id,
-                "user_email": user_email,
-                "login_url": login_url,
-            },
-        )
+        # 记录请求参数日志 - 使用 structured logging
+        logger.bind(
+            method="POST",
+            url=login_url,
+            user_id=user_id,
+            user_email=user_email,
+            request_body=request_body,
+        ).debug("获取外部 API token - 请求参数")
 
         http_client = get_http_client()
+
+        # 用于异常处理时记录响应信息
+        response = None
+        status_code = None
 
         try:
             response = await http_client.request("POST", login_url, json=request_body)
 
-            if response["status_code"] not in (200, 201):
-                error_msg = (
-                    response["body"].get("message", "未知错误")
-                    if isinstance(response["body"], dict)
-                    else str(response["body"])
-                )
+            # 获取响应信息
+            response_headers = response.get("headers") or {}
+            response_body = response.get("body")
+            status_code = response.get("status_code")
+            raw_body = response.get("raw_body")
+
+            safe_response_headers = _sanitize_headers(response_headers)
+
+            # 使用 raw_body 如果 body 为空或处理异常
+            body_to_log = response_body if response_body is not None else raw_body
+
+            # 记录响应日志 - 使用 structured logging
+            logger.bind(
+                method="POST",
+                url=login_url,
+                status_code=status_code,
+                user_id=user_id,
+                response_headers=safe_response_headers,
+                response_body=body_to_log
+            ).debug("获取外部 API token - 响应结果")
+
+            if status_code not in (200, 201):
+                # 提取错误消息
+                error_msg = "未知错误"
+                if response_body and isinstance(response_body, dict):
+                    error_msg = response_body.get("message", str(response_body))
+                elif response_body:
+                    error_msg = str(response_body)
+                elif raw_body:
+                    error_msg = str(raw_body)
+                else:
+                    error_msg = f"空响应 (status_code: {status_code})"
+
                 raise BusinessError(
                     message=f"获取外部 API token 失败: {error_msg}",
                     message_key="error.external_api.token_failed",
@@ -221,14 +273,13 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
                     http_status_code=500,
                     details={
                         "login_url": login_url,
-                        "status_code": response["status_code"],
-                        "response": response["body"],
+                        "status_code": status_code,
+                        "response_body": body_to_log,
                     },
                 )
 
             # 5. 解析响应数据
-            response_body = response["body"]
-            if not isinstance(response_body, dict):
+            if not response_body or not isinstance(response_body, dict):
                 raise BusinessError(
                     message="外部 API token 响应格式错误：响应不是 JSON 格式",
                     message_key="error.external_api.token_invalid_response",
@@ -251,37 +302,17 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
                 )
 
             # 6. 根据 expires_in 的值存入 Redis 缓存
-            # expires_in 可能是字符串或整数，需要转换
             try:
-                if isinstance(expires_in, str):
+                if isinstance(expires_in, (int, float)):
                     expire_seconds = int(expires_in)
-                elif isinstance(expires_in, (int, float)):
+                elif isinstance(expires_in, str) and expires_in.isdigit():
                     expire_seconds = int(expires_in)
                 else:
-                    # 默认过期时间：15552000 秒（约 180 天）
                     expire_seconds = 15552000
-                    logger.warning(
-                        "无法解析 expires_in，使用默认值",
-                        extra={
-                            "user_id": user_id,
-                            "user_email": user_email,
-                            "expires_in": expires_in,
-                            "default_expire": expire_seconds,
-                        },
-                    )
-            except (ValueError, TypeError) as e:
-                # 解析失败，使用默认值
+                    logger.warning(f"无法解析 expires_in: {expires_in}，使用默认值")
+            except Exception:
                 expire_seconds = 15552000
-                logger.warning(
-                    "解析 expires_in 失败，使用默认值",
-                    extra={
-                        "user_id": user_id,
-                        "user_email": user_email,
-                        "expires_in": expires_in,
-                        "default_expire": expire_seconds,
-                        "error": str(e),
-                    },
-                )
+                logger.warning(f"解析 expires_in 失败: {expires_in}，使用默认值")
 
             # 存储 token 数据到缓存
             token_data = {
@@ -291,25 +322,8 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
             }
 
             cache_success = await redis_manager.set(cache_key, token_data, expire=expire_seconds)
-            if cache_success:
-                logger.info(
-                    "外部 API token 已缓存",
-                    extra={
-                        "user_id": user_id,
-                        "user_email": user_email,
-                        "cache_key": cache_key,
-                        "expire_seconds": expire_seconds,
-                    },
-                )
-            else:
-                logger.warning(
-                    "外部 API token 缓存失败",
-                    extra={
-                        "user_id": user_id,
-                        "user_email": user_email,
-                        "cache_key": cache_key,
-                    },
-                )
+            if not cache_success:
+                logger.warning(f"外部 API token 缓存失败: {cache_key}")
 
             # 返回完整的 token 信息
             return {
@@ -321,27 +335,40 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
         except BusinessError:
             raise
         except Exception as e:
-            logger.error(
-                "获取外部 API token 异常",
-                extra={
-                    "user_id": user_id,
-                    "user_email": user_email,
-                    "login_url": login_url,
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                },
-                exc_info=True,
-            )
+            # 记录异常详细信息
+            error_details = {
+                "user_id": user_id,
+                "user_email": user_email,
+                "method": "POST",
+                "url": login_url,
+                "request_body": request_body,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            }
+
+            if response:
+                # 获取响应信息（如果已有）
+                try:
+                    resp_headers = _sanitize_headers(response.get("headers")) or {}
+                    resp_body = response.get("body") if response.get("body") is not None else response.get("raw_body")
+
+                    error_details.update({
+                        "status_code": response.get("status_code"),
+                        "response_headers": resp_headers,
+                        "response_body": resp_body,
+                    })
+                except Exception:
+                    ***REMOVED***
+
+            logger.error("获取外部 API token 异常", extra=error_details, exc_info=True)
+
             raise BusinessError(
                 message=f"获取外部 API token 异常: {str(e)}",
                 message_key="error.external_api.token_error",
                 error_code="EXTERNAL_API_TOKEN_ERROR",
                 code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                 http_status_code=500,
-                details={
-                    "user_id": user_id,
-                    "error": str(e),
-                },
+                details=error_details,
             )
 
 
@@ -381,7 +408,7 @@ async def call_external_api(
     Raises:
         BusinessError: 接口调用失败时
     """
-    # 1. 获取 user_id（优先使用参数，否则从请求头获取）
+    # 1. 获取 user_id
     if user_id is None:
         if request is None:
             raise BusinessError(
@@ -401,12 +428,12 @@ async def call_external_api(
                 http_status_code=400,
             )
 
-    # 2. 获取外部 API token（带缓存），返回完整的 token 信息
+    # 2. 获取外部 API token
     token_info = await get_external_api_token(user_id, locale=locale)
     access_token = token_info["access_token"]
     token_type = token_info.get("token_type", "bearer")
 
-    # 3. 构建请求头（Authorization: token_type + 空格 + access_token）
+    # 3. 构建请求头
     full_headers = {
         "Authorization": f"{token_type} {access_token}",
         "Content-Type": "application/json",
@@ -415,37 +442,49 @@ async def call_external_api(
         full_headers.update(headers)
 
     # 4. 构建完整 URL
-    external_api_url = os.getenv("EXTERNAL_API_URL", "http://hardware-service:8000")
+    external_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
     full_url = f"{external_api_url}{url_path}"
 
-    logger.info(
-        "调用外部接口",
-        extra={
-            "method": method,
-            "url": full_url,
-            "user_id": user_id,
-            "has_json_data": json_data is not None,
-            "has_params": params is not None,
-        },
-    )
+    # 5. 记录请求参数日志
+    safe_headers = _sanitize_headers(full_headers)
+
+    logger.bind(
+        method=method,
+        url=full_url,
+        url_path=url_path,
+        user_id=user_id,
+        headers=safe_headers,
+        params=params,
+        json_data=json_data,
+        timeout=timeout
+    ).debug("调用外部接口 - 请求参数")
 
     http_client = get_http_client()
 
     try:
-        # 5. 调用外部接口
+        # 6. 调用外部接口
         response = await http_client.request(
             method, full_url, json=json_data, params=params, headers=full_headers, timeout=timeout
         )
 
-        logger.info(
-            "外部接口调用完成",
-            extra={
-                "method": method,
-                "url": full_url,
-                "status_code": response.get("status_code"),
-                "user_id": user_id,
-            },
-        )
+        # 7. 记录响应日志
+        response_headers = response.get("headers", {})
+        response_body = response.get("body")
+        raw_body = response.get("raw_body")
+        status_code = response.get("status_code")
+
+        body_to_log = response_body if response_body is not None else raw_body
+
+        safe_response_headers = _sanitize_headers(response_headers)
+
+        logger.bind(
+            method=method,
+            url=full_url,
+            status_code=status_code,
+            response_headers=safe_response_headers,
+            response_body=body_to_log,
+            user_id=user_id
+        ).debug("调用外部接口 - 响应结果")
 
         return response
 
@@ -456,20 +495,11 @@ async def call_external_api(
                 "method": method,
                 "url": full_url,
                 "user_id": user_id,
+                "params": params,
+                "json_data": json_data,
                 "error": str(e),
                 "error_type": type(e).__name__,
             },
             exc_info=True,
         )
-        raise BusinessError(
-            message=f"调用外部接口异常: {str(e)}",
-            message_key="error.external_api.call_failed",
-            error_code="EXTERNAL_API_CALL_FAILED",
-            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-            http_status_code=500,
-            details={
-                "method": method,
-                "url": full_url,
-                "error": str(e),
-            },
-        )
+        raise

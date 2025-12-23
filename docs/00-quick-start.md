@@ -35,6 +35,7 @@ cp .env.example .env
 # - REDIS_PORT（Redis 端口，默认 6379）
 # - REDIS_PASSWORD（Redis 密码，如果有）
 # - JWT_SECRET_KEY（JWT 密钥，至少 32 个字符）
+# - HARDWARE_API_URL（硬件服务 API 地址，默认 http://hardware-service:8000）
 ```
 
 **重要提示**: 本项目使用外部 MySQL 和 Redis 服务，不会在 Docker Compose 中启动这些服务。请确保您已有可用的 MySQL 和 Redis 实例。详细配置说明请参考 [外部服务配置指南](./external-services-config.md)。

@@ -56,6 +56,9 @@ class HostExecLog(BaseDBModel):
     # 结束时间
     end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="结束时间")
 
+    # 预期结束时间;agent 上报的预期结束时间
+    due_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="预期结束时间;agent 上报的预期结束时间")
+
     # 主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线.}
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
@@ -87,6 +90,15 @@ class HostExecLog(BaseDBModel):
 
     # 更新人
     updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="更新人")
+
+    # 邮件通知状态;{not: 0, 未通知, yes: 1, 已通知.}
+    notify_state: Mapped[int] = mapped_column(
+        SmallInteger,
+        default=0,
+        nullable=False,
+        index=True,
+        comment="邮件通知状态;0-未通知 1-已通知",
+    )
 
     # 📌 注意: del_flag 字段已由 BaseDBModel 提供，不需要重复定义
     # del_flag: TINYINT, default=0 (继承自 BaseDBModel)

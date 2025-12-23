@@ -42,7 +42,12 @@ except ImportError:
 
 # 配置日志（在应用启动前配置）
 service_name = os.getenv("HOST_SERVICE_NAME", "host-service")
-configure_logger(service_name=service_name, log_level="INFO")
+# 从环境变量读取日志级别，支持 DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = os.getenv("LOG_LEVEL", os.getenv("DEBUG", "INFO")).upper()
+# 如果 DEBUG=true，则使用 DEBUG 级别
+if os.getenv("DEBUG", "").lower() == "true":
+    log_level = "DEBUG"
+configure_logger(service_name=service_name, log_level=log_level)
 
 logger = get_logger(__name__)
 

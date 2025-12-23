@@ -1,12 +1,14 @@
 """Case 超时检测定时任务服务
 
-定期检测执行超时的测试用例，并通过 WebSocket 通知对应的 Host 结束任务。
+定期检测执行超时的测试用例，并通过邮件通知相关人员。
 
 功能：
 1. 每 10 分钟执行一次超时检测
 2. 从 sys_conf 表查询 case_timeout 配置（缓存 1 小时）
-3. 查询超时的 host_exec_log 记录
-4. 通过 WebSocket 通知对应的 Host 结束任务
+3. 查询超时的 host_exec_log 记录（优先使用 due_time，否则使用 case_timeout）
+4. 只查询 notify_state = 0（未通知）的记录，避免重复通知
+5. 通过邮件通知相关人员（发送 hardware_id, host_ip, begin_time, due_time）
+6. 邮件发送成功后，更新 notify_state = 1（已通知），标记为已通知
 """
 
 import asyncio
@@ -15,25 +17,29 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.services.agent_websocket_manager import get_agent_websocket_manager
 
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
+    from shared.common.email_sender import send_email
+    from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.services.agent_websocket_manager import get_agent_websocket_manager
 
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
+    from shared.common.email_sender import send_email
+    from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -157,7 +163,7 @@ class CaseTimeoutTaskService:
                 self._has_warned_missing_config = False
                 logger.info("case_timeout 配置已生效", extra={"timeout_minutes": timeout_minutes})
 
-            # 2. 查询超时的 host_exec_log 记录
+            # 2. 查询超时的 host_exec_log 记录（优先使用 due_time，否则使用 case_timeout）
             timeout_cases = await self._query_timeout_cases(timeout_minutes)
             if not timeout_cases:
                 logger.debug("未发现超时的测试用例")
@@ -171,14 +177,12 @@ class CaseTimeoutTaskService:
                 },
             )
 
-            # 3. 通知对应的 Host 结束任务
-            ws_manager = get_agent_websocket_manager()
+            # 3. 发送邮件通知
             success_count = 0
             failed_count = 0
 
             for exec_log in timeout_cases:
-                host_id = str(exec_log.host_id) if exec_log.host_id else None
-                if not host_id:
+                if not exec_log.host_id:
                     logger.warning(
                         "执行日志记录缺少 host_id，跳过",
                         extra={"log_id": exec_log.id},
@@ -186,41 +190,25 @@ class CaseTimeoutTaskService:
                     failed_count += 1
                     continue
 
-                # 检查 Host 是否在线
-                if not ws_manager.is_connected(host_id):
-                    # ✅ 对于 Host 不在线的情况，使用 DEBUG 级别而不是 WARNING
-                    # 因为这些超时记录可能是历史数据，Host 不在线是正常情况
-                    logger.debug(
-                        "Host 未连接，无法发送超时通知（可能是历史超时记录）",
-                        extra={
-                            "host_id": host_id,
-                            "log_id": exec_log.id,
-                            "begin_time": exec_log.begin_time.isoformat() if exec_log.begin_time else None,
-                        },
-                    )
-                    failed_count += 1
-                    continue
-
-                # 发送超时通知
-                success = await self._notify_case_timeout(ws_manager, host_id, exec_log, timeout_minutes)
+                # 发送邮件通知
+                success = await self._send_timeout_email_notification(exec_log)
 
                 if success:
                     success_count += 1
                     logger.info(
-                        "超时通知已发送",
+                        "超时邮件通知已发送",
                         extra={
-                            "host_id": host_id,
+                            "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
                             "tc_id": exec_log.tc_id,
-                            "timeout_minutes": timeout_minutes,
                         },
                     )
                 else:
                     failed_count += 1
                     logger.error(
-                        "超时通知发送失败",
+                        "超时邮件通知发送失败",
                         extra={
-                            "host_id": host_id,
+                            "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
                         },
                     )
@@ -231,7 +219,6 @@ class CaseTimeoutTaskService:
                     "total": len(timeout_cases),
                     "success": success_count,
                     "failed": failed_count,
-                    "timeout_minutes": timeout_minutes,
                 },
             )
 
@@ -347,15 +334,20 @@ class CaseTimeoutTaskService:
     async def _query_timeout_cases(self, timeout_minutes: int) -> List[HostExecLog]:
         """查询超时的 host_exec_log 记录
 
+        超时判断逻辑：
+        1. 如果存在 due_time，则判断 due_time < 当前时间
+        2. 如果不存在 due_time，则判断 begin_time < 当前时间 - timeout_minutes
+        3. 只查询 notify_state = 0（未通知）的记录，避免重复通知
+
         Args:
-            timeout_minutes: 超时时间（分钟）
+            timeout_minutes: 超时时间（分钟，当 due_time 不存在时使用）
 
         Returns:
-            超时的执行日志记录列表
+            超时的执行日志记录列表（仅包含未通知的记录）
         """
         try:
-            # 计算超时时间点
-            timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+            now = datetime.now(timezone.utc)
+            timeout_threshold = now - timedelta(minutes=timeout_minutes)
 
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
@@ -363,7 +355,9 @@ class CaseTimeoutTaskService:
                 # - host_state in (2, 3)  # 已占用或case执行中
                 # - case_state = 1        # 启动
                 # - del_flag = 0          # 未删除
-                # - begin_time < 当前时间 - timeout_minutes
+                # - notify_state = 0      # 未通知
+                # - (due_time IS NOT NULL AND due_time < 当前时间) OR
+                #   (due_time IS NULL AND begin_time < 当前时间 - timeout_minutes)
                 stmt = (
                     select(HostExecLog)
                     .where(
@@ -371,7 +365,17 @@ class CaseTimeoutTaskService:
                             HostExecLog.host_state.in_([2, 3]),
                             HostExecLog.case_state == 1,
                             HostExecLog.del_flag == 0,
-                            HostExecLog.begin_time < timeout_threshold,
+                            HostExecLog.notify_state == 0,  # 只查询未通知的记录
+                            or_(
+                                and_(
+                                    HostExecLog.due_time.is_not(None),
+                                    HostExecLog.due_time < now,
+                                ),
+                                and_(
+                                    HostExecLog.due_time.is_(None),
+                                    HostExecLog.begin_time < timeout_threshold,
+                                ),
+                            ),
                         )
                     )
                     .order_by(HostExecLog.begin_time.asc())
@@ -385,6 +389,7 @@ class CaseTimeoutTaskService:
                     extra={
                         "timeout_minutes": timeout_minutes,
                         "timeout_threshold": timeout_threshold.isoformat(),
+                        "now": now.isoformat(),
                         "count": len(exec_logs),
                     },
                 )
@@ -403,47 +408,148 @@ class CaseTimeoutTaskService:
             )
             return []
 
-    async def _notify_case_timeout(
-        self,
-        ws_manager,
-        host_id: str,
-        exec_log: HostExecLog,
-        timeout_minutes: int,
-    ) -> bool:
-        """通知 Host 结束超时任务
+    async def _send_timeout_email_notification(self, exec_log: HostExecLog) -> bool:
+        """发送任务超时邮件通知
+
+        发送邮件成功后，会自动更新 notify_state = 1（已通知），
+        确保同一条记录不会被重复通知。
 
         Args:
-            ws_manager: WebSocket 管理器实例
-            host_id: Host ID
             exec_log: 执行日志记录
-            timeout_minutes: 超时时间（分钟）
 
         Returns:
-            是否通知成功
+            是否通知成功（成功时会更新 notify_state = 1）
         """
         try:
-            # 构建超时通知消息
-            timeout_message = {
-                "type": "case_timeout_notification",
-                "host_id": host_id,
-                "log_id": exec_log.id,
-                "tc_id": exec_log.tc_id,
-                "message": f"测试用例执行超时（超过 {timeout_minutes} 分钟），请结束任务",
-                "timeout_minutes": timeout_minutes,
-                "begin_time": exec_log.begin_time.isoformat() if exec_log.begin_time else None,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            # 1. 查询 host_rec 表获取 hardware_id 和 host_ip
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                host_stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id == exec_log.host_id,
+                        HostRec.del_flag == 0,
+                    )
+                )
+                host_result = await session.execute(host_stmt)
+                host_rec = host_result.scalar_one_or_none()
 
-            # 发送消息
-            success = await ws_manager.send_to_host(host_id, timeout_message)
+                if not host_rec:
+                    logger.warning(
+                        "未找到主机记录，跳过邮件通知",
+                        extra={
+                            "host_id": exec_log.host_id,
+                            "log_id": exec_log.id,
+                        },
+                    )
+                    return False
 
-            return success
+                hardware_id = host_rec.hardware_id or "-"
+                host_ip = host_rec.host_ip or "-"
+
+                # 2. 查询 sys_conf 表获取邮箱配置
+                email_stmt = (
+                    select(SysConf)
+                    .where(
+                        and_(
+                            SysConf.conf_key == "email",
+                            SysConf.state_flag == 0,
+                            SysConf.del_flag == 0,
+                        )
+                    )
+                    .order_by(SysConf.updated_time.desc())
+                    .limit(1)
+                )
+                email_result = await session.execute(email_stmt)
+                email_conf = email_result.scalar_one_or_none()
+
+                if not email_conf or not email_conf.conf_val:
+                    logger.warning(
+                        "未找到邮箱配置，跳过邮件通知",
+                        extra={
+                            "host_id": exec_log.host_id,
+                            "log_id": exec_log.id,
+                        },
+                    )
+                    return False
+
+                # 3. 解析邮箱列表
+                email_str = email_conf.conf_val.strip()
+                email_list = [e.strip() for e in email_str.split(",") if e.strip()]
+
+                if not email_list:
+                    logger.warning(
+                        "邮箱列表为空，跳过邮件通知",
+                        extra={
+                            "host_id": exec_log.host_id,
+                            "log_id": exec_log.id,
+                        },
+                    )
+                    return False
+
+                # 4. 构建邮件内容
+                begin_time_str = exec_log.begin_time.isoformat() if exec_log.begin_time else "-"
+                due_time_str = exec_log.due_time.isoformat() if exec_log.due_time else "-"
+
+                subject = t(
+                    "email.case.timeout.subject",
+                    locale="zh_CN",
+                    default="测试用例执行超时通知",
+                )
+
+                content = self._build_timeout_email_content(
+                    hardware_id=hardware_id,
+                    host_ip=host_ip,
+                    begin_time=begin_time_str,
+                    due_time=due_time_str,
+                    tc_id=exec_log.tc_id or "-",
+                    log_id=exec_log.id,
+                )
+
+                # 5. 发送邮件
+                email_result = await send_email(
+                    to_emails=email_list,
+                    subject=subject,
+                    content=content,
+                    locale="zh_CN",
+                )
+
+                if email_result.get("sent_count", 0) > 0:
+                    # 6. 邮件发送成功后，更新 notify_state = 1（已通知）
+                    update_stmt = (
+                        update(HostExecLog)
+                        .where(HostExecLog.id == exec_log.id)
+                        .values(notify_state=1)
+                    )
+                    await session.execute(update_stmt)
+                    await session.commit()
+
+                    logger.info(
+                        "超时邮件通知发送成功，已更新通知状态",
+                        extra={
+                            "host_id": exec_log.host_id,
+                            "log_id": exec_log.id,
+                            "sent_count": email_result.get("sent_count", 0),
+                            "recipient_count": len(email_list),
+                            "notify_state": 1,
+                        },
+                    )
+                    return True
+                else:
+                    logger.error(
+                        "超时邮件通知发送失败",
+                        extra={
+                            "host_id": exec_log.host_id,
+                            "log_id": exec_log.id,
+                            "errors": email_result.get("errors", []),
+                        },
+                    )
+                    return False
 
         except Exception as e:
             logger.error(
-                "发送超时通知异常",
+                "发送超时邮件通知异常",
                 extra={
-                    "host_id": host_id,
+                    "host_id": exec_log.host_id,
                     "log_id": exec_log.id,
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -451,6 +557,146 @@ class CaseTimeoutTaskService:
                 exc_info=True,
             )
             return False
+
+    def _build_timeout_email_content(
+        self,
+        hardware_id: str,
+        host_ip: str,
+        begin_time: str,
+        due_time: str,
+        tc_id: str,
+        log_id: int,
+    ) -> str:
+        """构建超时邮件内容
+
+        Args:
+            hardware_id: 硬件ID
+            host_ip: 主机IP
+            begin_time: 开始时间
+            due_time: 预期结束时间
+            tc_id: 测试用例ID
+            log_id: 执行日志ID
+
+        Returns:
+            HTML格式的邮件内容
+        """
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        .header {{
+            background-color: #FF6B6B;
+            color: white;
+            padding: 20px;
+            border-radius: 5px 5px 0 0;
+            margin-bottom: 0;
+        }}
+        .content {{
+            background-color: #f9f9f9;
+            padding: 30px;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }}
+        .section {{
+            margin-bottom: 25px;
+        }}
+        .section-title {{
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #FF6B6B;
+        }}
+        .info-item {{
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }}
+        .info-item::before {{
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #FF6B6B;
+            font-weight: bold;
+        }}
+        .info-label {{
+            font-weight: 600;
+            color: #555;
+        }}
+        .info-value {{
+            color: #333;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin: 0;">测试用例执行超时通知</h2>
+    </div>
+    <div class="content">
+        <p style="font-size: 16px; margin-top: 0;">尊敬的维护人员：</p>
+
+        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
+            检测到测试用例执行超时，请及时关注。
+        </p>
+
+        <div class="section">
+            <div class="section-title">超时任务信息</div>
+            <div class="info-item">
+                <span class="info-label">Hardware ID：</span>
+                <span class="info-value">{hardware_id}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Host IP：</span>
+                <span class="info-value">{host_ip}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">测试用例ID：</span>
+                <span class="info-value">{tc_id}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">执行日志ID：</span>
+                <span class="info-value">{log_id}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">开始时间：</span>
+                <span class="info-value">{begin_time}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">预期结束时间：</span>
+                <span class="info-value">{due_time}</span>
+            </div>
+        </div>
+
+        <p style="margin-top: 25px; color: #555;">
+            请及时关注相关任务执行情况。
+        </p>
+
+        <div class="footer">
+            此邮件由系统自动发送，请勿回复。
+        </div>
+    </div>
+</body>
+</html>
+"""
 
 
 # 全局定时任务服务实例（单例）

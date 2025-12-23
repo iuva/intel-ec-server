@@ -641,6 +641,65 @@ class RedisManager:
             logger.error(f"获取缓存TTL失败: {key}, 错误: {e!s}")
             return -2
 
+    async def acquire_lock(self, key: str, timeout: int = 30, lock_value: Optional[str] = None) -> bool:
+        """获取分布式锁
+
+        使用 Redis SET NX EX 命令实现分布式锁。
+
+        Args:
+            key: 锁的键名
+            timeout: 锁的过期时间（秒），默认 30 秒
+            lock_value: 锁的值（用于释放时验证），如果为 None 则自动生成 UUID
+
+        Returns:
+            是否成功获取锁
+        """
+        if not self.client:
+            return False
+
+        try:
+            import uuid
+
+            if lock_value is None:
+                lock_value = str(uuid.uuid4())
+
+            # 使用 SET NX EX 命令：如果键不存在则设置，并设置过期时间
+            result = await self.client.set(key, lock_value, nx=True, ex=timeout)
+            return result is True
+        except Exception as e:
+            logger.error(f"获取锁失败: {key}, 错误: {e!s}")
+            return False
+
+    async def release_lock(self, key: str, lock_value: str) -> bool:
+        """释放分布式锁
+
+        使用 Lua 脚本确保只有锁的持有者才能释放锁。
+
+        Args:
+            key: 锁的键名
+            lock_value: 锁的值（必须与获取锁时的值一致）
+
+        Returns:
+            是否成功释放锁
+        """
+        if not self.client:
+            return False
+
+        try:
+            # 使用 Lua 脚本确保原子性：只有锁的值匹配时才删除
+            lua_script = """
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+            """
+            result = await self.client.eval(lua_script, 1, key, lock_value)
+            return result == 1
+        except Exception as e:
+            logger.error(f"释放锁失败: {key}, 错误: {e!s}")
+            return False
+
     @property
     def is_connected(self) -> bool:
         """检查Redis是否已连接"""

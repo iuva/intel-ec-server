@@ -14,7 +14,12 @@ from starlette.status import HTTP_200_OK
 try:
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.host import HardwareReportResponse, OtaConfigItem
-    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportResponse
+    from app.schemas.testcase import (
+        TestCaseDueTimeRequest,
+        TestCaseDueTimeResponse,
+        TestCaseReportRequest,
+        TestCaseReportResponse,
+    )
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
@@ -26,7 +31,12 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.host import HardwareReportResponse, OtaConfigItem
-    from app.schemas.testcase import TestCaseReportRequest, TestCaseReportResponse
+    from app.schemas.testcase import (
+        TestCaseDueTimeRequest,
+        TestCaseDueTimeResponse,
+        TestCaseReportRequest,
+        TestCaseReportResponse,
+    )
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
 
     from shared.common.decorators import handle_api_errors
@@ -397,6 +407,154 @@ async def report_testcase_result(
     return Result(
         code=200,
         message=t("success.hardware.test_result_report", locale=locale, default="测试用例结果上报成功"),
+        data=response_data,
+        locale=locale,
+    )
+
+
+@router.put(
+    "/testcase/due-time",
+    response_model=Result[TestCaseDueTimeResponse],
+    status_code=HTTP_200_OK,
+    summary="上报测试用例预期结束时间",
+    description="""
+    Agent 上报测试用例预期结束时间，系统会更新执行日志记录的 due_time 字段。
+
+    ## 功能说明
+    1. 接收 Agent 上报的预期结束时间
+    2. 从 JWT token 中提取 host_id
+    3. 根据 host_id 和 tc_id 查询执行中的最新执行日志记录（case_state=1）
+    4. 更新 due_time 字段
+
+    ## 认证要求
+    - 需要在 Authorization 头中提供有效的 JWT token
+    - Token 格式：`Bearer <token>`
+    - Token 中的 user_id 字段将作为 host_id 使用
+
+    ## 请求参数
+    - `tc_id`: 测试用例ID（必需）
+    - `due_time`: 预期结束时间（必需，ISO 8601 格式）
+
+    ## 业务逻辑
+    1. 根据 host_id 和 tc_id 查询 host_exec_log 表执行中的最新一条记录（case_state=1）
+    2. 更新 due_time 字段
+    3. 返回更新结果
+
+    ## 注意事项
+    - tc_id 是必传字段
+    - due_time 必须是有效的 ISO 8601 格式时间
+    - 如果未找到执行中的记录，返回400错误
+    """,
+    responses={
+        200: {
+            "description": "上报成功",
+            "model": Result[TestCaseDueTimeResponse],
+        },
+        400: {
+            "description": "请求参数错误或业务逻辑错误（包括：请求参数验证失败、未找到执行中的记录等）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "validation_error": {
+                            "summary": "请求参数验证失败",
+                            "value": {
+                                "code": 400,
+                                "message": "请求参数验证失败",
+                                "error_code": "VALIDATION_ERROR",
+                                "details": None,
+                                "timestamp": "2025-01-30T10:00:00Z",
+                            },
+                        },
+                        "exec_log_not_found": {
+                            "summary": "未找到执行中的记录",
+                            "value": {
+                                "code": 53012,
+                                "message": "未找到主机 {host_id} 的测试用例 {tc_id} 执行中的记录",
+                                "error_code": "EXEC_LOG_NOT_FOUND",
+                                "details": None,
+                                "timestamp": "2025-01-30T10:00:00Z",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        401: {
+            "description": "认证失败",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 401,
+                        "message": "缺少有效的认证令牌",
+                        "error_code": "UNAUTHORIZED",
+                        "details": None,
+                        "timestamp": "2025-01-30T10:00:00Z",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "服务器内部错误",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 500,
+                        "message": "预期结束时间上报处理失败",
+                        "error_code": "DUE_TIME_UPDATE_FAILED",
+                        "details": None,
+                        "timestamp": "2025-01-30T10:00:00Z",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def report_due_time(
+    report_data: TestCaseDueTimeRequest = Body(
+        ...,
+        description="测试用例预期结束时间",
+    ),
+    agent_info: Dict[str, Any] = Depends(get_current_agent),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[TestCaseDueTimeResponse]:
+    """上报测试用例预期结束时间
+
+    Args:
+        report_data: 测试用例预期结束时间
+        agent_info: 当前Agent信息（从token中提取，包含host_id）
+        agent_report_service: Agent硬件服务实例
+
+    Returns:
+        Result: 处理结果
+
+    Raises:
+        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+    """
+    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["host_id"]
+
+    logger.info(
+        "收到预期结束时间上报请求",
+        extra={
+            "host_id": host_id,
+            "tc_id": report_data.tc_id,
+            "due_time": report_data.due_time.isoformat() if report_data.due_time else None,
+        },
+    )
+
+    # 调用服务层处理预期结束时间上报
+    result = await agent_report_service.update_due_time(
+        host_id=host_id,
+        tc_id=report_data.tc_id,
+        due_time=report_data.due_time,
+    )
+
+    response_data = TestCaseDueTimeResponse(**result)
+    return Result(
+        code=200,
+        message=t("success.hardware.due_time_report", locale=locale, default="预期结束时间上报成功"),
         data=response_data,
         locale=locale,
     )

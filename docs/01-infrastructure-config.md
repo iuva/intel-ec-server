@@ -246,6 +246,84 @@ NACOS_AUTH_TOKEN=your-base64-encoded-token-here
 ./scripts/generate_token.sh
 ```
 
+## 🔌 外部服务 API 配置
+
+### 硬件服务 API 配置
+
+Host Service 需要调用外部硬件服务 API，需要在 `.env` 文件中配置：
+
+```bash
+# 硬件服务 API 配置
+HARDWARE_API_URL=http://hardware-service:8000
+```
+
+#### 配置说明
+
+- **环境变量**: `HARDWARE_API_URL`
+- **默认值**: `http://hardware-service:8000`
+- **用途**: 用于调用外部硬件服务的 API 接口（新增/修改硬件配置）
+
+#### 不同环境的配置
+
+**本地开发环境**（服务运行在本地）：
+```bash
+HARDWARE_API_URL=http://localhost:8000
+```
+
+**Docker 环境**（服务运行在 Docker 容器中）：
+```bash
+HARDWARE_API_URL=http://hardware-service:8000
+```
+
+**生产环境**（使用实际的服务地址）：
+```bash
+HARDWARE_API_URL=https://hardware-api.example.com
+```
+
+#### Mock 模式（开发测试）
+
+如果外部硬件服务不可用，可以启用 Mock 模式：
+
+```bash
+# 启用 Mock 模式（返回模拟数据，不实际调用外部接口）
+USE_HARDWARE_MOCK=true
+```
+
+#### SSL 证书验证配置
+
+如果外部硬件服务使用 HTTPS 且证书验证失败，可以配置 SSL 验证选项：
+
+```bash
+# HTTP 客户端 SSL 验证配置
+HTTP_CLIENT_VERIFY_SSL=true   # 是否验证 SSL 证书（默认 true，生产环境建议启用）
+```
+
+**配置说明**：
+
+- **环境变量**: `HTTP_CLIENT_VERIFY_SSL`
+- **默认值**: `true`（启用 SSL 证书验证）
+- **用途**: 控制 HTTP 客户端是否验证 HTTPS 请求的 SSL 证书
+
+**不同环境的配置**：
+
+**开发/测试环境**（跳过证书验证）：
+```bash
+# 跳过 SSL 证书验证（仅用于开发/测试环境）
+HTTP_CLIENT_VERIFY_SSL=false
+```
+
+**生产环境**（启用证书验证）：
+```bash
+# 启用 SSL 证书验证（生产环境推荐）
+HTTP_CLIENT_VERIFY_SSL=true
+```
+
+**注意事项**：
+
+- ⚠️ **安全警告**：在生产环境中禁用 SSL 证书验证会降低安全性，建议仅在开发/测试环境使用
+- 如果遇到 `certificate_verify_failed` 错误，优先检查证书配置，而不是禁用验证
+- 对于自签名证书，可以考虑配置自定义 CA 证书（需要修改代码支持）
+
 ## ✅ 配置验证
 
 ### 验证数据库连接

@@ -397,7 +397,6 @@ class AgentWebSocketManager:
             try:
                 # 📤 日志：发送消息 (详细报文内容)
                 message_type_str = message.get("type", "unknown")
-                message_json = json.dumps(message, ensure_ascii=False)
                 logger.info(
                     f"📤 发送消息 | Host: {host_id} | 类型: {message_type_str} | 实例ID: {self.instance_id}",
                 )
@@ -534,7 +533,11 @@ class AgentWebSocketManager:
         message_type_str = message.get("type", "unknown")
 
         logger.info(
-            f"📢 开始广播消息 | 类型: {message_type_str} | 本地目标数量: {len(target_hosts)} | 排除: {exclude} | 实例ID: {self.instance_id}",
+            (
+                f"📢 开始广播消息 | 类型: {message_type_str} | "
+                f"本地目标数量: {len(target_hosts)} | 排除: {exclude} | "
+                f"实例ID: {self.instance_id}"
+            ),
         )
 
         # ✅ 步骤 1: 先广播给本地连接的 Hosts
@@ -643,15 +646,19 @@ class AgentWebSocketManager:
         try:
             # 创建订阅者
             pubsub = redis_manager.client.pubsub()
-            
+
             # ✅ 订阅广播频道
             await pubsub.subscribe(self.redis_pubsub_channel)
-            
+
             # ✅ 订阅单播频道模式（websocket:unicast:*）
             await pubsub.psubscribe("websocket:unicast:*")
 
             logger.info(
-                f"✅ Redis Pub/Sub 监听器已启动 | 广播频道: {self.redis_pubsub_channel} | 单播模式: websocket:unicast:* | 实例ID: {self.instance_id}",
+                (
+                    f"✅ Redis Pub/Sub 监听器已启动 | "
+                    f"广播频道: {self.redis_pubsub_channel} | "
+                    f"单播模式: websocket:unicast:* | 实例ID: {self.instance_id}"
+                ),
             )
 
             # 监听消息

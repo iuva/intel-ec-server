@@ -6,6 +6,7 @@
 
 import asyncio
 import time
+import traceback
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, TypeVar
 
@@ -49,12 +50,32 @@ def _log_service_error(func_name: str, error: Exception, args: tuple, kwargs: di
         args: 函数参数（元组）
         kwargs: 函数关键字参数（字典）
     """
+    # 获取堆栈跟踪信息
+    tb = traceback.extract_tb(error.__traceback__)
+    error_location = None
+    if tb:
+        # 获取最后一个堆栈帧（实际出错的位置）
+        last_frame = tb[-1]
+        error_location = {
+            "filename": last_frame.filename,
+            "lineno": last_frame.lineno,
+            "function": last_frame.name,
+            "code": last_frame.line,
+        }
+
     # 构建详细的错误信息
     extra: Dict[str, Any] = {
         "function": func_name,
         "error_type": type(error).__name__,
         "error_message": str(error),
     }
+
+    # 添加错误位置信息
+    if error_location:
+        extra["error_location"] = error_location
+        extra["error_file"] = error_location["filename"]
+        extra["error_line"] = error_location["lineno"]
+        extra["error_code_line"] = error_location["code"]
 
     # 如果是 BusinessError，记录详细信息
     if isinstance(error, BusinessError):
@@ -91,8 +112,15 @@ def _log_service_error(func_name: str, error: Exception, args: tuple, kwargs: di
     extra["args_count"] = len(args) - 1 if len(args) > 1 else 0
     extra["kwargs_count"] = len(kwargs)
 
+    # 构建详细的错误消息
+    error_msg = f"{func_name} 执行失败: {type(error).__name__} - {str(error)}"
+    if error_location:
+        error_msg += f"\n错误位置: {error_location['filename']}:{error_location['lineno']} in {error_location['function']}"
+        if error_location['code']:
+            error_msg += f"\n代码行: {error_location['code'].strip()}"
+
     logger.error(
-        f"{func_name} 执行失败: {type(error).__name__} - {str(error)}",
+        error_msg,
         extra=extra,
         exc_info=True,  # 记录完整的堆栈跟踪
     )
@@ -239,14 +267,45 @@ def _handle_business_error(
     """
     status_code = error.http_status_code
 
+    # 获取堆栈跟踪信息
+    tb = traceback.extract_tb(error.__traceback__)
+    error_location = None
+    if tb:
+        # 获取最后一个堆栈帧（实际出错的位置）
+        last_frame = tb[-1]
+        error_location = {
+            "filename": last_frame.filename,
+            "lineno": last_frame.lineno,
+            "function": last_frame.name,
+            "code": last_frame.line,
+        }
+
+    # 构建详细的错误信息
+    extra: Dict[str, Any] = {
+        "function": func_name,
+        "error_code": error.error_code,
+        "message": error.message,
+        "status_code": status_code,
+    }
+
+    # 添加错误位置信息
+    if error_location:
+        extra["error_location"] = error_location
+        extra["error_file"] = error_location["filename"]
+        extra["error_line"] = error_location["lineno"]
+        extra["error_code_line"] = error_location["code"]
+
+    # 构建详细的错误消息
+    error_msg = f"业务异常: {error.error_code} - {error.message}"
+    if error_location:
+        error_msg += f"\n错误位置: {error_location['filename']}:{error_location['lineno']} in {error_location['function']}"
+        if error_location['code']:
+            error_msg += f"\n代码行: {error_location['code'].strip()}"
+
     logger.warning(
-        f"业务异常: {error.error_code}",
-        extra={
-            "function": func_name,
-            "error_code": error.error_code,
-            "message": error.message,
-            "status_code": status_code,
-        },
+        error_msg,
+        extra=extra,
+        exc_info=True,  # 记录完整的堆栈跟踪
     )
 
     # 优先使用 API 层的 locale（从函数参数中提取）
@@ -269,14 +328,44 @@ def _handle_unexpected_error(error: Exception, func_name: str) -> HTTPException:
     Returns:
         HTTPException 对象
     """
+    # 获取堆栈跟踪信息
+    tb = traceback.extract_tb(error.__traceback__)
+    error_location = None
+    if tb:
+        # 获取最后一个堆栈帧（实际出错的位置）
+        last_frame = tb[-1]
+        error_location = {
+            "filename": last_frame.filename,
+            "lineno": last_frame.lineno,
+            "function": last_frame.name,
+            "code": last_frame.line,
+        }
+
+    # 构建详细的错误信息
+    extra: Dict[str, Any] = {
+        "function": func_name,
+        "error_type": type(error).__name__,
+        "error": str(error),
+    }
+
+    # 添加错误位置信息
+    if error_location:
+        extra["error_location"] = error_location
+        extra["error_file"] = error_location["filename"]
+        extra["error_line"] = error_location["lineno"]
+        extra["error_code_line"] = error_location["code"]
+
+    # 构建详细的错误消息
+    error_msg = f"API 异常: {func_name} - {type(error).__name__}: {str(error)}"
+    if error_location:
+        error_msg += f"\n错误位置: {error_location['filename']}:{error_location['lineno']} in {error_location['function']}"
+        if error_location['code']:
+            error_msg += f"\n代码行: {error_location['code'].strip()}"
+
     logger.error(
-        f"API 异常: {func_name}",
-        extra={
-            "function": func_name,
-            "error_type": type(error).__name__,
-            "error": str(error),
-        },
-        exc_info=True,
+        error_msg,
+        extra=extra,
+        exc_info=True,  # 记录完整的堆栈跟踪
     )
 
     return HTTPException(
