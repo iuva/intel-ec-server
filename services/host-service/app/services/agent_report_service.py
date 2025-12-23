@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import os
 import sys
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, select, update
@@ -1566,6 +1567,122 @@ class AgentReportService:
                 error_code="OTA_UPDATE_STATUS_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_OTA_UPDATE_STATUS_REPORT_FAILED,
                 http_status_code=500,
+            )
+
+    async def update_due_time(
+        self,
+        host_id: int,
+        tc_id: str,
+        due_time: datetime,
+    ) -> Dict[str, Any]:
+        """更新测试用例预期结束时间
+
+        Args:
+            host_id: 主机ID（从token中获取）
+            tc_id: 测试用例ID
+            due_time: 预期结束时间
+
+        Returns:
+            更新结果
+
+        Raises:
+            BusinessError: 业务逻辑错误
+        """
+        try:
+            logger.info(
+                "开始处理预期结束时间上报",
+                extra={
+                    "host_id": host_id,
+                    "tc_id": tc_id,
+                    "due_time": due_time.isoformat() if due_time else None,
+                },
+            )
+
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # 1. 查询执行中的最新执行日志记录
+                # 查询条件：host_id, tc_id, case_state=1（启动状态）, del_flag=0
+                stmt = (
+                    select(HostExecLog)
+                    .where(
+                        and_(
+                            HostExecLog.host_id == host_id,
+                            HostExecLog.tc_id == tc_id,
+                            HostExecLog.case_state == 1,  # 启动状态（执行中）
+                            HostExecLog.del_flag == 0,
+                        )
+                    )
+                    .order_by(HostExecLog.created_time.desc())
+                    .limit(1)
+                )
+
+                result = await session.execute(stmt)
+                exec_log = result.scalar_one_or_none()
+
+                if not exec_log:
+                    raise BusinessError(
+                        message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行中的记录",
+                        message_key="error.host.exec_log_not_found",
+                        error_code="EXEC_LOG_NOT_FOUND",
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=400,
+                        details={"host_id": host_id, "tc_id": tc_id},
+                    )
+
+                logger.info(
+                    "找到执行中的日志记录",
+                    extra={
+                        "host_id": host_id,
+                        "tc_id": tc_id,
+                        "log_id": exec_log.id,
+                        "current_due_time": exec_log.due_time.isoformat() if exec_log.due_time else None,
+                    },
+                )
+
+                # 2. 更新 due_time
+                update_stmt = (
+                    update(HostExecLog)
+                    .where(HostExecLog.id == exec_log.id)
+                    .values(due_time=due_time)
+                )
+
+                await session.execute(update_stmt)
+                await session.commit()
+
+                logger.info(
+                    "预期结束时间更新完成",
+                    extra={
+                        "host_id": host_id,
+                        "tc_id": tc_id,
+                        "log_id": exec_log.id,
+                        "due_time": due_time.isoformat(),
+                    },
+                )
+
+                return {
+                    "host_id": str(host_id),
+                    "tc_id": tc_id,
+                    "due_time": due_time,
+                    "updated": True,
+                }
+
+        except BusinessError:
+            raise
+        except Exception as e:
+            logger.error(
+                "预期结束时间上报处理异常",
+                extra={
+                    "host_id": host_id,
+                    "tc_id": tc_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="预期结束时间上报处理失败",
+                error_code="DUE_TIME_UPDATE_FAILED",
+                code=500,
             )
 
     async def _send_hardware_change_notification(
