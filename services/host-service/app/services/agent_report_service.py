@@ -822,6 +822,109 @@ class AgentReportService:
                 code=500,
             )
 
+    async def report_vnc_connection_success(self, host_id: int) -> Dict[str, Any]:
+        """Agent 上报 VNC 连接成功
+
+        业务逻辑：
+        1. 从 token 中解析 host_id（已在依赖注入中完成）
+        2. 更新对应的 host_rec 表的 host_state = 2（已占用）
+
+        Args:
+            host_id: 主机ID（从token中获取）
+
+        Returns:
+            更新结果，包含 host_id、host_state 和 updated 字段
+
+        Raises:
+            BusinessError: 业务逻辑错误
+        """
+        try:
+            logger.info(
+                "开始处理 Agent VNC 连接成功上报",
+                extra={
+                    "host_id": host_id,
+                },
+            )
+
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # 1. 查询 host_rec 表，验证主机是否存在
+                stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,
+                    )
+                )
+                result = await session.execute(stmt)
+                host_rec = result.scalar_one_or_none()
+
+                if not host_rec:
+                    logger.warning(
+                        "主机不存在或已删除",
+                        extra={
+                            "host_id": host_id,
+                        },
+                    )
+                    raise BusinessError(
+                        message=f"主机不存在: {host_id}",
+                        error_code="HOST_NOT_FOUND",
+                        code=404,
+                    )
+
+                # 2. 记录更新前的状态
+                old_host_state = host_rec.host_state
+
+                # 3. 更新 host_rec 表的 host_state = 2（已占用）
+                update_stmt = (
+                    update(HostRec)
+                    .where(
+                        and_(
+                            HostRec.id == host_id,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    .values(host_state=2)  # 2 = 已占用
+                )
+
+                await session.execute(update_stmt)
+                await session.commit()
+
+                # 4. 刷新对象以获取最新状态
+                await session.refresh(host_rec)
+
+                logger.info(
+                    "Agent VNC 连接成功上报处理完成",
+                    extra={
+                        "host_id": host_id,
+                        "old_host_state": old_host_state,
+                        "new_host_state": host_rec.host_state,
+                    },
+                )
+
+                return {
+                    "host_id": host_id,
+                    "host_state": host_rec.host_state,
+                    "updated": True,
+                }
+
+        except BusinessError:
+            raise
+        except Exception as e:
+            logger.error(
+                "Agent VNC 连接成功上报处理失败",
+                extra={
+                    "host_id": host_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="Agent VNC 连接成功上报处理失败",
+                error_code="VNC_CONNECTION_REPORT_FAILED",
+                code=500,
+            )
+
     async def _send_hardware_change_notification(
         self,
         host_id: int,

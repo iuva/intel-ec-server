@@ -13,7 +13,12 @@ from starlette.status import HTTP_200_OK
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.host import HardwareReportResponse, OtaConfigItem
+    from app.schemas.host import (
+        AgentVNCConnectionReportRequest,
+        AgentVNCConnectionReportResponse,
+        HardwareReportResponse,
+        OtaConfigItem,
+    )
     from app.schemas.testcase import (
         TestCaseDueTimeRequest,
         TestCaseDueTimeResponse,
@@ -30,7 +35,12 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
-    from app.schemas.host import HardwareReportResponse, OtaConfigItem
+    from app.schemas.host import (
+        AgentVNCConnectionReportRequest,
+        AgentVNCConnectionReportResponse,
+        HardwareReportResponse,
+        OtaConfigItem,
+    )
     from app.schemas.testcase import (
         TestCaseDueTimeRequest,
         TestCaseDueTimeResponse,
@@ -594,5 +604,114 @@ async def get_latest_ota_configs(
         code=200,
         message=t("success.ota.query", locale=locale, default="获取 OTA 配置成功"),
         data=ota_items,
+        locale=locale,
+    )
+
+
+@router.post(
+    "/vnc/report",
+    response_model=Result[AgentVNCConnectionReportResponse],
+    status_code=HTTP_200_OK,
+    summary="Agent 上报 VNC 连接成功",
+    description="""
+    Agent 上报 VNC 连接成功，系统会更新主机状态。
+
+    ## 功能说明
+    1. 从 JWT token 中提取 host_id
+    2. 更新对应的 host_rec 表的 host_state = 2（已占用）
+
+    ## 认证要求
+    - 需要在 Authorization 头中提供有效的 JWT token
+    - Token 格式：`Bearer <token>`
+    - Token 中的 user_id 字段将作为 host_id 使用
+
+    ## 业务逻辑
+    1. 从 token 中解析 host_id（通过依赖注入自动完成）
+    2. 查询 host_rec 表，验证主机是否存在
+    3. 更新 host_rec 表的 host_state = 2（已占用状态）
+
+    ## 返回数据
+    - `host_id`: 主机ID
+    - `host_state`: 更新后的主机状态（2=已占用）
+    - `updated`: 是否成功更新
+
+    ## 错误码
+    - `HOST_NOT_FOUND`: 主机不存在或已删除（404）
+    - `VNC_CONNECTION_REPORT_FAILED`: 上报处理失败（500）
+    """,
+    responses={
+        200: {
+            "description": "上报成功",
+            "model": Result[AgentVNCConnectionReportResponse],
+        },
+        404: {
+            "description": "主机不存在或已删除",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 404,
+                        "message": "主机不存在: 123",
+                        "error_code": "HOST_NOT_FOUND",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "服务器内部错误",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 500,
+                        "message": "Agent VNC 连接成功上报处理失败",
+                        "error_code": "VNC_CONNECTION_REPORT_FAILED",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def report_vnc_connection_success(
+    request: AgentVNCConnectionReportRequest = Body(..., description="Agent VNC 连接成功上报请求（空请求体）"),
+    agent_info: Dict[str, Any] = Depends(get_current_agent),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[AgentVNCConnectionReportResponse]:
+    """Agent 上报 VNC 连接成功
+
+    ## 业务逻辑
+    1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
+    2. 更新对应的 host_rec 表的 host_state = 2（已占用）
+
+    Args:
+        request: Agent VNC 连接成功上报请求（空请求体）
+        agent_info: 当前Agent信息（从token中提取，包含host_id）
+        agent_report_service: Agent上报服务实例
+        locale: 语言偏好
+
+    Returns:
+        SuccessResponse: 统一格式的成功响应，包含更新结果
+
+    Raises:
+        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+    """
+    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["host_id"]
+
+    logger.info(
+        "收到 Agent VNC 连接成功上报请求",
+        extra={
+            "host_id": host_id,
+        },
+    )
+
+    # 调用服务层处理 VNC 连接成功上报
+    result = await agent_report_service.report_vnc_connection_success(host_id=host_id)
+
+    response_data = AgentVNCConnectionReportResponse(**result)
+    return Result(
+        code=200,
+        message=t("success.vnc.agent_report", locale=locale, default="Agent VNC 连接成功上报成功"),
+        data=response_data,
         locale=locale,
     )

@@ -5,17 +5,13 @@ SQL性能监控模块
 """
 
 import hashlib
-import logging
 import re
 import time
-import traceback
-from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
-from sqlalchemy.pool import Pool
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from shared.common.loguru_config import get_logger
 from shared.monitoring.metrics import (
@@ -185,7 +181,7 @@ class SQLPerformanceMonitor:
             return
 
         # 记录开始时间
-        query_id = id(cursor)
+        query_id = str(id(cursor))  # 转换为字符串以匹配字典键类型
         self._query_timings[query_id] = time.time()
 
         # 保存查询上下文
@@ -217,7 +213,7 @@ class SQLPerformanceMonitor:
         if not self.enabled:
             return
 
-        query_id = id(cursor)
+        query_id = str(id(cursor))  # 转换为字符串以匹配字典键类型
         start_time = self._query_timings.pop(query_id, None)
         query_context = self._query_contexts.pop(query_id, None)
 
@@ -330,4 +326,3 @@ def init_sql_monitor(
         f"SQL性能监控器已初始化: service={service_name}, threshold={slow_query_threshold}s, enabled={enabled}"
     )
     return _sql_monitor
-

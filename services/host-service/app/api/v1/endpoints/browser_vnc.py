@@ -223,7 +223,8 @@ async def get_vnc_connection(
     2. 查询 host_rec 表
     3. 检查主机是否启用且未删除
     4. 检查 VNC 连接信息是否完整
-    5. 返回 VNC 连接参数
+    5. 更新主机状态为已锁定（host_state = 1）
+    6. 返回 VNC 连接参数
 
     ## 返回字段说明
     - `ip`: VNC 服务器 IP 地址

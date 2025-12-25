@@ -2,7 +2,7 @@
 
 **文档版本**: v1.4  
 **创建日期**: 2025-09-28  
-**最后更新**: 2025-12-23  
+**最后更新**: 2025-01-30  
 **作者**: 郗继常  
 **状态**: 待批准  
 
@@ -62,8 +62,9 @@
   - 5.3.3 [上报硬件信息](#533-上报硬件信息)
   - 5.3.4 [连接状态上报](#534-连接状态上报)
   - 5.3.5 [Case结果上报](#535-case结果上报)
-  - 5.3.6 [更新结果通知](#536-更新结果通知)
-  - 5.3.7 [WebSocket接口](#537-websocket接口)
+  - 5.3.6 [上报任务预期结束时间](#536-上报任务预期结束时间)
+  - 5.3.7 [更新结果通知](#537-更新结果通知)
+  - 5.3.8 [WebSocket接口](#538-websocket接口)
 - 5.4 [管理后台接口](#54-管理后台接口)
   - 5.4.1 [用户界面](#541-用户界面)
   - 5.4.2 [主机管理](#542-主机管理)
@@ -1130,18 +1131,18 @@ ek launch <tc_id> <test_cycle_name> <user>
 
 ```json
 {
-  "tool": "execution_kit",
-  "timestamp": "2025-09-24T08:15:30.123Z",
-  "session_id": "uuid-session-identifier",
-  "event": {
-      "type": "start",
+    "tool": "execution_kit",
+    "timestamp": "2025-09-24T08:15:30.123Z",
+    "session_id": "uuid-session-identifier",
+    "event": {
+        "type": "start",
       "status_code": 0,
-      "details": {
+        "details": {
           "tc_id": "1852278641262084097",
-          "test_cycle": "test_cycle_name",
+            "test_cycle": "test_cycle_name",
           "user": "user@intel.com"
-      }
-  }
+        }
+    }
 }
 ```
 
@@ -1270,7 +1271,23 @@ sequenceDiagram
 
 **详细文档**：详见 [5.3.5 Case结果上报](#535-case结果上报)
 
-**B6. 硬件信息上报接口** (由 Agent 提供，本地接口)
+**B6. 服务端任务预期结束时间上报接口** (由 EC 服务端提供)
+
+> Agent 调用此接口上报测试用例预期结束时间（due_time）
+
+**接口地址**：`/api/v1/agent/testcase/due-time`  
+**请求方法**：`PUT`  
+**功能描述**：Agent 上报测试用例预期结束时间，系统会更新执行日志记录的 `due_time` 字段
+
+**详细文档**：详见 [5.3.6 上报任务预期结束时间](#536-上报任务预期结束时间)
+
+**使用场景**：
+
+- Agent 在执行测试用例过程中，可以动态上报预期结束时间
+- 定时任务会优先使用 `due_time` 进行超时判断，提供更准确的超时检测
+- 如果 `due_time` 为空，则使用系统配置的 `case_timeout` 进行判断
+
+**B7. 硬件信息上报接口** (由 Agent 提供，本地接口)
 
 > 此接口由 Agent 本地提供，等待 HW 工具调用，用于接收硬件信息采集结果
 
@@ -1340,7 +1357,7 @@ sequenceDiagram
 3. Agent 调用服务端接口上报硬件信息：`POST /api/v1/agent/hardware/report`
 4. 服务端进行硬件变更检测和审核流程
 
-**B7. 服务端硬件信息上报接口** (由 EC 服务端提供)
+**B8. 服务端硬件信息上报接口** (由 EC 服务端提供)
 
 > Agent 调用此接口将硬件信息上报到服务端
 
@@ -1696,8 +1713,8 @@ sequenceDiagram
                     else 内容无变化
                         Note over API: 舍弃上报数据<br/>不做任何记录
                         API-->>Agent: 返回无变化，无需处理
-                    end
-                end
+        end
+    end
             end
         end
     end
@@ -1815,8 +1832,8 @@ sequenceDiagram
 - `message`: 响应消息
 - `data`: 业务数据
   - `host_id`: 主机ID（从 JWT token 中提取）
-  - `tc_id`: 测试用例ID
-  - `state`: 执行状态
+- `tc_id`: 测试用例ID
+- `state`: 执行状态
   - `updated`: 是否更新成功
 
 **业务逻辑**：
@@ -1826,7 +1843,76 @@ sequenceDiagram
 3. 更新 `case_state`、`result_msg` 和 `log_url` 字段
 4. 返回更新结果
 
-#### 5.3.6 更新结果通知
+#### 5.3.6 上报任务预期结束时间
+
+**接口地址**：`/api/v1/agent/testcase/due-time`  
+**请求方法**：`PUT`  
+**功能描述**：Agent 上报测试用例预期结束时间（due_time），系统会更新执行日志记录
+
+**认证要求**：
+
+- 需要在 `Authorization` 头中提供有效的 JWT token
+- Token 格式：`Bearer <token>`
+- Token 中的 `user_id` 字段将作为 `host_id` 使用
+
+**请求参数**：
+
+```json
+{
+    "tc_id": "1852278641262084097",
+    "due_time": "2025-01-30T15:30:00Z"
+}
+```
+
+**请求字段说明**：
+
+- `tc_id`: 测试用例ID（必需）
+- `due_time`: 预期结束时间（必需，ISO 8601 格式）
+
+**响应格式**：
+
+```json
+{
+    "code": 200,
+    "message": "预期结束时间上报成功",
+    "data": {
+        "host_id": "1852278641262084097",
+        "tc_id": "1852278641262084097",
+        "due_time": "2025-01-30T15:30:00Z",
+        "updated": true
+    }
+}
+```
+
+**响应字段说明**：
+
+- `code`: 状态码，`200` 表示成功
+- `message`: 响应消息
+- `data`: 业务数据
+  - `host_id`: 主机ID（从 JWT token 中提取）
+  - `tc_id`: 测试用例ID
+  - `due_time`: 预期结束时间
+  - `updated`: 是否更新成功
+
+**业务逻辑**：
+
+1. 从 JWT token 中提取 `host_id`
+2. 根据 `host_id` 和 `tc_id` 查询 `host_exec_log` 表执行中的最新一条记录（`case_state=1`）
+3. 如果未找到执行中的记录，返回 400 错误
+4. 更新 `due_time` 字段
+5. 返回更新结果
+
+**使用场景**：
+
+- Agent 在执行测试用例过程中，可以动态上报预期结束时间
+- 定时任务会优先使用 `due_time` 进行超时判断，提供更准确的超时检测
+- 如果 `due_time` 为空，则使用系统配置的 `case_timeout` 进行判断
+
+**相关接口**：
+
+- Case 超时检测定时任务（见 [7.1 Case 超时检测任务](#71-case-超时检测任务)）
+
+#### 5.3.7 更新结果通知
 
 **接口地址**：`/api/v1/upd`  
 **请求方法**：`POST`  
@@ -1864,7 +1950,7 @@ sequenceDiagram
 - `code`: 状态码
 - `message`: 响应消息
 
-#### 5.3.7 WebSocket接口
+#### 5.3.8 WebSocket接口
 
 **Case执行参数下发**：
 
@@ -2391,17 +2477,17 @@ sequenceDiagram
     loop 遍历每个host_id
         API->>DB: 查询host_rec和host_hw_rec记录
         Note over DB: WHERE host_id=? AND sync_state=1
-        DB-->>API: 返回硬件变更信息
-        
+    DB-->>API: 返回硬件变更信息
+    
         alt 存在待同步硬件记录
             API->>DB: 更新host_hw_rec状态
             Note over DB: 最新记录:sync_state=2<br/>其他记录:sync_state=4
             DB-->>API: 更新成功
-            
+    
             API->>DB: 更新host_rec状态
             Note over DB: appr_state=1, host_state=0<br/>hw_id=最新硬件记录ID
             DB-->>API: 更新成功
-            
+        
             alt 新增硬件(hardware_id为空)
                 API->>Redis: 获取分布式锁
                 Note over Redis: hardware_create_lock:{host_id}<br/>超时30秒
@@ -2441,8 +2527,8 @@ sequenceDiagram
                 
                 API->>ExtAPI: PUT /api/v1/hardware/{hardware_id}
                 Note over ExtAPI: _id+Head+Payload<br/>Authorization: Bearer Token
-                ExtAPI-->>API: 更新成功确认
-            end
+            ExtAPI-->>API: 更新成功确认
+        end
             
             API->>DB: 更新host_hw_rec.sync_state=2
             Note over DB: 标记为已同步
@@ -2805,13 +2891,40 @@ sequenceDiagram
    - `host_state` in (2, 3)  # 已占用或 case 执行中
    - `case_state` = 1        # 启动
    - `del_flag` = 0          # 未删除
-   - `begin_time` < 当前时间 - `case_timeout` 分钟
-4. 通过 WebSocket 通知对应的 Host 结束任务
+   - `notify_state` = 0      # 未通知（避免重复通知）
+   - **超时判断逻辑**（优先级）：
+     - 如果存在 `due_time`：判断 `due_time < 当前时间`
+     - 如果不存在 `due_time`：判断 `begin_time < 当前时间 - case_timeout 分钟`
+4. 通过邮件通知相关人员（不再使用 WebSocket 通知）
+5. 邮件发送成功后，更新 `notify_state = 1`（已通知），避免重复通知
+
+**超时判断优先级**：
+
+- **优先使用 `due_time`**：如果 Agent 上报了预期结束时间，使用 `due_time` 进行超时判断
+- **降级使用 `case_timeout`**：如果 `due_time` 为空，使用系统配置的 `case_timeout` 进行判断
+
+**邮件通知**：
+
+- **收件人配置**：从 `sys_conf` 表查询 `conf_key = 'email'` 且 `state_flag = 0` 的最新一条记录的 `conf_val` 值
+- **邮件内容**：包含以下信息
+  - `hardware_id`：硬件ID（从 `host_rec` 表获取）
+  - `host_ip`：主机IP地址（从 `host_rec` 表获取）
+  - `begin_time`：开始时间
+  - `due_time`：预期结束时间（如果存在）
+  - `tc_id`：测试用例ID
+  - `log_id`：执行日志ID
+- **通知状态管理**：
+  - 只查询 `notify_state = 0`（未通知）的记录
+  - 邮件发送成功后，自动更新 `notify_state = 1`（已通知）
+  - 确保同一条记录不会被重复通知
 
 **处理的表数据**：
 
-- `sys_conf` 表：查询 `case_timeout` 配置
+- `sys_conf` 表：
+  - 查询 `case_timeout` 配置（超时时间，单位：分钟）
+  - 查询 `email` 配置（收件人邮箱列表，逗号分隔）
 - `host_exec_log` 表：查询超时的执行日志
+- `host_rec` 表：获取 `hardware_id` 和 `host_ip`
 
 **Redis 使用**：
 
@@ -2821,6 +2934,52 @@ sequenceDiagram
 
 - 通过 FastAPI 的 `lifespan` 处理器在服务启动时自动启动
 - 在服务关闭时自动停止
+
+**时序图**：
+
+```mermaid
+sequenceDiagram
+    participant Task as 定时任务
+    participant Redis as Redis缓存
+    participant DB as 数据库
+    participant Email as 邮件服务
+    
+    Task->>Redis: 获取case_timeout配置
+    alt 缓存存在
+        Redis-->>Task: 返回缓存的配置
+    else 缓存不存在
+        Task->>DB: 查询sys_conf表
+        Note over DB: conf_key='case_timeout'
+        DB-->>Task: 返回配置值
+        Task->>Redis: 缓存配置(1小时)
+    end
+    
+    Task->>DB: 查询超时的host_exec_log
+    Note over DB: WHERE host_state IN (2,3)<br/>AND case_state=1<br/>AND del_flag=0<br/>AND notify_state=0<br/>AND (due_time<now OR<br/>begin_time<now-timeout)
+    DB-->>Task: 返回超时记录列表
+    
+    loop 遍历每条超时记录
+        Task->>DB: 查询host_rec获取硬件信息
+        Note over DB: hardware_id, host_ip
+        DB-->>Task: 返回主机信息
+        
+        Task->>DB: 查询email配置
+        Note over DB: conf_key='email'<br/>state_flag=0
+        DB-->>Task: 返回邮箱列表
+        
+        Task->>Email: 发送超时通知邮件
+        Note over Email: hardware_id, host_ip<br/>begin_time, due_time
+        Email-->>Task: 邮件发送结果
+        
+        alt 邮件发送成功
+            Task->>DB: 更新notify_state=1
+            Note over DB: 标记为已通知
+            DB-->>Task: 更新成功
+        else 邮件发送失败
+            Note over Task: 保持notify_state=0<br/>下次继续尝试
+        end
+    end
+```
 
 ---
 
@@ -2941,21 +3100,33 @@ sequenceDiagram
 - 2: 内容变更
 - 3: 审核未通过
 
-**执行状态**：
+**执行状态 (case_state)**：
 
-- 0: 成功
-- 1: 失败
-- 2: 超时
+- 0: 空闲
+- 1: 启动
+- 2: 成功
+- 3: 失败
+
+**邮件通知状态 (notify_state)**：
+
+- 0: 未通知
+- 1: 已通知
+
+**任务预期结束时间 (due_time)**：
+
+- Agent 可以动态上报测试用例的预期结束时间
+- 定时任务优先使用 `due_time` 进行超时判断
+- 如果 `due_time` 为空，则使用系统配置的 `case_timeout` 进行判断
 
 ### 8.4 变更记录
 
-| 版本 | 日期 | 变更内容 | 作者 |
-|------|------|----------|------|
-| v1.0 | 2025-09-29 | 初始版本创建 | 郗继常 |
-| v1.1 | 2025-10-09 | 更新Agent客户端接口文档 | 郗继常 |
-| v1.2 | 2025-10-11 | 更新Agent客户端接口文档 | 郗继常 |
-| v1.3 | 2025-12-23 | 补充 Redis 使用和定时任务流程说明 | 郗继常 |
-| v1.4 | 2025-12-23 | 整合 Agent 接口文档，更新 mermaid 图表和文档序号 | 郗继常 |
+| 版本   | 日期         | 变更内容                             | 作者  |
+| ---- | ---------- | -------------------------------- | --- |
+| v1.0 | 2025-09-29 | 初始版本创建                           | 郗继常 |
+| v1.1 | 2025-10-09 | 更新Agent客户端接口文档                   | 郗继常 |
+| v1.2 | 2025-10-11 | 更新Agent客户端接口文档                   | 郗继常 |
+| v1.3 | 2025-12-23 | 补充 Redis 使用和定时任务流程说明             | 郗继常 |
+| v1.4 | 2025-01-30 | 补充任务预期结束时间（due_time）和定时任务邮件通知功能 | 郗继常 |
 
 ---
 

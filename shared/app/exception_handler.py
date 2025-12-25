@@ -31,7 +31,30 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         """处理 Pydantic 验证错误"""
-        logger.warning(f"参数验证失败: {exc.errors()}")
+        # ✅ 增强日志：记录详细的验证错误信息，包括堆栈跟踪
+        # 尝试获取请求体（如果可用）
+        request_body_preview = None
+        try:
+            # 检查请求体是否已被读取
+            if hasattr(request, "_body") and request._body:
+                body_str = request._body.decode("utf-8", errors="ignore") if isinstance(request._body, bytes) else str(request._body)
+                request_body_preview = body_str[:500] if len(body_str) > 500 else body_str
+        except Exception:
+            # 如果无法读取请求体，忽略错误
+            ***REMOVED***
+
+        logger.warning(
+            "参数验证失败",
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "query_params": dict(request.query_params),
+                "errors": exc.errors(),
+                "error_count": len(exc.errors()),
+                "request_body_preview": request_body_preview,
+            },
+            exc_info=True,  # ✅ 打印完整堆栈信息
+        )
 
         # 格式化错误信息，提供更清晰的字段级别错误
         field_errors: Dict[str, str] = {}

@@ -17,7 +17,8 @@ api_router = APIRouter()
 
 # 注册浏览器插件端点路由
 api_router.include_router(browser_hosts.router, prefix="/hosts", tags=["浏览器插件-主机管理"])
-api_router.include_router(browser_vnc.router, prefix="/vnc", tags=["浏览器插件-VNC连接管理"])
+# ✅ VNC 路由注册到 /hosts/vnc 前缀下，匹配 /api/v1/host/hosts/vnc/* 路径
+api_router.include_router(browser_vnc.router, prefix="/hosts/vnc", tags=["浏览器插件-VNC连接管理"])
 
 # Agent HTTP API 路由
 api_router.include_router(agent_report.router, prefix="/agent", tags=["Agent-硬件信息上报"])

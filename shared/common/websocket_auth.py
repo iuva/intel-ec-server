@@ -248,8 +248,23 @@ async def verify_websocket_token(
 
                     # 检查 token 是否有效
                     if data.get("active", False):
+                        user_id = data.get("user_id") or data.get("sub")
+                        # ✅ 验证 user_id 是否有效（不为 None、空字符串）
+                        if not user_id or not str(user_id).strip():
+                            logger.warning(
+                                "WebSocket token 有效但 user_id 无效",
+                                extra={
+                                    "user_id": user_id,
+                                    "user_id_type": type(user_id).__name__ if user_id is not None else "None",
+                                    "auth_service_url": base_url,
+                                    "data_keys": list(data.keys()),
+                                },
+                            )
+                            # 继续尝试其他地址
+                            continue
+
                         user_info = {
-                            "user_id": data.get("user_id") or data.get("sub"),
+                            "user_id": user_id,
                             "username": data.get("username"),
                             "user_type": data.get("user_type"),
                             "permissions": data.get("permissions", []),
@@ -448,7 +463,9 @@ async def verify_token_string(
 
                 if data.get("active", False):
                     user_id = data.get("user_id") or data.get("sub")
-                    if user_id:
+                    # ✅ 验证 user_id 是否有效（不为 None、空字符串）
+                    # ⚠️ 注意：如果 host_id 可能为 0，需要特殊处理（当前允许 0）
+                    if user_id and str(user_id).strip():
                         logger.info(
                             "Token 字符串验证成功",
                             extra={
@@ -460,9 +477,11 @@ async def verify_token_string(
                         return str(user_id)
 
                     logger.warning(
-                        "Token 有效但未获取到 user_id",
+                        "Token 有效但未获取到有效的 user_id",
                         extra={
                             "auth_service_url": base_url,
+                            "user_id": user_id,
+                            "user_id_type": type(user_id).__name__ if user_id is not None else "None",
                             "data_keys": list(data.keys()),
                         },
                     )

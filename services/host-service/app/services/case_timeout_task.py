@@ -373,7 +373,7 @@ class CaseTimeoutTaskService:
                                 ),
                                 and_(
                                     HostExecLog.due_time.is_(None),
-                                    HostExecLog.begin_time < timeout_threshold,
+                            HostExecLog.begin_time < timeout_threshold,
                                 ),
                             ),
                         )
@@ -481,7 +481,7 @@ class CaseTimeoutTaskService:
                         "邮箱列表为空，跳过邮件通知",
                         extra={
                             "host_id": exec_log.host_id,
-                            "log_id": exec_log.id,
+                "log_id": exec_log.id,
                         },
                     )
                     return False

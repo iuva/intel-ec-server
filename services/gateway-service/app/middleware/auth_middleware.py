@@ -65,15 +65,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/refresh",  # ✅ Token 刷新端点
             "/api/v1/auth/auto-refresh",  # ✅ 自动续期端点
             "/api/v1/auth/introspect",  # Token 验证端点
-            # 浏览器插件接口（不需要认证）
-            "/api/v1/host/hosts/available",  # 查询可用主机列表
-            "/api/v1/host/hosts/retry-vnc",  # 获取重试 VNC 列表
-            "/api/v1/host/hosts/release",  # 释放主机
-            "/api/v1/host/vnc/report",  # 上报 VNC 连接结果
-            "/api/v1/host/vnc/connect",  # 获取 VNC 连接信息
             # ⚠️ WebSocket 路由需要在路由级别进行认证检查，
             # 不能在中间件级别设为公开路径，否则无法强制认证
         }
+
+        # ✅ 浏览器插件接口前缀（所有以这些前缀开头的路径都不需要认证）
+        self.browser_plugin_prefixes = [
+            "/api/v1/host/hosts",  # 浏览器插件-主机管理接口（包含 /hosts/vnc/*）
+        ]
 
         # ✅ 从配置读取认证服务 URL 和端口（兼容 Docker 和本地开发）
         # 优先级：AUTH_SERVICE_URL > (AUTH_SERVICE_IP + AUTH_SERVICE_PORT) > 自动判定（Docker/本地）
@@ -257,12 +256,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # 处理验证结果
         if not user_info:
+            # ✅ 增强日志记录，包含更多诊断信息
             logger.warning(
                 "令牌验证失败，拒绝访问",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
                     "token_preview": token_preview,
+                    "token_length": len(token) if token else 0,
+                    "auth_service_url": self.auth_service_url,
+                    "hint": "请检查 Gateway 和 Auth Service 日志以获取详细错误信息",
                 },
             )
             return self._unauthorized_response(
@@ -273,6 +276,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "path": request.url.path,
                     "method": request.method,
                     "hint": "令牌可能已过期或无效，请重新登录获取新令牌",
+                    "troubleshooting": "请查看 Gateway 和 Auth Service 日志中的 'reason' 字段以获取详细错误原因",
                 },
             )
 
@@ -425,18 +429,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return True
 
-        # ✅ 检查前缀匹配（用于文档路径和 WebSocket 路由）
+        # ✅ 检查前缀匹配（用于文档路径和浏览器插件接口）
         # 支持前缀匹配的路径模式：
         # - /docs, /redoc, /openapi.json (文档路径)
-        # - /host/, /auth/, /admin/, /ws/ (WebSocket 路由)
+        # - /api/v1/host/hosts, /api/v1/host/vnc (浏览器插件接口)
         prefix_match_paths = {
             "/docs",  # Swagger UI
             "/redoc",  # ReDoc
             "/openapi.json",  # OpenAPI spec
-            # ⚠️ WebSocket 路由 (/ws/, /host/, /auth/, /admin/) 已移除
-            # 需要在路由级别进行认证检查
         }
 
+        # 检查文档路径前缀匹配
         for prefix_path in prefix_match_paths:
             if clean_path.startswith(prefix_path):
                 logger.debug(
@@ -445,6 +448,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         "path": clean_path,
                         "matched_prefix": prefix_path,
                         "match_type": "prefix",
+                    },
+                )
+                return True
+
+        # ✅ 检查浏览器插件接口前缀匹配（所有浏览器插件接口都不需要认证）
+        for prefix_path in self.browser_plugin_prefixes:
+            if clean_path.startswith(prefix_path):
+                logger.debug(
+                    "浏览器插件接口，跳过认证检查",
+                    extra={
+                        "path": clean_path,
+                        "matched_prefix": prefix_path,
+                        "match_type": "browser_plugin_prefix",
                     },
                 )
                 return True
@@ -523,9 +539,49 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     if result.get("code") == 200:
                         data = result.get("data", {})
                         if data.get("active"):
+                            # ✅ 验证 user_id 是否存在（修复：确保 user_id 不为空）
+                            user_id = data.get("user_id")
+                            
+                            # ✅ 增强日志：记录 Auth Service 返回的完整数据（用于诊断）
+                            logger.debug(
+                                "Auth Service 返回的验证结果",
+                                extra={
+                                    "active": data.get("active"),
+                                    "user_id": user_id,
+                                    "user_id_type": type(user_id).__name__ if user_id else None,
+                                    "username": data.get("username"),
+                                    "user_type": data.get("user_type"),
+                                    "token_type": data.get("token_type"),
+                                    "has_sub": "sub" in data,
+                                    "sub_value": data.get("sub"),
+                                    "data_keys": list(data.keys()),
+                                    "token_preview": token_preview,
+                                    "request_path": request_path,
+                                },
+                            )
+                            
+                            if not user_id:
+                                logger.warning(
+                                    "Token 验证成功但 user_id 为空",
+                                    extra={
+                                        "data_keys": list(data.keys()),
+                                        "token_preview": token_preview,
+                                        "request_path": request_path,
+                                        "request_method": request_method,
+                                        "reason": "missing_user_id",
+                                        "auth_service_response": {
+                                            "code": result.get("code"),
+                                            "message": result.get("message"),
+                                            "data": data,
+                                        },
+                                        "hint": "Auth Service 返回的 user_id 为空，可能是 token payload 中缺少 sub 字段",
+                                    },
+                                )
+                                return None  # 返回 None 表示验证失败
+
                             # 构造用户信息
                             user_info = {
-                                "user_id": data.get("user_id"),  # 修正：auth-service 返回的是 user_id 而不是 sub
+                                "user_id": user_id,  # 修正：auth-service 返回的是 user_id 而不是 sub
                                 "username": data.get("username"),
                                 "user_type": data.get("user_type"),
                                 "active": data.get("active"),
@@ -550,6 +606,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                 "request_path": request_path,
                                 "request_method": request_method,
                                 "reason": "token_inactive",
+                                "auth_service_response": {
+                                    "code": result.get("code"),
+                                    "message": result.get("message"),
+                                    "data_keys": list(data.keys()) if isinstance(data, dict) else [],
+                                },
+                                "hint": "Token 可能已过期、被加入黑名单或格式错误",
                             },
                         )
                     else:

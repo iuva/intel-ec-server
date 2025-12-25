@@ -15,7 +15,7 @@ from app.schemas.host import (
     RetryVNCListResponse,
 )
 from app.services.browser_host_service import BrowserHostService
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Request
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -90,6 +90,7 @@ router = APIRouter()
 @handle_api_errors
 async def query_available_hosts(
     request: QueryAvailableHostsRequest = Body(..., description="查询可用主机列表请求参数"),
+    fastapi_request: Request = ...,  # FastAPI Request 对象（用于获取 user_id）
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
     locale: str = Depends(get_locale)
 ) -> Result[AvailableHostsListResponse]:
@@ -101,6 +102,7 @@ async def query_available_hosts(
     - `user_name`: 用户名（必填）
     - `page_size`: 每页大小，1-100（可选，默认 20）
     - `last_id`: 上一页最后一条记录的 id（可选）
+    - `email`: 用户邮箱（可选）。如果提供，将直接使用该 email 进行外部接口认证，不查询数据库，提高性能
 
     ## 游标分页说明
     1. **首次请求**: 不提供 last_id 或传入 null，从头开始查询
@@ -110,6 +112,8 @@ async def query_available_hosts(
 
     ## 业务逻辑
     1. 调用外部硬件接口获取主机列表（分页获取）
+       - 如果提供了 `email` 参数，直接使用该 email 进行外部接口认证，不查询数据库
+       - 如果未提供 `email`，系统会根据 `user_id`（从请求头获取）查询数据库获取 email
     2. 根据 hardware_id 查询本地 host_rec 表
     3. 过滤条件：
        - appr_state = 1（启用状态）
@@ -119,6 +123,10 @@ async def query_available_hosts(
     4. 根据 last_id 跳过已处理的记录
     5. 收集满足 page_size 数量的结果后返回
 
+    ## 认证说明
+    - **方式1（推荐）**: 提供 `email` 参数，系统直接使用该 email 获取外部接口 token，跳过数据库查询，性能更优
+    - **方式2**: 不提供 `email` 参数，系统从请求头 `X-User-Info` 中获取 `user_id`，然后查询数据库获取 email
+
     ## 返回数据说明
     - `hosts`: 可用主机列表
     - `total`: 本次查询发现的可用主机总数
@@ -127,11 +135,24 @@ async def query_available_hosts(
     - `last_id`: 当前页最后一条记录的 id，用于请求下一页
 
     Args:
-        request: 查询请求（游标分页）
+        request: 查询请求（游标分页），包含 tc_id、cycle_name、user_name、page_size、last_id、email 等字段
+        fastapi_request: FastAPI Request 对象（用于从请求头获取 user_id）
         host_discovery_service: 主机发现服务实例
+        locale: 语言偏好设置
 
     Returns:
         可用主机列表（包含 has_next 和 last_id 用于下一页请求）
+
+    Example:
+        ```json
+        {
+            "tc_id": "test_case_123",
+            "cycle_name": "cycle_1",
+            "user_name": "test_user",
+            "page_size": 20,
+            "email": "user@example.com"  // 可选，提供后不查询数据库
+        }
+        ```
     """
     logger.info(
         "接收查询可用主机列表请求",
@@ -141,10 +162,15 @@ async def query_available_hosts(
             "user_name": request.user_name,
             "page_size": request.page_size,
             "last_id": request.last_id,
+            "email": request.email,  # ✅ 记录 email（如果提供）
         },
     )
 
-    result = await host_discovery_service.query_available_hosts(request)
+    # ✅ 传递 FastAPI Request 对象，用于获取 user_id 并调用带认证的外部接口
+    result = await host_discovery_service.query_available_hosts(
+        request=request,
+        fastapi_request=fastapi_request,
+    )
 
     logger.info(
         "查询可用主机列表完成",

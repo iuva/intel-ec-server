@@ -426,21 +426,81 @@ class AuthService:
             IntrospectResponse: 令牌验证响应
         """
         try:
-            # 检查令牌黑名单缓存
+            # ✅ 检查令牌黑名单缓存（增强异常处理）
             blacklist_key = f"token_blacklist:{token}"
-            is_blacklisted = await get_cache(blacklist_key)
-            if is_blacklisted:
-                return IntrospectResponse(active=False)
+            try:
+                is_blacklisted = await get_cache(blacklist_key)
+                if is_blacklisted:
+                    logger.debug(
+                        "Token 在黑名单中",
+                        extra={
+                            "blacklist_key": blacklist_key[:50] + "...",
+                            "operation": "introspect_token",
+                        },
+                    )
+                    return IntrospectResponse(active=False)
+            except Exception as redis_error:
+                # ✅ Redis 连接失败时，记录警告但继续验证（降级处理）
+                # 不因为 Redis 失败而拒绝所有请求，确保服务可用性
+                logger.warning(
+                    "Redis 黑名单检查失败，继续验证 token",
+                    extra={
+                        "operation": "introspect_token",
+                        "error": str(redis_error),
+                        "error_type": type(redis_error).__name__,
+                        "hint": "Redis 不可用时，跳过黑名单检查，继续验证 token",
+                    },
+                )
+                # 继续执行 token 验证，不因为 Redis 失败而拒绝所有请求
 
             # 验证令牌
+            token_preview = token[:20] + "..." if len(token) > 20 else token
             payload = self.jwt_manager.verify_token(token)
             if not payload:
+                # ✅ 增强日志：记录 token 验证失败的详细信息
+                logger.warning(
+                    "Token 验证失败 - JWT 验证返回 None",
+                    extra={
+                        "operation": "introspect_token",
+                        "token_preview": token_preview,
+                        "token_length": len(token) if token else 0,
+                        "hint": "Token 可能已过期、签名无效、格式错误或被加入黑名单。详细错误信息请查看 JWTManager.verify_token 的日志",
+                    },
+                )
                 return IntrospectResponse(active=False)
 
-            # 提取 user_id（sub 字段）
+            # ✅ 提取 user_id（sub 字段），确保不为空
             sub = payload.get("sub")
+            if not sub:
+                logger.warning(
+                    "Token payload 中缺少 sub 字段",
+                    extra={
+                        "operation": "introspect_token",
+                        "payload_keys": list(payload.keys()),
+                        "token_type": payload.get("type"),
+                    },
+                )
+                return IntrospectResponse(active=False)
+
             # ✅ 转换为字符串避免精度丢失
-            user_id = str(sub) if sub else None
+            user_id = str(sub)
+
+            # ✅ 增强日志：记录 token 验证成功的详细信息（特别是 device 类型）
+            logger.info(
+                "Token 验证成功 - 返回用户信息",
+                extra={
+                    "operation": "introspect_token",
+                    "user_id": user_id,
+                    "username": payload.get("username"),
+                    "user_type": payload.get("user_type"),
+                    "token_type": payload.get("type", "access"),
+                    "sub_original": sub,
+                    "sub_type": type(sub).__name__,
+                    "has_mg_id": "mg_id" in payload,
+                    "has_host_ip": "host_ip" in payload,
+                    "payload_keys": list(payload.keys()),
+                },
+            )
 
             return IntrospectResponse(
                 active=True,

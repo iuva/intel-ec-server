@@ -101,6 +101,29 @@ class VNCConnectionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AgentVNCConnectionReportRequest(BaseModel):
+    """Agent VNC 连接成功上报请求"""
+
+    model_config = {
+        "from_attributes": True,
+        "json_schema_extra": {
+            "example": {},
+        },
+    }
+
+
+class AgentVNCConnectionReportResponse(BaseModel):
+    """Agent VNC 连接成功上报响应"""
+
+    host_id: int = Field(..., description="主机ID")
+    host_state: int = Field(..., description="更新后的主机状态（2=已占用）")
+    updated: bool = Field(..., description="是否成功更新")
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
 class QueryAvailableHostsRequest(BaseModel):
     """查询可用主机列表请求模式 - 使用游标分页
 
@@ -109,6 +132,7 @@ class QueryAvailableHostsRequest(BaseModel):
     - 后续请求提供上一页最后一条记录的 id（last_id）
     - 系统根据 last_id 计算内部偏移量
     - 避免多用户并发时的状态污染问题
+    - 如果提供了 email，将直接使用该 email 进行外部接口认证，不查询数据库
     """
 
     tc_id: str = Field(description="测试用例ID")
@@ -118,6 +142,10 @@ class QueryAvailableHostsRequest(BaseModel):
     last_id: Optional[str] = Field(
         default=None,
         description="上一页最后一条记录的 id。首次请求为 null，后续请求需要传入上一页最后一条记录的 host_rec_id",
+    )
+    email: Optional[str] = Field(
+        default=None,
+        description="用户邮箱（可选）。如果提供，将直接使用该 email 进行外部接口认证，不查询数据库",
     )
 
     model_config = {"from_attributes": True}
@@ -194,14 +222,11 @@ class HardwareHostData(BaseModel):
 class AvailableHostInfo(BaseModel):
     """可用主机信息"""
 
-    host_rec_id: str = Field(description="主机记录ID (host_rec.id)")
-    hardware_id: str = Field(description="硬件ID")
-    user_name: str = Field(description="用户名 (host_acct)")
-    host_ip: str = Field(description="主机IP")
-    appr_state: int = Field(description="审批状态")
-    host_state: int = Field(description="主机状态")
+    id: str = Field(description="主机记录ID (host_rec.id)", alias="host_rec_id")
+    username: str = Field(description="用户名 (host_acct)", alias="user_name")
+    ip: str = Field(description="主机IP地址 (host_ip)")
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class AvailableHostsListResponse(BaseModel):

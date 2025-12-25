@@ -127,24 +127,102 @@ class JWTManager:
         Returns:
             解码后的令牌数据，验证失败返回None
         """
+        token_preview = token[:20] + "..." if len(token) > 20 else token
+
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
 
             # 验证令牌类型
             if token_type and payload.get("type") != token_type:
-                logger.warning(f"令牌类型不匹配: 期望{token_type}, 实际{payload.get('type')}")
+                logger.warning(
+                    "令牌类型不匹配",
+                    extra={
+                        "expected_type": token_type,
+                        "actual_type": payload.get("type"),
+                        "token_preview": token_preview,
+                        "operation": "verify_token",
+                    },
+                )
                 return None
 
             return payload
 
-        except jwt.ExpiredSignatureError:  # type: ignore[attr-defined]
-            logger.warning("令牌已过期")
+        except jwt.ExpiredSignatureError as e:  # type: ignore[attr-defined]
+            # ✅ 增强日志：记录详细的过期信息
+            try:
+                # 尝试解码 token 获取过期时间信息
+                decoded = jwt.decode(token, key="", options={"verify_signature": False})
+                exp = decoded.get("exp")
+                exp_time = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
+                current_time = datetime.now(timezone.utc)
+            except Exception:
+                exp_time = None
+                current_time = datetime.now(timezone.utc)
+
+            logger.warning(
+                "令牌已过期",
+                extra={
+                    "token_preview": token_preview,
+                    "operation": "verify_token",
+                    "error_type": "ExpiredSignatureError",
+                    "error_message": str(e),
+                    "exp_time": exp_time.isoformat() if exp_time else None,
+                    "current_time": current_time.isoformat(),
+                    "expired_seconds_ago": (current_time - exp_time).total_seconds() if exp_time else None,
+                },
+            )
             return None
-        except jwt.JWTError:  # type: ignore[attr-defined]
-            logger.warning("无效的令牌")
+        except jwt.InvalidSignatureError as e:  # type: ignore[attr-defined]
+            # ✅ 增强日志：记录签名错误
+            logger.warning(
+                "令牌签名无效",
+                extra={
+                    "token_preview": token_preview,
+                    "operation": "verify_token",
+                    "error_type": "InvalidSignatureError",
+                    "error_message": str(e),
+                    "hint": "令牌可能被篡改或使用了错误的密钥签名",
+                },
+            )
+            return None
+        except jwt.DecodeError as e:  # type: ignore[attr-defined]
+            # ✅ 增强日志：记录解码错误
+            logger.warning(
+                "令牌格式错误，无法解码",
+                extra={
+                    "token_preview": token_preview,
+                    "operation": "verify_token",
+                    "error_type": "DecodeError",
+                    "error_message": str(e),
+                    "hint": "令牌格式不正确，可能不是有效的 JWT",
+                },
+            )
+            return None
+        except jwt.JWTError as e:  # type: ignore[attr-defined]
+            # ✅ 增强日志：记录其他 JWT 错误
+            logger.warning(
+                "JWT 验证失败",
+                extra={
+                    "token_preview": token_preview,
+                    "operation": "verify_token",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "hint": "令牌验证失败，可能是格式错误、签名错误或其他 JWT 相关问题",
+                },
+            )
             return None
         except Exception as e:
-            logger.error(f"验证令牌失败: {e!s}")
+            # ✅ 增强日志：记录未知错误
+            logger.error(
+                "验证令牌失败 - 未知错误",
+                extra={
+                    "token_preview": token_preview,
+                    "operation": "verify_token",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
             return None
 
     def decode_token(self, token: str) -> Optional[Dict[str, Any]]:

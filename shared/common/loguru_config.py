@@ -23,37 +23,31 @@ def _rename_old_log_files(log_dir: str, service_name: str) -> None:
     try:
         from datetime import datetime
 
-        log_file = os.path.join(log_dir, f"{service_name}.log")
-        error_log_file = os.path.join(log_dir, f"{service_name}_error.log")
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        # 检查普通日志文件
-        if os.path.exists(log_file):
+        # 统一处理普通日志文件和错误日志文件
+        log_files = [
+            (f"{service_name}.log", f"{service_name}-{{date}}.log"),
+            (f"{service_name}_error.log", f"{service_name}_error-{{date}}.log"),
+        ]
+
+        for log_file_name, new_name_template in log_files:
+            log_file = os.path.join(log_dir, log_file_name)
+            if not os.path.exists(log_file):
+                continue
+
             # 获取文件的修改时间
             file_mtime = datetime.fromtimestamp(os.path.getmtime(log_file))
-            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
 
             # 如果文件是昨天的或更早的，重命名它
-            file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
             if file_date < today:
                 date_str = file_date.strftime("%Y-%m-%d")
-                new_name = os.path.join(log_dir, f"{service_name}-{date_str}.log")
+                new_name = os.path.join(log_dir, new_name_template.format(date=date_str))
 
                 # 如果目标文件已存在，跳过（可能已经被处理过）
                 if not os.path.exists(new_name):
                     os.rename(log_file, new_name)
-
-        # 检查错误日志文件
-        if os.path.exists(error_log_file):
-            file_mtime = datetime.fromtimestamp(os.path.getmtime(error_log_file))
-            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-            file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
-            if file_date < today:
-                date_str = file_date.strftime("%Y-%m-%d")
-                new_name = os.path.join(log_dir, f"{service_name}_error-{date_str}.log")
-
-                if not os.path.exists(new_name):
-                    os.rename(error_log_file, new_name)
     except Exception:
         # 静默处理异常，避免影响服务启动
         ***REMOVED***
@@ -69,7 +63,6 @@ def configure_logger(
     enable_console: bool = True,
     enable_file: bool = True,
     enable_error_file: bool = True,
-    json_format: bool = False,
 ) -> None:
     """配置Loguru日志系统
 
@@ -83,7 +76,6 @@ def configure_logger(
         enable_console: 是否启用控制台输出
         enable_file: 是否启用文件输出
         enable_error_file: 是否启用错误日志文件
-        json_format: 是否使用JSON格式
     """
     # 自动检测日志目录
     if log_dir is None:
@@ -130,14 +122,43 @@ def configure_logger(
             enable_file = False
             enable_error_file = False
 
-    # 启用stdlib拦截，让所有logging.getLogger()调用都通过loguru
-    # 使用loguru的intercept_stdlib()方法
+    # ✅ 启用stdlib拦截，让所有logging.getLogger()调用都通过loguru
     # 清除所有现有的logging处理器，避免冲突
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # 配置loguru拦截标准logging
+    # ✅ 配置loguru拦截标准logging（包括uvicorn）
+    # 拦截所有标准库的logging调用，统一使用loguru格式
+    class InterceptHandler(logging.Handler):
+        """拦截标准logging的Handler，将日志转发到loguru"""
+
+        def emit(self, record: logging.LogRecord) -> None:
+            # 获取对应的loguru级别
+            try:
+                level = logger.level(record.levelname).name
+            except ValueError:
+                level = str(record.levelno)
+
+            # 查找调用者信息
+            frame, depth = sys._getframe(6), 6
+            while frame and frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            # 转发到loguru
+            logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+    # 为uvicorn和uvicorn.access设置拦截器
+    logging.getLogger("uvicorn").handlers = [InterceptHandler()]
+    logging.getLogger("uvicorn.access").handlers = [InterceptHandler()]
+    logging.getLogger("uvicorn.error").handlers = [InterceptHandler()]
+
+    # 为其他常用库设置拦截器
+    logging.getLogger("fastapi").handlers = [InterceptHandler()]
+
+    # 设置根日志记录器级别
+    root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     # 使用 patcher 在消息中追加 extra 信息
     # 注意：必须在 configure 之前应用 patcher
@@ -148,10 +169,30 @@ def configure_logger(
         try:
             # Loguru 的标准字段列表
             standard_fields = {
-                "time", "level", "message", "name", "function", "line", "file",
-                "process", "thread", "exception", "elapsed", "extra", "record",
-                "module", "pathname", "exc_info", "exc_text", "stack", "created",
-                "msecs", "relativeCreated", "threadName", "threadId", "taskName",
+                "time",
+                "level",
+                "message",
+                "name",
+                "function",
+                "line",
+                "file",
+                "process",
+                "thread",
+                "exception",
+                "elapsed",
+                "extra",
+                "record",
+                "module",
+                "pathname",
+                "exc_info",
+                "exc_text",
+                "stack",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "threadName",
+                "threadId",
+                "taskName",
             }
 
             # 收集 extra 字段（所有非标准字段）
@@ -162,7 +203,7 @@ def configure_logger(
                 # 优先从 record['extra'] 中获取（如果是通过 bind() 绑定的）
                 if "extra" in record and isinstance(record["extra"], dict):
                     extra_data.update(record["extra"])
-                
+
                 # 也可以从 record 根级别获取（某些情况下）
                 for key, value in record.items():
                     # 跳过标准字段和以 _ 开头的内部字段
@@ -171,7 +212,10 @@ def configure_logger(
 
             # 如果 extra 数据不为空，且消息中还没有包含额外信息，则追加到消息中
             original_message = record.get("message", "")
-            
+
+            # ✅ 检查是否有异常信息（如果有异常，不将 extra 格式化为 JSON，让异常堆栈使用原始格式）
+            has_exception = record.get("exception") is not None or record.get("exc_info") is not None
+
             # 仅在 DEBUG 或 ERROR/CRITICAL 级别显示额外信息
             # 这样可以保证调试方便，同时异常发生时也能看到上下文
             allowed_levels = ("DEBUG", "ERROR", "CRITICAL")
@@ -179,25 +223,35 @@ def configure_logger(
                 # 检查消息中是否已经包含这些数据的 JSON 表示（简单的去重检查）
                 # 这里只做简单的检查，避免明显的重复
                 msg_str = str(original_message)
-                
-                # 定义 JSON 序列化辅助函数，处理不可序列化类型
-                def default_serializer(obj):
-                    if isinstance(obj, bytes):
-                        return "<bytes>"
-                    return str(obj)
 
-                try:
-                    # 使用 indent=2 格式化 JSON
-                    extra_json = json.dumps(extra_data, default=default_serializer, ensure_ascii=False, indent=2)
-                    
-                    # 只有当原始消息不包含"额外信息"且看起来不像已经包含了这个JSON时才添加
-                    if "额外信息" not in msg_str:
-                        record["message"] = f"{msg_str}\n额外信息:\n{extra_json}"
-                except Exception:
+                # ✅ 如果有异常信息，不添加额外信息到消息中，让异常堆栈使用原始格式显示
+                # 异常堆栈信息会由 console_sink 函数自动处理，使用 traceback 原始格式
+                if has_exception:
+                    # 异常情况下，不修改消息内容，让 loguru 的异常处理机制正常工作
+                    # 异常堆栈会通过 record["exception"] 字段由 console_sink 函数处理
+                    # 这样可以确保异常堆栈使用原始格式（traceback），而不是 JSON 格式
+                    # ✅ 不添加任何额外信息到消息中，确保异常堆栈信息清晰可见
+                    ***REMOVED***  # 不添加额外信息，避免干扰异常堆栈显示
+                else:
+                    # 非异常情况，使用 JSON 格式（保持原有行为）
+                    # 定义 JSON 序列化辅助函数，处理不可序列化类型
+                    def default_serializer(obj):
+                        if isinstance(obj, bytes):
+                            return "<bytes>"
+                        return str(obj)
+
                     try:
-                        record["message"] = f"{msg_str}\n额外信息: {str(extra_data)}"
+                        # 使用 indent=2 格式化 JSON
+                        extra_json = json.dumps(extra_data, default=default_serializer, ensure_ascii=False, indent=2)
+
+                        # 只有当原始消息不包含"额外信息"且看起来不像已经包含了这个JSON时才添加
+                        if "额外信息" not in msg_str:
+                            record["message"] = f"{msg_str}\n额外信息:\n{extra_json}"
                     except Exception:
-                        ***REMOVED***
+                        try:
+                            record["message"] = f"{msg_str}\n额外信息: {extra_data!s}"
+                        except Exception:
+                            ***REMOVED***
         except Exception:
             # 静默处理异常，避免影响日志输出
             ***REMOVED***
@@ -227,28 +281,32 @@ def configure_logger(
             msg_text = record["message"]
             exception = record.get("exception")
 
-            # 构建日志头部（固定格式）
-            # 时间 | 级别(补齐8位) | 服务名 | 模块:函数:行号 | 
-            header = f"{time_str} | {level: <8} | {service_name} | {name}:{function}:{line} | "
-            
+            # ✅ 优化日志格式：简化模块路径，只显示文件名
+            # 例如：services.host-service.app.services.host_discovery_service -> host_discovery_service
+            module_name = name.split(".")[-1] if "." in name else name
+
+            # 构建日志头部（优化后的格式）
+            # 时间 | 级别(补齐8位) | 服务名 | 模块名:函数名:行号 |
+            header = f"{time_str} | {level: <8} | {service_name} | {module_name}:{function}:{line} | "
+
             # 计算缩进字符串
             indent_str = " " * len(header)
 
             # 处理消息文本
             formatted_lines = []
-            
+
             if "\n" in msg_text:
                 # 分割多行消息
                 lines = msg_text.split("\n")
-                
+
                 # 第一行包含 header
                 formatted_lines.append(header + lines[0])
-                
+
                 # 后续行添加缩进
                 for line in lines[1:]:
-                    if line: # 非空行
+                    if line:  # 非空行
                         formatted_lines.append(indent_str + line)
-                    else: # 空行
+                    else:  # 空行
                         formatted_lines.append("")
             else:
                 # 单行消息
@@ -258,38 +316,57 @@ def configure_logger(
             formatted = "\n".join(formatted_lines)
 
             # 添加异常信息（如果有）
-            if exception:
-                # Loguru 的 exception 字段是一个特殊的对象
-                # message 已经包含了异常信息的摘要，这里主要是堆栈
-                # 但通常 loguru 会自动处理异常显示，如果我们在 sink 中只打印 message，
-                # 可能需要手动获取格式化的异常信息
-                # 这里简单起见，如果 message 末尾没有异常信息，由于 patcher 也没法很好处理 exception 对象
-                # 我们依赖 message.record["exception"] 存在时，
-                # Loguru 默认的 sink 行为是会打印堆栈的。
-                # 但在我们自定义 sink 中，我们需要自己处理。
-                # message 参数其实是一个字符串（FormattedMessage），但也包含了 record 属性
-                # 如果直接打印 message，通常包含了格式化好的异常信息（如果 format 参数配置了 {exception}）
-                # 但我们需要自定义格式。
-                
-                # 实际上，如果 format 中包含了 {exception}，那么 msg_text 可能已经包含了堆栈信息（取决于实现）
-                # 只有当 format 字符串包含 {exception} 时，Loguru 才会把异常栈拼接到 message 中。
-                # 我们的 console_sink 使用的是 raw message (from record["message"])，
-                # 它不包含堆栈，除非我们在 patcher 里处理了（但 patcher 里很难处理堆栈格式化）。
-                
-                # 在自定义 sink 中，我们需要显式处理异常
-                # 获取格式化的异常堆栈
+            # ✅ 检查多种方式获取异常信息，确保完整打印堆栈
+            import traceback
+
+            def format_exception_to_string(exc_type, exc_value, exc_traceback) -> str:
+                """格式化异常堆栈为字符串"""
+                try:
+                    exc_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+                    return "".join(exc_lines)
+                except Exception:
+                    return ""
+
+            def append_exception_lines(exc_str: str) -> None:
+                """将异常堆栈行追加到 formatted"""
+                nonlocal formatted
+                for exc_line in exc_str.split("\n"):
+                    if exc_line.strip():  # 只处理非空行
+                        formatted += f"\n{indent_str}{exc_line}"
+                    else:
+                        formatted += "\n"  # 保留空行以保持堆栈格式
+
+            # 尝试多种方式获取异常信息
+            exc_handled = False
+
+            # 方式1: 从 exception 对象获取
+            if (
+                exception
+                and hasattr(exception, "type")
+                and hasattr(exception, "value")
+                and hasattr(exception, "traceback")
+            ):
+                exc_str = format_exception_to_string(exception.type, exception.value, exception.traceback)
+                if exc_str:
+                    append_exception_lines(exc_str)
+                    exc_handled = True
+
+            # 方式2: 从 record["exception"] 获取
+            if not exc_handled and "exception" in record:
                 exc = record["exception"]
-                if exc:
-                    # 使用 loguru 内部的方法格式化异常（比较复杂），或者直接用 traceback
-                    # 简单方式：
-                    import traceback
-                    exc_lines = traceback.format_exception(exc.type, exc.value, exc.traceback)
-                    exc_str = "".join(exc_lines)
-                    
-                    # 对堆栈信息每行加缩进
-                    for exc_line in exc_str.split("\n"):
-                        if exc_line:
-                            formatted += f"\n{indent_str}{exc_line}"
+                if hasattr(exc, "type") and hasattr(exc, "value") and hasattr(exc, "traceback"):
+                    exc_str = format_exception_to_string(exc.type, exc.value, exc.traceback)
+                    if exc_str:
+                        append_exception_lines(exc_str)
+                        exc_handled = True
+
+            # 方式3: 从 exc_info 元组获取
+            if not exc_handled and "exc_info" in record and record["exc_info"]:
+                if isinstance(record["exc_info"], tuple) and len(record["exc_info"]) == 3:
+                    exc_type, exc_value, exc_traceback = record["exc_info"]
+                    exc_str = format_exception_to_string(exc_type, exc_value, exc_traceback)
+                    if exc_str:
+                        append_exception_lines(exc_str)
 
             # 输出到控制台
             print(formatted, file=sys.stdout, flush=True)
@@ -304,7 +381,7 @@ def configure_logger(
         {
             "sink": console_sink,
             "level": log_level,
-            "colorize": False, 
+            "colorize": False,
             # console_sink 不需要 format 参数，因为它直接处理 message.record
         }
     ]
@@ -368,7 +445,10 @@ def configure_logger(
     # 注意：patcher 已经在 configure 之前应用
     logger.configure(handlers=handlers_config, patcher=patcher)
 
-    # 配置常用库的日志级别（uvicorn日志由各服务单独处理）
+    # ✅ 设置常用库的日志级别（已通过InterceptHandler拦截，统一使用loguru格式）
+    logging.getLogger("uvicorn").setLevel(getattr(logging, log_level.upper(), logging.INFO))
+    logging.getLogger("uvicorn.access").setLevel(getattr(logging, log_level.upper(), logging.INFO))
+    logging.getLogger("uvicorn.error").setLevel(getattr(logging, log_level.upper(), logging.INFO))
     logging.getLogger("fastapi").setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     logger.info(f"日志系统初始化完成 - 服务: {service_name}, 级别: {log_level}")
@@ -386,76 +466,6 @@ def get_logger(name: Optional[str] = None) -> Any:
     if name:
         return logger.bind(name=name)
     return logger
-
-
-def log_function_call(func_name: str, args: tuple, kwargs: dict) -> None:
-    """记录函数调用
-
-    Args:
-        func_name: 函数名
-        args: 位置参数
-        kwargs: 关键字参数
-    """
-    logger.debug(
-        f"函数调用: {func_name}",
-        extra={"function": func_name, "args": str(args), "kwargs": str(kwargs)},
-    )
-
-
-def log_exception(exception: Exception, context: Optional[dict] = None) -> None:
-    """记录异常信息
-
-    Args:
-        exception: 异常对象
-        context: 上下文信息
-    """
-    logger.exception(f"异常发生: {type(exception).__name__}: {exception!s}", extra=context or {})
-
-
-def log_request(
-    method: str,
-    path: str,
-    status_code: int,
-    duration_ms: float,
-    user_id: Optional[str] = None,
-) -> None:
-    """记录HTTP请求
-
-    Args:
-        method: HTTP方法
-        path: 请求路径
-        status_code: 响应状态码
-        duration_ms: 请求耗时（毫秒）
-        user_id: 用户ID
-    """
-    logger.info(
-        f"HTTP请求: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
-        extra={
-            "method": method,
-            "path": path,
-            "status_code": status_code,
-            "duration_ms": duration_ms,
-            "user_id": user_id,
-        },
-    )
-
-
-def log_database_query(query: str, duration_ms: float, rows_affected: Optional[int] = None) -> None:
-    """记录数据库查询
-
-    Args:
-        query: SQL查询语句
-        duration_ms: 查询耗时（毫秒）
-        rows_affected: 影响的行数
-    """
-    logger.debug(
-        f"数据库查询: {query[:100]}... ({duration_ms:.2f}ms)",
-        extra={
-            "query": query,
-            "duration_ms": duration_ms,
-            "rows_affected": rows_affected,
-        },
-    )
 
 
 def log_slow_query(
@@ -495,59 +505,5 @@ def log_slow_query(
             "sql_hash": sql_hash,
             "parameters": parameters,
             "stack_trace": stack_trace[-5:],  # 只保留最近5层堆栈
-        },
-    )
-
-
-def log_cache_operation(
-    operation: str,
-    key: str,
-    hit: Optional[bool] = None,
-    duration_ms: Optional[float] = None,
-) -> None:
-    """记录缓存操作
-
-    Args:
-        operation: 操作类型（get, set, delete）
-        key: 缓存键
-        hit: 是否命中（仅用于get操作）
-        duration_ms: 操作耗时（毫秒）
-    """
-    if hit is not None:
-        status = "命中" if hit else "未命中"
-        logger.debug(
-            f"缓存{operation}: {key} - {status}",
-            extra={
-                "operation": operation,
-                "key": key,
-                "hit": hit,
-                "duration_ms": duration_ms,
-            },
-        )
-    else:
-        logger.debug(
-            f"缓存{operation}: {key}",
-            extra={"operation": operation, "key": key, "duration_ms": duration_ms},
-        )
-
-
-def log_service_call(service_name: str, endpoint: str, method: str, status_code: int, duration_ms: float) -> None:
-    """记录服务间调用
-
-    Args:
-        service_name: 服务名称
-        endpoint: 端点路径
-        method: HTTP方法
-        status_code: 响应状态码
-        duration_ms: 调用耗时（毫秒）
-    """
-    logger.info(
-        f"服务调用: {service_name} {method} {endpoint} - {status_code} ({duration_ms:.2f}ms)",
-        extra={
-            "service_name": service_name,
-            "endpoint": endpoint,
-            "method": method,
-            "status_code": status_code,
-            "duration_ms": duration_ms,
         },
     )

@@ -62,9 +62,26 @@ config = ServiceConfig.from_env(
 async def startup_case_timeout_task(app):
     """启动 Case 超时检测定时任务
 
+    通过环境变量 ENABLE_CASE_TIMEOUT_TASK 控制是否启动，默认关闭。
+
     Args:
         app: FastAPI 应用实例（生命周期处理器必须接受此参数）
     """
+    # ✅ 检查环境变量开关，默认关闭
+    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
+    
+    if not enable_task:
+        logger.info(
+            "Case 超时检测定时任务已禁用（通过环境变量 ENABLE_CASE_TIMEOUT_TASK=false）",
+            extra={"enable_case_timeout_task": enable_task},
+        )
+        return
+    
+    logger.info(
+        "Case 超时检测定时任务已启用（通过环境变量 ENABLE_CASE_TIMEOUT_TASK=true）",
+        extra={"enable_case_timeout_task": enable_task},
+    )
+    
     case_timeout_task = get_case_timeout_task_service()
     await case_timeout_task.start()
 
@@ -75,6 +92,12 @@ async def shutdown_case_timeout_task(app):
     Args:
         app: FastAPI 应用实例（生命周期处理器必须接受此参数）
     """
+    # ✅ 检查环境变量开关，如果已禁用则无需停止
+    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
+    
+    if not enable_task:
+        return
+    
     case_timeout_task = get_case_timeout_task_service()
     await case_timeout_task.stop()
 

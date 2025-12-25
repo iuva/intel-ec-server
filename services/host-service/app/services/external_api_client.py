@@ -109,19 +109,31 @@ def get_user_id_from_request(request) -> Optional[int]:
     return None
 
 
-async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[str, Any]:
+async def get_external_api_token(
+    user_id: Optional[int] = None,
+    email: Optional[str] = None,
+    locale: str = "zh_CN",
+) -> Dict[str, Any]:
     """获取外部 API 访问令牌（带缓存和并发控制）
 
     业务逻辑：
-    1. 根据 user_id 查询 sys_user 表获取 email
-    2. 先从 Redis 缓存获取 token
+    1. **确定 user_email**：
+       - 如果提供了 `email` 参数，直接使用该 email，不查询数据库（性能优化）
+       - 如果未提供 `email`，根据 `user_id` 查询 sys_user 表获取 email
+    2. 先从 Redis 缓存获取 token（缓存键基于 email）
     3. 如果缓存为空，使用锁防止并发请求，重新获取 token
     4. 请求 POST {external_api_url}/api/v1/auth/login，body 为 {"email": user_email}
     5. 返回参数 {"access_token": "...", "token_type": "bearer", "expires_in": "15552000"}
     6. 根据 expires_in 的值存入 Redis 缓存
 
+    性能优化：
+    - 如果提供了 `email` 参数，跳过数据库查询，直接使用该 email 获取 token
+    - Token 缓存基于 email，避免重复请求外部接口
+    - 使用分布式锁防止并发请求导致重复获取 token
+
     Args:
-        user_id: 当前登录管理后台用户的ID（sys_user.id）
+        user_id: 当前登录管理后台用户的ID（sys_user.id），如果提供了 email 则可以为 None
+        email: 用户邮箱（可选）。如果提供，将直接使用该 email，不查询数据库，提高性能
         locale: 语言偏好，用于错误消息多语言处理
 
     Returns:
@@ -131,41 +143,76 @@ async def get_external_api_token(user_id: int, locale: str = "zh_CN") -> Dict[st
             - expires_in: 过期时间（秒）
 
     Raises:
-        BusinessError: 获取 token 失败时
+        BusinessError: 获取 token 失败时，包括：
+            - EMAIL_MISSING: 未提供 email 且 user_id 为空
+            - USER_NOT_FOUND: 用户不存在（当未提供 email 时）
+            - USER_EMAIL_EMPTY: 用户邮箱为空（当未提供 email 时）
+            - 外部接口调用失败
+
+    Example:
+        ```python
+        # 方式1：提供 email，不查询数据库（推荐）
+        token_info = await get_external_api_token(email="user@example.com")
+
+        # 方式2：提供 user_id，查询数据库获取 email
+        token_info = await get_external_api_token(user_id=123)
+        ```
     """
-    # 1. 根据 user_id 查询 sys_user 表获取 email
-    session_factory = mariadb_manager.get_session()
-    async with session_factory() as session:
-        from sqlalchemy import select
-
-        user_stmt = select(SysUser).where(
-            SysUser.id == user_id,
-            SysUser.del_flag == 0,
+    # 1. 确定 user_email：优先使用提供的 email，否则根据 user_id 查询数据库
+    if email:
+        # ✅ 如果提供了 email，直接使用，不查询数据库，不验证用户
+        user_email = email
+        logger.debug(
+            "使用提供的 email 进行外部接口认证（跳过数据库验证）",
+            extra={
+                "email": email,
+                "user_id": user_id,
+            },
         )
-        user_result = await session.execute(user_stmt)
-        sys_user = user_result.scalar_one_or_none()
-
-        if not sys_user:
+    else:
+        # 如果没有提供 email，根据 user_id 查询 sys_user 表获取 email
+        if user_id is None:
             raise BusinessError(
-                message=f"用户不存在（ID: {user_id}）",
-                message_key="error.user.not_found",
-                error_code="USER_NOT_FOUND",
+                message="无法获取用户邮箱：未提供 email 参数且 user_id 为空",
+                message_key="error.external_api.email_missing",
+                error_code="EMAIL_MISSING",
                 code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                 http_status_code=400,
-                details={"user_id": user_id},
             )
 
-        if not sys_user.email:
-            raise BusinessError(
-                message=f"用户邮箱为空（ID: {user_id}）",
-                message_key="error.user.email_empty",
-                error_code="USER_EMAIL_EMPTY",
-                code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                http_status_code=400,
-                details={"user_id": user_id},
-            )
+        # ✅ 只有在未提供 email 时才查询数据库
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            from sqlalchemy import select
 
-        user_email = sys_user.email
+            user_stmt = select(SysUser).where(
+                SysUser.id == user_id,
+                SysUser.del_flag == 0,
+            )
+            user_result = await session.execute(user_stmt)
+            sys_user = user_result.scalar_one_or_none()
+
+            if not sys_user:
+                raise BusinessError(
+                    message=f"用户不存在（ID: {user_id}）",
+                    message_key="error.user.not_found",
+                    error_code="USER_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"user_id": user_id},
+                )
+
+            if not sys_user.email:
+                raise BusinessError(
+                    message=f"用户邮箱为空（ID: {user_id}）",
+                    message_key="error.user.email_empty",
+                    error_code="USER_EMAIL_EMPTY",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"user_id": user_id},
+                )
+
+            user_email = sys_user.email
 
     # 2. 先从 Redis 缓存获取 token
     cache_key = f"{TOKEN_CACHE_KEY_PREFIX}:{user_email}"
@@ -377,6 +424,7 @@ async def call_external_api(
     url_path: str,
     request=None,
     user_id: Optional[int] = None,
+    email: Optional[str] = None,
     json_data: Optional[Dict[str, Any]] = None,
     params: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, str]] = None,
@@ -386,50 +434,88 @@ async def call_external_api(
     """调用外部接口（带认证）
 
     业务逻辑：
-    1. 从请求头获取 user_id（如果未提供）
-    2. 获取外部 API token（带缓存）
+    1. **确定认证信息**：
+       - 如果提供了 `email` 参数，直接使用该 email 获取 token，不查询数据库（性能优化）
+       - 如果未提供 `email`，从请求头获取 user_id，然后查询数据库获取 email
+    2. 获取外部 API token（带缓存和并发控制）
     3. 添加请求头 Authorization: token_type + 空格 + access_token
     4. 调用外部接口
+    5. 记录请求和响应日志（包含请求参数、响应状态码和响应体）
+
+    性能优化：
+    - 如果提供了 `email` 参数，跳过数据库查询，直接使用该 email 获取 token
+    - Token 缓存基于 email，避免重复请求外部接口
+    - 使用统一的 HTTP 客户端，支持连接池复用和 SSL 配置
 
     Args:
         method: HTTP 方法（GET, POST, PUT, DELETE 等）
-        url_path: 请求路径（相对于 external_api_url）
+        url_path: 请求路径（相对于 external_api_url，例如 "/api/v1/hardware/hosts"）
         request: FastAPI Request 对象（用于从请求头获取 user_id）
-        user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
+        user_id: 当前登录管理后台用户的ID（可选，如果提供了 email 则可以为 None）
+        email: 用户邮箱（可选）。如果提供，将直接使用该 email 获取 token，不查询数据库，提高性能
         json_data: 请求体 JSON 数据（可选）
         params: 查询参数（可选）
-        headers: 额外的请求头（可选）
+        headers: 额外的请求头（可选），会与默认请求头合并
         locale: 语言偏好，用于错误消息多语言处理
-        timeout: 请求超时时间（秒）
+        timeout: 请求超时时间（秒），默认 30.0 秒
 
     Returns:
-        dict: 响应数据，包含 status_code 和 body
+        dict: 响应数据，包含：
+            - status_code: HTTP 状态码
+            - body: 响应体（已解析的 JSON 数据）
+            - raw_body: 原始响应体（字符串）
+            - headers: 响应头
 
     Raises:
-        BusinessError: 接口调用失败时
-    """
-    # 1. 获取 user_id
-    if user_id is None:
-        if request is None:
-            raise BusinessError(
-                message="无法获取用户ID：未提供 user_id 参数且 request 对象为空",
-                message_key="error.external_api.user_id_missing",
-                error_code="USER_ID_MISSING",
-                code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                http_status_code=400,
-            )
-        user_id = get_user_id_from_request(request)
-        if user_id is None:
-            raise BusinessError(
-                message="无法从请求头获取用户ID",
-                message_key="error.external_api.user_id_not_found",
-                error_code="USER_ID_NOT_FOUND",
-                code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                http_status_code=400,
-            )
+        BusinessError: 接口调用失败时，包括：
+            - USER_ID_MISSING: 未提供 user_id 且 request 对象为空（当未提供 email 时）
+            - USER_ID_NOT_FOUND: 无法从请求头获取用户ID（当未提供 email 时）
+            - 外部接口调用失败（网络错误、超时等）
+            - 外部接口返回非 200 状态码
 
-    # 2. 获取外部 API token
-    token_info = await get_external_api_token(user_id, locale=locale)
+    Example:
+        ```python
+        # 方式1：提供 email，不查询数据库（推荐）
+        response = await call_external_api(
+            method="GET",
+            url_path="/api/v1/hardware/hosts",
+            email="user@example.com",
+            params={"tc_id": "123", "skip": 0, "limit": 100}
+        )
+
+        # 方式2：提供 user_id，查询数据库获取 email
+        response = await call_external_api(
+            method="GET",
+            url_path="/api/v1/hardware/hosts",
+            request=fastapi_request,
+            user_id=123,
+            params={"tc_id": "123", "skip": 0, "limit": 100}
+        )
+        ```
+    """
+    # 1. 获取 user_id（如果未提供 email）
+    if email is None:
+        if user_id is None:
+            if request is None:
+                raise BusinessError(
+                    message="无法获取用户ID：未提供 user_id 参数且 request 对象为空",
+                    message_key="error.external_api.user_id_missing",
+                    error_code="USER_ID_MISSING",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                )
+            user_id = get_user_id_from_request(request)
+            if user_id is None:
+                raise BusinessError(
+                    message="无法从请求头获取用户ID",
+                    message_key="error.external_api.user_id_not_found",
+                    error_code="USER_ID_NOT_FOUND",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                )
+
+    # 2. 获取外部 API token（如果提供了 email，则不查询数据库）
+    token_info = await get_external_api_token(user_id=user_id, email=email, locale=locale)
     access_token = token_info["access_token"]
     token_type = token_info.get("token_type", "bearer")
 

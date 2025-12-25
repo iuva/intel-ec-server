@@ -119,10 +119,11 @@ def _log_service_error(func_name: str, error: Exception, args: tuple, kwargs: di
         if error_location['code']:
             error_msg += f"\n代码行: {error_location['code'].strip()}"
 
+    # ✅ 记录完整的堆栈跟踪信息（显式传递异常对象和堆栈跟踪）
     logger.error(
         error_msg,
         extra=extra,
-        exc_info=True,  # 记录完整的堆栈跟踪
+        exc_info=(type(error), error, error.__traceback__),  # 显式传递异常类型、异常对象和堆栈跟踪
     )
 
 
@@ -302,10 +303,11 @@ def _handle_business_error(
         if error_location['code']:
             error_msg += f"\n代码行: {error_location['code'].strip()}"
 
+    # ✅ 记录完整的堆栈跟踪信息
     logger.warning(
         error_msg,
         extra=extra,
-        exc_info=True,  # 记录完整的堆栈跟踪
+        exc_info=(type(error), error, error.__traceback__),  # 显式传递异常类型、异常对象和堆栈跟踪
     )
 
     # 优先使用 API 层的 locale（从函数参数中提取）
@@ -362,10 +364,11 @@ def _handle_unexpected_error(error: Exception, func_name: str) -> HTTPException:
         if error_location['code']:
             error_msg += f"\n代码行: {error_location['code'].strip()}"
 
+    # ✅ 记录完整的堆栈跟踪信息（显式传递异常对象和堆栈跟踪）
     logger.error(
         error_msg,
         extra=extra,
-        exc_info=True,  # 记录完整的堆栈跟踪
+        exc_info=(type(error), error, error.__traceback__),  # 显式传递异常类型、异常对象和堆栈跟踪
     )
 
     return HTTPException(
@@ -484,7 +487,19 @@ def _log_operation_result(
     if status == "success":
         logger.info(f"{operation_name} 完成", extra=extra)
     else:
-        logger.error(f"{operation_name} 失败", extra=extra)
+        # ✅ 记录失败时的完整堆栈跟踪信息
+        if error and hasattr(error, '__traceback__') and error.__traceback__:
+            logger.error(
+                f"{operation_name} 失败",
+                extra=extra,
+                exc_info=(type(error), error, error.__traceback__),  # 显式传递异常类型、异常对象和堆栈跟踪
+            )
+        else:
+            logger.error(
+                f"{operation_name} 失败",
+                extra=extra,
+                exc_info=True,  # 使用当前异常上下文
+            )
 
 
 def monitor_operation(

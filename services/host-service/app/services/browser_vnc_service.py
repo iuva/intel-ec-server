@@ -356,9 +356,11 @@ class BrowserVNCService:
         """获取指定主机的 VNC 连接信息
 
         业务逻辑：
-        1. 根据 host_rec_id 查询 host_rec 表
-        2. 检查数据有效性（del_flag=0, appr_state=1）
-        3. 返回 VNC 连接所需的字段
+        1. 如果 host_rec_id = "1111111"，返回模拟数据（不查数据库）
+        2. 否则，根据 host_rec_id 查询 host_rec 表
+        3. 检查数据有效性（del_flag=0, appr_state=1）
+        4. 更新主机状态为已锁定（host_state = 1）
+        5. 返回 VNC 连接所需的字段
 
         Args:
             host_rec_id: 主机记录 ID
@@ -382,6 +384,23 @@ class BrowserVNCService:
                 "host_rec_id": host_rec_id,
             },
         )
+
+        # ✅ 如果 host_rec_id = "1111111"，返回模拟数据（不查数据库）
+        if host_rec_id == "1111111":
+            logger.info(
+                "使用模拟数据（测试主机ID: 1111111）",
+                extra={
+                    "operation": "get_vnc_connection_info",
+                    "host_rec_id": host_rec_id,
+                    "is_mock_data": True,
+                },
+            )
+            return {
+                "ip": "10.239.168.184",
+                "port": "5900",
+                "username": "ccr\\sys_eval",
+                "***REMOVED***word": "***REMOVED***",
+            }
 
         try:
             # 将字符串 ID 转换为整数
@@ -487,6 +506,24 @@ class BrowserVNCService:
                         # 密码处理失败时返回空字符串，而不是抛出异常
                         vnc_***REMOVED***word = ""
 
+                # ✅ 更新主机状态为已锁定（host_state = 1）
+                old_host_state = host_rec.host_state
+                host_rec.host_state = 1  # 已锁定状态
+                host_rec.subm_time = datetime.now(timezone.utc)
+
+                # 提交状态更新
+                await session.commit()
+                await session.refresh(host_rec)
+
+                logger.info(
+                    "主机状态已更新为已锁定",
+                    extra={
+                        "host_rec_id": host_rec_id,
+                        "old_host_state": old_host_state,
+                        "new_host_state": host_rec.host_state,
+                    },
+                )
+
                 # 构建响应数据
                 vnc_info = {
                     "ip": cast(str, host_rec.host_ip),
@@ -502,6 +539,7 @@ class BrowserVNCService:
                         "ip": vnc_info["ip"],
                         "port": vnc_info["port"],
                         "username": vnc_info["username"],
+                        "host_state": host_rec.host_state,
                     },
                 )
 
