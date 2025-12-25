@@ -224,7 +224,7 @@ class AvailableHostInfo(BaseModel):
 
     id: str = Field(description="主机记录ID (host_rec.id)", alias="host_rec_id")
     username: str = Field(description="用户名 (host_acct)", alias="user_name")
-    ip: str = Field(description="主机IP地址 (host_ip)")
+    host_ip: str = Field(description="主机IP地址 (host_ip)")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 

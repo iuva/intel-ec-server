@@ -311,7 +311,7 @@ class HostDiscoveryService:
             test_host = AvailableHostInfo(
                 host_rec_id="1111111",  # 测试主机ID
                 user_name="ccr\\sys_eval",  # 用户名（注意转义反斜杠）
-                ip="10.239.168.184",  # 主机IP
+                host_ip="10.239.168.184",  # 主机IP
             )
             paginated_hosts = [test_host]
             # 更新总数（包含测试数据）
@@ -721,7 +721,7 @@ class HostDiscoveryService:
                     AvailableHostInfo(
                         host_rec_id=str(host_rec.id),
                         user_name=host_rec.host_acct or "",
-                        ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
+                        host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
                     )
                     for host_rec in host_recs
                     if host_rec.hardware_id  # 确保 hardware_id 不为空
@@ -821,7 +821,7 @@ class HostDiscoveryService:
                             AvailableHostInfo(
                                 host_rec_id=str(host_rec.id),  # ✅ 转换为字符串避免精度丢失
                                 user_name=host_rec.host_acct or "",
-                                ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
+                                host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
                             )
                             for host_rec in host_recs
                             if host_rec.hardware_id  # 确保 hardware_id 不为空
