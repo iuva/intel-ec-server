@@ -13,12 +13,18 @@ from starlette.status import HTTP_200_OK
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.utils.logging_helpers import log_request_completed, log_request_received
+    from app.utils.response_helpers import create_success_result
+
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.utils.logging_helpers import log_request_completed, log_request_received
+    from app.utils.response_helpers import create_success_result
+
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -55,7 +61,7 @@ router = APIRouter()
                         "data": {
                             "host_id": "123",
                             "connection_status": "success",
-                            "connection_time": "2025-10-15T10:00:00Z",
+                            "connection_time": "2025/10/15 10:00:00",
                         },
                     }
                 }
@@ -93,7 +99,9 @@ async def report_vnc_connection(
     - `user_name`: 用户名称（必填）
     - `host_id`: 主机ID，对应 host_rec.id（必填）
     - `connection_status`: 连接状态，可选值: success/failed（必填）
-    - `connection_time`: VNC 连接时间（必填）
+    - `connection_time`: VNC 连接时间（必填），支持格式：
+      - `yyyy/MM/dd HH:mm:ss`（如：`2025/01/30 10:00:00`）
+      - ISO 8601 格式（如：`2025-01-30T10:00:00Z`）
 
     ## 业务逻辑
     1. 根据 host_id 查询 host_rec 表，验证主机是否存在
@@ -116,8 +124,8 @@ async def report_vnc_connection(
     Returns:
         上报成功响应，包含处理结果信息
     """
-    logger.info(
-        "接收 VNC 连接结果上报请求",
+    log_request_received(
+        "report_vnc_connection",
         extra={
             "user_id": request.user_id,
             "tc_id": request.tc_id,
@@ -126,6 +134,7 @@ async def report_vnc_connection(
             "host_id": request.host_id,
             "connection_status": request.connection_status,
         },
+        logger_instance=logger,
     )
 
     result = await vnc_service.report_vnc_connection(request)
@@ -136,22 +145,21 @@ async def report_vnc_connection(
         connection_time=result["connection_time"],
     )
 
-    logger.info(
-        "VNC 连接结果上报处理完成",
+    log_request_completed(
+        "report_vnc_connection",
         extra={
             "user_id": request.user_id,
             "host_id": request.host_id,
             "connection_status": request.connection_status,
         },
+        logger_instance=logger,
     )
 
-    from shared.common.i18n import t
-
-    return Result(
-        code=200,
-        message=t("success.vnc.report", locale=locale, default="VNC连接结果上报成功"),
+    return create_success_result(
         data=vnc_response,
+        message_key="success.vnc.report",
         locale=locale,
+        default_message="VNC连接结果上报成功",
     )
 
 
@@ -267,11 +275,9 @@ async def get_vnc_connection(
         },
     )
 
-    from shared.common.i18n import t
-
-    return Result(
-        code=200,
-        message=t("success.vnc.get_connection", locale=locale, default="获取VNC连接信息成功"),
+    return create_success_result(
         data=vnc_connection_info,
+        message_key="success.vnc.get_connection",
         locale=locale,
+        default_message="获取VNC连接信息成功",
     )

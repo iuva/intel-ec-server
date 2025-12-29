@@ -18,6 +18,7 @@ from app.schemas.host import VNCConnectionReport
 try:
     from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.schemas.websocket_message import MessageType
+    from app.utils.cache_invalidation import invalidate_available_hosts_cache
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -31,6 +32,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.schemas.websocket_message import MessageType
+    from app.utils.cache_invalidation import invalidate_available_hosts_cache
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -255,6 +257,33 @@ class BrowserVNCService:
             # 提交所有更改
             await session.commit()
             await session.refresh(host_rec)
+
+            # ✅ 优化：如果连接状态为 success，清除可用主机列表缓存
+            # 因为主机状态已变为已锁定，不应再出现在可用主机列表中
+            if vnc_report.connection_status == "success":
+                try:
+                    deleted_count = await invalidate_available_hosts_cache()
+                    if deleted_count > 0:
+                        logger.info(
+                            "可用主机列表缓存已清除（VNC连接成功）",
+                            extra={
+                                "host_id": vnc_report.host_id,
+                                "deleted_cache_count": deleted_count,
+                            },
+                        )
+                    else:
+                        logger.debug(
+                            "未找到需要清除的可用主机列表缓存",
+                            extra={"host_id": vnc_report.host_id},
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "清除可用主机列表缓存失败",
+                        extra={
+                            "host_id": vnc_report.host_id,
+                            "error": str(e),
+                        },
+                    )
 
             # 格式化时间戳用于日志记录
             new_subm_time_str: Optional[str] = None
@@ -523,6 +552,32 @@ class BrowserVNCService:
                         "new_host_state": host_rec.host_state,
                     },
                 )
+
+                # ✅ 优化：清除可用主机列表缓存，因为主机状态已变为已锁定
+                # 该主机不应再出现在可用主机列表中，需要清除相关缓存
+                try:
+                    deleted_count = await invalidate_available_hosts_cache()
+                    if deleted_count > 0:
+                        logger.info(
+                            "可用主机列表缓存已清除（主机状态已锁定）",
+                            extra={
+                                "host_rec_id": host_rec_id,
+                                "deleted_cache_count": deleted_count,
+                            },
+                        )
+                    else:
+                        logger.debug(
+                            "未找到需要清除的可用主机列表缓存",
+                            extra={"host_rec_id": host_rec_id},
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "清除可用主机列表缓存失败",
+                        extra={
+                            "host_rec_id": host_rec_id,
+                            "error": str(e),
+                        },
+                    )
 
                 # 构建响应数据
                 vnc_info = {

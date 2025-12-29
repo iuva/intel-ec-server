@@ -19,15 +19,19 @@ from fastapi import APIRouter, Body, Depends, Request
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.utils.logging_helpers import log_request_completed, log_request_received
+    from app.utils.response_helpers import create_success_result
+
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.utils.logging_helpers import log_request_completed, log_request_received
+    from app.utils.response_helpers import create_success_result
+
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -154,8 +158,8 @@ async def query_available_hosts(
         }
         ```
     """
-    logger.info(
-        "接收查询可用主机列表请求",
+    log_request_received(
+        "query_available_hosts",
         extra={
             "tc_id": request.tc_id,
             "cycle_name": request.cycle_name,
@@ -164,6 +168,7 @@ async def query_available_hosts(
             "last_id": request.last_id,
             "email": request.email,  # ✅ 记录 email（如果提供）
         },
+        logger_instance=logger,
     )
 
     # ✅ 传递 FastAPI Request 对象，用于获取 user_id 并调用带认证的外部接口
@@ -172,8 +177,8 @@ async def query_available_hosts(
         fastapi_request=fastapi_request,
     )
 
-    logger.info(
-        "查询可用主机列表完成",
+    log_request_completed(
+        "query_available_hosts",
         extra={
             "tc_id": request.tc_id,
             "total_available": result.total,
@@ -182,13 +187,14 @@ async def query_available_hosts(
             "returned_count": len(result.hosts),
             "last_id": result.last_id,
         },
+        logger_instance=logger,
     )
 
-    return Result(
-        code=200,
-        message=t("success.host.available_list_query", locale=locale, default="查询可用主机列表成功"),
+    return create_success_result(
         data=result,
+        message_key="success.host.available_list_query",
         locale=locale,
+        default_message="查询可用主机列表成功",
     )
 
 
@@ -273,18 +279,11 @@ async def get_retry_vnc_list(
         total=len(retry_vnc_list),
     )
 
-    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
-    message = t(
-        "success.host.retry_vnc_list_query",
-        locale=locale,
-        default="查询重试 VNC 列表成功",
-    )
-
-    return Result(
-        code=200,
-        message=message,
+    return create_success_result(
         data=response_data,
+        message_key="success.host.retry_vnc_list_query",
         locale=locale,
+        default_message="查询重试 VNC 列表成功",
     )
 
 
@@ -384,9 +383,9 @@ async def release_hosts(
         host_list=request.host_list,
     )
 
-    return Result(
-        code=200,
-        message=t("success.host.release", locale=locale, default="释放主机成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.host.release",
         locale=locale,
+        default_message="释放主机成功",
     )

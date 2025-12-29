@@ -26,9 +26,10 @@ try:
         TestCaseReportResponse,
     )
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
+    from app.utils.logging_helpers import log_request_received
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -48,9 +49,10 @@ except ImportError:
         TestCaseReportResponse,
     )
     from app.services.agent_report_service import AgentReportService, get_agent_report_service
+    from app.utils.logging_helpers import log_request_received
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -77,7 +79,7 @@ router = APIRouter()
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
     - Token 格式：`Bearer <token>`
-    - Token 中的 user_id 字段将作为 host_id 使用
+    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
 
     ## 请求参数
     - `dmr_config`: DMR硬件配置（必需），必须包含 `revision` 字段
@@ -230,7 +232,7 @@ async def report_hardware(
             - type: 上报类型（可选，默认为0）
                 - 0: 成功，走正常对比逻辑
                 - 1: 异常，直接设置 diff_state=3
-        agent_info: 当前Agent信息（从token中提取，包含host_id）
+        agent_info: 当前Agent信息（从token中提取，包含id）
         agent_report_service: Agent硬件服务实例
 
     Returns:
@@ -239,19 +241,20 @@ async def report_hardware(
     Raises:
         HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
     """
-    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
-    host_id = agent_info["host_id"]
+    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["id"]
 
     # 提取 type 参数（可选，默认为 0）
     report_type = hardware_data.get("type", 0)
 
-    logger.info(
-        "收到硬件信息上报请求",
+    log_request_received(
+        "report_hardware",
         extra={
             "host_id": host_id,
             "has_dmr_config": "dmr_config" in hardware_data,
             "type": report_type,
         },
+        logger_instance=logger,
     )
 
     # 调用服务层处理硬件信息上报
@@ -262,11 +265,11 @@ async def report_hardware(
     )
 
     response_data = HardwareReportResponse(**result)
-    return Result(
-        code=200,
-        message=t("success.hardware.report", locale=locale, default="硬件信息上报成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.hardware.report",
         locale=locale,
+        default_message="硬件信息上报成功",
     )
 
 
@@ -287,7 +290,7 @@ async def report_hardware(
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
     - Token 格式：`Bearer <token>`
-    - Token 中的 user_id 字段将作为 host_id 使用
+    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
 
     ## 请求参数
     - `tc_id`: 测试用例ID（必需）
@@ -383,7 +386,7 @@ async def report_testcase_result(
 
     Args:
         report_data: 测试用例执行结果
-        agent_info: 当前Agent信息（从token中提取，包含host_id）
+        agent_info: 当前Agent信息（从token中提取，包含id）
         agent_report_service: Agent硬件服务实例
 
     Returns:
@@ -392,8 +395,8 @@ async def report_testcase_result(
     Raises:
         HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
     """
-    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
-    host_id = agent_info["host_id"]
+    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["id"]
 
     logger.info(
         "收到测试用例结果上报请求",
@@ -414,11 +417,11 @@ async def report_testcase_result(
     )
 
     response_data = TestCaseReportResponse(**result)
-    return Result(
-        code=200,
-        message=t("success.hardware.test_result_report", locale=locale, default="测试用例结果上报成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.hardware.test_result_report",
         locale=locale,
+        default_message="测试用例结果上报成功",
     )
 
 
@@ -439,7 +442,7 @@ async def report_testcase_result(
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
     - Token 格式：`Bearer <token>`
-    - Token 中的 user_id 字段将作为 host_id 使用
+    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
 
     ## 请求参数
     - `tc_id`: 测试用例ID（必需）
@@ -533,7 +536,7 @@ async def report_due_time(
 
     Args:
         report_data: 测试用例预期结束时间
-        agent_info: 当前Agent信息（从token中提取，包含host_id）
+        agent_info: 当前Agent信息（从token中提取，包含id）
         agent_report_service: Agent硬件服务实例
 
     Returns:
@@ -542,8 +545,8 @@ async def report_due_time(
     Raises:
         HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
     """
-    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
-    host_id = agent_info["host_id"]
+    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["id"]
 
     logger.info(
         "收到预期结束时间上报请求",
@@ -562,11 +565,11 @@ async def report_due_time(
     )
 
     response_data = TestCaseDueTimeResponse(**result)
-    return Result(
-        code=200,
-        message=t("success.hardware.due_time_report", locale=locale, default="预期结束时间上报成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.hardware.due_time_report",
         locale=locale,
+        default_message="预期结束时间上报成功",
     )
 
 
@@ -595,16 +598,19 @@ async def get_latest_ota_configs(
     locale: str = Depends(get_locale),
 ) -> Result[List[OtaConfigItem]]:
     """获取最新 OTA 配置信息"""
-    logger.info("收到获取 OTA 配置信息请求")
+    log_request_received(
+        "get_latest_ota_configs",
+        logger_instance=logger,
+    )
 
     configs = await agent_report_service.get_latest_ota_configs()
     ota_items = [OtaConfigItem(**config) for config in configs]
 
-    return Result(
-        code=200,
-        message=t("success.ota.query", locale=locale, default="获取 OTA 配置成功"),
+    return create_success_result(
         data=ota_items,
+        message_key="success.ota.query",
         locale=locale,
+        default_message="获取 OTA 配置成功",
     )
 
 
@@ -623,7 +629,7 @@ async def get_latest_ota_configs(
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
     - Token 格式：`Bearer <token>`
-    - Token 中的 user_id 字段将作为 host_id 使用
+    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
 
     ## 业务逻辑
     1. 从 token 中解析 host_id（通过依赖注入自动完成）
@@ -685,7 +691,7 @@ async def report_vnc_connection_success(
 
     Args:
         request: Agent VNC 连接成功上报请求（空请求体）
-        agent_info: 当前Agent信息（从token中提取，包含host_id）
+        agent_info: 当前Agent信息（从token中提取，包含id）
         agent_report_service: Agent上报服务实例
         locale: 语言偏好
 
@@ -695,8 +701,8 @@ async def report_vnc_connection_success(
     Raises:
         HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
     """
-    # ✅ 从 token 中获取 host_id（已通过 get_current_agent 依赖注入验证）
-    host_id = agent_info["host_id"]
+    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["id"]
 
     logger.info(
         "收到 Agent VNC 连接成功上报请求",
@@ -709,9 +715,9 @@ async def report_vnc_connection_success(
     result = await agent_report_service.report_vnc_connection_success(host_id=host_id)
 
     response_data = AgentVNCConnectionReportResponse(**result)
-    return Result(
-        code=200,
-        message=t("success.vnc.agent_report", locale=locale, default="Agent VNC 连接成功上报成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.vnc.agent_report",
         locale=locale,
+        default_message="Agent VNC 连接成功上报成功",
     )

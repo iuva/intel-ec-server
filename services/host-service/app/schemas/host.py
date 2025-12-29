@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 
 class HostBase(BaseModel):
@@ -86,9 +86,55 @@ class VNCConnectionReport(BaseModel):
     user_name: str = Field(..., description="用户名称")
     host_id: str = Field(..., description="主机ID")
     connection_status: str = Field(..., description="连接状态 (success/failed)", pattern=r"^(success|failed)$")
-    connection_time: datetime = Field(..., description="连接时间")
+    connection_time: datetime = Field(..., description="连接时间（支持格式：yyyy/MM/dd HH:mm:ss 或 ISO 8601）")
 
     model_config = {"from_attributes": True}
+
+    @field_validator("connection_time", mode="before")
+    @classmethod
+    def parse_connection_time(cls, value: Any) -> datetime:
+        """解析连接时间，支持两种格式：
+        1. yyyy/MM/dd HH:mm:ss（如：2025/01/30 10:00:00）
+        2. ISO 8601 格式（如：2025-01-30T10:00:00Z）
+
+        Args:
+            value: 输入值（可能是字符串或 datetime 对象）
+
+        Returns:
+            datetime 对象
+
+        Raises:
+            ValueError: 格式不正确时抛出
+        """
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, str):
+            # 尝试解析 yyyy/MM/dd HH:mm:ss 格式
+            try:
+                # 解析为 naive datetime，然后添加 UTC 时区
+                dt = datetime.strptime(value, "%Y/%m/%d %H:%M:%S")
+                # 假设输入时间是 UTC 时间，添加 UTC 时区信息
+                return dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                # 如果失败，尝试 ISO 8601 格式（Pydantic 默认支持）
+                try:
+                    # 使用 datetime.fromisoformat 解析 ISO 8601 格式
+                    # 处理带时区的格式（如 2025-01-30T10:00:00Z）
+                    if value.endswith("Z"):
+                        value = value[:-1] + "+00:00"
+                    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    # 确保有时区信息，如果没有则添加 UTC
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except ValueError as e:
+                    raise ValueError(
+                        f"连接时间格式不正确，支持格式：yyyy/MM/dd HH:mm:ss（如：2025/01/30 10:00:00）"
+                        f"或 ISO 8601（如：2025-01-30T10:00:00Z），当前值：{value}"
+                    ) from e
+
+        raise ValueError(f"连接时间必须是字符串或 datetime 对象，当前类型：{type(value).__name__}")
 
 
 class VNCConnectionResponse(BaseModel):
@@ -99,6 +145,15 @@ class VNCConnectionResponse(BaseModel):
     connection_time: datetime = Field(description="连接时间")
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("connection_time")
+    def serialize_connection_time(self, value: datetime) -> str:
+        """格式化连接时间为 yyyy/MM/dd HH:mm:ss 格式"""
+        if value is None:
+            return ""
+        # 转换为本地时间（如果需要，可以指定时区）
+        # 这里使用 UTC 时间，格式化为 yyyy/MM/dd HH:mm:ss
+        return value.strftime("%Y/%m/%d %H:%M:%S")
 
 
 class AgentVNCConnectionReportRequest(BaseModel):

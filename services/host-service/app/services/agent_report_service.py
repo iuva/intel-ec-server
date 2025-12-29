@@ -22,6 +22,7 @@ try:
     from app.models.sys_conf import SysConf
     from app.models.host_exec_log import HostExecLog
 
+    from shared.common.cache import redis_manager
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -35,6 +36,7 @@ except ImportError:
     from app.models.sys_conf import SysConf
     from app.models.host_exec_log import HostExecLog
 
+    from shared.common.cache import redis_manager
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -213,7 +215,32 @@ class AgentReportService:
             )
 
     async def get_latest_ota_configs(self) -> List[Dict[str, Optional[str]]]:
-        """获取最新 OTA 配置信息列表"""
+        """获取最新 OTA 配置信息列表（带缓存）
+
+        使用 Redis 缓存 OTA 配置，缓存时间 5 分钟，减少数据库查询压力。
+        """
+        # 缓存键
+        cache_key = "ota_configs:latest"
+
+        # 尝试从缓存获取
+        try:
+            cached_configs = await redis_manager.get(cache_key)
+            if cached_configs is not None:
+                logger.debug(
+                    "从缓存获取 OTA 配置",
+                    extra={
+                        "cache_key": cache_key,
+                        "count": len(cached_configs) if isinstance(cached_configs, list) else 0,
+                    },
+                )
+                return cached_configs
+        except Exception as e:
+            logger.warning(
+                "从缓存获取 OTA 配置失败，将查询数据库",
+                extra={"cache_key": cache_key, "error": str(e)},
+            )
+
+        # 缓存未命中，查询数据库
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
             stmt = (
@@ -232,6 +259,11 @@ class AgentReportService:
 
             if not records:
                 logger.info("未查询到 OTA 配置，返回空列表")
+                # 缓存空结果，避免频繁查询（缓存时间缩短为 1 分钟）
+                try:
+                    await redis_manager.set(cache_key, [], expire=60)
+                except Exception as e:
+                    logger.warning(f"缓存空结果失败: {e!s}")
                 return []
 
             logger.info(
@@ -252,16 +284,47 @@ class AgentReportService:
                         "conf_md5": conf_data.get("conf_md5"),
                     }
                 )
+
+            # 存入缓存，5 分钟过期
+            try:
+                await redis_manager.set(cache_key, ota_configs, expire=300)
+                logger.debug(
+                    "OTA 配置已缓存",
+                    extra={"cache_key": cache_key, "count": len(ota_configs), "expire_seconds": 300},
+                )
+            except Exception as e:
+                logger.warning(f"缓存 OTA 配置失败: {e!s}")
+
             return ota_configs
 
     async def _get_hardware_template(self) -> Optional[Dict[str, Any]]:
-        """获取硬件模板配置
+        """获取硬件模板配置（带缓存）
 
-        从 sys_conf 表查询 conf_key='hw_temp', state_flag=0, del_flag=0 的配置
+        从 sys_conf 表查询 conf_key='hw_temp', state_flag=0, del_flag=0 的配置。
+        使用 Redis 缓存模板数据，缓存时间 5 分钟，减少数据库查询压力。
 
         Returns:
             硬件模板配置（conf_json 字段）
         """
+        # 缓存键
+        cache_key = "hardware_template"
+
+        # 尝试从缓存获取
+        try:
+            cached_template = await redis_manager.get(cache_key)
+            if cached_template is not None:
+                logger.debug(
+                    "从缓存获取硬件模板",
+                    extra={"cache_key": cache_key},
+                )
+                return cached_template
+        except Exception as e:
+            logger.warning(
+                "从缓存获取硬件模板失败，将查询数据库",
+                extra={"cache_key": cache_key, "error": str(e)},
+            )
+
+        # 缓存未命中，查询数据库
         try:
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
@@ -278,9 +341,26 @@ class AgentReportService:
 
                 if not conf:
                     logger.warning("未找到硬件模板配置（conf_key='hw_temp'）")
+                    # 缓存 None 结果，避免频繁查询（缓存时间缩短为 1 分钟）
+                    try:
+                        await redis_manager.set(cache_key, None, expire=60)
+                    except Exception as e:
+                        logger.warning(f"缓存空结果失败: {e!s}")
                     return None
 
-                return conf.conf_json
+                template = conf.conf_json
+
+                # 存入缓存，5 分钟过期
+                try:
+                    await redis_manager.set(cache_key, template, expire=300)
+                    logger.debug(
+                        "硬件模板已缓存",
+                        extra={"cache_key": cache_key, "expire_seconds": 300},
+                    )
+                except Exception as e:
+                    logger.warning(f"缓存硬件模板失败: {e!s}")
+
+                return template
 
         except Exception as e:
             logger.error(f"获取硬件模板配置失败: {e!s}", exc_info=True)

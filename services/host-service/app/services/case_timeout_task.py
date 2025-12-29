@@ -24,6 +24,7 @@ try:
     from app.models.host_exec_log import HostExecLog
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
@@ -35,6 +36,7 @@ except ImportError:
     from app.models.host_exec_log import HostExecLog
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
@@ -126,7 +128,10 @@ class CaseTimeoutTaskService:
     async def _check_timeout_cases(self) -> None:
         """检查超时的测试用例"""
         try:
-            logger.info("开始检测超时的测试用例")
+            log_operation_start(
+                "检测超时的测试用例",
+                logger_instance=logger,
+            )
 
             # 1. 获取 case_timeout 配置（带缓存）
             timeout_minutes = await self._get_case_timeout_config()
@@ -373,7 +378,7 @@ class CaseTimeoutTaskService:
                                 ),
                                 and_(
                                     HostExecLog.due_time.is_(None),
-                            HostExecLog.begin_time < timeout_threshold,
+                                    HostExecLog.begin_time < timeout_threshold,
                                 ),
                             ),
                         )
@@ -481,7 +486,7 @@ class CaseTimeoutTaskService:
                         "邮箱列表为空，跳过邮件通知",
                         extra={
                             "host_id": exec_log.host_id,
-                "log_id": exec_log.id,
+                            "log_id": exec_log.id
                         },
                     )
                     return False

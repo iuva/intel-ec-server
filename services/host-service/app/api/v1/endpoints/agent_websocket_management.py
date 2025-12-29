@@ -11,12 +11,16 @@ from fastapi import APIRouter, Depends, Path, Query
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.utils.websocket_helpers import validate_websocket_message
+
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import SuccessResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.utils.websocket_helpers import validate_websocket_message
+
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -155,14 +159,7 @@ async def send_message_to_host(
         ```
     """
     # 验证消息格式
-    if not message.get("type"):
-        raise BusinessError(
-            message="消息必须包含 type 字段",
-            message_key="error.websocket.invalid_message_format",
-            error_code="INVALID_MESSAGE_FORMAT",
-            code=400,
-            http_status_code=400,
-        )
+    validate_websocket_message(message)
 
     ws_manager = get_agent_websocket_manager()
     success = await ws_manager.send_to_host(host_id, message)
@@ -231,14 +228,7 @@ async def send_message_to_hosts(
         ```
     """
     # 验证消息格式
-    if not message.get("type"):
-        raise BusinessError(
-            message="消息必须包含 type 字段",
-            message_key="error.websocket.invalid_message_format",
-            error_code="INVALID_MESSAGE_FORMAT",
-            code=400,
-            http_status_code=400,
-        )
+    validate_websocket_message(message)
 
     ws_manager = get_agent_websocket_manager()
     success_count = await ws_manager.send_to_hosts(host_ids, message)
@@ -300,14 +290,7 @@ async def broadcast_message(
         ```
     """
     # 验证消息格式
-    if not message.get("type"):
-        raise BusinessError(
-            message="消息必须包含 type 字段",
-            message_key="error.websocket.invalid_message_format",
-            error_code="INVALID_MESSAGE_FORMAT",
-            code=400,
-            http_status_code=400,
-        )
+    validate_websocket_message(message)
 
     ws_manager = get_agent_websocket_manager()
     success_count = await ws_manager.broadcast(message, exclude=exclude_host_id)

@@ -28,9 +28,9 @@ try:
         AdminHostUpdatePasswordResponse,
     )
     from app.services.admin_host_service import AdminHostService
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result, SuccessResponse
@@ -53,9 +53,9 @@ except ImportError:
         AdminHostUpdatePasswordResponse,
     )
     from app.services.admin_host_service import AdminHostService
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result, SuccessResponse
@@ -126,7 +126,7 @@ async def list_hosts(
             "username": request.username,
             "mg_id": request.mg_id,
             "use_by": request.use_by,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -154,18 +154,11 @@ async def list_hosts(
         },
     )
 
-    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
-    message = t(
-        "success.host.list_query",
-        locale=locale,
-        default="查询主机列表成功",
-    )
-
-    return Result(
-        code=200,
-        message=message,
+    return create_success_result(
         data=response_data,
+        message_key="success.host.list_query",
         locale=locale,
+        default_message="查询主机列表成功",
     )
 
 
@@ -352,7 +345,7 @@ async def disable_host(
         "接收管理后台主机停用请求",
         extra={
             "host_id": request.host_id,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -364,7 +357,7 @@ async def disable_host(
         extra={
             "host_id": result["id"],
             "appr_state": result["appr_state"],
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -465,7 +458,7 @@ async def force_offline_host(
         "接收管理后台主机强制下线请求",
         extra={
             "host_id": request.host_id,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -477,7 +470,7 @@ async def force_offline_host(
         extra={
             "host_id": result["id"],
             "host_state": result["host_state"],
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -579,7 +572,7 @@ async def get_host_detail(
         "接收管理后台主机详情查询请求",
         extra={
             "host_id": request.host_id,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -591,7 +584,7 @@ async def get_host_detail(
         extra={
             "host_id": request.host_id,
             "hw_list_count": len(detail.get("hw_list", [])),
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -606,18 +599,11 @@ async def get_host_detail(
         hw_list=detail.get("hw_list", []),
     )
 
-    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
-    message = t(
-        "success.host.detail_query",
-        locale=locale,
-        default="查询主机详情成功",
-    )
-
-    return Result(
-        code=200,
-        message=message,
+    return create_success_result(
         data=detail_response,
+        message_key="success.host.detail_query",
         locale=locale,
+        default_message="查询主机详情成功",
     )
 
 
@@ -706,7 +692,7 @@ async def update_host_***REMOVED***word(
         "接收管理后台主机密码修改请求",
         extra={
             "host_id": request.host_id,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -717,7 +703,7 @@ async def update_host_***REMOVED***word(
         "管理后台主机密码修改完成",
         extra={
             "host_id": result["id"],
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -828,7 +814,7 @@ async def list_host_exec_logs(
             "host_id": request.host_id,
             "page": request.page,
             "page_size": request.page_size,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -854,13 +840,13 @@ async def list_host_exec_logs(
             "returned_count": len(logs),
             "page": pagination.page,
             "page_size": pagination.page_size,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
-    return Result(
-        code=200,
-        message=t("success.host.exec_log_list_query", locale=locale, default="查询执行日志列表成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.host.exec_log_list_query",
         locale=locale,
+        default_message="查询执行日志列表成功",
     )

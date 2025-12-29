@@ -22,9 +22,9 @@ try:
         AdminMaintainEmailResponse,
     )
     from app.services.admin_appr_host_service import AdminApprHostService
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result, SuccessResponse
@@ -42,9 +42,9 @@ except ImportError:
         AdminMaintainEmailResponse,
     )
     from app.services.admin_appr_host_service import AdminApprHostService
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result, SuccessResponse
@@ -109,7 +109,7 @@ async def list_appr_hosts(
             "mac": request.mac,
             "mg_id": request.mg_id,
             "host_state": request.host_state,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -137,18 +137,11 @@ async def list_appr_hosts(
         },
     )
 
-    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
-    message = t(
-        "success.host.appr_list_query",
-        locale=locale,
-        default="查询待审批主机列表成功",
-    )
-
-    return Result(
-        code=200,
-        message=message,
+    return create_success_result(
         data=response_data,
+        message_key="success.host.appr_list_query",
         locale=locale,
+        default_message="查询待审批主机列表成功",
     )
 
 
@@ -224,7 +217,7 @@ async def get_appr_host_detail(
         "接收管理后台待审批主机详情查询请求",
         extra={
             "host_id": request.host_id,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -239,18 +232,11 @@ async def get_appr_host_detail(
         },
     )
 
-    # 使用包装响应模型，确保 Swagger 文档能正确展示 Schema
-    message = t(
-        "success.host.appr_detail_query",
-        locale=locale,
-        default="查询待审批主机详情成功",
-    )
-
-    return Result(
-        code=200,
-        message=message,
+    return create_success_result(
         data=detail,
+        message_key="success.host.appr_detail_query",
         locale=locale,
+        default_message="查询待审批主机详情成功",
     )
 
 
@@ -447,7 +433,7 @@ async def get_maintain_email(
     logger.info(
         "接收管理后台获取维护通知邮箱请求",
         extra={
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -553,12 +539,12 @@ async def set_maintain_email(
         "接收管理后台维护通知邮箱设置请求",
         extra={
             "email": request.email,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
     # 获取当前用户ID
-    operator_id = current_user.get("user_id")
+    operator_id = current_user.get("id")
     if not operator_id:
         logger.warning(
             "无法获取当前用户ID",

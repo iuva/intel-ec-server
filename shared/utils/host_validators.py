@@ -160,3 +160,59 @@ def build_host_query(
         stmt = stmt.where(and_(*conditions))
 
     return stmt
+
+
+def parse_host_id(
+    host_id: str,
+    raise_on_error: bool = True,
+    error_message: Optional[str] = None,
+    error_code: str = "INVALID_HOST_ID",
+) -> int:
+    """解析主机ID字符串为整数
+
+    统一处理主机ID格式验证逻辑，减少重复代码。
+
+    Args:
+        host_id: 主机ID字符串
+        raise_on_error: 如果格式无效是否抛出异常
+        error_message: 自定义错误消息（如果为 None 则使用默认消息）
+        error_code: 错误代码
+
+    Returns:
+        解析后的主机ID（整数）
+
+    Raises:
+        BusinessError: 如果格式无效且 raise_on_error=True
+
+    Example:
+        ```python
+        # 解析主机ID（无效时抛出异常）
+        host_id_int = parse_host_id("123")
+
+        # 解析主机ID（无效时返回 None）
+        try:
+            host_id_int = parse_host_id("invalid", raise_on_error=True)
+        except BusinessError:
+            # 处理错误
+            ***REMOVED***
+        ```
+    """
+    try:
+        return int(host_id)
+    except (ValueError, TypeError) as e:
+        if raise_on_error:
+            logger.warning(
+                "主机ID格式无效",
+                extra={
+                    "host_id": host_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+            )
+            raise BusinessError(
+                message=error_message or "主机ID格式无效",
+                error_code=error_code,
+                code=400,
+                details={"host_id": host_id},
+            )
+        raise

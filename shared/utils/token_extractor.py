@@ -137,15 +137,26 @@ class TokenExtractor:
                         "收到 introspect 响应",
                         extra={
                             "active": data.get("active"),
-                            "user_id": data.get("user_id") or data.get("sub"),
+                            "id": data.get("id"),
                         },
                     )
 
                     # 检查 token 是否有效
                     if data.get("active", False):
+                        # ✅ 统一使用 id 字段，没有则返回 False
+                        user_id = data.get("id")
+                        if not user_id:
+                            logger.warning(
+                                "Token 验证成功但 id 为空",
+                                extra={
+                                    "data_keys": list(data.keys()),
+                                    "active": data.get("active"),
+                                },
+                            )
+                            return False, None
                         # 构建用户信息
                         user_info = {
-                            "user_id": data.get("user_id") or data.get("sub"),
+                            "id": user_id,
                             "username": data.get("username"),
                             "user_type": data.get("user_type"),
                             "permissions": data.get("permissions", []),
@@ -156,7 +167,7 @@ class TokenExtractor:
                         logger.info(
                             "Token 验证成功",
                             extra={
-                                "user_id": user_info["user_id"],
+                                "id": user_info["id"],
                                 "username": user_info["username"],
                                 "user_type": user_info["user_type"],
                             },
@@ -193,7 +204,7 @@ class TokenExtractor:
             >>> extractor = TokenExtractor()
             >>> is_valid, user_info = await extractor.extract_and_verify(request)
             >>> if is_valid:
-            >>>     host_id = user_info["user_id"]
+            >>>     id = user_info["id"]
         """
         # 提取 token
         token = self.extract_token_from_request(request)

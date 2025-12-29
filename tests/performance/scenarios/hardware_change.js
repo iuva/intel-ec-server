@@ -34,7 +34,7 @@ const mockDmrConfig = {
 };
 
 export default function () {
-    const url = `${BASE_URL}/api/v1/agent/hardware/report`;
+    const url = `${BASE_URL}/api/v1/host/agent/hardware/report`;
     const hostId = __VU;
 
     // 生成 Token

@@ -630,33 +630,32 @@ class BrowserHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 查询 host_exec_log 表，获取需要重试的 host_id 列表
-            log_stmt = (
-                select(HostExecLog.host_id)
+            # ✅ 优化：使用 JOIN 查询，一次查询获取所有数据，减少数据库往返
+            # 合并原来的两次查询为一次 JOIN 查询
+            stmt = (
+                select(HostRec.id, HostRec.host_ip, HostRec.host_acct)
+                .select_from(
+                    HostExecLog.__table__.join(
+                        HostRec.__table__,
+                        HostExecLog.host_id == HostRec.id,
+                    )
+                )
                 .where(
                     and_(
                         HostExecLog.user_id == user_id,
                         HostExecLog.case_state != 2,  # 非成功状态
                         HostExecLog.del_flag == 0,
+                        HostRec.del_flag == 0,
                     )
                 )
                 .distinct()  # 去重，同一个 host_id 可能有多条失败记录
             )
 
-            log_result = await session.execute(log_stmt)
-            host_ids = [row[0] for row in log_result.fetchall() if row[0] is not None]
+            result = await session.execute(stmt)
+            hosts = result.fetchall()
 
-            logger.info(
-                "查询到需要重试的主机ID列表",
-                extra={
-                    "user_id": user_id,
-                    "host_id_count": len(host_ids),
-                    "host_ids": host_ids,
-                },
-            )
-
-            # 2. 如果没有需要重试的主机，直接返回空列表
-            if not host_ids:
+            # 如果没有需要重试的主机，直接返回空列表
+            if not hosts:
                 logger.info(
                     "没有需要重试的 VNC 连接",
                     extra={
@@ -665,26 +664,15 @@ class BrowserHostService:
                 )
                 return []
 
-            # 3. 查询 host_rec 表，获取主机详细信息
-            host_stmt = select(HostRec.id, HostRec.host_ip, HostRec.host_acct).where(
-                and_(
-                    HostRec.id.in_(host_ids),
-                    HostRec.del_flag == 0,
-                )
-            )
-
-            host_result = await session.execute(host_stmt)
-            hosts = host_result.fetchall()
-
             logger.info(
-                "查询到主机详细信息",
+                "查询到需要重试的主机列表（JOIN 查询优化）",
                 extra={
                     "user_id": user_id,
                     "host_count": len(hosts),
                 },
             )
 
-            # 4. 构建返回结果
+            # 构建返回结果
             retry_vnc_list = [
                 RetryVNCHostInfo(
                     host_id=str(host[0]),  # ✅ 转换为字符串避免精度丢失

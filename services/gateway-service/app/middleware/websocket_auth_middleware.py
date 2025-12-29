@@ -97,7 +97,7 @@ class WebSocketAuthMiddleware:
                 "WebSocket 连接已认证",
                 extra={
                     "client": websocket.client.host if websocket.client else "unknown",
-                    "user_id": user_info.get("user_id"),
+                    "id": user_info.get("id"),
                     "username": user_info.get("username"),
                 },
             )
@@ -158,7 +158,15 @@ class WebSocketAuthMiddleware:
         try:
             user_info = self.jwt_manager.verify_token(token)
             if user_info:
-                self.logger.debug("令牌验证成功", extra={"user_id": user_info.get("user_id")})
+                # ✅ 统一使用 id 字段（如果没有则从 sub 提取，兼容旧 token）
+                user_id = user_info.get("id") or user_info.get("sub")
+                # 如果原始 user_info 没有 id 字段，添加它（兼容旧 token）
+                if "id" not in user_info and user_id:
+                    user_info["id"] = user_id
+                if not user_id:
+                    self.logger.warning("Token 验证成功但 id 为空", extra={"payload_keys": list(user_info.keys())})
+                    return None
+                self.logger.debug("令牌验证成功", extra={"id": user_id})
             return user_info
 
         except Exception as e:
@@ -197,7 +205,7 @@ class WebSocketAuthMiddleware:
             self.logger.warning(
                 "用户权限不足",
                 extra={
-                    "user_id": user_info.get("user_id"),
+                    "id": user_info.get("id"),
                     "required": list(required_perms),
                     "missing": list(missing_perms),
                 },

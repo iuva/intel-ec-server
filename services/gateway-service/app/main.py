@@ -22,6 +22,7 @@ try:
     from shared.common.http_client import HTTPClientConfig
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
     from shared.utils.service_discovery import init_service_discovery
@@ -37,6 +38,7 @@ except ImportError:
     from shared.common.http_client import HTTPClientConfig
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
     from shared.utils.service_discovery import init_service_discovery
@@ -51,9 +53,9 @@ except ImportError:
     ***REMOVED***
 
 # 配置日志（在应用启动前配置）
+# 日志级别会自动从环境变量 LOG_LEVEL 或 DEBUG 读取
 service_name = os.getenv("GATEWAY_SERVICE_NAME", "gateway-service")
-log_level = os.getenv("LOG_LEVEL", "INFO")
-configure_logger(service_name=service_name, log_level=log_level)
+configure_logger(service_name=service_name)
 
 logger = get_logger(__name__)
 
@@ -139,16 +141,35 @@ app.state.max_websocket_connections = int(os.getenv("MAX_WEBSOCKET_CONNECTIONS",
 
 # ✅ 在这里立即添加所有中间件（在 lifespan 之前）
 # 添加 CORS 中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ⚠️ 注意：当 allow_origins=["*"] 时，allow_credentials 必须为 False
+# 如果需要 allow_credentials=True，必须指定具体的域名（如 ["http://localhost:3000"]）
+cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+if cors_allowed_origins == "*":
+    # 允许所有来源，但不允许 credentials
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # 指定具体域名，允许 credentials
+    origins_list = [origin.strip() for origin in cors_allowed_origins.split(",")]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # 添加认证中间件
 app.add_middleware(AuthMiddleware)
+
+# ✅ 添加 HTTP 请求/响应日志中间件（记录请求和响应的详细信息）
+app.add_middleware(HTTPLoggingMiddleware)
+logger.info("✅ HTTP 请求/响应日志中间件已启用")
 
 # 添加 Prometheus 指标收集中间件（根据配置开关）
 if config.enable_prometheus:

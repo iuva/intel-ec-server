@@ -15,7 +15,9 @@ try:
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
     from app.services.agent_websocket_manager import get_agent_websocket_manager
+    from app.utils.logging_helpers import log_operation_start
 
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError
@@ -25,7 +27,9 @@ except ImportError:
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
     from app.services.agent_websocket_manager import get_agent_websocket_manager
+    from app.utils.logging_helpers import log_operation_start
 
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError
@@ -60,7 +64,10 @@ class AdminOtaService:
         Raises:
             BusinessError: 查询失败时抛出业务异常
         """
-        logger.info("开始查询 OTA 配置列表")
+        log_operation_start(
+            "查询 OTA 配置列表",
+            logger_instance=logger,
+        )
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
@@ -202,6 +209,34 @@ class AdminOtaService:
                     "conf_name": conf_name,
                 },
             )
+
+        # ✅ 优化：清除 OTA 配置缓存，确保下次查询获取最新数据
+        try:
+            from app.utils.cache_invalidation import invalidate_ota_config_cache
+
+            await invalidate_ota_config_cache()
+        except ImportError:
+            # 降级处理：直接使用 redis_manager
+            cache_key = "ota_configs:latest"
+            try:
+                await redis_manager.delete(cache_key)
+                logger.info(
+                    "OTA 配置缓存已清除（降级模式）",
+                    extra={
+                        "operation": "deploy_ota_config",
+                        "cache_key": cache_key,
+                        "config_id": config_id,
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "清除 OTA 配置缓存失败",
+                    extra={
+                        "operation": "deploy_ota_config",
+                        "cache_key": cache_key,
+                        "error": str(e),
+                    },
+                )
 
         # 3. 通过 websocket 广播消息
         ws_manager = get_agent_websocket_manager()

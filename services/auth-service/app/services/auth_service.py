@@ -184,11 +184,18 @@ class AuthService:
                     error_code="AUTH_TOKEN_VERIFICATION_ERROR",
                 )
 
-            user_id = payload.get("sub")
+            # ✅ 统一使用 id 字段（如果没有则从 sub 提取，兼容旧 token）
+            user_id = payload.get("id") or payload.get("sub")
             username = payload.get("username")
 
-            # 生成新的访问令牌
-            access_token = self.jwt_manager.create_access_token(data={"sub": user_id, "username": username})
+            # 生成新的访问令牌（统一使用 id 字段）
+            access_token = self.jwt_manager.create_access_token(
+                data={
+                    "id": user_id,  # ✅ 统一字段名为 id
+                    "sub": user_id,  # 保留 sub 字段以兼容旧 token
+                    "username": username,
+                }
+            )
 
             # 将已使用的 refresh_token 加入黑名单（过期时间设置为 refresh_token 的剩余有效期）
 
@@ -333,15 +340,17 @@ class AuthService:
                     error_code="AUTH_TOKEN_VERIFICATION_FAILED",
                 )
 
-            user_id = payload.get("sub")
+            # ✅ 统一使用 id 字段（如果没有则从 sub 提取，兼容旧 token）
+            user_id = payload.get("id") or payload.get("sub")
             username = payload.get("username")
             user_type = payload.get("user_type", "admin")
 
-            # 生成新的访问令牌
-            excluded_keys = {"sub", "username", "user_type", "exp", "type", "iat"}
+            # 生成新的访问令牌（统一使用 id 字段）
+            excluded_keys = {"id", "sub", "username", "user_type", "exp", "type", "iat"}
             extra_fields = {k: v for k, v in payload.items() if k not in excluded_keys}
             access_token_data = {
-                "sub": user_id,
+                "id": user_id,  # ✅ 统一字段名为 id
+                "sub": user_id,  # 保留 sub 字段以兼容旧 token
                 "username": username,
                 "user_type": user_type,
                 **extra_fields,
@@ -353,7 +362,8 @@ class AuthService:
             new_refresh_token = refresh_data.refresh_token
             if refresh_data.auto_renew:
                 refresh_token_data = {
-                    "sub": user_id,
+                    "id": user_id,  # ✅ 统一字段名为 id
+                    "sub": user_id,  # 保留 sub 字段以兼容旧 token
                     "username": username,
                     "user_type": user_type,
                     **extra_fields,
@@ -469,11 +479,11 @@ class AuthService:
                 )
                 return IntrospectResponse(active=False)
 
-            # ✅ 提取 user_id（sub 字段），确保不为空
-            sub = payload.get("sub")
-            if not sub:
+            # ✅ 统一使用 id 字段（如果没有则从 sub 提取，兼容旧 token）
+            user_id = payload.get("id") or payload.get("sub")
+            if not user_id:
                 logger.warning(
-                    "Token payload 中缺少 sub 字段",
+                    "Token payload 中缺少 id 和 sub 字段",
                     extra={
                         "operation": "introspect_token",
                         "payload_keys": list(payload.keys()),
@@ -483,19 +493,17 @@ class AuthService:
                 return IntrospectResponse(active=False)
 
             # ✅ 转换为字符串避免精度丢失
-            user_id = str(sub)
+            user_id = str(user_id)
 
             # ✅ 增强日志：记录 token 验证成功的详细信息（特别是 device 类型）
             logger.info(
                 "Token 验证成功 - 返回用户信息",
                 extra={
                     "operation": "introspect_token",
-                    "user_id": user_id,
+                    "id": user_id,
                     "username": payload.get("username"),
                     "user_type": payload.get("user_type"),
                     "token_type": payload.get("type", "access"),
-                    "sub_original": sub,
-                    "sub_type": type(sub).__name__,
                     "has_mg_id": "mg_id" in payload,
                     "has_host_ip": "host_ip" in payload,
                     "payload_keys": list(payload.keys()),
@@ -504,15 +512,16 @@ class AuthService:
 
             return IntrospectResponse(
                 active=True,
+                id=user_id,  # ✅ 统一字段名为 id
                 username=payload.get("username"),
-                user_id=user_id,
+                user_id=user_id,  # 兼容字段
                 exp=payload.get("exp"),
                 token_type=payload.get("type", "access"),
                 # ✅ 新增：返回所有 payload 字段，支持设备登录
                 user_type=payload.get("user_type"),
                 mg_id=payload.get("mg_id"),
                 host_ip=payload.get("host_ip"),
-                sub=sub,  # 原始 sub 字段（可能是字符串或整数）
+                sub=user_id,  # 兼容字段
             )
 
         except (ValueError, KeyError, AttributeError) as e:
@@ -599,10 +608,11 @@ class AuthService:
                         http_status_code=401,
                     )
 
-                # 生成访问令牌
+                # 生成访问令牌（统一使用 id 字段）
                 access_token = self.jwt_manager.create_access_token(
                     data={
-                        "sub": str(user.id),
+                        "id": str(user.id),  # ✅ 统一字段名为 id
+                        "sub": str(user.id),  # 保留 sub 字段以兼容旧 token
                         "username": user.user_account,
                         "user_type": "admin",
                         "user_name": user.user_name,
@@ -618,10 +628,11 @@ class AuthService:
                     },
                 )
 
-                # 生成刷新令牌
+                # 生成刷新令牌（统一使用 id 字段）
                 refresh_token = self.jwt_manager.create_refresh_token(
                     data={
-                        "sub": str(user.id),
+                        "id": str(user.id),  # ✅ 统一字段名为 id
+                        "sub": str(user.id),  # 保留 sub 字段以兼容旧 token
                         "username": user.user_account,
                         "user_type": "admin",
                         "user_name": user.user_name,
@@ -774,10 +785,11 @@ class AuthService:
                 # 提交事务
                 await db_session.commit()
 
-                # 生成访问令牌
+                # 生成访问令牌（统一使用 id 字段）
                 access_token = self.jwt_manager.create_access_token(
                     data={
-                        "sub": str(host_rec.id),
+                        "id": str(host_rec.id),  # ✅ 统一字段名为 id
+                        "sub": str(host_rec.id),  # 保留 sub 字段以兼容旧 token
                         "mg_id": login_data.mg_id,
                         "host_ip": login_data.host_ip,
                         "username": login_data.username,
@@ -795,10 +807,11 @@ class AuthService:
                     },
                 )
 
-                # 生成刷新令牌
+                # 生成刷新令牌（统一使用 id 字段）
                 refresh_token = self.jwt_manager.create_refresh_token(
                     data={
-                        "sub": str(host_rec.id),
+                        "id": str(host_rec.id),  # ✅ 统一字段名为 id
+                        "sub": str(host_rec.id),  # 保留 sub 字段以兼容旧 token
                         "mg_id": login_data.mg_id,
                         "host_ip": login_data.host_ip,
                         "username": login_data.username,

@@ -18,6 +18,7 @@ try:
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
@@ -28,6 +29,7 @@ except ImportError:
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 
@@ -41,13 +43,9 @@ except ImportError:
     ***REMOVED***
 
 # 配置日志（在应用启动前配置）
+# 日志级别会自动从环境变量 LOG_LEVEL 或 DEBUG 读取
 service_name = os.getenv("HOST_SERVICE_NAME", "host-service")
-# 从环境变量读取日志级别，支持 DEBUG, INFO, WARNING, ERROR, CRITICAL
-log_level = os.getenv("LOG_LEVEL", os.getenv("DEBUG", "INFO")).upper()
-# 如果 DEBUG=true，则使用 DEBUG 级别
-if os.getenv("DEBUG", "").lower() == "true":
-    log_level = "DEBUG"
-configure_logger(service_name=service_name, log_level=log_level)
+configure_logger(service_name=service_name)
 
 logger = get_logger(__name__)
 
@@ -69,19 +67,19 @@ async def startup_case_timeout_task(app):
     """
     # ✅ 检查环境变量开关，默认关闭
     enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
-    
+
     if not enable_task:
         logger.info(
             "Case 超时检测定时任务已禁用（通过环境变量 ENABLE_CASE_TIMEOUT_TASK=false）",
             extra={"enable_case_timeout_task": enable_task},
         )
         return
-    
+
     logger.info(
         "Case 超时检测定时任务已启用（通过环境变量 ENABLE_CASE_TIMEOUT_TASK=true）",
         extra={"enable_case_timeout_task": enable_task},
     )
-    
+
     case_timeout_task = get_case_timeout_task_service()
     await case_timeout_task.start()
 
@@ -94,10 +92,10 @@ async def shutdown_case_timeout_task(app):
     """
     # ✅ 检查环境变量开关，如果已禁用则无需停止
     enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
-    
+
     if not enable_task:
         return
-    
+
     case_timeout_task = get_case_timeout_task_service()
     await case_timeout_task.stop()
 
@@ -116,13 +114,32 @@ app = FastAPI(
 
 # ✅ 在这里立即添加所有中间件（在 lifespan 之前）
 # 添加 CORS 中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ⚠️ 注意：当 allow_origins=["*"] 时，allow_credentials 必须为 False
+# 如果需要 allow_credentials=True，必须指定具体的域名（如 ["http://localhost:3000"]）
+cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "*")
+if cors_allowed_origins == "*":
+    # 允许所有来源，但不允许 credentials
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # 指定具体域名，允许 credentials
+    origins_list = [origin.strip() for origin in cors_allowed_origins.split(",")]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# ✅ 添加 HTTP 请求/响应日志中间件（记录请求和响应的详细信息）
+app.add_middleware(HTTPLoggingMiddleware)
+logger.info("✅ HTTP 请求/响应日志中间件已启用")
 
 # 添加 Prometheus 指标收集中间件（根据配置开关）
 if config.enable_prometheus:

@@ -22,7 +22,7 @@
 *   **Service**: FastAPI (Uvicorn workers >= 4)
 
 ### 2.2 数据库配置 (预期)
-*   **Type**: MariaDB / MySQL 8.0
+*   **Type**: MariaDB 10.11
 *   **CPU**: 4 Core
 *   **Memory**: 16GB (InnoDB Buffer Pool >= 8GB)
 *   **Max Connections**: >= 2000
@@ -71,7 +71,7 @@
 ## 5. 测试场景详细设计
 
 ### 5.1 浏览器 - 可用列表查询
-*   **接口**: `POST /api/v1/browser/host/available`
+*   **接口**: `POST /api/v1/host/hosts/available`
 *   **参数**:
     ```json
     {
@@ -82,33 +82,41 @@
       "email": "test_${__VU}@example.com"
     }
     ```
-*   **逻辑**: 模拟用户打开“可用主机”页面，频繁刷新或翻页。
+*   **逻辑**: 模拟用户打开"可用主机"页面，频繁刷新或翻页。
 *   **脚本**: `tests/performance/scenarios/available_list.js`
 
 ### 5.2 浏览器 - 可恢复列表查询 (Retry VNC)
-*   **接口**: `POST /api/v1/browser/host/retry-vnc`
+*   **接口**: `POST /api/v1/host/hosts/retry-vnc`
 *   **参数**: `{"user_id": "user_${__VU}"}`
 *   **逻辑**: 模拟用户查询需要重试 VNC 连接的主机列表。
 *   **脚本**: `tests/performance/scenarios/recoverable_list.js`
 
 ### 5.3 WebSocket - Agent 状态变更
-*   **接口**: `ws://<host>:<port>/api/v1/agent/ws/host`
-*   **认证**: `Authorization: Bearer <JWT Token>`
+*   **接口**: `ws://<host>:<port>/api/v1/host/ws/host`
+*   **认证**: 
+    - 请求头: `Authorization: Bearer <JWT Token>`
+    - 查询参数: `?token=<JWT Token>` (可选)
 *   **消息**:
     ```json
-    { "type": "status_update", "status": "busy" }
+    {
+      "type": "status_update",
+      "agent_id": "host_id_value",
+      "status": "busy",
+      "details": null
+    }
     ```
+    *注: `status` 可选值: `online`, `offline`, `busy`, `error`*
 *   **逻辑**: 建立长连接，并在连接保持期间定期发送状态变更。
 *   **脚本**: `tests/performance/scenarios/websocket_status.js`
 
 ### 5.4 HTTP - Agent 硬件发生变更
-*   **接口**: `POST /api/v1/agent/hardware/report`
+*   **接口**: `POST /api/v1/host/agent/hardware/report`
 *   **参数**: 包含完整 `dmr_config` 的大 JSON。
 *   **逻辑**: 模拟 Agent 检测到硬件变更并上报。此接口计算量大（Diff逻辑）。
 *   **脚本**: `tests/performance/scenarios/hardware_change.js`
 
 ### 5.5 HTTP Agent - 获取最新版本
-*   **接口**: `GET /api/v1/agent/ota/latest`
+*   **接口**: `GET /api/v1/host/agent/ota/latest`
 *   **逻辑**: 极高频调用，模拟大规模 Agent 轮询更新。
 *   **脚本**: `tests/performance/scenarios/latest_version.js`
 

@@ -102,9 +102,9 @@ async def verify_websocket_token(
             },
         )
 
-        # 如果有 token，尝试从中解码获取用户信息（特别是 host_id/user_id）
+        # 如果有 token，尝试从中解码获取用户信息（特别是 id）
         user_info = {
-            "user_id": "unknown",
+            "id": "unknown",
             "username": "unknown",
             "user_type": "device",
             "permissions": [],
@@ -118,13 +118,13 @@ async def verify_websocket_token(
                 # 不验证签名，只解码以获取信息
                 decoded = jwt.decode(token, options={"verify_signature": False})
 
-                # 从 token 中提取 host_id（可能在 sub 或 user_id 字段）
-                user_id = decoded.get("sub") or decoded.get("user_id")
+                # ✅ 统一使用 id 字段（如果没有则从 sub 提取，兼容旧 token）
+                user_id = decoded.get("id") or decoded.get("sub")
                 if user_id:
-                    user_info["user_id"] = str(user_id)
+                    user_info["id"] = str(user_id)
                     logger.debug(
-                        "从token中提取到host_id",
-                        extra={"host_id": user_id},
+                        "从token中提取到id",
+                        extra={"id": user_id},
                     )
 
                 # 提取其他可用信息
@@ -248,14 +248,14 @@ async def verify_websocket_token(
 
                     # 检查 token 是否有效
                     if data.get("active", False):
-                        user_id = data.get("user_id") or data.get("sub")
-                        # ✅ 验证 user_id 是否有效（不为 None、空字符串）
+                        # ✅ 统一使用 id 字段，没有则继续尝试其他地址
+                        user_id = data.get("id")
                         if not user_id or not str(user_id).strip():
                             logger.warning(
-                                "WebSocket token 有效但 user_id 无效",
+                                "WebSocket token 有效但 id 为空",
                                 extra={
-                                    "user_id": user_id,
-                                    "user_id_type": type(user_id).__name__ if user_id is not None else "None",
+                                    "id": user_id,
+                                    "id_type": type(user_id).__name__ if user_id is not None else "None",
                                     "auth_service_url": base_url,
                                     "data_keys": list(data.keys()),
                                 },
@@ -264,7 +264,7 @@ async def verify_websocket_token(
                             continue
 
                         user_info = {
-                            "user_id": user_id,
+                            "id": user_id,
                             "username": data.get("username"),
                             "user_type": data.get("user_type"),
                             "permissions": data.get("permissions", []),
@@ -274,7 +274,7 @@ async def verify_websocket_token(
                         logger.info(
                             "WebSocket token 验证成功",
                             extra={
-                                "user_id": user_info["user_id"],
+                                "id": user_info["id"],
                                 "username": user_info["username"],
                                 "user_type": user_info["user_type"],
                                 "client": f"{websocket.client.host}:{websocket.client.port}"
@@ -462,14 +462,13 @@ async def verify_token_string(
                 )
 
                 if data.get("active", False):
-                    user_id = data.get("user_id") or data.get("sub")
-                    # ✅ 验证 user_id 是否有效（不为 None、空字符串）
-                    # ⚠️ 注意：如果 host_id 可能为 0，需要特殊处理（当前允许 0）
+                    # ✅ 统一使用 id 字段，没有则返回 None
+                    user_id = data.get("id")
                     if user_id and str(user_id).strip():
                         logger.info(
                             "Token 字符串验证成功",
                             extra={
-                                "user_id": user_id,
+                                "id": user_id,
                                 "username": data.get("username"),
                                 "auth_service_url": base_url,
                             },
@@ -477,11 +476,11 @@ async def verify_token_string(
                         return str(user_id)
 
                     logger.warning(
-                        "Token 有效但未获取到有效的 user_id",
+                        "Token 有效但未获取到有效的 id",
                         extra={
                             "auth_service_url": base_url,
-                            "user_id": user_id,
-                            "user_id_type": type(user_id).__name__ if user_id is not None else "None",
+                            "id": user_id,
+                            "id_type": type(user_id).__name__ if user_id is not None else "None",
                             "data_keys": list(data.keys()),
                         },
                     )

@@ -34,6 +34,21 @@ except ImportError:
 logger = get_logger(__name__)
 
 
+# ==================== 辅助函数 ====================
+
+def _get_locale_from_request(request: Request) -> str:
+    """从请求中获取语言偏好
+
+    Args:
+        request: 请求对象
+
+    Returns:
+        语言代码（如 "zh_CN", "en_US"）
+    """
+    accept_language = request.headers.get("Accept-Language")
+    return parse_accept_language(accept_language)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """认证中间件
 
@@ -384,7 +399,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             extra={
                 "path": request.url.path,
                 "method": request.method,
-                "user_id": user_info.get("user_id"),
+                "id": user_info.get("id"),
                 "username": user_info.get("username"),
                 "user_type": user_info.get("user_type"),
             },
@@ -539,21 +554,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     if result.get("code") == 200:
                         data = result.get("data", {})
                         if data.get("active"):
-                            # ✅ 验证 user_id 是否存在（修复：确保 user_id 不为空）
-                            user_id = data.get("user_id")
+                            # ✅ 统一使用 id 字段，没有则返回 None（401）
+                            user_id = data.get("id")
                             
                             # ✅ 增强日志：记录 Auth Service 返回的完整数据（用于诊断）
                             logger.debug(
                                 "Auth Service 返回的验证结果",
                                 extra={
                                     "active": data.get("active"),
-                                    "user_id": user_id,
-                                    "user_id_type": type(user_id).__name__ if user_id else None,
+                                    "id": user_id,
+                                    "id_type": type(user_id).__name__ if user_id else None,
                                     "username": data.get("username"),
                                     "user_type": data.get("user_type"),
                                     "token_type": data.get("token_type"),
-                                    "has_sub": "sub" in data,
-                                    "sub_value": data.get("sub"),
                                     "data_keys": list(data.keys()),
                                     "token_preview": token_preview,
                                     "request_path": request_path,
@@ -562,26 +575,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             
                             if not user_id:
                                 logger.warning(
-                                    "Token 验证成功但 user_id 为空",
+                                    "Token 验证成功但 id 为空",
                                     extra={
                                         "data_keys": list(data.keys()),
                                         "token_preview": token_preview,
                                         "request_path": request_path,
                                         "request_method": request_method,
-                                        "reason": "missing_user_id",
+                                        "reason": "missing_id",
                                         "auth_service_response": {
                                             "code": result.get("code"),
                                             "message": result.get("message"),
                                             "data": data,
                                         },
-                                        "hint": "Auth Service 返回的 user_id 为空，可能是 token payload 中缺少 sub 字段",
+                                        "hint": "Auth Service 返回的 id 为空，token 无效",
                                     },
                                 )
                                 return None  # 返回 None 表示验证失败
 
-                            # 构造用户信息
+                            # ✅ 构造用户信息（统一使用 id 字段）
                             user_info = {
-                                "user_id": user_id,  # 修正：auth-service 返回的是 user_id 而不是 sub
+                                "id": user_id,
                                 "username": data.get("username"),
                                 "user_type": data.get("user_type"),
                                 "active": data.get("active"),
@@ -590,7 +603,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             logger.info(
                                 "令牌验证成功 - Auth Service 返回有效用户信息",
                                 extra={
-                                    "user_id": user_info.get("user_id"),
+                                    "id": user_info.get("id"),
                                     "username": user_info.get("username"),
                                     "user_type": user_info.get("user_type"),
                                     "token_preview": token_preview,
@@ -738,9 +751,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             JSON 响应
         """
-        # 获取语言偏好
-        accept_language = request.headers.get("Accept-Language")
-        locale = parse_accept_language(accept_language)
+        locale = _get_locale_from_request(request)
 
         error_response = ErrorResponse(
             code=code,
@@ -749,7 +760,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             error_code=error_code,
             details=details,
             locale=locale,
-            **(details or {}),  # 传递格式化变量
         )
 
         logger.warning(

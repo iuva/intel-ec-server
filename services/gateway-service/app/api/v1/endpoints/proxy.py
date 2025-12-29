@@ -7,7 +7,7 @@
 import json
 import os
 import sys
-from typing import Any, Union
+from typing import Any, Dict, Optional, Union
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -51,6 +51,97 @@ HOP_BY_HOP_RESPONSE_HEADERS = {
     "date",
     "server",
 }
+
+
+# ==================== 辅助函数 ====================
+
+def _get_locale_from_request(request: Request) -> str:
+    """从请求中获取语言偏好
+
+    Args:
+        request: FastAPI 请求对象
+
+    Returns:
+        语言代码（如 "zh_CN", "en_US"）
+    """
+    accept_language = request.headers.get("Accept-Language")
+    return parse_accept_language(accept_language)
+
+
+def _get_locale_from_websocket(websocket: WebSocket) -> str:
+    """从 WebSocket 中获取语言偏好
+
+    Args:
+        websocket: WebSocket 连接对象
+
+    Returns:
+        语言代码（如 "zh_CN", "en_US"）
+    """
+    accept_language = websocket.headers.get("Accept-Language")
+    return parse_accept_language(accept_language)
+
+
+def _create_error_response(
+    request: Request,
+    code: int,
+    message: str,
+    error_code: str,
+    message_key: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> JSONResponse:
+    """创建统一的错误响应
+
+    Args:
+        request: FastAPI 请求对象
+        code: HTTP 状态码
+        message: 错误消息
+        error_code: 错误代码
+        message_key: 翻译键（可选）
+        details: 错误详情（可选）
+
+    Returns:
+        JSON 响应
+    """
+    locale = _get_locale_from_request(request)
+    error_response = ErrorResponse(
+        code=code,
+        message=message,
+        message_key=message_key,
+        error_code=error_code,
+        locale=locale,
+        details=details,
+    )
+    return JSONResponse(status_code=code, content=error_response.model_dump())
+
+
+async def _send_websocket_error(
+    websocket: WebSocket,
+    code: int,
+    message: str,
+    error_code: str,
+    close_code: int = 1008,
+    close_reason: str = "",
+) -> None:
+    """发送 WebSocket 错误消息并关闭连接
+
+    Args:
+        websocket: WebSocket 连接对象
+        code: 错误代码
+        message: 错误消息
+        error_code: 错误类型标识
+        close_code: WebSocket 关闭码
+        close_reason: 关闭原因
+    """
+    locale = _get_locale_from_websocket(websocket)
+    await websocket.send_json(
+        {
+            "code": code,
+            "message": message,
+            "error_code": error_code,
+            "locale": locale,
+        }
+    )
+    await websocket.close(code=close_code, reason=close_reason or message)
 
 
 @router.websocket("/ws/{hostname}/{apiurl:path}")
@@ -103,19 +194,14 @@ async def websocket_proxy(
             # ✅ 必须先 accept 才能发送错误消息
             await websocket.accept()
 
-            # 获取语言偏好（从 WebSocket headers 或使用默认）
-            accept_language = websocket.headers.get("Accept-Language")
-            locale = parse_accept_language(accept_language)
-
-            await websocket.send_json(
-                {
-                    "code": 401,
-                    "message": t("error.auth.missing_token", locale=locale),
-                    "error_code": "WEBSOCKET_MISSING_TOKEN",
-                    "locale": locale,
-                }
+            locale = _get_locale_from_websocket(websocket)
+            await _send_websocket_error(
+                websocket=websocket,
+                code=401,
+                message=t("error.auth.missing_token", locale=locale),
+                error_code="WEBSOCKET_MISSING_TOKEN",
+                close_reason="缺少认证令牌",
             )
-            await websocket.close(code=1008, reason="缺少认证令牌")
             return
 
         # ✅ 验证 token 有效性（网关在此处验证）
@@ -134,19 +220,14 @@ async def websocket_proxy(
                 # ✅ 必须先 accept 才能发送错误消息
                 await websocket.accept()
 
-                # 获取语言偏好（从 WebSocket headers 或使用默认）
-                accept_language = websocket.headers.get("Accept-Language")
-                locale = parse_accept_language(accept_language)
-
-                await websocket.send_json(
-                    {
-                        "code": 403,
-                        "message": t("error.auth.token_invalid_or_expired", locale=locale),
-                        "error_code": "WEBSOCKET_AUTH_FAILED",
-                        "locale": locale,
-                    }
+                locale = _get_locale_from_websocket(websocket)
+                await _send_websocket_error(
+                    websocket=websocket,
+                    code=403,
+                    message=t("error.auth.token_invalid_or_expired", locale=locale),
+                    error_code="WEBSOCKET_AUTH_FAILED",
+                    close_reason="认证令牌无效或已过期",
                 )
-                await websocket.close(code=1008, reason="认证令牌无效或已过期")
                 return
 
             logger.info(
@@ -154,7 +235,7 @@ async def websocket_proxy(
                 extra={
                     "hostname": hostname,
                     "apiurl": apiurl,
-                    "user_id": user_id,
+                    "id": user_id,  # ✅ 统一字段名为 id
                     "client": websocket.client.host if websocket.client else "unknown",
                 },
             )
@@ -235,7 +316,7 @@ async def websocket_proxy(
             extra={
                 "hostname": hostname,
                 "apiurl": apiurl,
-                "user_id": user_id,
+                "id": user_id,  # ✅ 统一字段名为 id
                 "session_key": session_key,
                 "backend_path": backend_path[:100],  # 避免日志过长
                 "has_host_id": bool(user_id),
@@ -405,27 +486,68 @@ async def proxy_request(
 
         # ✅ 添加用户信息到请求头（从request.state.user获取）
         user_info = getattr(request.state, "user", None)
+
+        # ✅ 增强日志：记录用户信息状态（用于诊断）
+        logger.debug(
+            "检查用户信息状态",
+            extra={
+                "has_user_info": user_info is not None,
+                "user_info_type": type(user_info).__name__ if user_info else None,
+                "user_info_keys": list(user_info.keys()) if user_info else None,
+                "id": user_info.get("id") if user_info else None,
+                "id_type": (
+                    type(user_info.get("id")).__name__
+                    if user_info and user_info.get("id")
+                    else None
+                ),
+                "service_name": service_name,
+                "subpath": subpath,
+                "method": method,
+            },
+        )
+
         if user_info:
-            # ✅ 验证 user_id 是否存在（修复：确保 user_id 不为空）
-            if not user_info.get("user_id"):
+            # ✅ 统一使用 id 字段，没有则跳过设置 header
+            user_id = user_info.get("id")
+            if not user_id or (isinstance(user_id, str) and not user_id.strip()):
                 logger.warning(
-                    "用户信息中缺少 user_id，跳过设置 X-User-Info header",
+                    "用户信息中缺少 id，跳过设置 X-User-Info header",
                     extra={
                         "user_info_keys": list(user_info.keys()),
+                        "id_value": user_id,
+                        "id_type": type(user_id).__name__ if user_id is not None else None,
+                        "service_name": service_name,
+                        "subpath": subpath,
+                        "method": method,
+                        "hint": "请检查 Gateway 认证中间件日志，确认 token 验证是否成功",
+                    },
+                )
+            else:
+                # ✅ 确保 user_info 包含统一的 id 字段
+                if "id" not in user_info:
+                    user_info = user_info.copy()
+                    user_info["id"] = user_id
+                # 将用户信息序列化为JSON并添加到请求头
+                headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
+                logger.info(
+                    "✅ 添加用户信息到请求头",
+                    extra={
+                        "id": user_id,
+                        "username": user_info.get("username"),
+                        "user_type": user_info.get("user_type"),
                         "service_name": service_name,
                         "subpath": subpath,
                         "method": method,
                     },
                 )
-            else:
-                # 将用户信息序列化为JSON并添加到请求头
-                headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
-                logger.debug(
-                    "添加用户信息到请求头",
-                    extra={
-                        "user_id": user_info.get("user_id"),
-                        "username": user_info.get("username"),
-                        "user_type": user_info.get("user_type"),
+        else:
+            logger.warning(
+                "request.state.user 不存在，跳过设置 X-User-Info header",
+                extra={
+                    "service_name": service_name,
+                    "subpath": subpath,
+                    "method": method,
+                    "hint": "请求可能未通过认证中间件，或路径被设为公开路径",
                     },
                 )
 
@@ -520,21 +642,13 @@ async def proxy_request(
             exc_info=True,
         )
 
-        # 获取语言偏好
-        accept_language = request.headers.get("Accept-Language")
-        locale = parse_accept_language(accept_language)
-
-        # 直接返回JSONResponse，避免HTTPException的detail包装
-        error_response = ErrorResponse(
+        locale = _get_locale_from_request(request)
+        return _create_error_response(
+            request=request,
             code=HTTP_500_INTERNAL_SERVER_ERROR,
             message=t("error.gateway.internal_error", locale=locale),
             error_code="GATEWAY_ERROR",
-            locale=locale,
-        )
-
-        return JSONResponse(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            content=error_response.model_dump(),
+            message_key="error.gateway.internal_error",
         )
 
 
@@ -627,20 +741,14 @@ async def catch_all_handler(
         },
     )
 
-    # 获取语言偏好
-    accept_language = request.headers.get("Accept-Language")
-    locale = parse_accept_language(accept_language)
-
-    # 返回统一格式的404错误响应
-    error_response = ErrorResponse(
+    return _create_error_response(
+        request=request,
         code=404,
-        message=t("error.gateway.resource_not_found", locale=locale),
+        message=t("error.gateway.resource_not_found", locale=_get_locale_from_request(request)),
         error_code="RESOURCE_NOT_FOUND",
-        locale=locale,
+        message_key="error.gateway.resource_not_found",
         details={
             "method": request.method,
             "path": f"/{path}",
         },
     )
-
-    return JSONResponse(status_code=404, content=error_response.model_dump())

@@ -79,15 +79,16 @@ class IntrospectResponse(BaseModel):
     """令牌验证响应"""
 
     active: bool = Field(description="令牌是否有效")
+    id: Optional[str] = Field(default=None, description="用户/设备ID（统一字段名）")
     username: Optional[str] = Field(default=None, description="用户名")
-    user_id: Optional[str] = Field(default=None, description="用户ID")
+    user_id: Optional[str] = Field(default=None, description="用户ID（兼容字段，已废弃，使用 id）")
     exp: Optional[int] = Field(default=None, description="过期时间戳")
     token_type: Optional[str] = Field(default=None, description="令牌类型")
     # 新增字段：支持设备登录的额外信息
     user_type: Optional[str] = Field(default=None, description="用户类型（admin/device）")
     mg_id: Optional[str] = Field(default=None, description="设备管理ID")
     host_ip: Optional[str] = Field(default=None, description="主机IP")
-    sub: Optional[str] = Field(default=None, description="Subject（用户/设备ID）")
+    sub: Optional[str] = Field(default=None, description="Subject（用户/设备ID，兼容字段）")
     error: Optional[str] = Field(default=None, description="错误信息（当 active=False 时）")
 
     model_config = {

@@ -18,9 +18,9 @@ try:
         AdminOtaListResponse,
     )
     from app.services.admin_ota_service import AdminOtaService
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -34,9 +34,9 @@ except ImportError:
         AdminOtaListResponse,
     )
     from app.services.admin_ota_service import AdminOtaService
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -92,7 +92,7 @@ async def list_ota_configs(
         "查询 OTA 配置列表",
         extra={
             "operation": "list_ota_configs",
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
             "username": current_user.get("username"),
         },
     )
@@ -117,11 +117,11 @@ async def list_ota_configs(
         },
     )
 
-    return Result(
-        code=200,
-        message=t("success.ota.list_query", locale=locale, default="查询OTA配置列表成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.ota.list_query",
         locale=locale,
+        default_message="查询OTA配置列表成功",
     )
 
 
@@ -185,14 +185,14 @@ async def deploy_ota_config(
             "config_id": deploy_data.id,
             "conf_ver": deploy_data.conf_ver,
             "conf_name": deploy_data.conf_name,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
             "username": current_user.get("username"),
         },
     )
 
     # 获取操作人ID（从当前用户信息中获取）
     operator_id = None
-    user_id = current_user.get("user_id")
+    user_id = current_user.get("id")
     if user_id:
         try:
             operator_id = int(user_id)
@@ -228,9 +228,9 @@ async def deploy_ota_config(
         },
     )
 
-    return Result(
-        code=200,
-        message=t("success.ota.deploy", locale=locale, default="OTA配置下发成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.ota.deploy",
         locale=locale,
+        default_message="OTA配置下发成功",
     )

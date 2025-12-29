@@ -4,23 +4,24 @@
 """
 
 import os
-import re
 import sys
 from pathlib import Path as SysPath
-from typing import Iterator, Tuple
+from typing import Iterator
 
-from fastapi import APIRouter, Depends, File, HTTPException, Path, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from starlette.responses import Response
+from starlette.status import HTTP_206_PARTIAL_CONTENT, HTTP_404_NOT_FOUND
 
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1.dependencies import get_file_manage_service, get_current_user
     from app.schemas.host import FileUploadResponse
     from app.services.file_manage_service import FileManageService
+    from app.utils.http_helpers import parse_range_header
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -29,9 +30,10 @@ except ImportError:
     from app.api.v1.dependencies import get_file_manage_service, get_current_user
     from app.schemas.host import FileUploadResponse
     from app.services.file_manage_service import FileManageService
+    from app.utils.http_helpers import parse_range_header
+    from app.utils.response_helpers import create_success_result
 
     from shared.common.decorators import handle_api_errors
-    from shared.common.i18n import t
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
@@ -97,7 +99,7 @@ async def upload_file(
             "operation": "upload_file",
             "filename": file.filename,
             "content_type": file.content_type,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
             "username": current_user.get("username"),
         },
     )
@@ -125,64 +127,12 @@ async def upload_file(
         },
     )
 
-    return Result(
-        code=200,
-        message=t("success.file.upload", locale=locale, default="文件上传成功"),
+    return create_success_result(
         data=response_data,
+        message_key="success.file.upload",
         locale=locale,
+        default_message="文件上传成功",
     )
-
-
-def _parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
-    """解析 Range 头，返回起始和结束字节范围（包含）"""
-
-    range_match = re.match(r"bytes=(\d*)-(\d*)", range_header)
-    if not range_match:
-        raise HTTPException(
-            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range header 格式错误，示例：bytes=0-1023",
-        )
-
-    start_str, end_str = range_match.groups()
-
-    if start_str == "" and end_str == "":
-        raise HTTPException(
-            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range header 必须包含开始或结束位置",
-        )
-
-    if start_str == "":
-        # 形如 bytes=-500 表示最后 500 字节
-        length = int(end_str)
-        if length <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-                detail="Range 长度必须大于 0",
-            )
-        start = max(file_size - length, 0)
-        end = file_size - 1
-    else:
-        start = int(start_str)
-        if end_str == "":
-            end = file_size - 1
-        else:
-            end = int(end_str)
-
-    if start >= file_size or start < 0:
-        raise HTTPException(
-            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range 起始位置超出文件大小",
-        )
-
-    end = min(end, file_size - 1)
-
-    if end < start:
-        raise HTTPException(
-            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range 结束位置必须大于等于起始位置",
-        )
-
-    return start, end
 
 
 def _file_chunk_generator(file_path: SysPath, start: int, end: int, chunk_size: int = 1024 * 1024) -> Iterator[bytes]:
@@ -256,7 +206,7 @@ async def get_file(
         extra={
             "operation": "get_file",
             "filename": filename,
-            "user_id": current_user.get("user_id"),
+            "user_id": current_user.get("id"),
         },
     )
 
@@ -264,7 +214,7 @@ async def get_file(
     file_path = file_manage_service.get_file_path(filename)
 
     if not file_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="文件不存在")
 
     file_size = file_path.stat().st_size
     range_header = request.headers.get("range")
@@ -282,13 +232,13 @@ async def get_file(
         )
         return full_response
 
-    start, end = _parse_range_header(range_header, file_size)
+    start, end = parse_range_header(range_header, file_size)
     content_length = end - start + 1
     content_range_value = f"bytes {start}-{end}/{file_size}"
 
     streaming_response = StreamingResponse(
         _file_chunk_generator(file_path, start, end),
-        status_code=status.HTTP_206_PARTIAL_CONTENT,
+        status_code=HTTP_206_PARTIAL_CONTENT,
         media_type="application/octet-stream",
         headers={
             "Accept-Ranges": "bytes",

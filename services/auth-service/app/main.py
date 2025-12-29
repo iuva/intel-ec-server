@@ -16,6 +16,7 @@ try:
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
@@ -28,6 +29,7 @@ except ImportError:
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
+    from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 
@@ -41,8 +43,9 @@ except ImportError:
     ***REMOVED***
 
 # 配置日志（在应用启动前配置）
+# 日志级别会自动从环境变量 LOG_LEVEL 或 DEBUG 读取
 service_name = os.getenv("AUTH_SERVICE_NAME", "auth-service")
-configure_logger(service_name=service_name, log_level="INFO")
+configure_logger(service_name=service_name)
 
 logger = get_logger(__name__)
 
@@ -69,6 +72,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ✅ 添加 HTTP 请求/响应日志中间件（记录请求和响应的详细信息）
+app.add_middleware(HTTPLoggingMiddleware)
+logger.info("✅ HTTP 请求/响应日志中间件已启用")
 
 # 添加 Prometheus 指标收集中间件（根据配置开关）
 if config.enable_prometheus:

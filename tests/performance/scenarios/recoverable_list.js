@@ -5,7 +5,7 @@ import { BASE_URL, DEFAULT_OPTIONS } from '../utils/common.js';
 export let options = DEFAULT_OPTIONS;
 
 export default function () {
-    const url = `${BASE_URL}/api/v1/browser/host/retry-vnc`;
+    const url = `${BASE_URL}/api/v1/host/hosts/retry-vnc`;
 
     // 模拟不同用户的请求
     const payload = JSON.stringify({

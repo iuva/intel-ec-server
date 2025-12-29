@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import hashlib
 import os
 import time
 from typing import List, Optional, TYPE_CHECKING, cast
@@ -25,6 +26,7 @@ _http_client: Optional["httpx.AsyncClient"] = None
 
 # 使用 try-except 方式处理路径导入
 try:
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -33,6 +35,7 @@ except ImportError:
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -141,6 +144,34 @@ class HostDiscoveryService:
                 "email": request.email,  # ✅ 记录 email 参数（如果提供）
             },
         )
+
+        # ✅ 优化：对首次查询（last_id=None）添加短期缓存，减少外部接口调用
+        # 注意：只缓存首次查询，后续分页查询不缓存（因为 last_id 不同）
+        cache_key = None
+        if request.last_id is None:
+            # 生成缓存键（包含关键查询参数）
+            cache_params = f"{request.tc_id}:{request.cycle_name}:{request.page_size}"
+            cache_hash = hashlib.md5(cache_params.encode()).hexdigest()
+            cache_key = f"available_hosts:first_page:{cache_hash}"
+
+            # 尝试从缓存获取
+            try:
+                cached_result = await redis_manager.get(cache_key)
+                if cached_result is not None:
+                    logger.debug(
+                        "从缓存获取可用主机列表（首次查询）",
+                        extra={
+                            "cache_key": cache_key,
+                            "count": len(cached_result.get("hosts", [])) if isinstance(cached_result, dict) else 0,
+                        },
+                    )
+                    # 转换为响应对象
+                    return AvailableHostsListResponse(**cached_result)
+            except Exception as e:
+                logger.warning(
+                    "从缓存获取可用主机列表失败，将查询数据库",
+                    extra={"cache_key": cache_key, "error": str(e)},
+                )
 
         # 步骤 1: 根据 last_id 计算外部接口的初始偏移量
         initial_skip = 0
@@ -354,13 +385,35 @@ class HostDiscoveryService:
                 },
             )
 
-        return AvailableHostsListResponse(
+        # 构建响应对象
+        response = AvailableHostsListResponse(
             hosts=paginated_hosts,
             total=len(all_available_hosts),  # 本次查询中发现的总数
             page_size=request.page_size,
             has_next=has_next,
             last_id=last_id,
         )
+
+        # ✅ 优化：缓存首次查询结果（30秒），减少外部接口调用
+        if cache_key is not None:
+            try:
+                # 将响应对象转换为字典以便缓存
+                cache_data = {
+                    "hosts": [host.model_dump() for host in paginated_hosts],
+                    "total": len(all_available_hosts),
+                    "page_size": request.page_size,
+                    "has_next": has_next,
+                    "last_id": last_id,
+                }
+                await redis_manager.set(cache_key, cache_data, expire=30)
+                logger.debug(
+                    "可用主机列表已缓存（首次查询）",
+                    extra={"cache_key": cache_key, "expire_seconds": 30},
+                )
+            except Exception as e:
+                logger.warning(f"缓存可用主机列表失败: {e!s}")
+
+        return response
 
     def _get_mock_hardware_hosts(
         self,
@@ -587,6 +640,7 @@ class HostDiscoveryService:
 
             # ✅ 使用统一的外部接口调用方法（自动处理 token 获取和认证）
             # 如果提供了 email，将直接使用该 email 获取 token，不查询数据库
+            # ✅ 优化：将超时时间从 30s 降低到 10s，快速失败避免阻塞
             response = await call_external_api(
                 method="GET",
                 url_path=url_path,
@@ -594,7 +648,7 @@ class HostDiscoveryService:
                 user_id=user_id,
                 email=email,  # ✅ 传递 email 参数
                 params=params,
-                timeout=30.0,
+                timeout=10.0,  # ✅ 优化：从 30.0 降低到 10.0
             )
 
             status_code = response.get("status_code")

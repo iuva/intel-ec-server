@@ -2,12 +2,14 @@
 日志配置模块
 
 基于Loguru提供统一的日志配置和管理功能
+支持传统格式日志输出，完整异常堆栈，以及环境变量配置
 """
 
 import json
 import logging
 import os
 import sys
+import traceback
 from typing import Any, Dict, Optional
 
 from loguru import logger
@@ -53,9 +55,38 @@ def _rename_old_log_files(log_dir: str, service_name: str) -> None:
         ***REMOVED***
 
 
+def _get_log_level_from_env() -> str:
+    """从环境变量读取日志级别
+
+    优先级：
+    1. LOG_LEVEL 环境变量
+    2. DEBUG 环境变量（如果为 true，则使用 DEBUG）
+    3. 默认 INFO
+
+    Returns:
+        日志级别字符串（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+    """
+    # 优先读取 LOG_LEVEL
+    log_level = os.getenv("LOG_LEVEL", "").upper()
+
+    # 如果 LOG_LEVEL 为空，检查 DEBUG 环境变量
+    if not log_level:
+        if os.getenv("DEBUG", "").lower() in ("true", "1", "yes", "on"):
+            log_level = "DEBUG"
+        else:
+            log_level = "INFO"
+
+    # 验证日志级别有效性
+    valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    if log_level not in valid_levels:
+        log_level = "INFO"
+
+    return log_level
+
+
 def configure_logger(
     service_name: str = "service",
-    log_level: str = "INFO",
+    log_level: Optional[str] = None,
     log_dir: Optional[str] = None,
     rotation: str = "00:00",  # 每天午夜轮转（按日期切片）
     retention: str = "30 days",  # 保留30天日志
@@ -68,7 +99,7 @@ def configure_logger(
 
     Args:
         service_name: 服务名称
-        log_level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+        log_level: 日志级别（None时从环境变量读取：LOG_LEVEL 或 DEBUG）
         log_dir: 日志目录（None时自动检测：Docker环境使用 /app/logs，本地环境使用 ./logs）
         rotation: 日志轮转策略（默认 "00:00" 每天午夜轮转，也可使用 "10 MB" 按大小、"1 day" 按天）
         retention: 日志保留时间（默认 "30 days" 保留30天，也可使用 "1 week"）
@@ -77,6 +108,15 @@ def configure_logger(
         enable_file: 是否启用文件输出
         enable_error_file: 是否启用错误日志文件
     """
+    # 从环境变量读取日志级别（如果未指定）
+    if log_level is None:
+        log_level = _get_log_level_from_env()
+    else:
+        log_level = log_level.upper()
+        valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+        if log_level not in valid_levels:
+            log_level = "INFO"
+
     # 自动检测日志目录
     if log_dir is None:
         # 检查是否在Docker环境中（/app目录存在且可写）
@@ -118,7 +158,6 @@ def configure_logger(
             Path(log_dir).mkdir(parents=True, exist_ok=True)
         except (PermissionError, OSError):
             # 如果没有权限创建日志目录，使用控制台输出并记录警告
-            # 此时 logger 还未初始化，仅在启动时输出一次
             enable_file = False
             enable_error_file = False
 
@@ -161,236 +200,70 @@ def configure_logger(
     root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     # 使用 patcher 在消息中追加 extra 信息
-    # 注意：必须在 configure 之前应用 patcher
     def patcher(record: Any) -> None:
         """修改记录，在消息后追加 extra 信息"""
-        # Loguru 的 record 对象在 patcher 中是一个字典
-        # extra 参数中的键值对会被直接添加到 record 字典中
         try:
-            # Loguru 的标准字段列表
-            standard_fields = {
-                "time",
-                "level",
-                "message",
-                "name",
-                "function",
-                "line",
-                "file",
-                "process",
-                "thread",
-                "exception",
-                "elapsed",
-                "extra",
-                "record",
-                "module",
-                "pathname",
-                "exc_info",
-                "exc_text",
-                "stack",
-                "created",
-                "msecs",
-                "relativeCreated",
-                "threadName",
-                "threadId",
-                "taskName",
-            }
-
-            # 收集 extra 字段（所有非标准字段）
+            # 收集 extra 字段（排除 service_name 和 name，因为它们已经在格式中显示）
             extra_data = {}
+            for key, value in record["extra"].items():
+                if key not in ("service_name", "name"):
+                    extra_data[key] = value
 
-            # record 在 patcher 中是字典类型
-            if isinstance(record, dict):
-                # 优先从 record['extra'] 中获取（如果是通过 bind() 绑定的）
-                if "extra" in record and isinstance(record["extra"], dict):
-                    extra_data.update(record["extra"])
+            # 如果有 extra 信息，追加到消息中
+            if extra_data:
+                original_message = record.get("message", "")
 
-                # 也可以从 record 根级别获取（某些情况下）
-                for key, value in record.items():
-                    # 跳过标准字段和以 _ 开头的内部字段
-                    if key not in standard_fields and not key.startswith("_"):
-                        extra_data[key] = value
+                # 检查是否有异常信息（如果有异常，不将 extra 格式化为 JSON，让异常堆栈使用原始格式）
+                has_exception = record.get("exception") is not None
 
-            # 如果 extra 数据不为空，且消息中还没有包含额外信息，则追加到消息中
-            original_message = record.get("message", "")
-
-            # ✅ 检查是否有异常信息（如果有异常，不将 extra 格式化为 JSON，让异常堆栈使用原始格式）
-            has_exception = record.get("exception") is not None or record.get("exc_info") is not None
-
-            # 仅在 DEBUG 或 ERROR/CRITICAL 级别显示额外信息
-            # 这样可以保证调试方便，同时异常发生时也能看到上下文
-            allowed_levels = ("DEBUG", "ERROR", "CRITICAL")
-            if extra_data and len(extra_data) > 0 and record["level"].name in allowed_levels:
-                # 检查消息中是否已经包含这些数据的 JSON 表示（简单的去重检查）
-                # 这里只做简单的检查，避免明显的重复
-                msg_str = str(original_message)
-
-                # ✅ 如果有异常信息，不添加额外信息到消息中，让异常堆栈使用原始格式显示
-                # 异常堆栈信息会由 console_sink 函数自动处理，使用 traceback 原始格式
-                if has_exception:
-                    # 异常情况下，不修改消息内容，让 loguru 的异常处理机制正常工作
-                    # 异常堆栈会通过 record["exception"] 字段由 console_sink 函数处理
-                    # 这样可以确保异常堆栈使用原始格式（traceback），而不是 JSON 格式
-                    # ✅ 不添加任何额外信息到消息中，确保异常堆栈信息清晰可见
-                    ***REMOVED***  # 不添加额外信息，避免干扰异常堆栈显示
-                else:
-                    # 非异常情况，使用 JSON 格式（保持原有行为）
-                    # 定义 JSON 序列化辅助函数，处理不可序列化类型
-                    def default_serializer(obj):
-                        if isinstance(obj, bytes):
-                            return "<bytes>"
-                        return str(obj)
-
+                if not has_exception:
+                    # 非异常情况，使用 JSON 格式
                     try:
-                        # 使用 indent=2 格式化 JSON
-                        extra_json = json.dumps(extra_data, default=default_serializer, ensure_ascii=False, indent=2)
-
-                        # 只有当原始消息不包含"额外信息"且看起来不像已经包含了这个JSON时才添加
-                        if "额外信息" not in msg_str:
-                            record["message"] = f"{msg_str}\n额外信息:\n{extra_json}"
+                        extra_json = json.dumps(extra_data, ensure_ascii=False, indent=2, default=str)
+                        # 只有当原始消息不包含"额外信息"时才添加
+                        if "额外信息" not in str(original_message):
+                            # 确保消息末尾没有多余换行，然后追加额外信息
+                            msg_clean = str(original_message).rstrip("\n")
+                            record["message"] = f"{msg_clean}\n额外信息:\n{extra_json}"
                     except Exception:
                         try:
-                            record["message"] = f"{msg_str}\n额外信息: {extra_data!s}"
+                            msg_clean = str(original_message).rstrip("\n")
+                            record["message"] = f"{msg_clean}\n额外信息: {extra_data!s}"
                         except Exception:
                             ***REMOVED***
         except Exception:
             # 静默处理异常，避免影响日志输出
             ***REMOVED***
 
-    # 在 configure 之前应用 patcher
-    # logger.patch(patcher)  <-- 移除这行，改用 configure 参数
+    # 传统格式日志模板
+    # 格式：时间 级别 [服务名] 模块名:函数名:行号 - 消息
+    # 异常时自动追加完整堆栈信息
+    traditional_format = (
+        "{time:YYYY-MM-DD HH:mm:ss.SSS} "
+        "{level: <8} "
+        "[{extra[service_name]}] "
+        "{name}:{function}:{line} - "
+        "{message}"
+        "{exception}"
+    )
 
-    # 构建处理器配置，使用自定义 sink 函数确保多行消息正确显示
-    def console_sink(message: Any) -> None:
-        """自定义控制台 sink 函数，确保多行消息正确显示且格式美观
+    # 构建处理器配置
+    handlers_config: Any = []
 
-        优化特性：
-        1. 正确处理多行消息，后续行自动添加缩进，保持对齐
-        2. 保留 JSON 格式的额外信息，确保完整显示
-        3. 异常堆栈信息也会正确格式化并添加缩进
-        4. 单行消息直接显示，性能最优
-        """
-        try:
-            record = message.record
+    # 控制台输出（传统格式）
+    if enable_console:
+        handlers_config.append(
+            {
+                "sink": sys.stdout,
+                "format": traditional_format,
+                "level": log_level,
+                "colorize": True,  # 启用颜色输出
+            }
+        )
 
-            # 提取记录信息
-            time_str = record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            level = record["level"].name
-            name = record["name"]
-            function = record["function"]
-            line = record["line"]
-            msg_text = record["message"]
-            exception = record.get("exception")
-
-            # ✅ 优化日志格式：简化模块路径，只显示文件名
-            # 例如：services.host-service.app.services.host_discovery_service -> host_discovery_service
-            module_name = name.split(".")[-1] if "." in name else name
-
-            # 构建日志头部（优化后的格式）
-            # 时间 | 级别(补齐8位) | 服务名 | 模块名:函数名:行号 |
-            header = f"{time_str} | {level: <8} | {service_name} | {module_name}:{function}:{line} | "
-
-            # 计算缩进字符串
-            indent_str = " " * len(header)
-
-            # 处理消息文本
-            formatted_lines = []
-
-            if "\n" in msg_text:
-                # 分割多行消息
-                lines = msg_text.split("\n")
-
-                # 第一行包含 header
-                formatted_lines.append(header + lines[0])
-
-                # 后续行添加缩进
-                for line in lines[1:]:
-                    if line:  # 非空行
-                        formatted_lines.append(indent_str + line)
-                    else:  # 空行
-                        formatted_lines.append("")
-            else:
-                # 单行消息
-                formatted_lines.append(header + msg_text)
-
-            # 最终拼接
-            formatted = "\n".join(formatted_lines)
-
-            # 添加异常信息（如果有）
-            # ✅ 检查多种方式获取异常信息，确保完整打印堆栈
-            import traceback
-
-            def format_exception_to_string(exc_type, exc_value, exc_traceback) -> str:
-                """格式化异常堆栈为字符串"""
-                try:
-                    exc_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                    return "".join(exc_lines)
-                except Exception:
-                    return ""
-
-            def append_exception_lines(exc_str: str) -> None:
-                """将异常堆栈行追加到 formatted"""
-                nonlocal formatted
-                for exc_line in exc_str.split("\n"):
-                    if exc_line.strip():  # 只处理非空行
-                        formatted += f"\n{indent_str}{exc_line}"
-                    else:
-                        formatted += "\n"  # 保留空行以保持堆栈格式
-
-            # 尝试多种方式获取异常信息
-            exc_handled = False
-
-            # 方式1: 从 exception 对象获取
-            if (
-                exception
-                and hasattr(exception, "type")
-                and hasattr(exception, "value")
-                and hasattr(exception, "traceback")
-            ):
-                exc_str = format_exception_to_string(exception.type, exception.value, exception.traceback)
-                if exc_str:
-                    append_exception_lines(exc_str)
-                    exc_handled = True
-
-            # 方式2: 从 record["exception"] 获取
-            if not exc_handled and "exception" in record:
-                exc = record["exception"]
-                if hasattr(exc, "type") and hasattr(exc, "value") and hasattr(exc, "traceback"):
-                    exc_str = format_exception_to_string(exc.type, exc.value, exc.traceback)
-                    if exc_str:
-                        append_exception_lines(exc_str)
-                        exc_handled = True
-
-            # 方式3: 从 exc_info 元组获取
-            if not exc_handled and "exc_info" in record and record["exc_info"]:
-                if isinstance(record["exc_info"], tuple) and len(record["exc_info"]) == 3:
-                    exc_type, exc_value, exc_traceback = record["exc_info"]
-                    exc_str = format_exception_to_string(exc_type, exc_value, exc_traceback)
-                    if exc_str:
-                        append_exception_lines(exc_str)
-
-            # 输出到控制台
-            print(formatted, file=sys.stdout, flush=True)
-
-        except Exception as e:
-            # 如果格式化失败，直接输出原始消息
-            print(str(message), file=sys.stdout, flush=True)
-            # 避免死循环，不再打印错误日志
-            print(f"Logging Error: {e}", file=sys.stderr)
-
-    handlers_config: Any = [
-        {
-            "sink": console_sink,
-            "level": log_level,
-            "colorize": False,
-            # console_sink 不需要 format 参数，因为它直接处理 message.record
-        }
-    ]
-
-    # 添加文件处理器（如果启用）
+    # 文件输出（传统格式）
     if enable_file:
         # 当天日志使用固定文件名，轮转后的旧日志才添加日期后缀
-        # 当天文件：service_name.log
-        # 历史文件：service_name-YYYY-MM-DD.log
         log_file_path = os.path.join(log_dir, f"{service_name}.log")
 
         # 在启动时检查并重命名旧的日志文件（如果存在且不是今天的）
@@ -399,14 +272,7 @@ def configure_logger(
         handlers_config.append(
             {
                 "sink": log_file_path,
-                "format": (
-                    "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                    "{level: <8} | "
-                    f"{service_name} | "
-                    "{name}:{function}:{line} | "
-                    "{message}"
-                    "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
-                ),
+                "format": traditional_format,
                 "level": log_level,
                 "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
                 "retention": retention,
@@ -415,25 +281,16 @@ def configure_logger(
             }
         )
 
-    # 添加错误文件处理器（如果启用）
+    # 错误文件输出（仅ERROR及以上级别）
     if enable_error_file:
         # 当天错误日志使用固定文件名，轮转后的旧日志才添加日期后缀
-        # 当天文件：service_name_error.log
-        # 历史文件：service_name_error-YYYY-MM-DD.log
         error_log_file_path = os.path.join(log_dir, f"{service_name}_error.log")
 
         handlers_config.append(
             {
                 "sink": error_log_file_path,
-                "format": (
-                    "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                    "{level: <8} | "
-                    f"{service_name} | "
-                    "{name}:{function}:{line} | "
-                    "{message}"
-                    "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
-                ),
-                "level": "ERROR",
+                "format": traditional_format,
+                "level": "ERROR",  # 仅记录ERROR及以上级别
                 "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
                 "retention": "1 month",
                 "compression": compression,
@@ -441,9 +298,12 @@ def configure_logger(
             }
         )
 
-    # 使用类型安全的配置调用
-    # 注意：patcher 已经在 configure 之前应用
-    logger.configure(handlers=handlers_config, patcher=patcher)
+    # 配置logger，绑定服务名称到extra，并应用 patcher
+    logger.configure(
+        handlers=handlers_config,
+        extra={"service_name": service_name},  # 绑定服务名称到extra
+        patcher=patcher,  # 应用 patcher 追加 extra 信息到消息
+    )
 
     # ✅ 设置常用库的日志级别（已通过InterceptHandler拦截，统一使用loguru格式）
     logging.getLogger("uvicorn").setLevel(getattr(logging, log_level.upper(), logging.INFO))
@@ -486,8 +346,6 @@ def log_slow_query(
         sql_hash: SQL哈希值（用于去重）
         parameters: SQL参数（可选）
     """
-    import traceback
-
     # 获取调用堆栈（排除当前函数和监控模块）
     stack_trace = []
     for frame in traceback.extract_stack()[:-2]:  # 排除当前函数和监控函数

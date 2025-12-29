@@ -31,6 +31,7 @@ try:
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
+    from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
@@ -62,6 +63,7 @@ except ImportError:
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
+    from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
@@ -649,8 +651,8 @@ class AdminApprHostService:
         Raises:
             BusinessError: 查询失败时
         """
-        logger.info(
-            "开始查询待审批主机列表",
+        log_operation_start(
+            "查询待审批主机列表",
             extra={
                 "page": request.page,
                 "page_size": request.page_size,
@@ -658,6 +660,7 @@ class AdminApprHostService:
                 "mg_id": request.mg_id,
                 "host_state": request.host_state,
             },
+            logger_instance=logger,
         )
 
         try:
@@ -1751,7 +1754,10 @@ class AdminApprHostService:
         Raises:
             BusinessError: 数据库操作失败时
         """
-        logger.info("开始获取维护通知邮箱")
+        log_operation_start(
+            "获取维护通知邮箱",
+            logger_instance=logger,
+        )
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:

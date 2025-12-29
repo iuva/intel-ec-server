@@ -80,7 +80,8 @@ def get_user_id_from_request(request) -> Optional[int]:
         try:
             user_info = json.loads(user_info_header)
             if isinstance(user_info, dict):
-                user_id = user_info.get("user_id")
+                # ✅ 统一使用 id 字段
+                user_id = user_info.get("id")
                 if user_id:
                     # 确保返回整数类型
                     return int(user_id) if user_id else None

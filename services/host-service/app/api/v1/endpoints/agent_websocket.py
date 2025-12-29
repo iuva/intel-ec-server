@@ -76,12 +76,12 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
             await handle_websocket_auth_error(websocket, "缺少有效的认证令牌")
             return
 
-        # ✅ 从 token 中获取 host_id (来自 device_login 时存储的 host_rec.id)
-        host_id = user_info.get("user_id")  # user_id 实际上是 host_rec.id
+        # ✅ 统一使用 id 字段，没有则返回错误
+        host_id = user_info.get("id")
 
         if not host_id:
-            logger.warning("WebSocket token 中缺少 host_id")
-            await handle_websocket_auth_error(websocket, "Token 中缺少 host_id")
+            logger.warning("WebSocket token 中缺少 id")
+            await handle_websocket_auth_error(websocket, "Token 中缺少 id")
             return
 
     # 转换为字符串（确保类型一致）

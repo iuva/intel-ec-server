@@ -22,6 +22,7 @@ try:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.utils.logging_helpers import log_operation_completed, log_operation_start
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -42,6 +43,7 @@ except ImportError:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.utils.logging_helpers import log_operation_completed, log_operation_start
 
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -85,8 +87,8 @@ class AdminHostService:
         Raises:
             BusinessError: 查询失败时
         """
-        logger.info(
-            "开始查询可用主机列表",
+        log_operation_start(
+            "查询可用主机列表",
             extra={
                 "page": request.page,
                 "page_size": request.page_size,
@@ -96,6 +98,7 @@ class AdminHostService:
                 "mg_id": request.mg_id,
                 "use_by": request.use_by,
             },
+            logger_instance=logger,
         )
 
         session_factory = mariadb_manager.get_session()
@@ -1099,8 +1102,8 @@ class AdminHostService:
                 total=total,
             )
 
-            logger.info(
-                "查询主机执行日志列表完成",
+            log_operation_completed(
+                "查询主机执行日志列表",
                 extra={
                     "host_id": request.host_id,
                     "total": total,
@@ -1108,6 +1111,7 @@ class AdminHostService:
                     "page": request.page,
                     "page_size": request.page_size,
                 },
+                logger_instance=logger,
             )
 
             return log_info_list, pagination_response
