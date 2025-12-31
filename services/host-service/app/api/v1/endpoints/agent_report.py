@@ -14,6 +14,8 @@ from starlette.status import HTTP_200_OK
 try:
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.host import (
+        AgentOtaUpdateStatusRequest,
+        AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
         AgentVNCConnectionReportResponse,
         HardwareReportResponse,
@@ -37,6 +39,8 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.host import (
+        AgentOtaUpdateStatusRequest,
+        AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
         AgentVNCConnectionReportResponse,
         HardwareReportResponse,
@@ -618,27 +622,37 @@ async def get_latest_ota_configs(
     "/vnc/report",
     response_model=Result[AgentVNCConnectionReportResponse],
     status_code=HTTP_200_OK,
-    summary="Agent 上报 VNC 连接成功",
+    summary="Agent 上报 VNC 连接状态",
     description="""
-    Agent 上报 VNC 连接成功，系统会更新主机状态。
+    Agent 上报 VNC 连接状态，系统会根据状态更新主机状态。
 
     ## 功能说明
     1. 从 JWT token 中提取 host_id
-    2. 更新对应的 host_rec 表的 host_state = 2（已占用）
+    2. 根据 vnc_state 和当前 host_state 更新主机状态
 
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
     - Token 格式：`Bearer <token>`
     - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
 
+    ## 请求参数
+    - `vnc_state`: VNC连接状态（必需）
+        - `1`: 连接成功
+        - `2`: 连接断开
+
     ## 业务逻辑
     1. 从 token 中解析 host_id（通过依赖注入自动完成）
     2. 查询 host_rec 表，验证主机是否存在
-    3. 更新 host_rec 表的 host_state = 2（已占用状态）
+    3. 根据 vnc_state 和当前 host_state 更新状态：
+        - 当 `vnc_state = 1`（连接成功）时：
+            - 如果 `host_state = 1`（已锁定），则修改为 `host_state = 2`（已占用）
+        - 当 `vnc_state = 2`（连接断开）时：
+            - 如果 `host_state = 2`（已占用），则修改为 `host_state = 0`（空闲）
 
     ## 返回数据
     - `host_id`: 主机ID
-    - `host_state`: 更新后的主机状态（2=已占用）
+    - `host_state`: 更新后的主机状态（0=空闲，1=已锁定，2=已占用）
+    - `vnc_state`: 上报的VNC连接状态（1=连接成功，2=连接断开）
     - `updated`: 是否成功更新
 
     ## 错误码
@@ -649,6 +663,46 @@ async def get_latest_ota_configs(
         200: {
             "description": "上报成功",
             "model": Result[AgentVNCConnectionReportResponse],
+        },
+        400: {
+            "description": "请求参数错误或业务逻辑错误",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "validation_error": {
+                            "summary": "请求参数验证失败",
+                            "value": {
+                                "code": 400,
+                                "message": "请求参数验证失败",
+                                "error_code": "VALIDATION_ERROR",
+                                "details": {
+                                    "errors": [
+                                        {
+                                            "loc": ["body", "vnc_state"],
+                                            "msg": "ensure this value is greater than or equal to 1",
+                                            "type": "value_error.number.not_ge",
+                                        }
+                                    ]
+                                },
+                            },
+                        },
+                        "state_mismatch": {
+                            "summary": "主机状态不匹配",
+                            "value": {
+                                "code": 400,
+                                "message": "主机状态不匹配，无法更新",
+                                "error_code": "HOST_STATE_MISMATCH",
+                                "details": {
+                                    "host_id": 123,
+                                    "vnc_state": 1,
+                                    "current_host_state": 0,
+                                    "required_host_state": 1,
+                                },
+                            },
+                        },
+                    }
+                }
+            },
         },
         404: {
             "description": "主机不存在或已删除",
@@ -668,7 +722,7 @@ async def get_latest_ota_configs(
                 "application/json": {
                     "example": {
                         "code": 500,
-                        "message": "Agent VNC 连接成功上报处理失败",
+                        "message": "Agent VNC 连接状态上报处理失败",
                         "error_code": "VNC_CONNECTION_REPORT_FAILED",
                     }
                 }
@@ -677,26 +731,199 @@ async def get_latest_ota_configs(
     },
 )
 @handle_api_errors
-async def report_vnc_connection_success(
-    request: AgentVNCConnectionReportRequest = Body(..., description="Agent VNC 连接成功上报请求（空请求体）"),
+async def report_vnc_connection_state(
+    request: AgentVNCConnectionReportRequest = Body(..., description="Agent VNC 连接状态上报请求"),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[AgentVNCConnectionReportResponse]:
-    """Agent 上报 VNC 连接成功
+    """Agent 上报 VNC 连接状态
 
     ## 业务逻辑
     1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
-    2. 更新对应的 host_rec 表的 host_state = 2（已占用）
+    2. 根据 vnc_state 和当前 host_state 更新主机状态：
+        - `vnc_state = 1`（连接成功）且 `host_state = 1`（已锁定）→ 更新为 `host_state = 2`（已占用）
+        - `vnc_state = 2`（连接断开）且 `host_state = 2`（已占用）→ 更新为 `host_state = 0`（空闲）
 
     Args:
-        request: Agent VNC 连接成功上报请求（空请求体）
+        request: Agent VNC 连接状态上报请求（包含 vnc_state 字段）
         agent_info: 当前Agent信息（从token中提取，包含id）
         agent_report_service: Agent上报服务实例
         locale: 语言偏好
 
     Returns:
-        SuccessResponse: 统一格式的成功响应，包含更新结果
+        Result: 统一格式的成功响应，包含更新结果
+
+    Raises:
+        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+    """
+    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    host_id = agent_info["id"]
+    vnc_state = request.vnc_state
+
+    logger.info(
+        "收到 Agent VNC 连接状态上报请求",
+        extra={
+            "host_id": host_id,
+            "vnc_state": vnc_state,
+        },
+    )
+
+    # 调用服务层处理 VNC 连接状态上报
+    result = await agent_report_service.report_vnc_connection_state(
+        host_id=host_id, vnc_state=vnc_state
+    )
+
+    response_data = AgentVNCConnectionReportResponse(**result)
+    return create_success_result(
+        data=response_data,
+        message_key="success.vnc.agent_report",
+        locale=locale,
+        default_message="Agent VNC 连接状态上报成功",
+    )
+
+
+@router.post(
+    "/ota/update-status",
+    response_model=Result[AgentOtaUpdateStatusResponse],
+    status_code=HTTP_200_OK,
+    summary="Agent 上报 OTA 更新状态",
+    description="""
+    Agent 上报 OTA 更新状态，系统会根据状态更新 host_upd 表和 host_rec 表。
+
+    ## 功能说明
+    1. 从 JWT token 中提取 host_id
+    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新记录
+    3. 更新 host_upd 表的 app_state 字段（1=更新中，2=成功，3=失败）
+    4. 如果 biz_state=2（成功）：
+       - 更新 host_rec 表的 host_state=0（free）
+       - 更新 host_rec 表的 agent_ver（新版本）
+
+    ## 认证要求
+    - 需要在 Authorization 头中提供有效的 JWT token
+    - Token 格式：`Bearer <token>`
+    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
+
+    ## 请求参数
+    - `app_name`: 应用名称（必需，对应 host_upd 表的 app_name）
+    - `app_ver`: 应用版本号（必需，对应 host_upd 表的 app_ver）
+    - `biz_state`: 业务状态（必需）
+        - `1`: 更新中
+        - `2`: 成功
+        - `3`: 失败
+    - `agent_ver`: Agent 版本号（更新成功时必填，用于更新 host_rec 表的 agent_ver）
+
+    ## 业务逻辑
+    1. 从 token 中解析 host_id（通过依赖注入自动完成）
+    2. 查询 host_upd 表，验证更新记录是否存在
+    3. 更新 host_upd 表的 app_state 字段
+    4. 如果 biz_state=2（成功）：
+       - 更新 host_rec 表的 host_state=0（free）
+       - 更新 host_rec 表的 agent_ver（新版本）
+
+    ## 返回数据
+    - `host_id`: 主机ID
+    - `host_upd_id`: 更新记录ID（host_upd 表主键）
+    - `app_state`: 更新后的状态（0=预更新，1=更新中，2=成功，3=失败）
+    - `host_state`: 更新后的主机状态（如果更新成功，则为 0=空闲）
+    - `agent_ver`: 更新后的 Agent 版本号
+    - `updated`: 是否成功更新
+
+    ## 错误码
+    - `AGENT_VER_REQUIRED`: 更新成功时 agent_ver 字段必填（400）
+    - `OTA_UPDATE_RECORD_NOT_FOUND`: 未找到 OTA 更新记录（404）
+    - `OTA_UPDATE_STATUS_REPORT_FAILED`: 上报处理失败（500）
+    """,
+    responses={
+        200: {
+            "description": "上报成功",
+            "model": Result[AgentOtaUpdateStatusResponse],
+        },
+        400: {
+            "description": "请求参数错误或业务逻辑错误",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "validation_error": {
+                            "summary": "请求参数验证失败",
+                            "value": {
+                                "code": 400,
+                                "message": "请求参数验证失败",
+                                "error_code": "VALIDATION_ERROR",
+                                "details": {
+                                    "errors": [
+                                        {
+                                            "loc": ["body", "biz_state"],
+                                            "msg": "ensure this value is greater than or equal to 1",
+                                            "type": "value_error.number.not_ge",
+                                        }
+                                    ]
+                                },
+                            },
+                        },
+                        "agent_ver_required": {
+                            "summary": "更新成功时 agent_ver 字段必填",
+                            "value": {
+                                "code": 400,
+                                "message": "更新成功时，agent_ver 字段必填",
+                                "error_code": "AGENT_VER_REQUIRED",
+                            },
+                        },
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "未找到 OTA 更新记录",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 404,
+                        "message": "未找到 OTA 更新记录: host_id=123, app_name=test_app, app_ver=1.0.0",
+                        "error_code": "OTA_UPDATE_RECORD_NOT_FOUND",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "服务器内部错误",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 500,
+                        "message": "OTA 更新状态上报处理失败",
+                        "error_code": "OTA_UPDATE_STATUS_REPORT_FAILED",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def report_ota_update_status(
+    request: AgentOtaUpdateStatusRequest = Body(..., description="Agent OTA 更新状态上报请求"),
+    agent_info: Dict[str, Any] = Depends(get_current_agent),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[AgentOtaUpdateStatusResponse]:
+    """Agent 上报 OTA 更新状态
+
+    ## 业务逻辑
+    1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
+    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新记录
+    3. 更新 host_upd 表的 app_state 字段（1=更新中，2=成功，3=失败）
+    4. 如果 biz_state=2（成功）：
+       - 更新 host_rec 表的 host_state=0（free）
+       - 更新 host_rec 表的 agent_ver（新版本）
+
+    Args:
+        request: Agent OTA 更新状态上报请求（包含 app_name、app_ver、biz_state、agent_ver 字段）
+        agent_info: 当前Agent信息（从token中提取，包含id）
+        agent_report_service: Agent上报服务实例
+        locale: 语言偏好
+
+    Returns:
+        Result: 统一格式的成功响应，包含更新结果
 
     Raises:
         HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
@@ -705,19 +932,29 @@ async def report_vnc_connection_success(
     host_id = agent_info["id"]
 
     logger.info(
-        "收到 Agent VNC 连接成功上报请求",
+        "收到 Agent OTA 更新状态上报请求",
         extra={
             "host_id": host_id,
+            "app_name": request.app_name,
+            "app_ver": request.app_ver,
+            "biz_state": request.biz_state,
+            "agent_ver": request.agent_ver,
         },
     )
 
-    # 调用服务层处理 VNC 连接成功上报
-    result = await agent_report_service.report_vnc_connection_success(host_id=host_id)
+    # 调用服务层处理 OTA 更新状态上报
+    result = await agent_report_service.report_ota_update_status(
+        host_id=host_id,
+        app_name=request.app_name,
+        app_ver=request.app_ver,
+        biz_state=request.biz_state,
+        agent_ver=request.agent_ver,
+    )
 
-    response_data = AgentVNCConnectionReportResponse(**result)
+    response_data = AgentOtaUpdateStatusResponse(**result)
     return create_success_result(
         data=response_data,
-        message_key="success.vnc.agent_report",
+        message_key="success.ota.update_status",
         locale=locale,
-        default_message="Agent VNC 连接成功上报成功",
+        default_message="OTA 更新状态上报成功",
     )

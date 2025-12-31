@@ -131,6 +131,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             响应对象
         """
+        # ✅ 安全措施：删除客户端传入的 X-User-Info header（防止伪造）
+        # Gateway 会在验证 token 后添加自己的 X-User-Info header
+        if "X-User-Info" in request.headers:
+            logger.warning(
+                "检测到客户端传入的 X-User-Info header，已删除（安全措施）",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "client_host": request.client.host if request.client else "unknown",
+                    "hint": "X-User-Info header 只能由 Gateway 在验证 token 后添加，客户端传入的将被删除",
+                },
+            )
+            # 删除客户端传入的 X-User-Info header
+            # 注意：Starlette 的 headers 是只读的，需要通过修改请求对象来删除
+            # 我们将在 proxy.py 中处理，这里只记录日志
+
         # ✅ 处理 OPTIONS 预检请求（CORS 预检请求）
         # OPTIONS 请求应该直接通过，由 CORS 中间件处理
         if request.method == "OPTIONS":

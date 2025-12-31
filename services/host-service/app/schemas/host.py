@@ -157,21 +157,36 @@ class VNCConnectionResponse(BaseModel):
 
 
 class AgentVNCConnectionReportRequest(BaseModel):
-    """Agent VNC 连接成功上报请求"""
+    """Agent VNC 连接状态上报请求
+
+    vnc_state 说明：
+    - 1: 连接成功
+    - 2: 连接断开
+    """
+
+    vnc_state: int = Field(
+        ...,
+        ge=1,
+        le=2,
+        description="VNC连接状态（1=连接成功，2=连接断开）",
+    )
 
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
-            "example": {},
+            "example": {
+                "vnc_state": 1,
+            },
         },
     }
 
 
 class AgentVNCConnectionReportResponse(BaseModel):
-    """Agent VNC 连接成功上报响应"""
+    """Agent VNC 连接状态上报响应"""
 
     host_id: int = Field(..., description="主机ID")
-    host_state: int = Field(..., description="更新后的主机状态（2=已占用）")
+    host_state: int = Field(..., description="更新后的主机状态（0=空闲，1=已锁定，2=已占用）")
+    vnc_state: int = Field(..., description="上报的VNC连接状态（1=连接成功，2=连接断开）")
     updated: bool = Field(..., description="是否成功更新")
 
     model_config = {
@@ -748,9 +763,9 @@ class AdminOtaDeployRequest(BaseModel):
     conf_ver: str = Field(..., description="配置版本号", min_length=1)
     conf_name: str = Field(..., description="配置名称", min_length=1)
     conf_url: str = Field(..., description="OTA 包下载地址（字符串，允许任意格式）")
-    conf_md5: str = Field(
-        ...,
-        description="OTA 包 MD5 校验值（32位十六进制）",
+    conf_md5: Optional[str] = Field(
+        default=None,
+        description="OTA 包 MD5 校验值（32位十六进制，可选）",
         min_length=32,
         max_length=32,
         pattern=r"^[a-fA-F0-9]{32}$",
@@ -766,7 +781,7 @@ class AdminOtaDeployResponse(BaseModel):
     conf_ver: str = Field(description="配置版本号")
     conf_name: str = Field(description="配置名称")
     conf_url: str = Field(description="OTA 包下载地址")
-    conf_md5: str = Field(description="OTA 包 MD5 校验值")
+    conf_md5: Optional[str] = Field(default=None, description="OTA 包 MD5 校验值（可选）")
     broadcast_count: int = Field(description="广播消息成功发送的主机数量")
 
     model_config = {"from_attributes": True}
@@ -780,5 +795,41 @@ class HardwareReportResponse(BaseModel):
     diff_state: Optional[int] = Field(default=None, description="差异状态 (1-版本号变化, 2-内容更改)")
     diff_details: Optional[Dict[str, Any]] = Field(default=None, description="差异详情")
     message: str = Field(description="响应消息")
+
+    model_config = {"from_attributes": True}
+
+
+class AgentOtaUpdateStatusRequest(BaseModel):
+    """Agent OTA 更新状态上报请求模式"""
+
+    app_name: str = Field(..., description="应用名称（对应 host_upd 表的 app_name）", min_length=1)
+    app_ver: str = Field(..., description="应用版本号（对应 host_upd 表的 app_ver）", min_length=1)
+    biz_state: int = Field(
+        ...,
+        ge=1,
+        le=3,
+        description="业务状态（1=更新中，2=成功，3=失败）",
+    )
+    agent_ver: Optional[str] = Field(
+        default=None,
+        description="Agent 版本号（更新成功时必填，用于更新 host_rec 表的 agent_ver）",
+        max_length=10,
+    )
+
+    model_config = {"from_attributes": True}
+
+
+class AgentOtaUpdateStatusResponse(BaseModel):
+    """Agent OTA 更新状态上报响应模式"""
+
+    host_id: int = Field(description="主机ID")
+    host_upd_id: int = Field(description="更新记录ID（host_upd 表主键）")
+    app_state: int = Field(description="更新后的状态（0=预更新，1=更新中，2=成功，3=失败）")
+    host_state: Optional[int] = Field(
+        default=None,
+        description="更新后的主机状态（如果更新成功，则为 0=空闲）",
+    )
+    agent_ver: Optional[str] = Field(default=None, description="更新后的 Agent 版本号")
+    updated: bool = Field(description="是否成功更新")
 
     model_config = {"from_attributes": True}

@@ -159,7 +159,7 @@ async def deploy_ota_config(
     - `conf_ver`: 配置版本号（必填）
     - `conf_name`: 配置名称（必填）
     - `conf_url`: OTA 包下载地址（必填）
-    - `conf_md5`: OTA 包 MD5（必填）
+    - `conf_md5`: OTA 包 MD5（可选）
 
     ## 返回字段
     - `id`: 配置ID（主键）
@@ -205,7 +205,7 @@ async def deploy_ota_config(
         conf_ver=deploy_data.conf_ver,
         conf_name=deploy_data.conf_name,
         conf_url=str(deploy_data.conf_url),
-        conf_md5=deploy_data.conf_md5,
+        conf_md5=deploy_data.conf_md5,  # 可能为 None
         operator_id=operator_id,
     )
 

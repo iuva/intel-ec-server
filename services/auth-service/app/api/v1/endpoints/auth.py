@@ -112,8 +112,20 @@ async def device_login(
     # 从当前用户信息中获取 user_id（如果已认证）
     current_user_id = None
     if current_user:
-        # 从 token 中的 sub 字段获取用户ID
-        current_user_id = int(current_user.get("sub", 0)) if current_user.get("sub") else None
+        # ✅ 统一使用 id 字段（从 id 或 sub 提取，向后兼容）
+        user_id = current_user.get("id") or current_user.get("sub")
+        if user_id:
+            try:
+                current_user_id = int(user_id)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "无法将 user_id 转换为整数",
+                    extra={
+                        "user_id": user_id,
+                        "user_id_type": type(user_id).__name__,
+                    },
+                )
+                current_user_id = None
 
     # 执行登录，传递当前用户ID用于审计
     login_response = await auth_service.device_login(login_data, current_user_id=current_user_id)

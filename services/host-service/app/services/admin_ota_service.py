@@ -122,7 +122,7 @@ class AdminOtaService:
         conf_ver: str,
         conf_name: str,
         conf_url: str,
-        conf_md5: str,
+        conf_md5: Optional[str] = None,
         operator_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """下发 OTA 配置
@@ -137,7 +137,7 @@ class AdminOtaService:
             conf_ver: 配置版本号
             conf_name: 配置名称
             conf_url: OTA 包下载地址
-            conf_md5: OTA 包 MD5 校验值
+            conf_md5: OTA 包 MD5 校验值（可选）
             operator_id: 操作人ID（可选）
 
         Returns:
@@ -146,7 +146,7 @@ class AdminOtaService:
                 - conf_ver: 配置版本号
                 - conf_name: 配置名称
                 - conf_url: 下载地址
-                - conf_md5: 校验值
+                - conf_md5: 校验值（可能为 None）
                 - broadcast_count: 广播消息成功发送的主机数量
 
         Raises:

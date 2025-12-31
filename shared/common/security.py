@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from jose import jwt
+from jose.exceptions import JWTError, ExpiredSignatureError
 from ***REMOVED***lib.context import CryptContext
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ class JWTManager:
 
             return payload
 
-        except jwt.ExpiredSignatureError as e:  # type: ignore[attr-defined]
+        except ExpiredSignatureError as e:
             # ✅ 增强日志：记录详细的过期信息
             try:
                 # 尝试解码 token 获取过期时间信息
@@ -172,47 +173,40 @@ class JWTManager:
                 },
             )
             return None
-        except jwt.InvalidSignatureError as e:  # type: ignore[attr-defined]
-            # ✅ 增强日志：记录签名错误
+        except JWTError as e:
+            # ✅ 增强日志：记录 JWT 错误（包括解码错误和签名错误）
+            # 注意：jose 库中，解码错误和签名错误都会抛出 JWTError
+            error_type = type(e).__name__
+            error_message = str(e).lower()
+            is_signature_error = "signature" in error_message or "signature" in error_type.lower()
+            is_decode_error = "decode" in error_message or "invalid" in error_message or "malformed" in error_message
+
+            # 根据错误类型确定日志消息
+            if is_signature_error:
+                log_message = "令牌签名无效"
+                hint = "令牌可能被篡改或使用了错误的密钥签名"
+            elif is_decode_error:
+                log_message = "令牌格式错误，无法解码"
+                hint = "令牌格式不正确，可能不是有效的 JWT"
+            else:
+                log_message = "JWT 验证失败"
+                hint = "令牌验证失败，可能是格式错误、签名错误或其他 JWT 相关问题"
+
             logger.warning(
-                "令牌签名无效",
+                log_message,
                 extra={
                     "token_preview": token_preview,
                     "operation": "verify_token",
-                    "error_type": "InvalidSignatureError",
+                    "error_type": error_type,
                     "error_message": str(e),
-                    "hint": "令牌可能被篡改或使用了错误的密钥签名",
-                },
-            )
-            return None
-        except jwt.DecodeError as e:  # type: ignore[attr-defined]
-            # ✅ 增强日志：记录解码错误
-            logger.warning(
-                "令牌格式错误，无法解码",
-                extra={
-                    "token_preview": token_preview,
-                    "operation": "verify_token",
-                    "error_type": "DecodeError",
-                    "error_message": str(e),
-                    "hint": "令牌格式不正确，可能不是有效的 JWT",
-                },
-            )
-            return None
-        except jwt.JWTError as e:  # type: ignore[attr-defined]
-            # ✅ 增强日志：记录其他 JWT 错误
-            logger.warning(
-                "JWT 验证失败",
-                extra={
-                    "token_preview": token_preview,
-                    "operation": "verify_token",
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "hint": "令牌验证失败，可能是格式错误、签名错误或其他 JWT 相关问题",
+                    "is_signature_error": is_signature_error,
+                    "is_decode_error": is_decode_error,
+                    "hint": hint,
                 },
             )
             return None
         except Exception as e:
-            # ✅ 增强日志：记录未知错误
+            # ✅ 增强日志：记录未知错误（非 JWT 相关异常）
             logger.error(
                 "验证令牌失败 - 未知错误",
                 extra={

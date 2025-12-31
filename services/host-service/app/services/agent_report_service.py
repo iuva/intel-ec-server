@@ -17,8 +17,10 @@ from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.constants.host_constants import HOST_STATE_FREE
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
+    from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
     from app.models.host_exec_log import HostExecLog
 
@@ -31,8 +33,10 @@ try:
     from shared.utils.template_validator import TemplateValidator
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.constants.host_constants import HOST_STATE_FREE
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
+    from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
     from app.models.host_exec_log import HostExecLog
 
@@ -902,29 +906,57 @@ class AgentReportService:
                 code=500,
             )
 
-    async def report_vnc_connection_success(self, host_id: int) -> Dict[str, Any]:
-        """Agent 上报 VNC 连接成功
+    async def report_vnc_connection_state(
+        self, host_id: int, vnc_state: int
+    ) -> Dict[str, Any]:
+        """Agent 上报 VNC 连接状态
 
         业务逻辑：
         1. 从 token 中解析 host_id（已在依赖注入中完成）
-        2. 更新对应的 host_rec 表的 host_state = 2（已占用）
+        2. 根据 vnc_state 和当前 host_state 更新主机状态：
+            - 当 `vnc_state = 1`（连接成功）时：
+                - 如果 `host_state = 1`（已锁定），则修改为 `host_state = 2`（已占用）
+            - 当 `vnc_state = 2`（连接断开）时：
+                - 如果 `host_state = 2`（已占用），则修改为 `host_state = 0`（空闲）
 
         Args:
             host_id: 主机ID（从token中获取）
+            vnc_state: VNC连接状态（1=连接成功，2=连接断开）
 
         Returns:
-            更新结果，包含 host_id、host_state 和 updated 字段
+            更新结果，包含 host_id、host_state、vnc_state 和 updated 字段
 
         Raises:
             BusinessError: 业务逻辑错误
         """
         try:
             logger.info(
-                "开始处理 Agent VNC 连接成功上报",
+                "开始处理 Agent VNC 连接状态上报",
                 extra={
                     "host_id": host_id,
+                    "vnc_state": vnc_state,
                 },
             )
+
+            # ✅ 导入主机状态常量
+            try:
+                from app.constants.host_constants import (
+                    HOST_STATE_FREE,
+                    HOST_STATE_LOCKED,
+                    HOST_STATE_OCCUPIED,
+                )
+            except ImportError:
+                import sys
+                import os
+
+                sys.path.insert(
+                    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
+                )
+                from app.constants.host_constants import (
+                    HOST_STATE_FREE,
+                    HOST_STATE_LOCKED,
+                    HOST_STATE_OCCUPIED,
+                )
 
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
@@ -943,6 +975,7 @@ class AgentReportService:
                         "主机不存在或已删除",
                         extra={
                             "host_id": host_id,
+                            "vnc_state": vnc_state,
                         },
                     )
                     raise BusinessError(
@@ -953,37 +986,297 @@ class AgentReportService:
 
                 # 2. 记录更新前的状态
                 old_host_state = host_rec.host_state
+                current_host_state = host_rec.host_state
 
-                # 3. 更新 host_rec 表的 host_state = 2（已占用）
-                update_stmt = (
-                    update(HostRec)
-                    .where(
-                        and_(
-                            HostRec.id == host_id,
-                            HostRec.del_flag == 0,
+                # 3. 根据 vnc_state 和当前 host_state 确定新状态
+                new_host_state = None
+                updated = False
+
+                if vnc_state == 1:  # 连接成功
+                    if current_host_state == HOST_STATE_LOCKED:  # 1 = 已锁定
+                        new_host_state = HOST_STATE_OCCUPIED  # 2 = 已占用
+                        updated = True
+                        logger.info(
+                            "VNC连接成功，主机状态从已锁定(1)更新为已占用(2)",
+                            extra={
+                                "host_id": host_id,
+                                "old_host_state": old_host_state,
+                                "new_host_state": new_host_state,
+                                "vnc_state": vnc_state,
+                            },
                         )
+                    else:
+                        logger.info(
+                            "VNC连接成功，但主机状态不匹配，无需更新",
+                            extra={
+                                "host_id": host_id,
+                                "current_host_state": current_host_state,
+                                "required_host_state": HOST_STATE_LOCKED,
+                                "vnc_state": vnc_state,
+                            },
+                        )
+                        # 状态不匹配，不更新，但返回当前状态
+                        new_host_state = current_host_state
+
+                elif vnc_state == 2:  # 连接断开
+                    if current_host_state == HOST_STATE_OCCUPIED:  # 2 = 已占用
+                        new_host_state = HOST_STATE_FREE  # 0 = 空闲
+                        updated = True
+                        logger.info(
+                            "VNC连接断开，主机状态从已占用(2)更新为空闲(0)",
+                            extra={
+                                "host_id": host_id,
+                                "old_host_state": old_host_state,
+                                "new_host_state": new_host_state,
+                                "vnc_state": vnc_state,
+                            },
+                        )
+                    else:
+                        logger.info(
+                            "VNC连接断开，但主机状态不匹配，无需更新",
+                            extra={
+                                "host_id": host_id,
+                                "current_host_state": current_host_state,
+                                "required_host_state": HOST_STATE_OCCUPIED,
+                                "vnc_state": vnc_state,
+                            },
+                        )
+                        # 状态不匹配，不更新，但返回当前状态
+                        new_host_state = current_host_state
+
+                # 4. 如果需要更新，执行更新操作
+                if updated and new_host_state is not None:
+                    update_stmt = (
+                        update(HostRec)
+                        .where(
+                            and_(
+                                HostRec.id == host_id,
+                                HostRec.del_flag == 0,
+                            )
+                        )
+                        .values(host_state=new_host_state)
                     )
-                    .values(host_state=2)  # 2 = 已占用
-                )
 
-                await session.execute(update_stmt)
-                await session.commit()
+                    await session.execute(update_stmt)
+                    await session.commit()
 
-                # 4. 刷新对象以获取最新状态
-                await session.refresh(host_rec)
+                    # 5. 刷新对象以获取最新状态
+                    await session.refresh(host_rec)
+                    final_host_state = host_rec.host_state
+                else:
+                    # 不需要更新，使用当前状态
+                    final_host_state = current_host_state
 
                 logger.info(
-                    "Agent VNC 连接成功上报处理完成",
+                    "Agent VNC 连接状态上报处理完成",
                     extra={
                         "host_id": host_id,
+                        "vnc_state": vnc_state,
                         "old_host_state": old_host_state,
-                        "new_host_state": host_rec.host_state,
+                        "new_host_state": final_host_state,
+                        "updated": updated,
                     },
                 )
 
                 return {
                     "host_id": host_id,
-                    "host_state": host_rec.host_state,
+                    "host_state": final_host_state,
+                    "vnc_state": vnc_state,
+                    "updated": updated,
+                }
+
+        except BusinessError:
+            raise
+        except Exception as e:
+            logger.error(
+                "Agent VNC 连接状态上报处理失败",
+                extra={
+                    "host_id": host_id,
+                    "vnc_state": vnc_state,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="Agent VNC 连接状态上报处理失败",
+                error_code="VNC_CONNECTION_REPORT_FAILED",
+                code=500,
+            )
+
+    async def report_ota_update_status(
+        self,
+        host_id: int,
+        app_name: str,
+        app_ver: str,
+        biz_state: int,
+        agent_ver: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """上报 OTA 更新状态
+
+        业务逻辑：
+        1. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新记录
+        2. 更新 app_state 字段（1=更新中，2=成功，3=失败）
+        3. 如果 biz_state=2（成功）：
+           - 更新 host_rec 表的 host_state=0（free）
+           - 更新 host_rec 表的 agent_ver（新版本，如果提供）
+
+        Args:
+            host_id: 主机ID
+            app_name: 应用名称
+            app_ver: 应用版本号
+            biz_state: 业务状态（1=更新中，2=成功，3=失败）
+            agent_ver: Agent 版本号（更新成功时必填）
+
+        Returns:
+            Dict[str, Any]: 包含更新结果的字典
+
+        Raises:
+            BusinessError: 未找到更新记录、更新失败或业务逻辑错误时抛出
+        """
+        try:
+            logger.info(
+                "开始处理 OTA 更新状态上报",
+                extra={
+                    "host_id": host_id,
+                    "app_name": app_name,
+                    "app_ver": app_ver,
+                    "biz_state": biz_state,
+                    "agent_ver": agent_ver,
+                },
+            )
+
+            # 验证 biz_state=2 时 agent_ver 必填
+            if biz_state == 2 and not agent_ver:
+                raise BusinessError(
+                    message="更新成功时，agent_ver 字段必填",
+                    error_code="AGENT_VER_REQUIRED",
+                    code=400,
+                )
+
+            # 映射 biz_state 到 app_state（1=更新中，2=成功，3=失败）
+            app_state = biz_state
+
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # 1. 查询 host_upd 表的最新记录
+                stmt = (
+                    select(HostUpd)
+                    .where(
+                        and_(
+                            HostUpd.host_id == host_id,
+                            HostUpd.app_name == app_name,
+                            HostUpd.app_ver == app_ver,
+                            HostUpd.del_flag == 0,
+                        )
+                    )
+                    .order_by(HostUpd.created_time.desc())
+                    .limit(1)
+                )
+
+                result = await session.execute(stmt)
+                host_upd = result.scalar_one_or_none()
+
+                if not host_upd:
+                    raise BusinessError(
+                        message=f"未找到 OTA 更新记录: host_id={host_id}, app_name={app_name}, app_ver={app_ver}",
+                        error_code="OTA_UPDATE_RECORD_NOT_FOUND",
+                        code=404,
+                    )
+
+                # 2. 更新 host_upd 表的 app_state
+                old_app_state = host_upd.app_state
+                update_host_upd_stmt = (
+                    update(HostUpd)
+                    .where(HostUpd.id == host_upd.id)
+                    .values(app_state=app_state)
+                )
+                await session.execute(update_host_upd_stmt)
+
+                logger.info(
+                    "host_upd 表状态已更新",
+                    extra={
+                        "host_upd_id": host_upd.id,
+                        "host_id": host_id,
+                        "old_app_state": old_app_state,
+                        "new_app_state": app_state,
+                    },
+                )
+
+                # 3. 如果 biz_state=2（成功），更新 host_rec 表
+                new_host_state = None
+                if biz_state == 2:
+                    # 查询 host_rec 表
+                    host_rec_stmt = select(HostRec).where(
+                        and_(
+                            HostRec.id == host_id,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    host_rec_result = await session.execute(host_rec_stmt)
+                    host_rec = host_rec_result.scalar_one_or_none()
+
+                    if not host_rec:
+                        logger.warning(
+                            "未找到主机记录，跳过 host_rec 表更新",
+                            extra={
+                                "host_id": host_id,
+                                "host_upd_id": host_upd.id,
+                            },
+                        )
+                    else:
+                        # 更新 host_state=0（free）和 agent_ver
+                        old_host_state = host_rec.host_state
+                        old_agent_ver = host_rec.agent_ver
+
+                        update_values: Dict[str, Any] = {"host_state": HOST_STATE_FREE}
+                        if agent_ver:
+                            # 限制 agent_ver 长度为 10
+                            update_values["agent_ver"] = agent_ver[:10] if len(agent_ver) > 10 else agent_ver
+
+                        update_host_rec_stmt = (
+                            update(HostRec)
+                            .where(HostRec.id == host_id)
+                            .values(**update_values)
+                        )
+                        await session.execute(update_host_rec_stmt)
+
+                        new_host_state = HOST_STATE_FREE
+
+                        logger.info(
+                            "host_rec 表已更新（OTA 更新成功）",
+                            extra={
+                                "host_id": host_id,
+                                "old_host_state": old_host_state,
+                                "new_host_state": new_host_state,
+                                "old_agent_ver": old_agent_ver,
+                                "new_agent_ver": update_values.get("agent_ver"),
+                            },
+                        )
+
+                # 提交事务
+                await session.commit()
+
+                # 刷新 host_upd 对象以获取最新状态
+                await session.refresh(host_upd)
+
+                logger.info(
+                    "OTA 更新状态上报处理完成",
+                    extra={
+                        "host_id": host_id,
+                        "host_upd_id": host_upd.id,
+                        "app_state": app_state,
+                        "host_state": new_host_state,
+                        "agent_ver": agent_ver,
+                    },
+                )
+
+                return {
+                    "host_id": host_id,
+                    "host_upd_id": host_upd.id,
+                    "app_state": app_state,
+                    "host_state": new_host_state,
+                    "agent_ver": agent_ver[:10] if agent_ver and len(agent_ver) > 10 else agent_ver,
                     "updated": True,
                 }
 
@@ -991,17 +1284,20 @@ class AgentReportService:
             raise
         except Exception as e:
             logger.error(
-                "Agent VNC 连接成功上报处理失败",
+                "OTA 更新状态上报处理失败",
                 extra={
                     "host_id": host_id,
+                    "app_name": app_name,
+                    "app_ver": app_ver,
+                    "biz_state": biz_state,
                     "error_type": type(e).__name__,
                     "error_message": str(e),
                 },
                 exc_info=True,
             )
             raise BusinessError(
-                message="Agent VNC 连接成功上报处理失败",
-                error_code="VNC_CONNECTION_REPORT_FAILED",
+                message="OTA 更新状态上报处理失败",
+                error_code="OTA_UPDATE_STATUS_REPORT_FAILED",
                 code=500,
             )
 

@@ -14,7 +14,7 @@ try:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
     from fastapi.responses import JSONResponse
-    from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+    from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.i18n import parse_accept_language, t
@@ -27,7 +27,7 @@ except ImportError:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
     from fastapi.responses import JSONResponse
-    from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
+    from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.i18n import parse_accept_language, t
@@ -469,6 +469,23 @@ async def proxy_request(
         # 获取请求头（在请求体处理之后）
         headers = dict(request.headers)
 
+        # ✅ 安全措施：删除客户端传入的 X-User-Info header（防止伪造）
+        # Gateway 会在验证 token 后添加自己的 X-User-Info header
+        x_user_info_keys = [k for k in headers if k.lower() == "x-user-info"]
+        if x_user_info_keys:
+            for key in x_user_info_keys:
+                logger.warning(
+                    "删除客户端传入的 X-User-Info header（安全措施）",
+                    extra={
+                        "header_key": key,
+                        "service_name": service_name,
+                        "subpath": subpath,
+                        "method": method,
+                        "hint": "X-User-Info header 只能由 Gateway 在验证 token 后添加，客户端传入的将被删除",
+                    },
+                )
+                del headers[key]
+
         # 移除可能导致冲突的头部
         headers.pop("host", None)
 
@@ -507,11 +524,11 @@ async def proxy_request(
         )
 
         if user_info:
-            # ✅ 统一使用 id 字段，没有则跳过设置 header
+            # ✅ 统一使用 id 字段，没有则返回 401 错误
             user_id = user_info.get("id")
             if not user_id or (isinstance(user_id, str) and not user_id.strip()):
-                logger.warning(
-                    "用户信息中缺少 id，跳过设置 X-User-Info header",
+                logger.error(
+                    "用户信息中缺少 id，拒绝转发请求",
                     extra={
                         "user_info_keys": list(user_info.keys()),
                         "id_value": user_id,
@@ -522,24 +539,38 @@ async def proxy_request(
                         "hint": "请检查 Gateway 认证中间件日志，确认 token 验证是否成功",
                     },
                 )
-            else:
-                # ✅ 确保 user_info 包含统一的 id 字段
-                if "id" not in user_info:
-                    user_info = user_info.copy()
-                    user_info["id"] = user_id
-                # 将用户信息序列化为JSON并添加到请求头
-                headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
-                logger.info(
-                    "✅ 添加用户信息到请求头",
-                    extra={
-                        "id": user_id,
-                        "username": user_info.get("username"),
-                        "user_type": user_info.get("user_type"),
-                        "service_name": service_name,
-                        "subpath": subpath,
-                        "method": method,
+
+                # ✅ 返回 401 错误，而不是跳过设置 header
+                locale = _get_locale_from_request(request)
+                return _create_error_response(
+                    request=request,
+                    code=HTTP_401_UNAUTHORIZED,
+                    message=t("error.auth.missing_id", locale=locale),
+                    error_code="MISSING_ID",
+                    message_key="error.auth.missing_id",
+                    details={
+                        "hint": "用户信息中缺少必需的 id 字段，请重新登录获取有效令牌",
+                        "user_info_keys": list(user_info.keys()),
                     },
                 )
+
+            # ✅ 确保 user_info 包含统一的 id 字段
+            if "id" not in user_info:
+                user_info = user_info.copy()
+                user_info["id"] = user_id
+            # 将用户信息序列化为JSON并添加到请求头
+            headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
+            logger.info(
+                "✅ 添加用户信息到请求头",
+                extra={
+                    "id": user_id,
+                    "username": user_info.get("username"),
+                    "user_type": user_info.get("user_type"),
+                    "service_name": service_name,
+                    "subpath": subpath,
+                    "method": method,
+                },
+            )
         else:
             logger.warning(
                 "request.state.user 不存在，跳过设置 X-User-Info header",
