@@ -514,3 +514,114 @@ async def reset_host_for_test(
         locale=locale,
         default_message="Reset host for test succeeded",
     )
+
+
+@router.post(
+    "/reset",
+    response_model=Result[ResetHostForTestResponse],
+    summary="测试重置主机",
+    description="重置主机状态为有效状态并删除执行日志（测试用）",
+    responses={
+        200: {
+            "description": "重置成功",
+            "model": Result[ResetHostForTestResponse],
+        },
+        400: {
+            "description": "请求参数错误",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 400,
+                        "message": "主机ID格式无效",
+                        "error_code": "INVALID_HOST_ID",
+                    }
+                }
+            },
+        },
+        404: {
+            "description": "主机不存在",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 53001,
+                        "message": "主机不存在: 123",
+                        "error_code": "HOST_NOT_FOUND",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def reset_host_for_test(
+    request: ResetHostForTestRequest = Body(..., description="测试重置主机请求参数"),
+    host_service: BrowserHostService = Depends(get_host_service),
+    locale: str = Depends(get_locale),
+) -> Result[ResetHostForTestResponse]:
+    """测试重置主机 - 重置主机状态并删除执行日志
+
+    ## 业务逻辑
+    1. 验证主机ID格式和存在性
+    2. 更新 host_rec 表：
+       - `appr_state = 1`（启用状态）
+       - `host_state = 0`（空闲状态）
+       - `subm_time = null`（清空申报时间）
+    3. 逻辑删除 host_exec_log 表中对应的记录（`del_flag = 1`）
+    4. 在同一个事务中执行所有操作
+
+    ## 请求参数
+    - `host_id`: 主机ID（必填）
+
+    ## 返回数据
+    - `host_id`: 主机ID
+    - `appr_state`: 审批状态（1=启用）
+    - `host_state`: 主机状态（0=空闲）
+    - `subm_time`: 申报时间（重置后为 null）
+    - `deleted_log_count`: 删除的执行日志记录数
+
+    ## 注意事项
+    - 此接口用于测试环境，重置主机状态为初始状态
+    - 会逻辑删除该主机的所有执行日志记录
+    - 所有操作在同一个事务中执行，保证数据一致性
+
+    Args:
+        request: 测试重置主机请求
+        host_service: 主机服务实例
+        locale: 语言偏好
+
+    Returns:
+        Result[ResetHostForTestResponse]: 统一格式的成功响应，包含重置结果数据
+    """
+    logger.info(
+        "接收测试重置主机请求",
+        extra={
+            "host_id": request.host_id,
+        },
+    )
+
+    result = await host_service.reset_host_for_test(request.host_id)
+
+    logger.info(
+        "测试重置主机完成",
+        extra={
+            "host_id": request.host_id,
+            "appr_state": result["appr_state"],
+            "host_state": result["host_state"],
+            "deleted_log_count": result["deleted_log_count"],
+        },
+    )
+
+    response_data = ResetHostForTestResponse(
+        host_id=result["host_id"],
+        appr_state=result["appr_state"],
+        host_state=result["host_state"],
+        subm_time=result["subm_time"],
+        deleted_log_count=result["deleted_log_count"],
+    )
+
+    return create_success_result(
+        data=response_data,
+        message_key="success.host.reset_for_test",
+        locale=locale,
+        default_message="测试重置主机成功",
+    )
