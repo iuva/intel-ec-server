@@ -63,7 +63,7 @@ async def get_active_hosts(locale: str = Depends(get_locale)):
     ws_manager = get_agent_websocket_manager()
     hosts = ws_manager.get_active_hosts()
 
-    logger.info(f"查询活跃Host列表: 共 {len(hosts)} 个")
+    logger.info("查询活跃Host列表", extra={"host_count": len(hosts)})
 
     return SuccessResponse(
         data={"hosts": hosts, "count": len(hosts)},
@@ -105,7 +105,7 @@ async def get_host_status(
     ws_manager = get_agent_websocket_manager()
     is_connected = ws_manager.is_connected(host_id)
 
-    logger.debug(f"查询Host连接状态: {host_id} -> {'已连接' if is_connected else '未连接'}")
+    logger.debug("查询Host连接状态", extra={"host_id": host_id, "is_connected": is_connected})
 
     return SuccessResponse(
         data={"host_id": host_id, "connected": is_connected},
@@ -165,9 +165,9 @@ async def send_message_to_host(
     success = await ws_manager.send_to_host(host_id, message)
 
     if success:
-        logger.info(f"✅ 消息已发送到Host: {host_id}, 类型: {message.get('type')}")
+        logger.info("消息已发送到Host", extra={"host_id": host_id, "message_type": message.get('type')})
     else:
-        logger.warning(f"⚠️ 消息发送失败: {host_id} (Host未连接)")
+        logger.warning("消息发送失败 (Host未连接)", extra={"host_id": host_id})
 
     if success:
         return SuccessResponse(
@@ -233,7 +233,14 @@ async def send_message_to_hosts(
     ws_manager = get_agent_websocket_manager()
     success_count = await ws_manager.send_to_hosts(host_ids, message)
 
-    logger.info(f"多播消息完成: 目标 {len(host_ids)} 个Host, 成功 {success_count} 个, 类型: {message.get('type')}")
+    logger.info(
+        "多播消息完成",
+        extra={
+            "target_count": len(host_ids),
+            "success_count": success_count,
+            "message_type": message.get('type'),
+        },
+    )
 
     return SuccessResponse(
         data={
@@ -297,7 +304,13 @@ async def broadcast_message(
     total_count = ws_manager.get_connection_count()
 
     logger.info(
-        f"广播消息完成: 目标 {total_count} 个Host, 成功 {success_count} 个, 排除: {exclude_host_id or '无'}, 类型: {message.get('type')}"
+        "广播消息完成",
+        extra={
+            "target_count": total_count,
+            "success_count": success_count,
+            "exclude_host_id": exclude_host_id or "无",
+            "message_type": message.get('type'),
+        },
     )
 
     return SuccessResponse(
@@ -361,7 +374,7 @@ async def notify_host_offline(
 
     # 检查 Host 是否连接
     if not ws_manager.is_connected(host_id):
-        logger.warning(f"⚠️ Host 未连接，无法发送下线通知: {host_id}")
+        logger.warning("Host 未连接，无法发送下线通知", extra={"host_id": host_id})
         raise BusinessError(
             message=f"Host 未连接: {host_id}",
             message_key="error.host.not_connected",
@@ -383,13 +396,14 @@ async def notify_host_offline(
     success = await ws_manager.send_to_host(host_id, offline_message)
 
     if success:
-        logger.info(f"✅ Host下线通知已发送: {host_id}, 原因: {reason or '未指定原因'}")
+        logger.info("Host下线通知已发送", extra={"host_id": host_id, "reason": reason or "未指定原因"})
     else:
-        logger.warning(f"⚠️ Host下线通知发送失败: {host_id}")
+        logger.warning("Host下线通知发送失败", extra={"host_id": host_id})
         raise BusinessError(
             message=f"发送下线通知失败: {host_id}",
             error_code="SEND_NOTIFICATION_FAILED",
-            code=500,
+            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+            http_status_code=500,
         )
 
     return SuccessResponse(

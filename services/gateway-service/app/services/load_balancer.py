@@ -62,7 +62,7 @@ class LoadBalancer:
             instances = await self._get_instances(service_name)
 
             if not instances:
-                logger.warning(f"没有找到服务实例: {service_name}")
+                logger.warning("没有找到服务实例", extra={"service_name": service_name})
                 raise ServiceUnavailableError(
                     message="没有可用的服务实例",
                     code=503,
@@ -73,7 +73,7 @@ class LoadBalancer:
             healthy_instances = [inst for inst in instances if inst.get("healthy", True)]
 
             if not healthy_instances:
-                logger.warning(f"没有健康的服务实例: {service_name}")
+                logger.warning("没有健康的服务实例", extra={"service_name": service_name})
                 raise ServiceUnavailableError(
                     message="没有健康的服务实例",
                     code=503,
@@ -84,7 +84,7 @@ class LoadBalancer:
             selected_instance = self._select_instance_weighted(healthy_instances)
 
             logger.info(
-                f"选择服务实例: {service_name}",
+                "选择服务实例",
                 extra={
                     "service_name": service_name,
                     "instance_ip": selected_instance.get("ip"),
@@ -99,7 +99,7 @@ class LoadBalancer:
 
         except Exception as e:
             logger.error(
-                f"获取服务实例异常: {service_name}",
+                "获取服务实例异常",
                 extra={"service_name": service_name, "error": str(e)},
                 exc_info=True,
             )
@@ -118,7 +118,7 @@ class LoadBalancer:
         """
         # 检查缓存
         if service_name in self.service_instances_cache:
-            logger.debug(f"从缓存获取服务实例: {service_name}")
+            logger.debug("从缓存获取服务实例", extra={"service_name": service_name})
             return self.service_instances_cache[service_name]
 
         # 从 Nacos 获取
@@ -129,7 +129,7 @@ class LoadBalancer:
                 # 更新缓存
                 self.service_instances_cache[service_name] = instances
                 logger.info(
-                    f"从 Nacos 获取服务实例: {service_name}",
+                    "从 Nacos 获取服务实例",
                     extra={
                         "service_name": service_name,
                         "instance_count": len(instances),
@@ -140,7 +140,7 @@ class LoadBalancer:
 
         except Exception as e:
             logger.error(
-                f"从 Nacos 获取服务实例失败: {service_name}",
+                "从 Nacos 获取服务实例失败",
                 extra={"service_name": service_name, "error": str(e)},
             )
             return []
@@ -188,7 +188,7 @@ class LoadBalancer:
         if service_name:
             if service_name in self.service_instances_cache:
                 del self.service_instances_cache[service_name]
-                logger.info(f"清除服务实例缓存: {service_name}")
+                logger.info("清除服务实例缓存", extra={"service_name": service_name})
         else:
             self.service_instances_cache.clear()
             logger.info("清除所有服务实例缓存")
@@ -226,7 +226,7 @@ class LoadBalancer:
 
         except Exception as e:
             logger.error(
-                f"检查实例健康状态异常: {service_name}",
+                "检查实例健康状态异常",
                 extra={
                     "service_name": service_name,
                     "ip": ip,

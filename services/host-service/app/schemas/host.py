@@ -130,8 +130,10 @@ class VNCConnectionReport(BaseModel):
                     return dt
                 except ValueError as e:
                     raise ValueError(
-                        f"连接时间格式不正确，支持格式：yyyy/MM/dd HH:mm:ss（如：2025/01/30 10:00:00）"
-                        f"或 ISO 8601（如：2025-01-30T10:00:00Z），当前值：{value}"
+                        (
+                            f"连接时间格式不正确，支持格式：yyyy/MM/dd HH:mm:ss（如：2025/01/30 10:00:00）"
+                            f"或 ISO 8601（如：2025-01-30T10:00:00Z），当前值：{value}"
+                        )
                     ) from e
 
         raise ValueError(f"连接时间必须是字符串或 datetime 对象，当前类型：{type(value).__name__}")
@@ -831,5 +833,25 @@ class AgentOtaUpdateStatusResponse(BaseModel):
     )
     agent_ver: Optional[str] = Field(default=None, description="更新后的 Agent 版本号")
     updated: bool = Field(description="是否成功更新")
+
+    model_config = {"from_attributes": True}
+
+
+class ResetHostForTestRequest(BaseModel):
+    """测试重置主机请求模式"""
+
+    host_id: str = Field(..., description="主机ID", min_length=1)
+
+    model_config = {"from_attributes": True}
+
+
+class ResetHostForTestResponse(BaseModel):
+    """测试重置主机响应模式"""
+
+    host_id: str = Field(description="主机ID")
+    appr_state: int = Field(description="审批状态（1=启用）")
+    host_state: int = Field(description="主机状态（0=空闲）")
+    subm_time: Optional[str] = Field(default=None, description="申报时间（重置后为 null）")
+    deleted_log_count: int = Field(description="删除的执行日志记录数")
 
     model_config = {"from_attributes": True}

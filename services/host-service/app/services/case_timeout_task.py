@@ -21,9 +21,12 @@ from sqlalchemy import and_, or_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_LOCKED
     from app.models.host_exec_log import HostExecLog
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.schemas.websocket_message import MessageType
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
@@ -33,9 +36,12 @@ try:
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_LOCKED
     from app.models.host_exec_log import HostExecLog
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.schemas.websocket_message import MessageType
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
@@ -106,6 +112,9 @@ class CaseTimeoutTaskService:
             try:
                 # 执行超时检测
                 await self._check_timeout_cases()
+
+                # ✅ 执行 VNC 连接超时检测
+                await self._check_vnc_connection_timeout()
 
                 # 等待指定间隔
                 await asyncio.sleep(self.interval)
@@ -412,6 +421,312 @@ class CaseTimeoutTaskService:
                 exc_info=True,
             )
             return []
+
+    async def _check_vnc_connection_timeout(self) -> None:
+        """检查 VNC 连接超时
+
+        业务逻辑：
+        1. 查询 host_state = 1（已锁定）且 subm_time - now() > 5分钟 的主机
+        2. 对每个超时主机：
+           - 尝试通过 WebSocket 通知 Agent 下线
+           - 如果 Agent 未在线，执行清理操作：
+             - 更新 host_rec 表：host_state = 0, subm_time = null
+             - 逻辑删除 host_exec_log 表有效数据：del_flag = 1
+        """
+        try:
+            log_operation_start(
+                "检测 VNC 连接超时",
+                logger_instance=logger,
+            )
+
+            # 1. 查询超时的主机（host_state = 1 且 subm_time - now() > 5分钟）
+            timeout_hosts = await self._query_vnc_timeout_hosts()
+            if not timeout_hosts:
+                logger.debug("未发现 VNC 连接超时的主机")
+                return
+
+            logger.info(
+                "发现 VNC 连接超时的主机",
+                extra={"count": len(timeout_hosts)},
+            )
+
+            # 2. 获取 WebSocket 管理器
+            ws_manager = get_agent_websocket_manager()
+
+            # 3. 处理每个超时主机
+            success_count = 0
+            failed_count = 0
+
+            for host_rec in timeout_hosts:
+                try:
+                    host_id = host_rec.id
+                    host_id_str = str(host_id)
+
+                    # 3.1 尝试通知 Agent 下线
+                    offline_notification = {
+                        "type": MessageType.HOST_OFFLINE_NOTIFICATION,
+                        "host_id": host_id_str,
+                        "message": "VNC连接超时，Host已下线",
+                        "reason": "VNC连接超时（超过5分钟未建立连接）",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+
+                    # 检查 Agent 是否在线
+                    is_agent_online = ws_manager.is_connected(host_id_str)
+
+                    if is_agent_online:
+                        # Agent 在线，发送下线通知
+                        logger.info(
+                            "Agent 在线，发送下线通知",
+                            extra={
+                                "host_id": host_id,
+                                "host_id_str": host_id_str,
+                            },
+                        )
+                        notification_sent = await ws_manager.send_to_host(host_id_str, offline_notification)
+
+                        if notification_sent:
+                            logger.info(
+                                "VNC 连接超时下线通知已发送给 Agent",
+                                extra={
+                                    "host_id": host_id,
+                                    "host_id_str": host_id_str,
+                                },
+                            )
+                            success_count += 1
+                            # 通知已发送，等待 Agent 处理，不立即清理
+                            continue
+                        else:
+                            logger.warning(
+                                "VNC 连接超时下线通知发送失败，Agent 可能已断开",
+                                extra={
+                                    "host_id": host_id,
+                                    "host_id_str": host_id_str,
+                                },
+                            )
+                            # 通知发送失败，执行清理操作
+                    else:
+                        logger.info(
+                            "Agent 未在线，跳过通知，直接执行清理操作",
+                            extra={
+                                "host_id": host_id,
+                                "host_id_str": host_id_str,
+                            },
+                        )
+
+                    # 3.2 Agent 未在线或通知发送失败，执行清理操作
+                    cleanup_success = await self._cleanup_vnc_timeout_host(host_id)
+
+                    if cleanup_success:
+                        success_count += 1
+                        logger.info(
+                            "VNC 连接超时主机清理完成",
+                            extra={
+                                "host_id": host_id,
+                                "host_id_str": host_id_str,
+                            },
+                        )
+                    else:
+                        failed_count += 1
+                        logger.error(
+                            "VNC 连接超时主机清理失败",
+                            extra={
+                                "host_id": host_id,
+                                "host_id_str": host_id_str,
+                            },
+                        )
+
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(
+                        "处理 VNC 连接超时主机异常",
+                        extra={
+                            "host_id": host_rec.id if host_rec else None,
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                        },
+                        exc_info=True,
+                    )
+
+            logger.info(
+                "VNC 连接超时检测完成",
+                extra={
+                    "total": len(timeout_hosts),
+                    "success": success_count,
+                    "failed": failed_count,
+                },
+            )
+
+        except Exception as e:
+            logger.error(
+                "检测 VNC 连接超时异常",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+
+    async def _query_vnc_timeout_hosts(self) -> List[HostRec]:
+        """查询 VNC 连接超时的主机
+
+        查询条件：
+        - host_state = 1（已锁定）
+        - subm_time IS NOT NULL
+        - subm_time < 当前时间 - 5分钟
+
+        Returns:
+            VNC 连接超时的主机列表
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            timeout_threshold = now - timedelta(minutes=5)  # 5分钟超时
+
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                stmt = (
+                    select(HostRec)
+                    .where(
+                        and_(
+                            HostRec.host_state == HOST_STATE_LOCKED,  # 已锁定状态
+                            HostRec.subm_time.is_not(None),  # subm_time 不为空
+                            HostRec.subm_time < timeout_threshold,  # 超过5分钟
+                            HostRec.del_flag == 0,  # 未删除
+                        )
+                    )
+                    .order_by(HostRec.subm_time.asc())  # 按 subm_time 升序，优先处理最早超时的
+                )
+
+                result = await session.execute(stmt)
+                host_recs = result.scalars().all()
+
+                logger.debug(
+                    "查询 VNC 连接超时的主机",
+                    extra={
+                        "timeout_threshold": timeout_threshold.isoformat(),
+                        "now": now.isoformat(),
+                        "count": len(host_recs),
+                    },
+                )
+
+                return list(host_recs)
+
+        except Exception as e:
+            logger.error(
+                "查询 VNC 连接超时主机异常",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            return []
+
+    async def _cleanup_vnc_timeout_host(self, host_id: int) -> bool:
+        """清理 VNC 连接超时的主机
+
+        业务逻辑（在同一个事务中执行）：
+        1. 更新 host_rec 表：host_state = 0, subm_time = null
+        2. 逻辑删除 host_exec_log 表有效数据：del_flag = 1
+           - 查询条件：host_id = host_id, del_flag = 0
+
+        Args:
+            host_id: 主机ID
+
+        Returns:
+            是否清理成功
+        """
+        try:
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                # ✅ 使用事务确保数据一致性
+                try:
+                    # 1. 更新 host_rec 表
+                    update_host_stmt = (
+                        update(HostRec)
+                        .where(
+                            and_(
+                                HostRec.id == host_id,
+                                HostRec.del_flag == 0,
+                            )
+                        )
+                        .values(
+                            host_state=HOST_STATE_FREE,  # 设置为空闲
+                            subm_time=None,  # 清空 subm_time
+                        )
+                    )
+                    await session.execute(update_host_stmt)
+
+                    logger.debug(
+                        "host_rec 表已更新（VNC 连接超时清理）",
+                        extra={
+                            "host_id": host_id,
+                            "new_host_state": HOST_STATE_FREE,
+                            "subm_time": None,
+                        },
+                    )
+
+                    # 2. 逻辑删除 host_exec_log 表有效数据
+                    update_exec_log_stmt = (
+                        update(HostExecLog)
+                        .where(
+                            and_(
+                                HostExecLog.host_id == host_id,
+                                HostExecLog.del_flag == 0,  # 只更新未删除的记录
+                            )
+                        )
+                        .values(del_flag=1)  # 逻辑删除
+                    )
+                    exec_log_result = await session.execute(update_exec_log_stmt)
+
+                    deleted_count = exec_log_result.rowcount
+
+                    logger.debug(
+                        "host_exec_log 表已更新（VNC 连接超时清理）",
+                        extra={
+                            "host_id": host_id,
+                            "deleted_count": deleted_count,
+                        },
+                    )
+
+                    # 3. 提交事务
+                    await session.commit()
+
+                    logger.info(
+                        "VNC 连接超时主机清理成功（事务已提交）",
+                        extra={
+                            "host_id": host_id,
+                            "deleted_exec_log_count": deleted_count,
+                        },
+                    )
+
+                    return True
+
+                except Exception as e:
+                    # 事务回滚
+                    await session.rollback()
+                    logger.error(
+                        "VNC 连接超时主机清理失败，事务已回滚",
+                        extra={
+                            "host_id": host_id,
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                        },
+                        exc_info=True,
+                    )
+                    return False
+
+        except Exception as e:
+            logger.error(
+                "清理 VNC 连接超时主机异常",
+                extra={
+                    "host_id": host_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            return False
 
     async def _send_timeout_email_notification(self, exec_log: HostExecLog) -> bool:
         """发送任务超时邮件通知

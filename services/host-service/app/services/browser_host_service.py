@@ -6,6 +6,7 @@
 from datetime import datetime
 from typing import List, cast
 
+from app.constants.host_constants import APPR_STATE_ENABLE, HOST_STATE_FREE
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
@@ -15,7 +16,7 @@ from sqlalchemy import and_, select, update
 try:
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.host_validators import validate_host_exists
 except ImportError:
@@ -25,7 +26,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.host_validators import validate_host_exists
 
@@ -60,7 +61,8 @@ class BrowserHostService:
             raise BusinessError(
                 message="主机ID格式无效",
                 error_code="INVALID_HOST_ID",
-                code=400,
+                code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                http_status_code=400,
             )
 
         session_factory = mariadb_manager.get_session()
@@ -131,14 +133,15 @@ class BrowserHostService:
             raise BusinessError(
                 message="主机ID格式无效",
                 error_code="INVALID_HOST_ID",
-                code=400,
+                code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                http_status_code=400,
             )
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
             try:
                 # 使用工具函数验证主机存在
-                logger.debug(f"验证主机存在: {host_id} (int: {host_id_int})")
+                logger.debug("验证主机存在", extra={"host_id": host_id, "host_id_int": host_id_int})
                 host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
                 logger.debug(
                     f"主机验证成功: {host_id}",
@@ -343,7 +346,8 @@ class BrowserHostService:
             raise BusinessError(
                 message="主机ID格式无效",
                 error_code="INVALID_HOST_ID",
-                code=400,
+                code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                http_status_code=400,
             )
 
         session_factory = mariadb_manager.get_session()
@@ -735,7 +739,8 @@ class BrowserHostService:
             raise BusinessError(
                 message="主机ID格式无效",
                 error_code="INVALID_HOST_ID",
-                code=400,
+                code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                http_status_code=400,
             )
 
         logger.info(
@@ -786,3 +791,103 @@ class BrowserHostService:
             )
 
             return updated_count
+
+    @handle_service_errors(
+        error_message="测试重置主机失败",
+        error_code="RESET_HOST_FOR_TEST_FAILED",
+    )
+    async def reset_host_for_test(self, host_id: str) -> dict:
+        """测试重置主机 - 重置主机状态并删除执行日志
+
+        将主机重置为有效状态：
+        1. 更新 host_rec 表：
+           - appr_state = 1（启用）
+           - host_state = 0（空闲）
+           - subm_time = null
+        2. 逻辑删除 host_exec_log 表中对应的记录（del_flag = 1）
+
+        Args:
+            host_id: 主机ID
+
+        Returns:
+            重置结果字典，包含主机ID、状态信息和删除的日志记录数
+
+        Raises:
+            BusinessError: 主机不存在或重置失败时
+        """
+        try:
+            host_id_int = int(host_id)
+        except (ValueError, TypeError):
+            raise BusinessError(
+                message="主机ID格式无效",
+                error_code="INVALID_HOST_ID",
+                code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                http_status_code=400,
+            )
+
+        session_factory = mariadb_manager.get_session()
+        async with session_factory() as session:
+            # 验证主机存在
+            host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
+
+            # 记录重置前的状态
+            old_appr_state = host.appr_state
+            old_host_state = host.host_state
+            old_subm_time = host.subm_time
+
+            logger.info(
+                "开始测试重置主机",
+                extra={
+                    "host_id": host_id,
+                    "old_appr_state": old_appr_state,
+                    "old_host_state": old_host_state,
+                    "old_subm_time": old_subm_time.isoformat() if old_subm_time else None,
+                },
+            )
+
+            # 1. 更新 host_rec 表
+            host.appr_state = APPR_STATE_ENABLE  # 1 = 启用
+            host.host_state = HOST_STATE_FREE  # 0 = 空闲
+            host.subm_time = None  # 设置为 null
+
+            # 2. 逻辑删除 host_exec_log 表中对应的记录
+            delete_log_stmt = (
+                update(HostExecLog)
+                .where(
+                    and_(
+                        HostExecLog.host_id == host_id_int,
+                        HostExecLog.del_flag == 0,  # 只删除未删除的记录
+                    )
+                )
+                .values(del_flag=1)  # 逻辑删除
+            )
+
+            # 执行删除操作
+            delete_log_result = await session.execute(delete_log_stmt)
+            deleted_log_count = delete_log_result.rowcount
+
+            # 提交事务
+            await session.commit()
+            await session.refresh(host)
+
+            logger.info(
+                "测试重置主机成功",
+                extra={
+                    "host_id": host_id,
+                    "old_appr_state": old_appr_state,
+                    "new_appr_state": host.appr_state,
+                    "old_host_state": old_host_state,
+                    "new_host_state": host.host_state,
+                    "old_subm_time": old_subm_time.isoformat() if old_subm_time else None,
+                    "new_subm_time": None,
+                    "deleted_log_count": deleted_log_count,
+                },
+            )
+
+            return {
+                "host_id": host_id,
+                "appr_state": host.appr_state,
+                "host_state": host.host_state,
+                "subm_time": None,
+                "deleted_log_count": deleted_log_count,
+            }

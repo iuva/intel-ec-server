@@ -323,6 +323,7 @@ async def get_external_api_token(
                         "login_url": login_url,
                         "status_code": status_code,
                         "response_body": body_to_log,
+                        "detail": error_msg,  # ✅ 添加 detail 字段供 i18n 使用
                     },
                 )
 
@@ -357,10 +358,10 @@ async def get_external_api_token(
                     expire_seconds = int(expires_in)
                 else:
                     expire_seconds = 15552000
-                    logger.warning(f"无法解析 expires_in: {expires_in}，使用默认值")
+                    logger.warning("无法解析 expires_in，使用默认值", extra={"expires_in": expires_in})
             except Exception:
                 expire_seconds = 15552000
-                logger.warning(f"解析 expires_in 失败: {expires_in}，使用默认值")
+                logger.warning("解析 expires_in 失败，使用默认值", extra={"expires_in": expires_in})
 
             # 存储 token 数据到缓存
             token_data = {
@@ -371,7 +372,7 @@ async def get_external_api_token(
 
             cache_success = await redis_manager.set(cache_key, token_data, expire=expire_seconds)
             if not cache_success:
-                logger.warning(f"外部 API token 缓存失败: {cache_key}")
+                logger.warning("外部 API token 缓存失败", extra={"cache_key": cache_key})
 
             # 返回完整的 token 信息
             return {
@@ -407,6 +408,10 @@ async def get_external_api_token(
                     })
                 except Exception:
                     ***REMOVED***
+
+            # ✅ 确保 detail 字段存在（供 i18n 使用）
+            if "detail" not in error_details:
+                error_details["detail"] = str(e)
 
             logger.error("获取外部 API token 异常", extra=error_details, exc_info=True)
 

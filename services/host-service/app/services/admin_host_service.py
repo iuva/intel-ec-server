@@ -330,7 +330,7 @@ class AdminHostService:
                     message=f"主机不存在或已被删除（ID: {host_id}）",
                     message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
-                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    code=ServiceErrorCodes.HOST_NOT_FOUND,
                     http_status_code=404,
                     details={"host_id": host_id},
                 )

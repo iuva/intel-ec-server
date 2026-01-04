@@ -197,7 +197,7 @@ async def deploy_ota_config(
         try:
             operator_id = int(user_id)
         except (ValueError, TypeError):
-            logger.warning(f"无法解析用户ID为整数: {user_id}")
+            logger.warning("无法解析用户ID为整数", extra={"user_id": user_id})
 
     # 调用服务层下发 OTA 配置
     deploy_result = await admin_ota_service.deploy_ota_config(

@@ -170,7 +170,7 @@ class WebSocketAuthMiddleware:
             return user_info
 
         except Exception as e:
-            self.logger.debug(f"令牌验证失败: {e!s}")
+            self.logger.debug("令牌验证失败", extra={"error": str(e)})
             return None
 
     async def check_permissions(

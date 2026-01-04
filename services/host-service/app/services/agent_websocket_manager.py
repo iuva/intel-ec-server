@@ -143,7 +143,10 @@ class AgentWebSocketManager:
             handler: 处理函数 async def handler(agent_id: str, data: dict) -> None
         """
         self.message_handlers[message_type] = handler
-        logger.info(f"消息处理器已注册: {message_type}")
+        logger.info(
+            "消息处理器已注册",
+            extra={"message_type": message_type},
+        )
 
     async def connect(self, agent_id: str, websocket: WebSocket) -> None:
         """建立 WebSocket 连接
@@ -190,8 +193,8 @@ class AgentWebSocketManager:
                 await self.disconnect(agent_id)
             except Exception as e:
                 logger.error(
-                    f"断开旧连接失败: {agent_id}",
-                    extra={"error": str(e)},
+                    "断开旧连接失败",
+                    extra={"agent_id": agent_id, "error": str(e)},
                     exc_info=True,
                 )
 
@@ -230,7 +233,10 @@ class AgentWebSocketManager:
         """
         # ✅ 防止重复调用：检查是否正在断开
         if agent_id in self._disconnecting:
-            logger.debug(f"连接 {agent_id} 正在断开中，跳过重复调用")
+            logger.debug(
+                "连接正在断开中，跳过重复调用",
+                extra={"agent_id": agent_id},
+            )
             return
 
         # ✅ 获取或创建断开锁（每个连接一个锁）
@@ -240,7 +246,10 @@ class AgentWebSocketManager:
         async with self._disconnect_locks[agent_id]:
             # 双重检查：再次检查是否正在断开
             if agent_id in self._disconnecting:
-                logger.debug(f"连接 {agent_id} 正在断开中（锁内检查），跳过重复调用")
+                logger.debug(
+                    "连接正在断开中（锁内检查），跳过重复调用",
+                    extra={"agent_id": agent_id},
+                )
                 return
 
             # 标记为正在断开
@@ -273,7 +282,7 @@ class AgentWebSocketManager:
                                 # 连接处于连接状态，可以关闭
                                 await websocket.close(code=1008, reason="心跳超时，连接已关闭")
                                 logger.info(
-                                    f"WebSocket 连接已主动关闭: {agent_id}",
+                                    "WebSocket 连接已主动关闭",
                                     extra={
                                         "agent_id": agent_id,
                                         "close_code": 1008,
@@ -281,30 +290,67 @@ class AgentWebSocketManager:
                                     },
                                 )
                             elif current_state == WebSocketState.DISCONNECTED:
-                                logger.debug(f"WebSocket 连接已处于断开状态: {agent_id}")
+                                logger.debug(
+                                    "WebSocket 连接已处于断开状态",
+                                    extra={"agent_id": agent_id},
+                                )
                             else:
                                 # 其他状态（CONNECTING），尝试关闭
                                 try:
                                     await websocket.close(code=1008, reason="心跳超时，连接已关闭")
-                                    logger.info(f"WebSocket 连接已主动关闭（状态: {current_state}）: {agent_id}")
+                                    logger.info(
+                                        "WebSocket 连接已主动关闭",
+                                        extra={
+                                            "agent_id": agent_id,
+                                            "connection_state": current_state.name,
+                                            "close_code": 1008,
+                                        },
+                                    )
                                 except Exception:
-                                    logger.debug(f"关闭 WebSocket 连接失败（状态: {current_state}）: {agent_id}")
+                                    logger.debug(
+                                        "关闭 WebSocket 连接失败",
+                                        extra={
+                                            "agent_id": agent_id,
+                                            "connection_state": current_state.name,
+                                        },
+                                    )
                         else:
                             # 其他类型的 WebSocket 连接，直接尝试关闭
                             try:
                                 await websocket.close(code=1008, reason="心跳超时，连接已关闭")
-                                logger.info(f"WebSocket 连接已主动关闭: {agent_id}")
+                                logger.info(
+                                    "WebSocket 连接已主动关闭",
+                                    extra={
+                                        "agent_id": agent_id,
+                                        "close_code": 1008,
+                                    },
+                                )
                             except Exception as close_error:
-                                logger.debug(f"关闭 WebSocket 连接失败: {agent_id}, 错误: {close_error!s}")
+                                logger.debug(
+                                    "关闭 WebSocket 连接失败",
+                                    extra={
+                                        "agent_id": agent_id,
+                                        "error": str(close_error),
+                                    },
+                                )
                     except Exception as e:
                         # 连接可能已经关闭，记录但不抛出异常
-                        logger.debug(f"关闭 WebSocket 连接时出错（可能已关闭）: {agent_id}, 错误: {e!s}")
+                        logger.debug(
+                            "关闭 WebSocket 连接时出错（可能已关闭）",
+                            extra={
+                                "agent_id": agent_id,
+                                "error": str(e),
+                            },
+                        )
 
                 # 更新 TCP 状态为 0 (关闭/连接断开)
                 try:
                     await self.host_service.update_tcp_state(agent_id, tcp_state=0)
                 except Exception as e:
-                    logger.warning(f"更新 TCP 状态失败: {agent_id}, 错误: {e!s}")
+                    logger.warning(
+                        "更新 TCP 状态失败",
+                        extra={"agent_id": agent_id, "error": str(e)},
+                    )
 
                 # 更新主机状态为离线（使用静默方法，避免失败时影响断开流程）
                 try:
@@ -352,7 +398,12 @@ class AgentWebSocketManager:
         # 📥 日志：接收到消息 (详细报文内容)
 
         logger.info(
-            f"📥 接收消息 | Agent: {agent_id} | 类型: {message_type_str} | 内容: {json.dumps(data, ensure_ascii=False)}",
+            "📥 接收消息",
+            extra={
+                "agent_id": agent_id,
+                "message_type": message_type_str,
+                "message_content": json.dumps(data, ensure_ascii=False),
+            },
         )
 
         try:
@@ -364,13 +415,17 @@ class AgentWebSocketManager:
                 await handler(agent_id, data)
             else:
                 # 未知消息类型
-                logger.warning(f"未知消息类型: {message_type_str}, Agent: {agent_id}")
+                logger.warning(
+                    "未知消息类型",
+                    extra={"agent_id": agent_id, "message_type": message_type_str},
+                )
                 await self._send_error_message(agent_id, f"未知消息类型: {message_type_str}")
 
         except Exception as e:
             logger.error(
-                f"消息处理失败: {agent_id}",
+                "消息处理失败",
                 extra={
+                    "agent_id": agent_id,
                     "message_type": message_type_str,
                     "error": str(e),
                 },
@@ -398,7 +453,12 @@ class AgentWebSocketManager:
                 # 📤 日志：发送消息 (详细报文内容)
                 message_type_str = message.get("type", "unknown")
                 logger.info(
-                    f"📤 发送消息 | Host: {host_id} | 类型: {message_type_str} | 实例ID: {self.instance_id}",
+                    "📤 发送消息",
+                    extra={
+                        "host_id": host_id,
+                        "message_type": message_type_str,
+                        "instance_id": self.instance_id,
+                    },
                 )
 
                 websocket = self.active_connections[host_id]
@@ -406,7 +466,12 @@ class AgentWebSocketManager:
                 return True
             except Exception as e:
                 logger.error(
-                    f"❌ 发送消息失败 | Host: {host_id} | 类型: {message.get('type', 'unknown')} | 错误: {str(e)}",
+                    "❌ 发送消息失败",
+                    extra={
+                        "host_id": host_id,
+                        "message_type": message.get("type", "unknown"),
+                        "error": str(e),
+                    },
                 )
                 await self.disconnect(host_id)
                 return False
@@ -414,12 +479,19 @@ class AgentWebSocketManager:
         # ✅ 步骤 2: 当前实例没有连接，尝试跨实例发送
         if cross_instance:
             logger.info(
-                f"Host 不在当前实例，尝试跨实例发送 | Host: {host_id} | 实例ID: {self.instance_id}",
+                "Host 不在当前实例，尝试跨实例发送",
+                extra={
+                    "host_id": host_id,
+                    "instance_id": self.instance_id,
+                },
             )
             return await self._send_to_host_cross_instance(host_id, message)
 
         # 当前实例没有连接且不支持跨实例
-        logger.warning(f"Host 未连接: {host_id} | 实例ID: {self.instance_id}")
+        logger.warning(
+            "Host 未连接",
+            extra={"host_id": host_id, "instance_id": self.instance_id},
+        )
         return False
 
     async def _send_to_host_cross_instance(self, host_id: str, message: dict) -> bool:
@@ -456,7 +528,7 @@ class AgentWebSocketManager:
             )
 
             logger.info(
-                f"✅ 已发布跨实例单播消息到 Redis | Host: {host_id} | 频道: {unicast_channel} | 实例ID: {self.instance_id}",
+                "✅ 已发布跨实例单播消息到 Redis",
                 extra={
                     "host_id": host_id,
                     "channel": unicast_channel,
@@ -471,7 +543,7 @@ class AgentWebSocketManager:
 
         except Exception as e:
             logger.warning(
-                f"Redis 发布跨实例单播消息失败: {e!s}",
+                "Redis 发布跨实例单播消息失败",
                 extra={
                     "host_id": host_id,
                     "instance_id": self.instance_id,
@@ -501,11 +573,16 @@ class AgentWebSocketManager:
                 failed_hosts.append(host_id)
 
         if failed_hosts:
-            logger.warning(f"发送失败的Host: {failed_hosts}")
+            logger.warning(
+                "发送失败的Host",
+                extra={"failed_hosts": failed_hosts},
+            )
 
         logger.info(
-            f"多播完成: 成功 {success_count}/{len(host_ids)}",
+            "多播完成",
             extra={
+                "success_count": success_count,
+                "total_count": len(host_ids),
                 "message_type": message.get("type"),
             },
         )
@@ -557,7 +634,10 @@ class AgentWebSocketManager:
                 # 统计结果
                 for host_id, result in zip(batch, results):
                     if isinstance(result, Exception):
-                        logger.error(f"发送消息异常: {host_id}, 错误: {result!s}")
+                        logger.error(
+                            "发送消息异常",
+                            extra={"host_id": host_id, "error": str(result)},
+                        )
                         failed_hosts.append(host_id)
                     elif result is True:
                         local_success_count += 1
@@ -565,7 +645,10 @@ class AgentWebSocketManager:
                         failed_hosts.append(host_id)
 
             if failed_hosts:
-                logger.warning(f"本地广播失败的Host: {failed_hosts}")
+                logger.warning(
+                    "本地广播失败的Host",
+                    extra={"failed_hosts": failed_hosts},
+                )
 
         # ✅ 步骤 2: 通过 Redis Pub/Sub 通知其他实例（跨实例广播）
         await self._publish_broadcast_to_redis(message, exclude)
@@ -610,7 +693,7 @@ class AgentWebSocketManager:
             )
 
             logger.info(
-                f"✅ 已发布广播消息到 Redis | 频道: {self.redis_pubsub_channel} | 实例ID: {self.instance_id}",
+                "✅ 已发布广播消息到 Redis",
                 extra={
                     "channel": self.redis_pubsub_channel,
                     "instance_id": self.instance_id,
@@ -620,7 +703,7 @@ class AgentWebSocketManager:
 
         except Exception as e:
             logger.warning(
-                f"Redis 发布广播消息失败: {e!s}",
+                "Redis 发布广播消息失败",
                 extra={
                     "channel": self.redis_pubsub_channel,
                     "instance_id": self.instance_id,
@@ -638,7 +721,11 @@ class AgentWebSocketManager:
         # 创建订阅任务
         self._redis_pubsub_task = asyncio.create_task(self._redis_pubsub_listener())
         logger.info(
-            f"✅ Redis Pub/Sub 订阅已启动 | 频道: {self.redis_pubsub_channel} | 实例ID: {self.instance_id}",
+            "✅ Redis Pub/Sub 订阅已启动",
+            extra={
+                "channel": self.redis_pubsub_channel,
+                "instance_id": self.instance_id,
+            },
         )
 
     async def _redis_pubsub_listener(self) -> None:
@@ -672,8 +759,12 @@ class AgentWebSocketManager:
 
         except Exception as e:
             logger.error(
-                f"Redis Pub/Sub 监听器异常: {e!s}",
-                extra={"channel": self.redis_pubsub_channel, "instance_id": self.instance_id},
+                "Redis Pub/Sub 监听器异常",
+                extra={
+                    "channel": self.redis_pubsub_channel,
+                    "instance_id": self.instance_id,
+                    "error": str(e),
+                },
                 exc_info=True,
             )
 
@@ -689,13 +780,14 @@ class AgentWebSocketManager:
             # ✅ 跳过自己发布的消息（避免重复处理）
             if source_instance_id == self.instance_id:
                 logger.debug(
-                    f"跳过自己发布的广播消息 | 实例ID: {self.instance_id}",
+                    "跳过自己发布的广播消息",
+                    extra={"instance_id": self.instance_id},
                 )
                 return
 
             # ✅ 广播给本地连接的 Hosts
             logger.info(
-                f"📨 收到跨实例广播消息 | 来源实例: {source_instance_id} | 本地实例: {self.instance_id}",
+                "📨 收到跨实例广播消息",
                 extra={
                     "source_instance_id": source_instance_id,
                     "local_instance_id": self.instance_id,
@@ -707,10 +799,14 @@ class AgentWebSocketManager:
             await self._broadcast_local_only(message, exclude)
 
         except json.JSONDecodeError as e:
-            logger.error(f"解析 Redis 广播消息失败: {e!s}")
+            logger.error(
+                "解析 Redis 广播消息失败",
+                extra={"error": str(e)},
+            )
         except Exception as e:
             logger.error(
-                f"处理 Redis 广播消息失败: {e!s}",
+                "处理 Redis 广播消息失败",
+                extra={"error": str(e)},
                 exc_info=True,
             )
 
@@ -726,20 +822,28 @@ class AgentWebSocketManager:
             # ✅ 跳过自己发布的消息（避免重复处理）
             if source_instance_id == self.instance_id:
                 logger.debug(
-                    f"跳过自己发布的单播消息 | Host: {target_host_id} | 实例ID: {self.instance_id}",
+                    "跳过自己发布的单播消息",
+                    extra={
+                        "host_id": target_host_id,
+                        "instance_id": self.instance_id,
+                    },
                 )
                 return
 
             # ✅ 检查本地是否有该 Host 的连接
             if target_host_id not in self.active_connections:
                 logger.debug(
-                    f"本地实例没有目标 Host 连接 | Host: {target_host_id} | 实例ID: {self.instance_id}",
+                    "本地实例没有目标 Host 连接",
+                    extra={
+                        "host_id": target_host_id,
+                        "instance_id": self.instance_id,
+                    },
                 )
                 return
 
             # ✅ 发送给本地连接的 Host
             logger.info(
-                f"📨 收到跨实例单播消息 | Host: {target_host_id} | 来源实例: {source_instance_id} | 本地实例: {self.instance_id}",
+                "📨 收到跨实例单播消息",
                 extra={
                     "host_id": target_host_id,
                     "source_instance_id": source_instance_id,
@@ -752,18 +856,30 @@ class AgentWebSocketManager:
             success = await self._send_to_host_local_only(target_host_id, message)
             if success:
                 logger.info(
-                    f"✅ 跨实例单播消息已发送 | Host: {target_host_id} | 实例ID: {self.instance_id}",
+                    "✅ 跨实例单播消息已发送",
+                    extra={
+                        "host_id": target_host_id,
+                        "instance_id": self.instance_id,
+                    },
                 )
             else:
                 logger.warning(
-                    f"⚠️ 跨实例单播消息发送失败 | Host: {target_host_id} | 实例ID: {self.instance_id}",
+                    "⚠️ 跨实例单播消息发送失败",
+                    extra={
+                        "host_id": target_host_id,
+                        "instance_id": self.instance_id,
+                    },
                 )
 
         except json.JSONDecodeError as e:
-            logger.error(f"解析 Redis 单播消息失败: {e!s}")
+            logger.error(
+                "解析 Redis 单播消息失败",
+                extra={"error": str(e)},
+            )
         except Exception as e:
             logger.error(
-                f"处理 Redis 单播消息失败: {e!s}",
+                "处理 Redis 单播消息失败",
+                extra={"error": str(e)},
                 exc_info=True,
             )
 
@@ -786,7 +902,8 @@ class AgentWebSocketManager:
             return True
         except Exception as e:
             logger.error(
-                f"❌ 本地发送消息失败 | Host: {host_id} | 错误: {str(e)}",
+                "❌ 本地发送消息失败",
+                extra={"host_id": host_id, "error": str(e)},
             )
             await self.disconnect(host_id)
             return False
@@ -822,7 +939,10 @@ class AgentWebSocketManager:
 
             for host_id, result in zip(batch, results):
                 if isinstance(result, Exception):
-                    logger.error(f"发送消息异常: {host_id}, 错误: {result!s}")
+                    logger.error(
+                        "发送消息异常",
+                        extra={"host_id": host_id, "error": str(result)},
+                    )
                     failed_hosts.append(host_id)
                 elif result is True:
                     success_count += 1
@@ -830,10 +950,13 @@ class AgentWebSocketManager:
                     failed_hosts.append(host_id)
 
         if failed_hosts:
-            logger.warning(f"本地广播失败的Host: {failed_hosts}")
+            logger.warning(
+                "本地广播失败的Host",
+                extra={"failed_hosts": failed_hosts},
+            )
 
         logger.info(
-            f"✅ 跨实例广播完成: 本地成功 {success_count}/{len(target_hosts)} | 实例ID: {self.instance_id}",
+            "✅ 跨实例广播完成",
             extra={
                 "local_success_count": success_count,
                 "local_target_count": len(target_hosts),
@@ -857,8 +980,9 @@ class AgentWebSocketManager:
             return await self.send_to_host(host_id, message)
         except Exception as e:
             logger.error(
-                f"发送消息失败: {host_id}",
+                "发送消息失败",
                 extra={
+                    "host_id": host_id,
                     "error": str(e),
                     "message_type": message.get("type"),
                 },
@@ -892,12 +1016,25 @@ class AgentWebSocketManager:
         Note:
             - agent_id 是连接时从 token 获取的 host_id
             - data 中的 agent_id 字段会被忽略（客户端可以不传）
+            - 时间戳在方法开始时立即更新，确保心跳检查能及时看到最新时间戳
         """
         try:
-            # 更新内存中的心跳时间戳
-            self.heartbeat_timestamps[agent_id] = datetime.now(timezone.utc)
+            # ✅ 检查连接是否仍然存在（防止在处理心跳时连接已被关闭）
+            if agent_id not in self.active_connections:
+                logger.warning(
+                    f"收到心跳消息但连接已不存在: {agent_id}",
+                    extra={"agent_id": agent_id},
+                )
+                return
 
-            # ✅ 如果之前发送过警告，清除警告记录（连接已恢复）
+            # ✅ 立即更新内存中的心跳时间戳（在方法开始时更新，避免竞态条件）
+            # 这样即使后续处理失败，时间戳也已更新，心跳检查不会误判为超时
+            old_heartbeat = self.heartbeat_timestamps.get(agent_id)
+            new_heartbeat = datetime.now(timezone.utc)
+            self.heartbeat_timestamps[agent_id] = new_heartbeat
+
+            # ✅ 如果之前发送过警告，立即清除警告记录（连接已恢复）
+            # 在时间戳更新后立即清除，确保心跳检查能看到最新状态
             if agent_id in self._heartbeat_warning_sent:
                 logger.info(
                     f"心跳已恢复，清除警告记录: {agent_id}",
@@ -906,31 +1043,90 @@ class AgentWebSocketManager:
                 del self._heartbeat_warning_sent[agent_id]
 
                 # 更新 TCP 状态为 2 (连接正常)
-                await self.host_service.update_tcp_state(agent_id, tcp_state=2)
+                try:
+                    await self.host_service.update_tcp_state(agent_id, tcp_state=2)
+                except Exception as e:
+                    logger.warning(
+                        "更新 TCP 状态失败（不影响心跳处理）",
+                        extra={"agent_id": agent_id, "error": str(e)},
+                    )
 
-            logger.debug(f"心跳时间戳已更新: {agent_id}")
+            # ✅ 调试日志：记录心跳更新详情
+            if old_heartbeat:
+                time_since_last = (new_heartbeat - old_heartbeat).total_seconds()
+                logger.info(
+                    (
+                        f"✅ 心跳已接收并更新 | Agent: {agent_id} | "
+                        f"距离上次心跳: {time_since_last:.2f}秒 | "
+                        f"新心跳时间: {new_heartbeat.isoformat()}"
+                    ),
+                    extra={
+                        "agent_id": agent_id,
+                        "time_since_last_heartbeat": round(time_since_last, 2),
+                        "old_heartbeat": old_heartbeat.isoformat(),
+                        "new_heartbeat": new_heartbeat.isoformat(),
+                    },
+                )
+            else:
+                logger.info(
+                    f"✅ 首次心跳已接收 | Agent: {agent_id} | 心跳时间: {new_heartbeat.isoformat()}",
+                    extra={
+                        "agent_id": agent_id,
+                        "heartbeat_time": new_heartbeat.isoformat(),
+                    },
+                )
+
+            logger.debug(
+                "心跳时间戳已更新",
+                extra={"agent_id": agent_id},
+            )
 
             # 尝试更新数据库中的心跳时间（如果host在数据库中存在）
             # 使用静默方法，失败时不记录 ERROR 日志
-            success = await self.host_service.update_heartbeat_silent(agent_id)
-            if success:
-                logger.debug(f"✅ 数据库心跳已更新: {agent_id}")
-            else:
-                logger.debug(f"⚠️ 数据库心跳更新跳过: {agent_id} (主机不存在或ID格式无效)")
+            try:
+                success = await self.host_service.update_heartbeat_silent(agent_id)
+                if success:
+                    logger.debug(
+                        "✅ 数据库心跳已更新",
+                        extra={"agent_id": agent_id},
+                    )
+                else:
+                    logger.debug(
+                        "⚠️ 数据库心跳更新跳过（主机不存在或ID格式无效）",
+                        extra={"agent_id": agent_id},
+                    )
+            except Exception as e:
+                logger.debug(
+                    "数据库心跳更新异常（不影响心跳处理）",
+                    extra={"agent_id": agent_id, "error": str(e)},
+                )
 
             # 发送心跳确认
-            ack_msg = {
-                "type": MessageType.HEARTBEAT_ACK,
-                "message": "心跳已接收",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            await self.send_to_host(agent_id, ack_msg)
-            logger.debug(f"✅ 心跳处理完成: {agent_id}")
+            try:
+                ack_msg = {
+                    "type": MessageType.HEARTBEAT_ACK,
+                    "message": "心跳已接收",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.send_to_host(agent_id, ack_msg)
+                logger.debug(
+                    "✅ 心跳处理完成",
+                    extra={"agent_id": agent_id},
+                )
+            except Exception as e:
+                # 发送确认失败不影响心跳时间戳的更新
+                logger.warning(
+                    "发送心跳确认失败（心跳时间戳已更新）",
+                    extra={"agent_id": agent_id, "error": str(e)},
+                )
+
         except Exception as e:
             logger.error(
-                f"❌ 心跳处理失败: {agent_id}, 错误: {e!s}",
+                "❌ 心跳处理失败",
+                extra={"agent_id": agent_id, "error": str(e)},
                 exc_info=True,
             )
+            # 注意：即使处理失败，心跳时间戳已经更新，不会影响心跳检查
 
     async def _handle_status_update(self, agent_id: str, data: dict) -> None:
         """处理状态更新消息"""
@@ -946,9 +1142,15 @@ class AgentWebSocketManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             await self.send_to_host(agent_id, ack_msg)
-            logger.info(f"状态已更新: {agent_id} -> {status}")
+            logger.info(
+                "状态已更新",
+                extra={"agent_id": agent_id, "status": status},
+            )
         except Exception as e:
-            logger.error(f"状态更新失败: {agent_id}, 错误: {e!s}")
+            logger.error(
+                "状态更新失败",
+                extra={"agent_id": agent_id, "error": str(e)},
+            )
 
     async def _handle_command_response(self, agent_id: str, data: dict) -> None:
         """处理命令响应消息"""
@@ -1347,15 +1549,27 @@ class AgentWebSocketManager:
         """统一心跳检查循环
 
         批量检查所有连接的心跳状态，替代每个连接独立的心跳任务
+
+        Note:
+            - 首次检查延迟执行，避免连接刚建立时误判为超时
+            - 延迟时间为心跳检查间隔，确保连接有时间发送首次心跳
         """
         try:
+            # ✅ 首次检查延迟执行，避免连接刚建立时误判为超时
+            # 等待一个检查间隔，给新连接时间发送首次心跳
+            await asyncio.sleep(self.heartbeat_check_interval)
+
             while True:
-                await asyncio.sleep(self.heartbeat_check_interval)
                 await self._check_all_heartbeats()
+                await asyncio.sleep(self.heartbeat_check_interval)
         except asyncio.CancelledError:
             logger.debug("统一心跳检查任务已取消")
         except Exception as e:
-            logger.error(f"统一心跳检查异常: {e!s}", exc_info=True)
+            logger.error(
+                "统一心跳检查异常",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
 
     async def _check_all_heartbeats(self) -> None:
         """批量检查所有连接的心跳
@@ -1366,6 +1580,10 @@ class AgentWebSocketManager:
         1. 检测心跳超时的连接
         2. 如果未发送过警告，发送警告并记录
         3. 如果已发送过警告且超过等待时间仍未收到心跳，关闭连接
+
+        Note:
+            - 使用锁保护心跳时间戳的读取，避免竞态条件
+            - 在关闭连接前再次检查心跳时间戳，确保没有在检查期间收到心跳
         """
         if not self.heartbeat_timestamps:
             return
@@ -1375,16 +1593,53 @@ class AgentWebSocketManager:
         disconnect_hosts = []  # 需要关闭的连接
 
         # 批量检查所有连接的心跳
-        for agent_id, last_heartbeat in list(self.heartbeat_timestamps.items()):
-            # 检查连接是否仍然存在
+        # ✅ 使用 list() 创建快照，避免在迭代过程中字典被修改
+        heartbeat_snapshot = list(self.heartbeat_timestamps.items())
+
+        for agent_id, last_heartbeat in heartbeat_snapshot:
+            # ✅ 检查连接是否仍然存在（在检查前再次确认）
             if agent_id not in self.active_connections:
                 # 连接已断开，清理心跳记录
-                del self.heartbeat_timestamps[agent_id]
+                if agent_id in self.heartbeat_timestamps:
+                    del self.heartbeat_timestamps[agent_id]
                 if agent_id in self._heartbeat_warning_sent:
                     del self._heartbeat_warning_sent[agent_id]
                 continue
 
-            time_since_heartbeat = (current_time - last_heartbeat).total_seconds()
+            # ✅ 再次获取最新的心跳时间戳（防止在检查期间收到心跳）
+            latest_heartbeat = self.heartbeat_timestamps.get(agent_id)
+            if not latest_heartbeat:
+                # 心跳时间戳已被清除（可能在处理心跳时被清除），跳过
+                continue
+
+            # ✅ 如果心跳时间戳已更新（说明在检查期间收到了心跳），跳过本次检查
+            if latest_heartbeat != last_heartbeat:
+                logger.debug(
+                    (
+                        f"心跳时间戳已更新，跳过本次检查 | Agent: {agent_id} | "
+                        f"旧时间戳: {last_heartbeat.isoformat()} | 新时间戳: {latest_heartbeat.isoformat()}"
+                    ),
+                )
+                continue
+
+            time_since_heartbeat = (current_time - latest_heartbeat).total_seconds()
+
+            # ✅ 调试日志：记录心跳检查详情
+            logger.debug(
+                (
+                    f"心跳检查 | Agent: {agent_id} | 距离上次心跳: {time_since_heartbeat:.2f}秒 | "
+                    f"上次心跳时间: {latest_heartbeat.isoformat()} | "
+                    f"当前时间: {current_time.isoformat()}"
+                ),
+                extra={
+                    "agent_id": agent_id,
+                    "time_since_heartbeat": round(time_since_heartbeat, 2),
+                    "last_heartbeat": latest_heartbeat.isoformat(),
+                    "current_time": current_time.isoformat(),
+                    "heartbeat_timeout": self.heartbeat_timeout,
+                    "has_warning": agent_id in self._heartbeat_warning_sent,
+                },
+            )
 
             # 检查是否已发送过警告
             if agent_id in self._heartbeat_warning_sent:
@@ -1392,12 +1647,67 @@ class AgentWebSocketManager:
                 warning_sent_time = self._heartbeat_warning_sent[agent_id]
                 time_since_warning = (current_time - warning_sent_time).total_seconds()
 
+                logger.debug(
+                    (
+                        f"心跳警告检查 | Agent: {agent_id} | 距离警告: {time_since_warning:.2f}秒 | "
+                        f"警告等待时间: {self.heartbeat_warning_wait_time}秒"
+                    ),
+                    extra={
+                        "agent_id": agent_id,
+                        "time_since_warning": round(time_since_warning, 2),
+                        "warning_wait_time": self.heartbeat_warning_wait_time,
+                    },
+                )
+
+                # ✅ 在决定关闭连接前，再次检查心跳时间戳和警告记录
+                # 如果客户端在警告发送后立即发送心跳，警告记录可能已被清除
+                if agent_id not in self._heartbeat_warning_sent:
+                    logger.info(
+                        f"心跳已恢复，取消关闭操作 | Agent: {agent_id}",
+                        extra={"agent_id": agent_id},
+                    )
+                    continue
+
+                # ✅ 再次检查心跳时间戳是否已更新
+                final_heartbeat = self.heartbeat_timestamps.get(agent_id)
+                if final_heartbeat and final_heartbeat != latest_heartbeat:
+                    logger.info(
+                        (
+                            f"心跳已恢复（时间戳已更新），取消关闭操作 | Agent: {agent_id} | "
+                            f"旧时间戳: {latest_heartbeat.isoformat()} | 新时间戳: {final_heartbeat.isoformat()}"
+                        ),
+                        extra={"agent_id": agent_id},
+                    )
+                    continue
+
                 if time_since_warning >= self.heartbeat_warning_wait_time:
                     # 超过等待时间仍未收到心跳，需要关闭连接
+                    logger.warning(
+                        (
+                            f"心跳超时且警告后仍未恢复，准备关闭连接 | Agent: {agent_id} | "
+                            f"距离警告: {time_since_warning:.2f}秒 | 距离上次心跳: {time_since_heartbeat:.2f}秒"
+                        ),
+                        extra={
+                            "agent_id": agent_id,
+                            "time_since_warning": round(time_since_warning, 2),
+                            "time_since_heartbeat": round(time_since_heartbeat, 2),
+                        },
+                    )
                     disconnect_hosts.append(agent_id)
                 # 如果还在等待期内，继续等待
             elif time_since_heartbeat > self.heartbeat_timeout:
                 # 首次检测到超时，需要发送警告
+                logger.warning(
+                    (
+                        f"首次检测到心跳超时 | Agent: {agent_id} | "
+                        f"距离上次心跳: {time_since_heartbeat:.2f}秒 | 超时阈值: {self.heartbeat_timeout}秒"
+                    ),
+                    extra={
+                        "agent_id": agent_id,
+                        "time_since_heartbeat": round(time_since_heartbeat, 2),
+                        "heartbeat_timeout": self.heartbeat_timeout,
+                    },
+                )
                 timeout_hosts.append(agent_id)
 
         # 批量处理需要发送警告的连接
@@ -1466,21 +1776,73 @@ class AgentWebSocketManager:
                 },
             )
         except Exception as e:
-            logger.error(f"发送心跳超时警告失败: {agent_id}, 错误: {e!s}", exc_info=True)
+            logger.error(
+                "发送心跳超时警告失败",
+                extra={"agent_id": agent_id, "error": str(e)},
+                exc_info=True,
+            )
 
     async def _disconnect_heartbeat_timeout(self, agent_id: str) -> None:
         """关闭心跳超时的连接
 
         Args:
             agent_id: Agent/Host ID
+
+        Note:
+            - 在关闭连接前，再次检查心跳时间戳和警告记录
+            - 如果客户端在检查期间发送了心跳，取消关闭操作
         """
         try:
+            # ✅ 关闭连接前的最后检查：确保连接仍然存在且心跳确实超时
+            if agent_id not in self.active_connections:
+                logger.debug(
+                    "连接已不存在，跳过关闭操作",
+                    extra={"agent_id": agent_id},
+                )
+                return
+
+            # ✅ 再次检查警告记录（如果已被清除，说明心跳已恢复）
+            if agent_id not in self._heartbeat_warning_sent:
+                logger.info(
+                    f"心跳已恢复（警告记录已清除），取消关闭操作: {agent_id}",
+                    extra={"agent_id": agent_id},
+                )
+                return
+
+            # ✅ 再次检查心跳时间戳（如果已更新，说明心跳已恢复）
+            current_time = datetime.now(timezone.utc)
+            latest_heartbeat = self.heartbeat_timestamps.get(agent_id)
+            if latest_heartbeat:
+                time_since_heartbeat = (current_time - latest_heartbeat).total_seconds()
+                # 如果距离上次心跳时间小于超时阈值，说明心跳已恢复
+                if time_since_heartbeat <= self.heartbeat_timeout:
+                    logger.info(
+                        (
+                            f"心跳已恢复（时间戳已更新），取消关闭操作: {agent_id} | "
+                            f"距离上次心跳: {time_since_heartbeat:.2f}秒"
+                        ),
+                        extra={
+                            "agent_id": agent_id,
+                            "time_since_heartbeat": round(time_since_heartbeat, 2),
+                        },
+                    )
+                    # 清除警告记录
+                    if agent_id in self._heartbeat_warning_sent:
+                        del self._heartbeat_warning_sent[agent_id]
+                    return
+
             logger.warning(
                 f"心跳超时且警告后仍未恢复，关闭连接: {agent_id}",
                 extra={
                     "agent_id": agent_id,
                     "timeout_threshold": self.heartbeat_timeout,
                     "warning_wait_time": self.heartbeat_warning_wait_time,
+                    "last_heartbeat": latest_heartbeat.isoformat() if latest_heartbeat else None,
+                    "time_since_heartbeat": (
+                        (current_time - latest_heartbeat).total_seconds()
+                        if latest_heartbeat
+                        else None
+                    ),
                 },
             )
 
@@ -1491,9 +1853,16 @@ class AgentWebSocketManager:
             # 断开连接
             await self.disconnect(agent_id)
 
-            logger.info(f"心跳超时连接已关闭: {agent_id}")
+            logger.info(
+                "心跳超时连接已关闭",
+                extra={"agent_id": agent_id},
+            )
         except Exception as e:
-            logger.error(f"关闭心跳超时连接失败: {agent_id}, 错误: {e!s}", exc_info=True)
+            logger.error(
+                "关闭心跳超时连接失败",
+                extra={"agent_id": agent_id, "error": str(e)},
+                exc_info=True,
+            )
 
     async def _cleanup_invalid_connections(self) -> None:
         """清理无效连接
@@ -1552,7 +1921,10 @@ class AgentWebSocketManager:
                         del self.heartbeat_timestamps[agent_id]
                     if agent_id in self._heartbeat_warning_sent:
                         del self._heartbeat_warning_sent[agent_id]
-                    logger.debug(f"无效连接已清理: {agent_id}")
+                    logger.debug(
+                        "无效连接已清理",
+                        extra={"agent_id": agent_id},
+                    )
                 except Exception as e:
                     logger.debug(
                         f"清理无效连接时出错: {agent_id}",

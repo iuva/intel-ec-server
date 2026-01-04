@@ -20,7 +20,7 @@ try:
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -32,7 +32,7 @@ except ImportError:
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.exceptions import BusinessError
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -179,7 +179,8 @@ class AdminOtaService:
                 raise BusinessError(
                     message=f"OTA 配置不存在: {config_id}",
                     error_code="OTA_CONFIG_NOT_FOUND",
-                    code=404,
+                    code=ServiceErrorCodes.HOST_OTA_CONFIG_NOT_FOUND,
+                    http_status_code=404,
                 )
 
             # 2. 更新 sys_conf 表

@@ -244,9 +244,9 @@ class WebSocketConnectionPool:
             try:
                 await connection.close()
                 self.stats["total_closed"] += 1
-                logger.debug(f"WebSocket 连接已关闭: {service_url}")
+                logger.debug("WebSocket 连接已关闭", extra={"service_url": service_url})
             except Exception as e:
-                logger.warning(f"关闭 WebSocket 连接时出错: {e!s}")
+                logger.warning("关闭 WebSocket 连接时出错", extra={"service_url": service_url, "error": str(e)})
             return
 
         # 标记为可复用
@@ -256,7 +256,7 @@ class WebSocketConnectionPool:
                 pooled.is_active = True
                 pooled.mark_used()
                 self.stats["total_reused"] += 1
-                logger.debug(f"连接已返回到池: {service_url}")
+                logger.debug("连接已返回到池", extra={"service_url": service_url})
                 return
 
     async def cleanup(self) -> None:
@@ -278,9 +278,9 @@ class WebSocketConnectionPool:
                         await pooled.connection.close()
                         self.stats["total_closed"] += 1
                         closed_count += 1
-                        logger.debug(f"关闭过期连接: {service_url}")
+                        logger.debug("关闭过期连接", extra={"service_url": service_url})
                     except Exception as e:
-                        logger.warning(f"关闭连接时出错: {e!s}")
+                        logger.warning("关闭连接时出错", extra={"service_url": service_url, "error": str(e)})
                 else:
                     remaining.append(pooled)
 
@@ -290,8 +290,8 @@ class WebSocketConnectionPool:
                 del self.pools[service_url]
 
         logger.info(
-            f"连接池清理完成，关闭 {closed_count} 个连接",
-            extra={"pools_count": len(self.pools)},
+            "连接池清理完成",
+            extra={"closed_count": closed_count, "pools_count": len(self.pools)},
         )
 
     def get_stats(self) -> Dict[str, Any]:
@@ -374,7 +374,7 @@ class WebSocketConnectionPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"清理循环异常: {e!s}", exc_info=True)
+                logger.error("清理循环异常", extra={"error": str(e)}, exc_info=True)
 
     async def _health_check_loop(self) -> None:
         """定期健康检查"""
@@ -394,7 +394,7 @@ class WebSocketConnectionPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"健康检查异常: {e!s}", exc_info=True)
+                logger.error("健康检查异常", extra={"error": str(e)}, exc_info=True)
 
     async def _monitor_loop(self) -> None:
         """定期监控连接池状态"""
@@ -417,4 +417,4 @@ class WebSocketConnectionPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"监控异常: {e!s}", exc_info=True)
+                logger.error("监控异常", extra={"error": str(e)}, exc_info=True)

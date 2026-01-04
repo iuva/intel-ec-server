@@ -186,8 +186,15 @@ class HostDiscoveryService:
 
         # 外部接口分页参数
         skip = initial_skip
-        limit = 100  # 每次请求 100 条
+        # limit = 100  # 每次请求 100 条
+        limit = 10  # 每次请求 10 条
         max_iterations = 100  # 最多迭代 100 次，防止无限循环
+
+        # ✅ 死循环检测：记录连续无进展的迭代次数
+        no_progress_count = 0  # 连续无进展的迭代次数
+        max_no_progress = 5  # 最多允许 5 次无进展迭代
+        last_available_count = 0  # 上一次迭代后的可用主机数量
+        seen_hardware_ids: set[str] = set()  # 已处理过的 hardware_id 集合（用于检测重复数据）
 
         # 优化：在循环外创建数据库会话，复用连接，减少连接池压力
         session_factory = mariadb_manager.get_session()
@@ -219,6 +226,25 @@ class HostDiscoveryService:
                     )
                     break
 
+                # ✅ 死循环检测：如果连续多次迭代都没有新增任何记录，退出循环
+                if iteration > 0 and len(all_available_hosts) == last_available_count:
+                    no_progress_count += 1
+                    if no_progress_count >= max_no_progress:
+                        logger.warning(
+                            "检测到死循环风险，连续多次迭代无进展，退出循环",
+                            extra={
+                                "iteration": iteration,
+                                "no_progress_count": no_progress_count,
+                                "current_available_count": len(all_available_hosts),
+                                "required_size": request.page_size,
+                                "skip": skip,
+                            },
+                        )
+                        break
+                else:
+                    # 有进展，重置无进展计数
+                    no_progress_count = 0
+
                 # 只在第一次或每10次迭代时记录详细日志，减少日志量
                 if iteration == 0 or iteration % 10 == 0:
                     logger.debug(
@@ -228,6 +254,7 @@ class HostDiscoveryService:
                             "skip": skip,
                             "limit": limit,
                             "current_available_count": len(all_available_hosts),
+                            "no_progress_count": no_progress_count,
                         },
                     )
 
@@ -252,6 +279,24 @@ class HostDiscoveryService:
                         },
                     )
                     break
+
+                # ✅ 死循环检测：检查是否返回了重复的 hardware_id（说明外部接口不支持真正的分页）
+                current_hardware_ids = {host.hardware_id for host in hardware_hosts if host.hardware_id}
+                if current_hardware_ids.issubset(seen_hardware_ids):
+                    logger.warning(
+                        "检测到外部接口返回重复数据，可能不支持真正的分页，退出循环",
+                        extra={
+                            "iteration": iteration,
+                            "skip": skip,
+                            "current_hardware_ids_count": len(current_hardware_ids),
+                            "seen_hardware_ids_count": len(seen_hardware_ids),
+                            "current_available_count": len(all_available_hosts),
+                        },
+                    )
+                    break
+
+                # 更新已处理的 hardware_id 集合
+                seen_hardware_ids.update(current_hardware_ids)
 
                 # 步骤 3: 提取硬件 ID 列表用于查询本地数据库
                 hardware_ids = [host.hardware_id for host in hardware_hosts if host.hardware_id]
@@ -284,7 +329,11 @@ class HostDiscoveryService:
                     },
                 )
 
+                # 记录本次迭代前的可用主机数量（用于无进展检测）
+                last_available_count = len(all_available_hosts)
+
                 # 步骤 5: 添加新数据，同时跳过在 last_id 之后的数据
+                added_count = 0  # 本次迭代新增的记录数
                 for host in available_hosts:
                     # 如果指定了 last_id，跳过所有 ID 小于等于 last_id 的记录
                     # 注意：由于 ID 是字符串，需要转换为整数进行比较
@@ -306,10 +355,24 @@ class HostDiscoveryService:
 
                     all_available_hosts.append(host)
                     seen_ids.add(host.id)
+                    added_count += 1
 
                     # 如果已经达到要求的数量，可以提前退出内层循环
                     if len(all_available_hosts) >= request.page_size:
                         break
+
+                # ✅ 记录本次迭代新增的记录数（用于调试）
+                if added_count == 0:
+                    logger.debug(
+                        "本轮迭代未新增任何记录",
+                        extra={
+                            "iteration": iteration,
+                            "skip": skip,
+                            "available_hosts_count": len(available_hosts),
+                            "current_total": len(all_available_hosts),
+                            "no_progress_count": no_progress_count + 1,
+                        },
+                    )
 
                 # 准备下一页请求（在检查是否提前退出之前）
                 skip += limit
@@ -411,7 +474,7 @@ class HostDiscoveryService:
                     extra={"cache_key": cache_key, "expire_seconds": 30},
                 )
             except Exception as e:
-                logger.warning(f"缓存可用主机列表失败: {e!s}")
+                logger.warning("缓存可用主机列表失败", extra={"error": str(e)})
 
         return response
 
@@ -621,7 +684,8 @@ class HostDiscoveryService:
             # ✅ 使用统一的外部接口调用客户端（支持认证和 SSL 配置）
             from app.services.external_api_client import call_external_api
 
-            url_path = "/api/v1/hardware/hosts"
+            # url_path = "/api/v1/hardware/hosts"
+            url_path = "/api/v1/hardware/mock_hosts"
             params = {
                 "tc_id": tc_id,
                 "skip": skip,
@@ -670,19 +734,96 @@ class HostDiscoveryService:
             # 解析响应数据
             data = response_body if response_body else {}
             hardware_hosts: List[HardwareHostData] = []
+            skipped_count = 0  # 记录跳过的无效记录数
 
             if isinstance(data, list):
                 # 响应格式：直接数组
-                hardware_hosts = [HardwareHostData(**item) for item in data]
+                for item in data:
+                    # ✅ 过滤掉 hardware_id 为 None 或空字符串的记录
+                    hardware_id = item.get("hardware_id") if isinstance(item, dict) else None
+                    if not hardware_id or (isinstance(hardware_id, str) and not hardware_id.strip()):
+                        skipped_count += 1
+                        logger.debug(
+                            "跳过无效的硬件记录（hardware_id 为空）",
+                            extra={
+                                "tc_id": tc_id,
+                                "item_keys": list(item.keys()) if isinstance(item, dict) else "N/A",
+                            },
+                        )
+                        continue
+
+                    try:
+                        hardware_hosts.append(HardwareHostData(**item))
+                    except Exception as e:
+                        # ✅ 捕获 Pydantic 验证错误，记录详细信息并跳过该记录
+                        skipped_count += 1
+                        logger.warning(
+                            "硬件记录验证失败，跳过该记录",
+                            extra={
+                                "tc_id": tc_id,
+                                "hardware_id": hardware_id,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                                "item_keys": list(item.keys()) if isinstance(item, dict) else "N/A",
+                            },
+                        )
             elif isinstance(data, dict) and "data" in data:
                 # 响应格式：{ "data": [...] }
-                hardware_hosts = [HardwareHostData(**item) for item in data["data"]]
+                for item in data["data"]:
+                    # ✅ 过滤掉 hardware_id 为 None 或空字符串的记录
+                    hardware_id = item.get("hardware_id") if isinstance(item, dict) else None
+                    if not hardware_id or (isinstance(hardware_id, str) and not hardware_id.strip()):
+                        skipped_count += 1
+                        logger.debug(
+                            "跳过无效的硬件记录（hardware_id 为空）",
+                            extra={
+                                "tc_id": tc_id,
+                                "item_keys": list(item.keys()) if isinstance(item, dict) else "N/A",
+                            },
+                        )
+                        continue
+
+                    try:
+                        hardware_hosts.append(HardwareHostData(**item))
+                    except Exception as e:
+                        # ✅ 捕获 Pydantic 验证错误，记录详细信息并跳过该记录
+                        skipped_count += 1
+                        logger.warning(
+                            "硬件记录验证失败，跳过该记录",
+                            extra={
+                                "tc_id": tc_id,
+                                "hardware_id": hardware_id,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                                "item_keys": list(item.keys()) if isinstance(item, dict) else "N/A",
+                            },
+                        )
             else:
                 logger.warning(
                     "硬件接口返回数据格式不符合预期",
                     extra={
                         "response_type": type(data).__name__,
                         "response_keys": (list(data.keys()) if isinstance(data, dict) else "N/A"),
+                    },
+                )
+
+            # ✅ 记录解析结果统计
+            if skipped_count > 0:
+                logger.warning(
+                    "硬件接口返回了无效记录，已跳过",
+                    extra={
+                        "tc_id": tc_id,
+                        "skipped_count": skipped_count,
+                        "valid_count": len(hardware_hosts),
+                        "total_count": skipped_count + len(hardware_hosts),
+                    },
+                )
+            else:
+                logger.debug(
+                    "硬件接口数据解析完成",
+                    extra={
+                        "tc_id": tc_id,
+                        "valid_count": len(hardware_hosts),
                     },
                 )
 

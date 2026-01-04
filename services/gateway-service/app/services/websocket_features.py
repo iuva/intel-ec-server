@@ -73,7 +73,7 @@ class HeartbeatManager:
             send_heartbeat: 发送心跳的可调用对象
         """
         if connection_id in self._heartbeat_tasks:
-            logger.warning(f"连接 {connection_id} 的心跳已存在，将被覆盖")
+            logger.warning("连接的心跳已存在，将被覆盖", extra={"connection_id": connection_id})
             self._heartbeat_tasks[connection_id].cancel()
 
         # 创建心跳任务
@@ -82,7 +82,7 @@ class HeartbeatManager:
         self._heartbeat_tasks[connection_id] = task
         self._stats[connection_id] = HeartbeatStats()
 
-        logger.debug(f"连接 {connection_id} 的心跳已注册")
+        logger.debug("连接的心跳已注册", extra={"connection_id": connection_id})
 
     def unregister_connection(self, connection_id: str) -> None:
         """注销连接心跳
@@ -94,7 +94,7 @@ class HeartbeatManager:
             self._heartbeat_tasks[connection_id].cancel()
             del self._heartbeat_tasks[connection_id]
 
-            logger.debug(f"连接 {connection_id} 的心跳已注销")
+            logger.debug("连接的心跳已注销", extra={"connection_id": connection_id})
 
     async def _heartbeat_loop(self, connection_id: str, send_heartbeat: Callable[[], Any]) -> None:
         """心跳循环"""
@@ -115,8 +115,8 @@ class HeartbeatManager:
                 stats.average_response_time_ms = stats.average_response_time_ms * 0.9 + response_time_ms * 0.1
 
                 logger.debug(
-                    f"心跳发送成功: {connection_id}",
-                    extra={"response_time_ms": response_time_ms},
+                    "心跳发送成功",
+                    extra={"connection_id": connection_id, "response_time_ms": response_time_ms},
                 )
 
             except asyncio.CancelledError:
@@ -127,7 +127,7 @@ class HeartbeatManager:
                 stats.total_heartbeats += 1
                 stats.failed_heartbeats += 1
 
-                logger.warning(f"心跳发送失败: {connection_id} - {e!s}")
+                logger.warning("心跳发送失败", extra={"connection_id": connection_id, "error": str(e)})
 
     def get_stats(self, connection_id: str) -> Optional[Dict[str, Any]]:
         """获取连接的心跳统计

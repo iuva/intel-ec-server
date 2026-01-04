@@ -112,7 +112,7 @@ router = APIRouter()
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 400,
+                        "code": 53024,
                         "message": "dmr_config 是必传字段",
                         "error_code": "MISSING_DMR_CONFIG",
                         "details": None,
@@ -140,7 +140,7 @@ router = APIRouter()
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 500,
+                        "code": 53027,
                         "message": "硬件信息上报处理失败",
                         "error_code": "HARDWARE_REPORT_FAILED",
                         "details": None,
@@ -365,7 +365,7 @@ async def report_hardware(
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 500,
+                        "code": 53029,
                         "message": "测试用例结果上报处理失败",
                         "error_code": "TESTCASE_REPORT_FAILED",
                         "details": None,
@@ -450,16 +450,18 @@ async def report_testcase_result(
 
     ## 请求参数
     - `tc_id`: 测试用例ID（必需）
-    - `due_time`: 预期结束时间（必需，ISO 8601 格式）
+    - `due_time`: 预期结束时间（必需，分钟时间差，整数，从当前时间开始计算）
 
     ## 业务逻辑
-    1. 根据 host_id 和 tc_id 查询 host_exec_log 表执行中的最新一条记录（case_state=1）
-    2. 更新 due_time 字段
-    3. 返回更新结果
+    1. 服务器根据当前时间和 `due_time`（分钟数）计算实际的预期结束时间
+    2. 根据 host_id 和 tc_id 查询 host_exec_log 表执行中的最新一条记录（case_state=1）
+    3. 更新 due_time 字段
+    4. 返回更新结果
 
     ## 注意事项
     - tc_id 是必传字段
-    - due_time 必须是有效的 ISO 8601 格式时间
+    - due_time 必须是大于等于 0 的整数（表示分钟数）
+    - 服务器会自动计算：预期结束时间 = 当前时间 + due_time 分钟
     - 如果未找到执行中的记录，返回400错误
     """,
     responses={
@@ -515,7 +517,7 @@ async def report_testcase_result(
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 500,
+                        "code": 53030,
                         "message": "预期结束时间上报处理失败",
                         "error_code": "DUE_TIME_UPDATE_FAILED",
                         "details": None,
@@ -557,15 +559,15 @@ async def report_due_time(
         extra={
             "host_id": host_id,
             "tc_id": report_data.tc_id,
-            "due_time": report_data.due_time.isoformat() if report_data.due_time else None,
+            "due_time_minutes": report_data.due_time,
         },
     )
 
-    # 调用服务层处理预期结束时间上报
+    # 调用服务层处理预期结束时间上报（服务器计算实际时间）
     result = await agent_report_service.update_due_time(
         host_id=host_id,
         tc_id=report_data.tc_id,
-        due_time=report_data.due_time,
+        due_time_minutes=report_data.due_time,
     )
 
     response_data = TestCaseDueTimeResponse(**result)
@@ -646,8 +648,10 @@ async def get_latest_ota_configs(
     3. 根据 vnc_state 和当前 host_state 更新状态：
         - 当 `vnc_state = 1`（连接成功）时：
             - 如果 `host_state = 1`（已锁定），则修改为 `host_state = 2`（已占用）
-        - 当 `vnc_state = 2`（连接断开）时：
-            - 如果 `host_state = 2`（已占用），则修改为 `host_state = 0`（空闲）
+            - 如果 `host_state` 不等于 1，将返回 `VNC_STATE_MISMATCH` 错误
+        - 当 `vnc_state = 2`（连接断开/失败）时：
+            - 不需要做状态判断，直接修改为 `host_state = 0`（空闲）
+            - 同时逻辑删除 `host_exec_log` 表中对应的 host 的有效数据（`del_flag = 1`）
 
     ## 返回数据
     - `host_id`: 主机ID
@@ -656,8 +660,11 @@ async def get_latest_ota_configs(
     - `updated`: 是否成功更新
 
     ## 错误码
-    - `HOST_NOT_FOUND`: 主机不存在或已删除（404）
-    - `VNC_CONNECTION_REPORT_FAILED`: 上报处理失败（500）
+    - `HOST_NOT_FOUND`: 主机不存在或已删除（404，错误码：53001）
+    - `VNC_STATE_MISMATCH`: VNC连接成功但主机状态不匹配（400，错误码：53016）
+        - 当 `vnc_state = 1`（连接成功）时，要求 `host_state = 1`（已锁定）
+        - 如果 `host_state` 不等于 1，将返回此错误
+    - `VNC_CONNECTION_REPORT_FAILED`: 上报处理失败（500，错误码：53020）
     """,
     responses={
         200: {
@@ -686,12 +693,13 @@ async def get_latest_ota_configs(
                                 },
                             },
                         },
-                        "state_mismatch": {
-                            "summary": "主机状态不匹配",
+                        "vnc_state_mismatch": {
+                            "summary": "VNC连接成功但主机状态不匹配",
                             "value": {
-                                "code": 400,
-                                "message": "主机状态不匹配，无法更新",
-                                "error_code": "HOST_STATE_MISMATCH",
+                                "code": 53016,
+                                "message": "VNC连接成功，但主机状态不匹配。当前状态：0，需要状态：1（已锁定）",
+                                "error_code": "VNC_STATE_MISMATCH",
+                                "http_status_code": 400,
                                 "details": {
                                     "host_id": 123,
                                     "vnc_state": 1,
@@ -709,7 +717,7 @@ async def get_latest_ota_configs(
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 404,
+                        "code": 53001,
                         "message": "主机不存在: 123",
                         "error_code": "HOST_NOT_FOUND",
                     }
@@ -721,7 +729,7 @@ async def get_latest_ota_configs(
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 500,
+                        "code": 53020,
                         "message": "Agent VNC 连接状态上报处理失败",
                         "error_code": "VNC_CONNECTION_REPORT_FAILED",
                     }
@@ -743,7 +751,10 @@ async def report_vnc_connection_state(
     1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
     2. 根据 vnc_state 和当前 host_state 更新主机状态：
         - `vnc_state = 1`（连接成功）且 `host_state = 1`（已锁定）→ 更新为 `host_state = 2`（已占用）
-        - `vnc_state = 2`（连接断开）且 `host_state = 2`（已占用）→ 更新为 `host_state = 0`（空闲）
+            - 如果 `host_state` 不等于 1，将返回 `VNC_STATE_MISMATCH` 错误
+        - `vnc_state = 2`（连接断开/失败）→ 直接更新为 `host_state = 0`（空闲）
+            - 不需要做状态判断
+            - 同时逻辑删除 `host_exec_log` 表中对应的 host 的有效数据（`del_flag = 1`）
 
     Args:
         request: Agent VNC 连接状态上报请求（包含 vnc_state 字段）
@@ -830,9 +841,9 @@ async def report_vnc_connection_state(
     - `updated`: 是否成功更新
 
     ## 错误码
-    - `AGENT_VER_REQUIRED`: 更新成功时 agent_ver 字段必填（400）
-    - `OTA_UPDATE_RECORD_NOT_FOUND`: 未找到 OTA 更新记录（404）
-    - `OTA_UPDATE_STATUS_REPORT_FAILED`: 上报处理失败（500）
+    - `AGENT_VER_REQUIRED`: 更新成功时 agent_ver 字段必填（400，错误码：53022）
+    - `OTA_UPDATE_RECORD_NOT_FOUND`: 未找到 OTA 更新记录（404，错误码：53017）
+    - `OTA_UPDATE_STATUS_REPORT_FAILED`: 上报处理失败（500，错误码：53021）
     """,
     responses={
         200: {
@@ -864,7 +875,7 @@ async def report_vnc_connection_state(
                         "agent_ver_required": {
                             "summary": "更新成功时 agent_ver 字段必填",
                             "value": {
-                                "code": 400,
+                                "code": 53022,
                                 "message": "更新成功时，agent_ver 字段必填",
                                 "error_code": "AGENT_VER_REQUIRED",
                             },
@@ -878,7 +889,7 @@ async def report_vnc_connection_state(
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 404,
+                        "code": 53017,
                         "message": "未找到 OTA 更新记录: host_id=123, app_name=test_app, app_ver=1.0.0",
                         "error_code": "OTA_UPDATE_RECORD_NOT_FOUND",
                     }
@@ -890,7 +901,7 @@ async def report_vnc_connection_state(
             "content": {
                 "application/json": {
                     "example": {
-                        "code": 500,
+                        "code": 53021,
                         "message": "OTA 更新状态上报处理失败",
                         "error_code": "OTA_UPDATE_STATUS_REPORT_FAILED",
                     }

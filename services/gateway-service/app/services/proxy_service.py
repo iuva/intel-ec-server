@@ -155,7 +155,7 @@ class ProxyService:
         if self.service_discovery:
             try:
                 service_url = await self.service_discovery.get_service_url(full_service_name)
-                logger.debug(f"获取服务地址: {service_name} -> {service_url}")
+                logger.debug("获取服务地址", extra={"service_name": service_name, "service_url": service_url})
                 return service_url
             except Exception as e:
                 logger.error(
@@ -383,7 +383,7 @@ class ProxyService:
                 # 确保有 Content-Type 头
                 if "Content-Type" not in clean_headers:
                     clean_headers["Content-Type"] = "application/json"
-                logger.debug(f"使用原始请求体，Content-Type: {clean_headers.get('Content-Type')}")
+                logger.debug("使用原始请求体", extra={"content_type": clean_headers.get('Content-Type')})
             elif body is not None:
                 request_kwargs["json"] = body
                 # json 参数会自动设置 Content-Type
@@ -408,7 +408,7 @@ class ProxyService:
             try:
                 # ✅ 修复：使用共享的 AsyncHTTPClient
                 # 现在 AsyncHTTPClient 不会抛出异常，而是返回所有状态码的响应
-                logger.debug(f"使用 AsyncHTTPClient 发送请求: {method} {full_url}")
+                logger.debug("使用 AsyncHTTPClient 发送请求", extra={"method": method, "full_url": full_url})
 
                 response = await self.http_client.request(
                     method=method,
@@ -419,8 +419,10 @@ class ProxyService:
 
                 status_code = response.get("status_code", 0)
                 logger.info(
-                    f"HTTP 请求完成: {method} {full_url} -> {status_code}",
+                    "HTTP 请求完成",
                     extra={
+                        "method": method,
+                        "full_url": full_url,
                         "status_code": status_code,
                         "has_body": response.get("body") is not None,
                         "body_type": type(response.get("body")).__name__ if response.get("body") else None,
@@ -465,14 +467,14 @@ class ProxyService:
             except Exception as http_error:
                 # 添加详细的连接错误日志（只记录真正的系统错误）
                 logger.error(
-                    f"HTTP 请求异常: {method} {full_url}",
+                    "HTTP 请求异常",
                     extra={
                         "method": method,
                         "url": full_url,
                         "service_name": service_name,
                         "path": path,
                         "error_type": type(http_error).__name__,
-                        "error_message": str(http_error),
+                        "error": str(http_error),
                     },
                     exc_info=True,
                 )
@@ -642,7 +644,28 @@ class ProxyService:
             )
 
             # 连接到后端 WebSocket
-            async with websockets.connect(full_ws_url, ping_interval=None) as server_websocket:
+            # ✅ 启用 ping/pong 心跳机制，防止中间设备（代理、负载均衡器）因检测不到活动而关闭连接
+            # 
+            # 心跳配置说明：
+            # 1. 协议层心跳（ping/pong）：用于保持 TCP 连接活跃，防止中间设备关闭连接
+            # 2. 应用层心跳（host-service）：Agent 通过 WebSocket 消息发送，用于业务逻辑（30-60秒间隔）
+            # 3. 两者不会冲突：协议层心跳是底层机制，应用层心跳是业务消息
+            #
+            # 配置参数：
+            # - ping_interval: 每 30 秒发送一次 ping（与应用层心跳间隔 30-60 秒协调）
+            # - ping_timeout: ping 超时时间 10 秒（如果 10 秒内没有收到 pong，认为连接断开）
+            # - close_timeout: 关闭连接的超时时间 10 秒
+            #
+            # 与 host-service 心跳配置的关系：
+            # - host-service 应用层心跳超时：60 秒
+            # - host-service 心跳检查间隔：10 秒
+            # - Gateway 协议层心跳间隔：30 秒（小于应用层心跳超时，确保连接保持活跃）
+            async with websockets.connect(
+                full_ws_url,
+                ping_interval=30,  # 每 30 秒发送一次 ping（与应用层心跳 30-60 秒协调）
+                ping_timeout=10,  # ping 超时 10 秒
+                close_timeout=10,  # 关闭超时 10 秒
+            ) as server_websocket:
                 logger.info(
                     "后端 WebSocket 连接已建立",
                     extra={"service_name": service_name, "path": path},
@@ -679,7 +702,7 @@ class ProxyService:
                     except asyncio.CancelledError:
                         ***REMOVED***
                     except Exception as e:
-                        logger.warning(f"任务取消时出现异常: {e!s}")
+                        logger.warning("任务取消时出现异常", extra={"error": str(e)})
 
                 # ✅ 确保 WebSocket 连接被正确关闭
                 try:
@@ -691,14 +714,14 @@ class ProxyService:
                         # websockets.WebSocketClientProtocol
                         await client_websocket.close()
                 except Exception as e:
-                    logger.debug(f"关闭客户端 WebSocket 时出错: {e!s}")
+                    logger.debug("关闭客户端 WebSocket 时出错", extra={"error": str(e)})
 
                 try:
                     # 检查服务端 WebSocket 状态
                     if not server_websocket.closed:
                         await server_websocket.close()
                 except Exception as e:
-                    logger.debug(f"关闭服务端 WebSocket 时出错: {e!s}")
+                    logger.debug("关闭服务端 WebSocket 时出错", extra={"error": str(e)})
 
                 logger.info(
                     "WebSocket 连接已关闭",
@@ -722,8 +745,8 @@ class ProxyService:
             raise
         except websockets.exceptions.InvalidURI as e:
             logger.error(
-                f"无效的 WebSocket URL: {e!s}",
-                extra={"service_name": service_name, "path": path},
+                "无效的 WebSocket URL",
+                extra={"service_name": service_name, "path": path, "error": str(e)},
             )
             # ✅ 确保在异常情况下也关闭客户端 WebSocket
             try:
@@ -755,8 +778,8 @@ class ProxyService:
             # ✅ 检查是否为认证失败（403 Forbidden）
             if "HTTP 403" in error_msg or "403 Forbidden" in error_msg:
                 logger.warning(
-                    f"WebSocket 认证失败: {error_msg}",
-                    extra={"service_name": service_name, "path": path},
+                    "WebSocket 认证失败",
+                    extra={"service_name": service_name, "path": path, "error_msg": error_msg},
                 )
                 # ✅ 确保在异常情况下也关闭客户端 WebSocket
                 try:
@@ -785,8 +808,8 @@ class ProxyService:
             # ✅ 检查是否为未授权（401 Unauthorized）
             if "HTTP 401" in error_msg or "401 Unauthorized" in error_msg:
                 logger.warning(
-                    f"WebSocket 未授权: {error_msg}",
-                    extra={"service_name": service_name, "path": path},
+                    "WebSocket 未授权",
+                    extra={"service_name": service_name, "path": path, "error_msg": error_msg},
                 )
                 # ✅ 确保在异常情况下也关闭客户端 WebSocket
                 try:
@@ -814,8 +837,8 @@ class ProxyService:
 
             # ✅ 其他 WebSocket 连接错误
             logger.error(
-                f"WebSocket 连接异常: {error_msg}",
-                extra={"service_name": service_name, "path": path},
+                "WebSocket 连接异常",
+                extra={"service_name": service_name, "path": path, "error_msg": error_msg},
             )
             # ✅ 确保在异常情况下也关闭客户端 WebSocket
             try:
@@ -843,8 +866,8 @@ class ProxyService:
 
         except Exception as e:
             logger.error(
-                f"WebSocket 转发异常: {e!s}",
-                extra={"service_name": service_name, "path": path, "error_type": type(e).__name__},
+                "WebSocket 转发异常",
+                extra={"service_name": service_name, "path": path, "error_type": type(e).__name__, "error": str(e)},
                 exc_info=True,
             )
             # ✅ 确保在异常情况下也关闭客户端 WebSocket
@@ -940,32 +963,32 @@ class ProxyService:
                 except websockets.exceptions.ConnectionClosed as e:
                     # 正常关闭：1000-1001, 1005 (无状态码)
                     if e.code in (1000, 1001, 1005, None):
-                        logger.info(f"连接正常关闭 ({direction}): code={e.code}")
+                        logger.info("连接正常关闭", extra={"direction": direction, "code": e.code})
                     else:
-                        logger.warning(f"连接异常关闭 ({direction}): code={e.code}, reason={e.reason}")
+                        logger.warning("连接异常关闭", extra={"direction": direction, "code": e.code, "reason": e.reason})
                     break
                 except WebSocketDisconnect as e:
                     # FastAPI WebSocketDisconnect - 客户端正常断开
                     if e.code in (1000, 1001, 1005, None):
-                        logger.info(f"客户端正常断开 ({direction}): code={e.code}")
+                        logger.info("客户端正常断开", extra={"direction": direction, "code": e.code})
                     else:
                         # 获取关闭原因
                         reason = e.reason if hasattr(e, "reason") else "No reason"
-                        logger.warning(f"客户端异常断开 ({direction}): code={e.code}, reason={reason}")
+                        logger.warning("客户端异常断开", extra={"direction": direction, "code": e.code, "reason": reason})
                     break
                 except Exception as e:
                     # 其他异常才记录为错误
                     error_type = type(e).__name__
-                    logger.error(f"消息转发失败 ({direction}): {error_type} - {e!s}")
+                    logger.error("消息转发失败", extra={"direction": direction, "error_type": error_type, "error": str(e)})
                     break
 
         except websockets.exceptions.ConnectionClosed as e:
             # 外层捕获：连接正常关闭
-            logger.debug(f"源连接已关闭 ({direction}): code={e.code}")
+            logger.debug("源连接已关闭", extra={"direction": direction, "code": e.code})
         except Exception as e:
             # 外层捕获：转发异常
             error_type = type(e).__name__
-            logger.error(f"转发异常 ({direction}): {error_type} - {e!s}")
+            logger.error("转发异常", extra={"direction": direction, "error_type": error_type, "error": str(e)})
         finally:
             # ✅ 确保目标 WebSocket 连接被关闭
             try:
@@ -980,7 +1003,7 @@ class ProxyService:
                     # websockets.WebSocketClientProtocol
                     await destination.close()
             except Exception as e:
-                logger.debug(f"关闭目标 WebSocket 时出错 ({direction}): {e!s}")
+                logger.debug("关闭目标 WebSocket 时出错", extra={"direction": direction, "error": str(e)})
 
             # ✅ 确保源 WebSocket 连接也被关闭（如果可能）
             try:
@@ -990,7 +1013,7 @@ class ProxyService:
                     if hasattr(source, "closed") and not source.closed:
                         await source.close()
             except Exception as e:
-                logger.debug(f"关闭源 WebSocket 时出错 ({direction}): {e!s}")
+                logger.debug("关闭源 WebSocket 时出错", extra={"direction": direction, "error": str(e)})
 
     async def _handle_backend_http_error_from_response(
         self,
@@ -1015,8 +1038,9 @@ class ProxyService:
 
         # ✅ 添加详细日志用于调试
         logger.debug(
-            f"处理后端错误响应: {service_name}",
+            "处理后端错误响应",
             extra={
+                "service_name": service_name,
                 "status_code": status_code,
                 "response_body_type": type(response_body).__name__,
                 "response_body_is_empty": (
@@ -1255,7 +1279,7 @@ class ProxyService:
 
             # 添加详细日志用于调试
             logger.debug(
-                f"解析后端响应: status_code={status_code}, content_length={len(response_content) if response_content else 0}",
+                "解析后端响应",
                 extra={
                     "service_name": service_name,
                     "status_code": status_code,
@@ -1303,11 +1327,11 @@ class ProxyService:
                         )
                     except Exception as decode_error:
                         logger.error(
-                            f"解码响应内容失败: {str(decode_error)}",
+                            "解码响应内容失败",
                             extra={
                                 "service_name": service_name,
                                 "status_code": status_code,
-                                "decode_error": str(decode_error),
+                                "error": str(decode_error),
                             },
                             exc_info=True,
                         )
@@ -1315,7 +1339,7 @@ class ProxyService:
         except Exception as e:
             # 如果所有解析都失败，使用默认错误信息
             logger.error(
-                f"解析后端响应失败: {str(e)}",
+                "解析后端响应失败",
                 extra={
                     "service_name": service_name,
                     "status_code": status_code,

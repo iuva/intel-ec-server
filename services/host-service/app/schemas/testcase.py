@@ -46,14 +46,14 @@ class TestCaseDueTimeRequest(BaseModel):
     """测试用例预期结束时间上报请求"""
 
     tc_id: str = Field(..., description="测试用例ID", min_length=1, max_length=64)
-    due_time: datetime = Field(..., description="预期结束时间")
+    due_time: int = Field(..., description="预期结束时间（分钟时间差，整数）", ge=0)
 
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
             "example": {
                 "tc_id": "absdf1234",
-                "due_time": "2025-01-30T15:30:00Z",
+                "due_time": 60,
             }
         },
     }

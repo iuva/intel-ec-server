@@ -86,7 +86,8 @@ def _realvnc_encrypt_***REMOVED***word(***REMOVED***word: str) -> str:
         raise BusinessError(
             message="RealVNC 加密功能需要 pycryptodome 库，请安装: pip install pycryptodome",
             error_code="REALVNC_ENCRYPTION_LIBRARY_MISSING",
-            code=500,
+            code=ServiceErrorCodes.HOST_REALVNC_ENCRYPTION_LIBRARY_MISSING,
+            http_status_code=500,
         )
 
     # RealVNC使用的固定DES密钥
@@ -175,7 +176,8 @@ class BrowserVNCService:
             raise BusinessError(
                 message="主机ID格式无效",
                 error_code="INVALID_HOST_ID",
-                code=400,
+                code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                http_status_code=400,
             )
 
         session_factory = mariadb_manager.get_session()
@@ -202,7 +204,25 @@ class BrowserVNCService:
                     )
                 )
                 log_result = await session.execute(log_stmt)
-                existing_log = log_result.scalar_one_or_none()
+                logs = log_result.scalars().all()
+
+                if len(logs) > 1:
+                    logger.warning(
+                        "找到多条执行日志，无法继续",
+                        extra={
+                            "user_id": vnc_report.user_id,
+                            "host_id": vnc_report.host_id,
+                            "count": len(logs),
+                        },
+                    )
+                    raise BusinessError(
+                        message="存在多条未完成的执行日志，请联系管理员处理",
+                        error_code="MULTIPLE_EXEC_LOGS_FOUND",
+                        code=ServiceErrorCodes.HOST_MULTIPLE_EXEC_LOGS_FOUND,
+                        http_status_code=409,
+                    )
+
+                existing_log = logs[0] if logs else None
 
                 if existing_log:
                     # 存在记录：先逻辑删除
@@ -318,58 +338,103 @@ class BrowserVNCService:
             )
 
             # ✅ 如果连接状态为 success，通过 WebSocket 通知 Agent 进行日志监控
-            if vnc_report.connection_status == "success":
+            # 使用大小写不敏感的比较，确保 "success"、"Success"、"SUCCESS" 都能匹配
+            connection_status_lower = vnc_report.connection_status.lower() if vnc_report.connection_status else ""
+            if connection_status_lower == "success":
+                logger.info(
+                    "准备发送 WebSocket 通知给 Agent",
+                    extra={
+                        "host_id": vnc_report.host_id,
+                        "connection_status": vnc_report.connection_status,
+                        "user_id": vnc_report.user_id,
+                        "tc_id": vnc_report.tc_id,
+                    },
+                )
                 try:
                     ws_manager = get_agent_websocket_manager()
                     host_id_str = str(vnc_report.host_id)
 
-                    # 构建连接通知消息
-                    connection_notification = {
-                        "type": MessageType.CONNECTION_NOTIFICATION,
-                        "host_id": host_id_str,
-                        "message": "VNC连接成功，请开始日志监控",
-                        "action": "start_log_monitoring",
-                        "details": {
-                            "user_id": vnc_report.user_id,
-                            "tc_id": vnc_report.tc_id,
-                            "cycle_name": vnc_report.cycle_name,
-                            "user_name": vnc_report.user_name,
-                            "connection_time": connection_time_str,
-                        },
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
-
-                    # 发送通知
-                    success = await ws_manager.send_to_host(host_id_str, connection_notification)
-                    if success:
-                        logger.info(
-                            "连接通知已发送给 Agent",
+                    # 检查 Agent 是否已连接
+                    if not ws_manager.is_connected(host_id_str):
+                        logger.warning(
+                            "Agent 未连接，无法发送 WebSocket 通知",
                             extra={
                                 "host_id": host_id_str,
                                 "user_id": vnc_report.user_id,
                                 "tc_id": vnc_report.tc_id,
+                                "active_connections": ws_manager.get_connection_count(),
                             },
                         )
                     else:
-                        logger.warning(
-                            "连接通知发送失败（Agent 可能未连接）",
-                            extra={
-                                "host_id": host_id_str,
+                        # 构建连接通知消息
+                        connection_notification = {
+                            "type": MessageType.CONNECTION_NOTIFICATION,
+                            "host_id": host_id_str,
+                            "message": "VNC连接成功，请开始日志监控",
+                            "action": "start_log_monitoring",
+                            "details": {
                                 "user_id": vnc_report.user_id,
                                 "tc_id": vnc_report.tc_id,
+                                "cycle_name": vnc_report.cycle_name,
+                                "user_name": vnc_report.user_name,
+                                "connection_time": connection_time_str,
+                            },
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+
+                        logger.debug(
+                            "准备发送 WebSocket 通知消息",
+                            extra={
+                                "host_id": host_id_str,
+                                "message_type": MessageType.CONNECTION_NOTIFICATION,
+                                "message": connection_notification,
                             },
                         )
+
+                        # 发送通知
+                        success = await ws_manager.send_to_host(host_id_str, connection_notification)
+                        if success:
+                            logger.info(
+                                "连接通知已发送给 Agent",
+                                extra={
+                                    "host_id": host_id_str,
+                                    "user_id": vnc_report.user_id,
+                                    "tc_id": vnc_report.tc_id,
+                                    "message_type": MessageType.CONNECTION_NOTIFICATION,
+                                },
+                            )
+                        else:
+                            logger.warning(
+                                "连接通知发送失败（Agent 可能未连接或发送失败）",
+                                extra={
+                                    "host_id": host_id_str,
+                                    "user_id": vnc_report.user_id,
+                                    "tc_id": vnc_report.tc_id,
+                                    "message_type": MessageType.CONNECTION_NOTIFICATION,
+                                    "is_connected": ws_manager.is_connected(host_id_str),
+                                },
+                            )
                 except Exception as e:
                     # 通知发送失败不影响主流程，只记录警告
-                    logger.warning(
+                    logger.error(
                         "发送连接通知异常",
                         extra={
                             "host_id": vnc_report.host_id,
                             "error_type": type(e).__name__,
                             "error_message": str(e),
+                            "connection_status": vnc_report.connection_status,
                         },
                         exc_info=True,
                     )
+            else:
+                logger.debug(
+                    "连接状态不是 success，跳过 WebSocket 通知",
+                    extra={
+                        "host_id": vnc_report.host_id,
+                        "connection_status": vnc_report.connection_status,
+                        "connection_status_lower": connection_status_lower,
+                    },
+                )
 
             return {
                 "host_id": vnc_report.host_id,
@@ -446,7 +511,8 @@ class BrowserVNCService:
                 raise BusinessError(
                     message="主机ID格式无效",
                     error_code="INVALID_HOST_ID",
-                    code=400,
+                    code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
+                    http_status_code=400,
                 )
 
             # 查询主机记录
@@ -487,7 +553,8 @@ class BrowserVNCService:
                         message="VNC 连接信息不完整，缺少 IP 地址或端口",
                         message_key="error.vnc.info_incomplete",
                         error_code="VNC_INFO_INCOMPLETE",
-                        code=400,
+                        code=ServiceErrorCodes.HOST_VNC_INFO_INCOMPLETE,
+                        http_status_code=400,
                     )
 
                 # 处理密码：AES 解密 -> RealVNC 加密
@@ -617,5 +684,6 @@ class BrowserVNCService:
             raise BusinessError(
                 message="获取 VNC 连接信息失败，请稍后重试",
                 error_code="VNC_GET_FAILED",
-                code=500,
+                code=ServiceErrorCodes.HOST_VNC_GET_FAILED,
+                http_status_code=500,
             )

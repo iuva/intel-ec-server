@@ -391,7 +391,7 @@ async def websocket_proxy(
 
                 await websocket.close(code=close_code, reason=close_reason)
             except Exception as close_error:
-                logger.debug(f"关闭 WebSocket 时出错: {close_error!s}")
+                logger.debug("关闭 WebSocket 时出错", extra={"error": str(close_error)})
 
 
 # ✅ 新增：支持简化格式的 WebSocket 代理路由
@@ -453,16 +453,16 @@ async def proxy_request(
                 if raw_body:
                     try:
                         body = json.loads(raw_body.decode("utf-8"))
-                        logger.debug(f"解析请求体成功: {len(raw_body)} bytes")
+                        logger.debug("解析请求体成功", extra={"body_size_bytes": len(raw_body)})
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                        logger.warning(f"请求体不是有效JSON，将作为原始数据转发: {e}")
+                        logger.warning("请求体不是有效JSON，将作为原始数据转发", extra={"error": str(e)})
                         # 如果不是JSON，保持为None，使用原始数据
                         body = None
                 else:
                     logger.debug("请求体为空")
 
             except Exception as e:
-                logger.error(f"读取请求体失败: {e}", exc_info=True)
+                logger.error("读取请求体失败", extra={"error": str(e)}, exc_info=True)
                 # 如果读取失败，抛出适当的错误
                 raise ValidationError(f"无法读取请求体: {e!s}")
 
@@ -499,7 +499,7 @@ async def proxy_request(
             content_length_keys = [k for k in headers if k.lower() == "content-length"]
             for key in content_length_keys:
                 del headers[key]
-                logger.debug(f"移除Content-Length头部: {key}")
+                logger.debug("移除Content-Length头部", extra={"header_key": key})
 
         # ✅ 添加用户信息到请求头（从request.state.user获取）
         user_info = getattr(request.state, "user", None)
@@ -584,7 +584,7 @@ async def proxy_request(
 
         # 记录请求日志
         logger.info(
-            f"代理请求: {method} /{service_name}/{subpath}",
+            "代理请求",
             extra={
                 "service_name": service_name,
                 "method": method,
@@ -596,7 +596,12 @@ async def proxy_request(
 
         # 准备调用forward_request
         logger.info(
-            f"准备转发请求: service_name={service_name}, subpath={subpath}, has_raw_body={raw_body is not None}"
+            "准备转发请求",
+            extra={
+                "service_name": service_name,
+                "subpath": subpath,
+                "has_raw_body": raw_body is not None,
+            },
         )
 
         # 转发请求
@@ -638,12 +643,12 @@ async def proxy_request(
                 continue
             proxy_response.headers[header_name] = header_value
 
-        logger.info(f"转发成功，返回响应: {status_code}")
+        logger.info("转发成功，返回响应", extra={"status_code": status_code})
         return proxy_response
 
     except ServiceNotFoundError as e:
         logger.warning(
-            f"服务不存在: {service_name}",
+            "服务不存在",
             extra={"service_name": service_name, "error": str(e)},
         )
         raise e
@@ -651,7 +656,7 @@ async def proxy_request(
     except BusinessError as e:
         # 透传后端服务的业务错误（4xx状态码）
         logger.warning(
-            f"透传后端服务业务错误: {service_name}",
+            "透传后端服务业务错误",
             extra={
                 "service_name": service_name,
                 "error_message": e.message,
@@ -664,7 +669,7 @@ async def proxy_request(
 
     except Exception as e:
         logger.error(
-            f"代理请求异常: {service_name} - 异常类型: {type(e).__name__}",
+            "代理请求异常",
             extra={
                 "service_name": service_name,
                 "error": str(e),
@@ -763,7 +768,7 @@ async def catch_all_handler(
     """
 
     logger.warning(
-        f"未找到路由: {request.method} /{path}",
+        "未找到路由",
         extra={
             "method": request.method,
             "path": path,
