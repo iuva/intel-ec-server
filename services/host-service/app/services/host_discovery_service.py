@@ -26,6 +26,8 @@ _http_client: Optional["httpx.AsyncClient"] = None
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.services.external_api_client import call_external_api
+
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
@@ -35,6 +37,8 @@ except ImportError:
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    from app.services.external_api_client import call_external_api
+
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
@@ -682,8 +686,6 @@ class HostDiscoveryService:
 
         try:
             # ✅ 使用统一的外部接口调用客户端（支持认证和 SSL 配置）
-            from app.services.external_api_client import call_external_api
-
             # url_path = "/api/v1/hardware/hosts"
             url_path = "/api/v1/hardware/mock_hosts"
             params = {

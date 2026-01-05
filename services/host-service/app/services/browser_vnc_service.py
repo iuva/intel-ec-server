@@ -434,7 +434,7 @@ class BrowserVNCService:
                         "connection_status": vnc_report.connection_status,
                         "connection_status_lower": connection_status_lower,
                     },
-                )
+                    )
 
             return {
                 "host_id": vnc_report.host_id,

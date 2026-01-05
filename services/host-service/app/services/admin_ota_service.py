@@ -15,6 +15,7 @@ try:
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
     from app.services.agent_websocket_manager import get_agent_websocket_manager
+    from app.utils.cache_invalidation import invalidate_ota_config_cache
     from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
@@ -27,6 +28,7 @@ except ImportError:
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
     from app.services.agent_websocket_manager import get_agent_websocket_manager
+    from app.utils.cache_invalidation import invalidate_ota_config_cache
     from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
@@ -213,8 +215,6 @@ class AdminOtaService:
 
         # ✅ 优化：清除 OTA 配置缓存，确保下次查询获取最新数据
         try:
-            from app.utils.cache_invalidation import invalidate_ota_config_cache
-
             await invalidate_ota_config_cache()
         except ImportError:
             # 降级处理：直接使用 redis_manager

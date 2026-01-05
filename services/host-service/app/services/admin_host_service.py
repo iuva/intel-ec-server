@@ -22,8 +22,10 @@ try:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
 
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -43,8 +45,10 @@ except ImportError:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
 
+    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -385,11 +389,35 @@ class AdminHostService:
                 },
             )
 
-            # 3. 通知外部API
+            # 3. 在删除成功后，将 host_id 添加到 Redis 黑名单
             try:
-                # 使用统一的外部接口调用客户端
-                from app.services.external_api_client import call_external_api
+                deleted_host_key = f"deleted:host:{host_id}"
+                # 过期时间：24 小时（与 token 过期时间一致）
+                expire_seconds = 24 * 60 * 60
+                await redis_manager.set(deleted_host_key, True, expire=expire_seconds)
 
+                logger.info(
+                    "已删除的 host ID 已添加到 Redis 黑名单",
+                    extra={
+                        "host_id": host_id,
+                        "redis_key": deleted_host_key,
+                        "expire_seconds": expire_seconds,
+                    },
+                )
+            except Exception as redis_error:
+                # Redis 操作失败时记录警告，但不影响删除操作
+                logger.warning(
+                    "添加 host ID 到 Redis 黑名单失败",
+                    extra={
+                        "host_id": host_id,
+                        "error": str(redis_error),
+                        "error_type": type(redis_error).__name__,
+                        "hint": "Redis 不可用时，已删除的 host token 可能仍可使用，直到 token 过期",
+                    },
+                )
+
+            # 4. 通知外部API
+            try:
                 # 构建通知路径（根据实际外部API接口调整）
                 external_api_path = f"/api/v1/hardware/{host_rec.hardware_id}"
 

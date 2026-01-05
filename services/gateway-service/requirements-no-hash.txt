@@ -2,8 +2,9 @@
 # 无哈希版本，用于 Docker 构建
 
 fastapi==0.116.1
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+websockets==13.1
 
 # 数据库
 sqlalchemy==2.0.35

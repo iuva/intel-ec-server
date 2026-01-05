@@ -804,11 +804,13 @@ async def report_vnc_connection_state(
 
     ## 功能说明
     1. 从 JWT token 中提取 host_id
-    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新记录
-    3. 更新 host_upd 表的 app_state 字段（1=更新中，2=成功，3=失败）
-    4. 如果 biz_state=2（成功）：
+    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
+    3. 如果未找到记录，创建新记录（在创建前，逻辑删除其他有效记录，保证有效数据只有一条）
+    4. 更新 host_upd 表的 app_state 字段（1=更新中，2=成功，3=失败）
+    5. 如果 biz_state=2（成功）：
        - 更新 host_rec 表的 host_state=0（free）
        - 更新 host_rec 表的 agent_ver（新版本）
+       - 逻辑删除 host_upd 表的当前记录（del_flag=1）
 
     ## 认证要求
     - 需要在 Authorization 头中提供有效的 JWT token
@@ -826,11 +828,16 @@ async def report_vnc_connection_state(
 
     ## 业务逻辑
     1. 从 token 中解析 host_id（通过依赖注入自动完成）
-    2. 查询 host_upd 表，验证更新记录是否存在
-    3. 更新 host_upd 表的 app_state 字段
-    4. 如果 biz_state=2（成功）：
+    2. 查询 host_upd 表的最新有效记录（del_flag=0）
+    3. 如果未找到记录：
+       - 逻辑删除该 host_id 和 app_name 的所有有效记录（保证有效数据只有一条）
+       - 创建新记录，设置 app_state 为 biz_state
+    4. 如果找到记录：
+       - 更新 host_upd 表的 app_state 字段
+    5. 如果 biz_state=2（成功）：
        - 更新 host_rec 表的 host_state=0（free）
        - 更新 host_rec 表的 agent_ver（新版本）
+       - 逻辑删除 host_upd 表的当前记录（del_flag=1）
 
     ## 返回数据
     - `host_id`: 主机ID
@@ -842,7 +849,6 @@ async def report_vnc_connection_state(
 
     ## 错误码
     - `AGENT_VER_REQUIRED`: 更新成功时 agent_ver 字段必填（400，错误码：53022）
-    - `OTA_UPDATE_RECORD_NOT_FOUND`: 未找到 OTA 更新记录（404，错误码：53017）
     - `OTA_UPDATE_STATUS_REPORT_FAILED`: 上报处理失败（500，错误码：53021）
     """,
     responses={
@@ -884,18 +890,6 @@ async def report_vnc_connection_state(
                 }
             },
         },
-        404: {
-            "description": "未找到 OTA 更新记录",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 53017,
-                        "message": "未找到 OTA 更新记录: host_id=123, app_name=test_app, app_ver=1.0.0",
-                        "error_code": "OTA_UPDATE_RECORD_NOT_FOUND",
-                    }
-                }
-            },
-        },
         500: {
             "description": "服务器内部错误",
             "content": {
@@ -921,11 +915,16 @@ async def report_ota_update_status(
 
     ## 业务逻辑
     1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
-    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新记录
-    3. 更新 host_upd 表的 app_state 字段（1=更新中，2=成功，3=失败）
-    4. 如果 biz_state=2（成功）：
+    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
+    3. 如果未找到记录：
+       - 逻辑删除该 host_id 和 app_name 的所有有效记录（保证有效数据只有一条）
+       - 创建新记录，设置 app_state 为 biz_state
+    4. 如果找到记录：
+       - 更新 host_upd 表的 app_state 字段
+    5. 如果 biz_state=2（成功）：
        - 更新 host_rec 表的 host_state=0（free）
        - 更新 host_rec 表的 agent_ver（新版本）
+       - 逻辑删除 host_upd 表的当前记录（del_flag=1）
 
     Args:
         request: Agent OTA 更新状态上报请求（包含 app_name、app_ver、biz_state、agent_ver 字段）

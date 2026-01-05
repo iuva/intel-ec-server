@@ -3,7 +3,7 @@
 提供浏览器插件使用的主机查询、状态更新等核心业务逻辑。
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, cast
 
 from app.constants.host_constants import APPR_STATE_ENABLE, HOST_STATE_FREE
@@ -14,6 +14,8 @@ from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
+    # from app.services.agent_websocket_manager import get_agent_websocket_manager  # Moved to local import
+    from app.schemas.websocket_message import MessageType
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -24,6 +26,8 @@ except ImportError:
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    # from app.services.agent_websocket_manager import get_agent_websocket_manager  # Moved to local import
+    from app.schemas.websocket_message import MessageType
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -701,12 +705,12 @@ class BrowserHostService:
         error_code="RELEASE_HOSTS_FAILED",
     )
     async def release_hosts(self, user_id: str, host_list: List[str]) -> int:
-        """释放主机 - 逻辑删除执行日志记录
+        """释放主机 - 逻辑删除执行日志记录并更新主机状态
 
-        逻辑删除 host_exec_log 表中符合条件的记录（设置 del_flag = 1）：
-        - user_id = 入参的 user_id
-        - host_id IN (host_list)
-        - del_flag = 0（只删除未删除的记录）
+        业务逻辑：
+        1. 逻辑删除 host_exec_log 表中符合条件的记录（设置 del_flag = 1）
+        2. 更新 host_rec 表中对应主机的 host_state = 0（空闲状态）
+        3. 通过 WebSocket 通知指定的 agent
 
         Args:
             user_id: 用户ID
@@ -753,7 +757,40 @@ class BrowserHostService:
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 构建逻辑删除语句（UPDATE del_flag = 1）
+            # 1. 先更新 host_rec 表的 host_state = 0（空闲状态）
+            update_host_rec_stmt = (
+                update(HostRec)
+                .where(
+                    and_(
+                        HostRec.id.in_(host_ids),
+                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                    )
+                )
+                .values(host_state=HOST_STATE_FREE)  # 0 = 空闲状态
+            )
+
+            logger.info(
+                "执行 host_rec 表状态更新操作",
+                extra={
+                    "user_id": user_id,
+                    "host_ids": host_ids,
+                    "operation": "UPDATE host_state = 0",
+                },
+            )
+
+            host_rec_result = await session.execute(update_host_rec_stmt)
+            host_rec_updated_count = host_rec_result.rowcount
+
+            logger.info(
+                "host_rec 表状态更新完成",
+                extra={
+                    "user_id": user_id,
+                    "host_ids": host_ids,
+                    "host_rec_updated_count": host_rec_updated_count,
+                },
+            )
+
+            # 2. 逻辑删除 host_exec_log 记录
             stmt = (
                 update(HostExecLog)
                 .where(
@@ -786,9 +823,59 @@ class BrowserHostService:
                 extra={
                     "user_id": user_id,
                     "host_count": len(host_list),
+                    "host_rec_updated_count": host_rec_updated_count,
                     "updated_count": updated_count,
                 },
             )
+
+            # 3. 通过 WebSocket 通知每个 agent
+            try:
+                # Local import to avoid circular dependency
+                from app.services.agent_websocket_manager import get_agent_websocket_manager
+                ws_manager = get_agent_websocket_manager()
+
+                for host_id in host_ids:
+                    host_id_str = str(host_id)
+
+                    # 构建通知消息（使用 HOST_OFFLINE_NOTIFICATION 类型）
+                    notification_message = {
+                        "type": MessageType.HOST_OFFLINE_NOTIFICATION,
+                        "host_id": host_id_str,
+                        "message": f"主机 {host_id_str} 已被释放，状态已更新为空闲",
+                        "reason": "host_released",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+
+                    # 发送通知（如果 agent 未连接，会返回 False，但不影响主流程）
+                    success = await ws_manager.send_to_host(host_id_str, notification_message)
+                    if success:
+                        logger.info(
+                            "主机释放通知已发送给 Agent",
+                            extra={
+                                "host_id": host_id_str,
+                                "user_id": user_id,
+                            },
+                        )
+                    else:
+                        logger.debug(
+                            "主机释放通知发送失败（Agent 可能未连接）",
+                            extra={
+                                "host_id": host_id_str,
+                                "user_id": user_id,
+                            },
+                        )
+            except Exception as e:
+                # WebSocket 通知失败不影响主流程，只记录警告
+                logger.warning(
+                    "发送主机释放通知异常",
+                    extra={
+                        "user_id": user_id,
+                        "host_ids": host_ids,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
 
             return updated_count
 

@@ -293,7 +293,7 @@ async def get_retry_vnc_list(
     "/release",
     response_model=Result[ReleaseHostsResponse],
     summary="释放主机",
-    description="逻辑删除指定用户的主机执行日志记录（设置 del_flag = 1）",
+    description="逻辑删除指定用户的主机执行日志记录并更新主机状态（设置 del_flag = 1，host_state = 0）",
     responses={
         200: {
             "description": "释放成功",
@@ -331,11 +331,13 @@ async def release_hosts(
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
 ) -> Result[ReleaseHostsResponse]:
-    """释放主机 - 逻辑删除执行日志记录
+    """释放主机 - 逻辑删除执行日志记录并更新主机状态
 
     ## 业务逻辑
     1. 逻辑删除 `host_exec_log` 表中的记录（设置 del_flag = 1）
-    2. 条件：
+    2. 更新 `host_rec` 表中对应主机的 `host_state = 0`（空闲状态）
+    3. 通过 WebSocket 通知指定的 agent
+    4. 条件：
        - `user_id = 入参的 user_id`
        - `host_id IN (host_list)`
        - `del_flag = 0`（只删除未删除的记录）

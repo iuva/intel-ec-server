@@ -53,6 +53,7 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
+    from app.models.sys_user import SysUser
     from app.schemas.host import (
         AdminApprHostApproveRequest,
         AdminApprHostApproveResponse,
@@ -63,6 +64,7 @@ except ImportError:
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
+    from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
@@ -346,8 +348,6 @@ async def _call_hardware_api(
 
     # 使用统一的外部接口调用客户端
     try:
-        from app.services.external_api_client import call_external_api
-
         # 构建 Head 参数（Mock 数据）
         head_data = _build_hardware_head()
 

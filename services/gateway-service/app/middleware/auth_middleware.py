@@ -16,6 +16,7 @@ try:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from shared.common.cache import redis_manager
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
@@ -26,6 +27,7 @@ except ImportError:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    from shared.common.cache import redis_manager
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
@@ -572,7 +574,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         if data.get("active"):
                             # ✅ 统一使用 id 字段，没有则返回 None（401）
                             user_id = data.get("id")
-                            
+
                             # ✅ 增强日志：记录 Auth Service 返回的完整数据（用于诊断）
                             logger.debug(
                                 "Auth Service 返回的验证结果",
@@ -588,7 +590,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                     "request_path": request_path,
                                 },
                             )
-                            
+
                             if not user_id:
                                 logger.warning(
                                     "Token 验证成功但 id 为空",
@@ -607,6 +609,49 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                     },
                                 )
                                 return None  # 返回 None 表示验证失败
+
+                            # ✅ 检查用户/host 是否已被删除（从 Redis 读取）
+                            try:
+                                user_type = data.get("user_type", "user")
+
+                                if user_id:
+                                    # 根据 user_type 确定 Redis key 前缀
+                                    if user_type == "device":
+                                        # device 类型表示 host
+                                        deleted_key = f"deleted:host:{user_id}"
+                                    else:
+                                        # admin 或其他类型表示用户
+                                        deleted_key = f"deleted:user:{user_id}"
+
+                                    # 检查 Redis 中是否存在已删除标记
+                                    is_deleted = await redis_manager.exists(deleted_key)
+
+                                    if is_deleted:
+                                        logger.warning(
+                                            "Token 对应的用户/host 已被删除",
+                                            extra={
+                                                "id": user_id,
+                                                "user_type": user_type,
+                                                "deleted_key": deleted_key,
+                                                "request_path": request_path,
+                                                "request_method": request_method,
+                                            },
+                                        )
+                                        return None  # 返回 None 表示验证失败，会触发 401 响应
+                            except Exception as redis_error:
+                                # Redis 操作失败时记录警告，但继续验证（降级处理）
+                                logger.warning(
+                                    "Redis 删除检查失败，继续验证 token",
+                                    extra={
+                                        "id": user_id,
+                                        "user_type": data.get("user_type"),
+                                        "error": str(redis_error),
+                                        "error_type": type(redis_error).__name__,
+                                        "request_path": request_path,
+                                        "hint": "Redis 不可用时，跳过删除检查，继续验证 token（降级处理）",
+                                    },
+                                )
+                                # 继续执行，不因为 Redis 失败而拒绝所有请求
 
                             # ✅ 构造用户信息（统一使用 id 字段）
                             user_info = {

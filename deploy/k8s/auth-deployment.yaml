@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: intel-ec-ms
+  labels:
+    app: auth-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: intel-cw-ms/auth-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: intel-config
+            - secretRef:
+                name: intel-secrets
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: intel-ec-ms
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - protocol: TCP
+      port: 8001
+      targetPort: 8001

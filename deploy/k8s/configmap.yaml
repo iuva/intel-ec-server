@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intel-config
+  namespace: intel-ec-ms
+data:
+  # Python Path Configuration (Critical for Docker image compatibility)
+  PYTHONPATH: "/install/lib/python3.8/site-packages:/app"
+
+  # Service Ports
+  GATEWAY_SERVICE_PORT: "8000"
+  AUTH_SERVICE_PORT: "8001"
+  HOST_SERVICE_PORT: "8003"
+  
+  # Service Discovery Names (K8s Service Names)
+  GATEWAY_SERVICE_IP: "gateway-service"
+  AUTH_SERVICE_IP: "auth-service"
+  HOST_SERVICE_IP: "host-service"
+  
+  # Database Configuration
+  MARIADB_HOST: "mariadb"
+  MARIADB_PORT: "3306"
+  MARIADB_USER: "intel_user"
+  MARIADB_DATABASE: "intel_cw"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  AUTH_REDIS_DB: "1"
+  HOST_REDIS_DB: "3"
+  
+  # Nacos Configuration
+  NACOS_SERVER_ADDR: "http://nacos:8848"
+  NACOS_USERNAME: "nacos"
+  NACOS_PASSWORD: "nacos"
+  NACOS_NAMESPACE: "public"
+  NACOS_GROUP: "DEFAULT_GROUP"
+  
+  # Observability
+  JAEGER_ENDPOINT: "jaeger:4317"
+  ENABLE_NACOS: "true"
+  ENABLE_JAEGER: "true"
+  ENABLE_PROMETHEUS: "true"
+  
+  # App Configuration
+  DEBUG: "false"
+  LOG_LEVEL: "INFO"
+  
+  # Host Service Specific
+  USE_HARDWARE_MOCK: "false"
+  FILE_UPLOAD_DIR: "/app/uploads"

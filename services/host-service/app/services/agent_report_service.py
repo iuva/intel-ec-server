@@ -17,7 +17,11 @@ from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
-    from app.constants.host_constants import HOST_STATE_FREE
+    from app.constants.host_constants import (
+        HOST_STATE_FREE,
+        HOST_STATE_LOCKED,
+        HOST_STATE_OCCUPIED,
+    )
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.host_upd import HostUpd
@@ -33,7 +37,11 @@ try:
     from shared.utils.template_validator import TemplateValidator
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from app.constants.host_constants import HOST_STATE_FREE
+    from app.constants.host_constants import (
+        HOST_STATE_FREE,
+        HOST_STATE_LOCKED,
+        HOST_STATE_OCCUPIED,
+    )
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.host_upd import HostUpd
@@ -1007,26 +1015,6 @@ class AgentReportService:
                 },
             )
 
-            # ✅ 导入主机状态常量
-            try:
-                from app.constants.host_constants import (
-                    HOST_STATE_FREE,
-                    HOST_STATE_LOCKED,
-                    HOST_STATE_OCCUPIED,
-                )
-            except ImportError:
-                import sys
-                import os
-
-                sys.path.insert(
-                    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
-                )
-                from app.constants.host_constants import (
-                    HOST_STATE_FREE,
-                    HOST_STATE_LOCKED,
-                    HOST_STATE_OCCUPIED,
-                )
-
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
                 # 1. 查询 host_rec 表，验证主机是否存在
@@ -1215,11 +1203,13 @@ class AgentReportService:
         """上报 OTA 更新状态
 
         业务逻辑：
-        1. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新记录
-        2. 更新 app_state 字段（1=更新中，2=成功，3=失败）
-        3. 如果 biz_state=2（成功）：
+        1. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
+        2. 如果未找到记录，创建新记录（在创建前，逻辑删除其他有效记录，保证有效数据只有一条）
+        3. 更新 app_state 字段（1=更新中，2=成功，3=失败）
+        4. 如果 biz_state=2（成功）：
            - 更新 host_rec 表的 host_state=0（free）
            - 更新 host_rec 表的 agent_ver（新版本，如果提供）
+           - 逻辑删除 host_upd 表的当前记录（del_flag=1）
 
         Args:
             host_id: 主机ID
@@ -1232,7 +1222,7 @@ class AgentReportService:
             Dict[str, Any]: 包含更新结果的字典
 
         Raises:
-            BusinessError: 未找到更新记录、更新失败或业务逻辑错误时抛出
+            BusinessError: 更新失败或业务逻辑错误时抛出
         """
         try:
             logger.info(
@@ -1260,7 +1250,7 @@ class AgentReportService:
 
             session_factory = mariadb_manager.get_session()
             async with session_factory() as session:
-                # 1. 查询 host_upd 表的最新记录
+                # 1. 查询 host_upd 表的最新有效记录
                 stmt = (
                     select(HostUpd)
                     .where(
@@ -1278,37 +1268,90 @@ class AgentReportService:
                 result = await session.execute(stmt)
                 host_upd = result.scalar_one_or_none()
 
+                is_new_record = False
                 if not host_upd:
-                    raise BusinessError(
-                        message=f"未找到 OTA 更新记录: host_id={host_id}, app_name={app_name}, app_ver={app_ver}",
-                        error_code="OTA_UPDATE_RECORD_NOT_FOUND",
-                        code=ServiceErrorCodes.HOST_OTA_UPDATE_RECORD_NOT_FOUND,
-                        http_status_code=404,
+                    # 2. 如果未找到记录，先逻辑删除其他有效记录（保证有效数据只有一条）
+                    logger.info(
+                        "未找到 OTA 更新记录，准备创建新记录",
+                        extra={
+                            "host_id": host_id,
+                            "app_name": app_name,
+                            "app_ver": app_ver,
+                        },
                     )
 
-                # 2. 更新 host_upd 表的 app_state
-                old_app_state = host_upd.app_state
-                update_host_upd_stmt = (
-                    update(HostUpd)
-                    .where(HostUpd.id == host_upd.id)
-                    .values(app_state=app_state)
-                )
-                await session.execute(update_host_upd_stmt)
+                    # 逻辑删除该 host_id 的所有有效记录（保证有效数据只有一条）
+                    delete_other_stmt = (
+                        update(HostUpd)
+                        .where(
+                            and_(
+                                HostUpd.host_id == host_id,
+                                HostUpd.app_name == app_name,
+                                HostUpd.del_flag == 0,
+                            )
+                        )
+                        .values(del_flag=1)
+                    )
+                    deleted_result = await session.execute(delete_other_stmt)
+                    deleted_count = deleted_result.rowcount
 
-                logger.info(
-                    "host_upd 表状态已更新",
-                    extra={
-                        "host_upd_id": host_upd.id,
-                        "host_id": host_id,
-                        "old_app_state": old_app_state,
-                        "new_app_state": app_state,
-                    },
-                )
+                    if deleted_count > 0:
+                        logger.info(
+                            "已逻辑删除其他有效记录，保证有效数据只有一条",
+                            extra={
+                                "host_id": host_id,
+                                "app_name": app_name,
+                                "deleted_count": deleted_count,
+                            },
+                        )
 
-                # 3. 如果 biz_state=2（成功），更新 host_rec 表
+                    # 创建新记录
+                    host_upd = HostUpd(
+                        host_id=host_id,
+                        app_name=app_name,
+                        app_ver=app_ver,
+                        app_state=app_state,
+                        created_by=None,
+                        updated_by=None,
+                    )
+                    session.add(host_upd)
+                    await session.flush()  # 刷新以获取生成的 ID
+                    is_new_record = True
+
+                    logger.info(
+                        "已创建新的 OTA 更新记录",
+                        extra={
+                            "host_upd_id": host_upd.id,
+                            "host_id": host_id,
+                            "app_name": app_name,
+                            "app_ver": app_ver,
+                            "app_state": app_state,
+                        },
+                    )
+                else:
+                    # 3. 如果找到记录，更新 app_state
+                    old_app_state = host_upd.app_state
+                    update_host_upd_stmt = (
+                        update(HostUpd)
+                        .where(HostUpd.id == host_upd.id)
+                        .values(app_state=app_state)
+                    )
+                    await session.execute(update_host_upd_stmt)
+
+                    logger.info(
+                        "host_upd 表状态已更新",
+                        extra={
+                            "host_upd_id": host_upd.id,
+                            "host_id": host_id,
+                            "old_app_state": old_app_state,
+                            "new_app_state": app_state,
+                        },
+                    )
+
+                # 4. 如果 biz_state=2（成功），更新 host_rec 表并逻辑删除 host_upd 记录
                 new_host_state = None
                 if biz_state == 2:
-                    # 查询 host_rec 表
+                    # 4.1 查询并更新 host_rec 表
                     host_rec_stmt = select(HostRec).where(
                         and_(
                             HostRec.id == host_id,
@@ -1356,11 +1399,30 @@ class AgentReportService:
                             },
                         )
 
+                    # 4.2 逻辑删除 host_upd 表的当前记录（更新完成）
+                    delete_host_upd_stmt = (
+                        update(HostUpd)
+                        .where(HostUpd.id == host_upd.id)
+                        .values(del_flag=1)
+                    )
+                    await session.execute(delete_host_upd_stmt)
+
+                    logger.info(
+                        "host_upd 记录已逻辑删除（OTA 更新成功）",
+                        extra={
+                            "host_upd_id": host_upd.id,
+                            "host_id": host_id,
+                            "app_name": app_name,
+                            "app_ver": app_ver,
+                        },
+                    )
+
                 # 提交事务
                 await session.commit()
 
-                # 刷新 host_upd 对象以获取最新状态
-                await session.refresh(host_upd)
+                # 刷新 host_upd 对象以获取最新状态（如果记录未被删除）
+                if biz_state != 2:
+                    await session.refresh(host_upd)
 
                 logger.info(
                     "OTA 更新状态上报处理完成",
@@ -1370,6 +1432,8 @@ class AgentReportService:
                         "app_state": app_state,
                         "host_state": new_host_state,
                         "agent_ver": agent_ver,
+                        "is_new_record": is_new_record,
+                        "is_deleted": biz_state == 2,
                     },
                 )
 

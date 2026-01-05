@@ -11,6 +11,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from sqlalchemy import select
+
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.sys_user import SysUser
@@ -184,8 +186,6 @@ async def get_external_api_token(
         # ✅ 只有在未提供 email 时才查询数据库
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            from sqlalchemy import select
-
             user_stmt = select(SysUser).where(
                 SysUser.id == user_id,
                 SysUser.del_flag == 0,

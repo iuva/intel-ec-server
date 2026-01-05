@@ -9,163 +9,163 @@ services:
   # ==========================================
   # MariaDB 10.11 数据库
   # ==========================================
-  mariadb:
-    image: mariadb:10.11
-    container_name: intel-mariadb
-    restart: unless-stopped
-    environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb123}
-      MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
-      MARIADB_USER: ${MARIADB_USER:-intel_user}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
-      MARIADB_CHARSET: utf8mb4
-      MARIADB_COLLATION: utf8mb4_unicode_ci
-      MYSQL_MAX_CONNECTIONS: ${MYSQL_MAX_CONNECTIONS:-500}
-    ports:
-      - "${MARIADB_PORT:-3306}:3306"
-    volumes:
-      - mariadb_data:/var/lib/mysql
-      - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
-    networks:
-      - intel-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "healthcheck.sh",
-          "--connect",
-          "--innodb_initialized",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+  # mariadb:
+  #   image: mariadb:10.11
+  #   container_name: intel-mariadb
+  #   restart: unless-stopped
+  #   environment:
+  #     MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb123}
+  #     MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
+  #     MARIADB_USER: ${MARIADB_USER:-intel_user}
+  #     MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+  #     MARIADB_CHARSET: utf8mb4
+  #     MARIADB_COLLATION: utf8mb4_unicode_ci
+  #     MYSQL_MAX_CONNECTIONS: ${MYSQL_MAX_CONNECTIONS:-500}
+  #   ports:
+  #     - "${MARIADB_PORT:-3306}:3306"
+  #   volumes:
+  #     - mariadb_data:/var/lib/mysql
+  #     - ./infrastructure/mysql/init:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - intel-network
+  #   healthcheck:
+  #     test:
+  #       [
+  #         "CMD",
+  #         "healthcheck.sh",
+  #         "--connect",
+  #         "--innodb_initialized",
+  #       ]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 30s
 
   # ==========================================
   # Nacos 服务发现（使用内置数据库）
   # ==========================================
-  nacos:
-    image: nacos/nacos-server:v2.2.0
-    container_name: intel-nacos
-    restart: unless-stopped
-    environment:
-      MODE: standalone
-      PREFER_HOST_MODE: hostname
-      # 使用内置数据库（不依赖外部MySQL）
-      EMBEDDED_STORAGE: embedded
-      NACOS_AUTH_ENABLE: "true"
-      # Base64编码的32字节密钥（必须符合Nacos要求）
-      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:-VGhpc0lzQVNlY3JldEtleUZvck5hY29zQXV0aEF0TGVhc3QzMkJ5dGVz}
-      NACOS_AUTH_IDENTITY_KEY: nacos
-      NACOS_AUTH_IDENTITY_VALUE: nacos
-      JVM_XMS: 512m
-      JVM_XMX: 512m
-      JVM_XMN: 256m
-    ports:
-      - "8848:8848"
-      - "9848:9848"
-    volumes:
-      - nacos_data:/home/nacos/data
-      - nacos_logs:/home/nacos/logs
-    networks:
-      - intel-network
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "curl",
-          "-f",
-          "http://localhost:8848/nacos/v1/console/health/readiness",
-        ]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+  # nacos:
+  #   image: nacos/nacos-server:v2.2.0
+  #   container_name: intel-nacos
+  #   restart: unless-stopped
+  #   environment:
+  #     MODE: standalone
+  #     PREFER_HOST_MODE: hostname
+  #     # 使用内置数据库（不依赖外部MySQL）
+  #     EMBEDDED_STORAGE: embedded
+  #     NACOS_AUTH_ENABLE: "true"
+  #     # Base64编码的32字节密钥（必须符合Nacos要求）
+  #     NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:-VGhpc0lzQVNlY3JldEtleUZvck5hY29zQXV0aEF0TGVhc3QzMkJ5dGVz}
+  #     NACOS_AUTH_IDENTITY_KEY: nacos
+  #     NACOS_AUTH_IDENTITY_VALUE: nacos
+  #     JVM_XMS: 512m
+  #     JVM_XMX: 512m
+  #     JVM_XMN: 256m
+  #   ports:
+  #     - "8848:8848"
+  #     - "9848:9848"
+  #   volumes:
+  #     - nacos_data:/home/nacos/data
+  #     - nacos_logs:/home/nacos/logs
+  #   networks:
+  #     - intel-network
+  #   healthcheck:
+  #     test:
+  #       [
+  #         "CMD",
+  #         "curl",
+  #         "-f",
+  #         "http://localhost:8848/nacos/v1/console/health/readiness",
+  #       ]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 60s
 
   # ==========================================
   # Jaeger 分布式追踪
   # ==========================================
-  jaeger:
-    image: jaegertracing/all-in-one:1.54
-    container_name: intel-jaeger
-    restart: unless-stopped
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-      COLLECTOR_OTLP_GRPC_ENABLED: "true"
-      # 使用内存存储（无需权限配置，适合开发环境）
-      SPAN_STORAGE_TYPE: memory
-      MEMORY_MAX_TRACES: 10000
-      # 日志级别
-      LOG_LEVEL: info
-    ports:
-      - "16686:16686" # Jaeger UI
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
-      - "6831:6831/udp" # Jaeger agent (UDP)
-      - "14268:14268" # Jaeger collector HTTP
-    networks:
-      - intel-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # jaeger:
+  #   image: jaegertracing/all-in-one:1.54
+  #   container_name: intel-jaeger
+  #   restart: unless-stopped
+  #   environment:
+  #     COLLECTOR_OTLP_ENABLED: "true"
+  #     COLLECTOR_OTLP_GRPC_ENABLED: "true"
+  #     # 使用内存存储（无需权限配置，适合开发环境）
+  #     SPAN_STORAGE_TYPE: memory
+  #     MEMORY_MAX_TRACES: 10000
+  #     # 日志级别
+  #     LOG_LEVEL: info
+  #   ports:
+  #     - "16686:16686" # Jaeger UI
+  #     - "4317:4317" # OTLP gRPC receiver
+  #     - "4318:4318" # OTLP HTTP receiver
+  #     - "6831:6831/udp" # Jaeger agent (UDP)
+  #     - "14268:14268" # Jaeger collector HTTP
+  #   networks:
+  #     - intel-network
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   # ==========================================
   # Prometheus 监控
   # ==========================================
-  prometheus:
-    image: prom/prometheus:v2.48.0
-    container_name: intel-prometheus
-    restart: unless-stopped
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
-      - "--web.console.templates=/usr/share/prometheus/consoles"
-      - "--web.enable-lifecycle"
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    networks:
-      - intel-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+  # prometheus:
+  #   image: prom/prometheus:v2.48.0
+  #   container_name: intel-prometheus
+  #   restart: unless-stopped
+  #   command:
+  #     - "--config.file=/etc/prometheus/prometheus.yml"
+  #     - "--storage.tsdb.path=/prometheus"
+  #     - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+  #     - "--web.console.templates=/usr/share/prometheus/consoles"
+  #     - "--web.enable-lifecycle"
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus_data:/prometheus
+  #   networks:
+  #     - intel-network
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
 
   # ==========================================
   # Grafana 可视化
   # ==========================================
-  grafana:
-    image: grafana/grafana:10.2.2
-    container_name: intel-grafana
-    restart: unless-stopped
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-***REMOVED***}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_SERVER_ROOT_URL=http://localhost:3000
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning
-      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards
-    networks:
-      - intel-network
-    depends_on:
-      - prometheus
-    healthcheck:
-      test:
-        ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+  # grafana:
+  #   image: grafana/grafana:10.2.2
+  #   container_name: intel-grafana
+  #   restart: unless-stopped
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-***REMOVED***}
+  #     - GF_USERS_ALLOW_SIGN_UP=false
+  #     - GF_SERVER_ROOT_URL=http://localhost:3000
+  #     - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning
+  #     - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards
+  #   networks:
+  #     - intel-network
+  #   depends_on:
+  #     - prometheus
+  #   healthcheck:
+  #     test:
+  #       ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
 
   # ==========================================
   # Gateway Service (API网关)
@@ -177,56 +177,48 @@ services:
     image: intel-cw-ms/gateway-service:latest
     container_name: gateway-service
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      SERVICE_NAME: gateway-service
-      SERVICE_PORT: 8000
-      GATEWAY_SERVICE_PORT: 8000
-      SERVICE_IP: 172.20.0.100
-      GATEWAY_SERVICE_IP: gateway-service
-      AUTH_SERVICE_IP: auth-service
-      AUTH_SERVICE_PORT: 8001
-      HOST_SERVICE_IP: host-service
-      HOST_SERVICE_PORT: 8003
-      # MariaDB配置（使用Docker网络服务名）
-      MARIADB_HOST: intel-mariadb
-      MARIADB_PORT: "3306"
-      MARIADB_USER: intel_user
-      MARIADB_PASSWORD: intel_***REMOVED***
-      MARIADB_DATABASE: intel_cw
-      # Redis配置（外部服务）
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 0
-      # Nacos配置
-      NACOS_SERVER_ADDR: http://nacos:8848
-      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
-      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
-      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
-      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
-      # Jaeger配置
-      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
-      # gRPC 避免了 protobuf over HTTP 的兼容性问题
-      JAEGER_ENDPOINT: jaeger:4317
-      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
-      # 原因：这些环境变量会被 OpenTelemetry 自动检测
-      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
-      # 组件开关配置（从 .env 文件读取）
-      ENABLE_NACOS: ${ENABLE_NACOS:-true}
-      ENABLE_JAEGER: ${ENABLE_JAEGER:-true}
-      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-true}
-      # 应用配置
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      - PYTHONPATH=/install/lib/python3.8/site-packages:/app
+      - SERVICE_NAME=${SERVICE_NAME:-gateway-service}
+      - SERVICE_PORT=${SERVICE_PORT:-8000}
+      - GATEWAY_SERVICE_PORT=${GATEWAY_SERVICE_PORT:-8000}
+      - SERVICE_IP=${GATEWAY_SERVICE_IP:-172.20.0.100}
+      - GATEWAY_SERVICE_IP=${GATEWAY_SERVICE_IP:-gateway-service}
+      - AUTH_SERVICE_IP=${AUTH_SERVICE_IP:-auth-service}
+      - AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
+      - HOST_SERVICE_IP=${HOST_SERVICE_IP:-host-service}
+      - HOST_SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
+      - MARIADB_HOST=${MARIADB_HOST:-intel-mariadb}
+      - MARIADB_PORT=${MARIADB_PORT:-3306}
+      - MARIADB_USER=${MARIADB_USER:-intel_user}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-intel_cw}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${REDIS_DB:-0}
+      - NACOS_SERVER_ADDR=${NACOS_SERVER_ADDR:-http://nacos:8848}
+      - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
+      - NACOS_PASSWORD=${NACOS_PASSWORD:-nacos}
+      - NACOS_NAMESPACE=${NACOS_NAMESPACE:-public}
+      - NACOS_GROUP=${NACOS_GROUP:-DEFAULT_GROUP}
+      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-jaeger:4317}
+      - ENABLE_NACOS=${ENABLE_NACOS:-true}
+      - ENABLE_JAEGER=${ENABLE_JAEGER:-true}
+      - ENABLE_PROMETHEUS=${ENABLE_PROMETHEUS:-true}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
-      - "8000:8000"
+      - "${GATEWAY_SERVICE_PORT:-8000}:8000"
     networks:
       intel-network:
-        ipv4_address: 172.20.0.100
-    depends_on:
-      mariadb:
-        condition: service_healthy
+        ipv4_address: ${GATEWAY_SERVICE_IP:-172.20.0.100}
+    # depends_on:
+    #   mariadb:
+    #     condition: service_healthy
     #   nacos:
     #     condition: service_healthy
     #   jaeger:
@@ -237,7 +229,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+          "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\\'SERVICE_PORT\\', \\'8000\\')}/health')",
         ]
       interval: 30s
       timeout: 10s
@@ -259,66 +251,57 @@ services:
     image: intel-cw-ms/auth-service:latest
     container_name: auth-service
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      SERVICE_NAME: auth-service
-      SERVICE_PORT: 8001
-      AUTH_SERVICE_PORT: 8001
-      SERVICE_IP: 172.20.0.101
-      GATEWAY_SERVICE_IP: gateway-service
-      GATEWAY_SERVICE_PORT: 8000
-      AUTH_SERVICE_IP: auth-service
-      HOST_SERVICE_IP: host-service
-      HOST_SERVICE_PORT: 8003
-      # MariaDB配置（使用Docker网络服务名）
-      MARIADB_HOST: intel-mariadb
-      MARIADB_PORT: "3306"
-      MARIADB_USER: intel_user
-      MARIADB_PASSWORD: intel_***REMOVED***
-      MARIADB_DATABASE: intel_cw
-      # Redis配置（外部服务）
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 1
-      # Nacos配置
-      NACOS_SERVER_ADDR: http://nacos:8848
-      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
-      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
-      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
-      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
-      # Jaeger配置
-      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
-      # gRPC 避免了 protobuf over HTTP 的兼容性问题
-      JAEGER_ENDPOINT: jaeger:4317
-      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
-      # 原因：这些环境变量会被 OpenTelemetry 自动检测
-      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
-      # 组件开关配置（从 .env 文件读取）
-      ENABLE_NACOS: ${ENABLE_NACOS:-true}
-      ENABLE_JAEGER: ${ENABLE_JAEGER:-true}
-      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-true}
-      # JWT配置
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
-      JWT_ALGORITHM: HS256
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
-      # 应用配置
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      - PYTHONPATH=/install/lib/python3.8/site-packages:/app
+      - SERVICE_NAME=${AUTH_SERVICE_NAME:-auth-service}
+      - SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
+      - AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
+      - SERVICE_IP=${AUTH_SERVICE_IP:-172.20.0.101}
+      - GATEWAY_SERVICE_IP=${GATEWAY_SERVICE_IP:-gateway-service}
+      - GATEWAY_SERVICE_PORT=${GATEWAY_SERVICE_PORT:-8000}
+      - AUTH_SERVICE_IP=${AUTH_SERVICE_IP:-auth-service}
+      - HOST_SERVICE_IP=${HOST_SERVICE_IP:-host-service}
+      - HOST_SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
+      - MARIADB_HOST=${MARIADB_HOST:-intel-mariadb}
+      - MARIADB_PORT=${MARIADB_PORT:-3306}
+      - MARIADB_USER=${MARIADB_USER:-intel_user}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-intel_cw}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${AUTH_REDIS_DB:-1}
+      - NACOS_SERVER_ADDR=${NACOS_SERVER_ADDR:-http://nacos:8848}
+      - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
+      - NACOS_PASSWORD=${NACOS_PASSWORD:-nacos}
+      - NACOS_NAMESPACE=${NACOS_NAMESPACE:-public}
+      - NACOS_GROUP=${NACOS_GROUP:-DEFAULT_GROUP}
+      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-jaeger:4317}
+      - ENABLE_NACOS=${ENABLE_NACOS:-true}
+      - ENABLE_JAEGER=${ENABLE_JAEGER:-true}
+      - ENABLE_PROMETHEUS=${ENABLE_PROMETHEUS:-true}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
-      - "8001:8001"
+      - "${AUTH_SERVICE_PORT:-8001}:8001"
     networks:
       intel-network:
-        ipv4_address: 172.20.0.101
-    depends_on:
-      mariadb:
-        condition: service_healthy
+        ipv4_address: ${AUTH_SERVICE_IP:-172.20.0.101}
+    # depends_on:
+    #   mariadb:
+    #     condition: service_healthy
     #   nacos:
     #     condition: service_healthy
     #   jaeger:
     #     condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:${SERVICE_PORT:-8001}/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -334,74 +317,64 @@ services:
     image: intel-cw-ms/host-service:latest
     container_name: host-service
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      SERVICE_NAME: host-service
-      SERVICE_PORT: 8003
-      HOST_SERVICE_PORT: 8003
-      SERVICE_IP: 172.20.0.103
-      GATEWAY_SERVICE_IP: gateway-service
-      GATEWAY_SERVICE_PORT: 8000
-      AUTH_SERVICE_IP: auth-service
-      AUTH_SERVICE_PORT: 8001
-      HOST_SERVICE_IP: host-service
-      # MariaDB配置（使用Docker网络服务名）
-      MARIADB_HOST: intel-mariadb
-      MARIADB_PORT: "3306"
-      MARIADB_USER: intel_user
-      MARIADB_PASSWORD: intel_***REMOVED***
-      MARIADB_DATABASE: intel_cw
-      # Redis配置（外部服务）
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_DB: 3
-      # Nacos配置
-      NACOS_SERVER_ADDR: http://nacos:8848
-      NACOS_USERNAME: ${NACOS_USERNAME:-nacos}
-      NACOS_PASSWORD: ${NACOS_PASSWORD:-nacos}
-      NACOS_NAMESPACE: ${NACOS_NAMESPACE:-public}
-      NACOS_GROUP: ${NACOS_GROUP:-DEFAULT_GROUP}
-      # Jaeger配置
-      # ✅ 使用 gRPC 端点（4317）而不是 HTTP 端点（4318）
-      # gRPC 避免了 protobuf over HTTP 的兼容性问题
-      JAEGER_ENDPOINT: jaeger:4317
-      # ❌ 已移除 JAEGER_AGENT_HOST 和 JAEGER_AGENT_PORT
-      # 原因：这些环境变量会被 OpenTelemetry 自动检测
-      # 导致创建额外的 Jaeger Thrift agent 导出器，与我们的 gRPC 导出器冲突
-      # 组件开关配置（从 .env 文件读取）
-      ENABLE_NACOS: ${ENABLE_NACOS:-true}
-      ENABLE_JAEGER: ${ENABLE_JAEGER:-true}
-      ENABLE_PROMETHEUS: ${ENABLE_PROMETHEUS:-true}
-      # 应用配置
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-default_secret_key}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # 硬件接口 Mock 配置（开发环境使用）
-      USE_HARDWARE_MOCK: ${USE_HARDWARE_MOCK:-false}
-      # 文件上传配置
-      FILE_UPLOAD_DIR: ${FILE_UPLOAD_DIR:-/app/uploads}
+      - PYTHONPATH=/install/lib/python3.8/site-packages:/app
+      - SERVICE_NAME=${HOST_SERVICE_NAME:-host-service}
+      - SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
+      - HOST_SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
+      - SERVICE_IP=${HOST_SERVICE_IP:-172.20.0.103}
+      - GATEWAY_SERVICE_IP=${GATEWAY_SERVICE_IP:-gateway-service}
+      - GATEWAY_SERVICE_PORT=${GATEWAY_SERVICE_PORT:-8000}
+      - AUTH_SERVICE_IP=${AUTH_SERVICE_IP:-auth-service}
+      - AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
+      - HOST_SERVICE_IP=${HOST_SERVICE_IP:-host-service}
+      - MARIADB_HOST=${MARIADB_HOST:-intel-mariadb}
+      - MARIADB_PORT=${MARIADB_PORT:-3306}
+      - MARIADB_USER=${MARIADB_USER:-intel_user}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-intel_cw}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=${HOST_REDIS_DB:-3}
+      - NACOS_SERVER_ADDR=${NACOS_SERVER_ADDR:-http://nacos:8848}
+      - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
+      - NACOS_PASSWORD=${NACOS_PASSWORD:-nacos}
+      - NACOS_NAMESPACE=${NACOS_NAMESPACE:-public}
+      - NACOS_GROUP=${NACOS_GROUP:-DEFAULT_GROUP}
+      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-jaeger:4317}
+      - ENABLE_NACOS=${ENABLE_NACOS:-true}
+      - ENABLE_JAEGER=${ENABLE_JAEGER:-true}
+      - ENABLE_PROMETHEUS=${ENABLE_PROMETHEUS:-true}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - USE_HARDWARE_MOCK=${USE_HARDWARE_MOCK:-false}
+      - FILE_UPLOAD_DIR=${FILE_UPLOAD_DIR:-/app/uploads}
     ports:
-      - "8003:8003"
+      - "${HOST_SERVICE_PORT:-8003}:8003"
     volumes:
       # 文件上传目录挂载（确保 Docker 启动时文件不丢失）
       - host_service_uploads:/app/uploads
     networks:
       intel-network:
-        ipv4_address: 172.20.0.103
+        ipv4_address: ${HOST_SERVICE_IP:-172.20.0.103}
     # depends_on:
     #   mariadb:
     #     condition: service_healthy
-      # nacos:
-      #   condition: service_healthy
-      # jaeger:
-      #   condition: service_healthy
+    #   nacos:
+    #     condition: service_healthy
+    #   jaeger:
+    #     condition: service_healthy
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')",
+          "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\\'SERVICE_PORT\\', \\'8003\\')}/health')",
         ]
       interval: 30s
       timeout: 10s
@@ -428,16 +401,16 @@ networks:
 # ==========================================
 volumes:
   # MariaDB 和 Redis 使用容器服务，需要数据卷
-  mariadb_data:
-    driver: local
-  nacos_data:
-    driver: local
-  nacos_logs:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
+  # mariadb_data:
+  #   driver: local
+  # nacos_data:
+  #   driver: local
+  # nacos_logs:
+  #   driver: local
+  # prometheus_data:
+  #   driver: local
+  # grafana_data:
+  #   driver: local
   # Host Service 文件上传目录（确保文件不丢失）
   host_service_uploads:
     driver: local

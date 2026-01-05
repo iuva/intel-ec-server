@@ -5,7 +5,7 @@
 
 from typing import Dict
 
-from shared.common.exceptions import BusinessError
+from shared.common.exceptions import BusinessError, ServiceErrorCodes
 
 
 def validate_websocket_message(message: Dict) -> None:
@@ -22,6 +22,6 @@ def validate_websocket_message(message: Dict) -> None:
             message="消息必须包含 type 字段",
             message_key="error.websocket.invalid_message_format",
             error_code="INVALID_MESSAGE_FORMAT",
-            code=400,
+            code=ServiceErrorCodes.HOST_INVALID_REQUEST,
             http_status_code=400,
         )
