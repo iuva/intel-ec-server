@@ -39,9 +39,9 @@ data:
   
   # Observability
   JAEGER_ENDPOINT: "jaeger:4317"
-  ENABLE_NACOS: "true"
-  ENABLE_JAEGER: "true"
-  ENABLE_PROMETHEUS: "true"
+  ENABLE_NACOS: "false"
+  ENABLE_JAEGER: "false"
+  ENABLE_PROMETHEUS: "false"
   
   # App Configuration
   DEBUG: "false"

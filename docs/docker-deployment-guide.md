@@ -290,9 +290,9 @@ JAEGER_ENDPOINT=jaeger:4317
 # ==========================================
 # 组件开关配置
 # ==========================================
-ENABLE_NACOS=true
-ENABLE_JAEGER=true
-ENABLE_PROMETHEUS=true
+ENABLE_NACOS=false
+ENABLE_JAEGER=false
+ENABLE_PROMETHEUS=false
 
 # ==========================================
 # JWT 配置
@@ -594,9 +594,9 @@ docker run -d \
   -e NACOS_NAMESPACE=public \
   -e NACOS_GROUP=DEFAULT_GROUP \
   -e JAEGER_ENDPOINT=jaeger:4317 \
-  -e ENABLE_NACOS=true \
-  -e ENABLE_JAEGER=true \
-  -e ENABLE_PROMETHEUS=true \
+  -e ENABLE_NACOS=false \
+  -e ENABLE_JAEGER=false \
+  -e ENABLE_PROMETHEUS=false \
   -e JWT_SECRET_KEY=${JWT_SECRET_KEY} \
   -e DEBUG=false \
   -e LOG_LEVEL=INFO \
@@ -617,7 +617,6 @@ docker run -d \
   --name gateway-service \
   --network intel-network \
   --ip 172.20.0.100 \
-  -p 8000:8000 \
   -p 8000:8000 \
   --env-file .env \
   -e PYTHONPATH=/install/lib/python3.8/site-packages:/app \
@@ -689,9 +688,9 @@ docker run -d \
   -e NACOS_NAMESPACE=public \
   -e NACOS_GROUP=DEFAULT_GROUP \
   -e JAEGER_ENDPOINT=jaeger:4317 \
-  -e ENABLE_NACOS=true \
-  -e ENABLE_JAEGER=true \
-  -e ENABLE_PROMETHEUS=true \
+  -e ENABLE_NACOS=false \
+  -e ENABLE_JAEGER=false \
+  -e ENABLE_PROMETHEUS=false \
   -e JWT_SECRET_KEY=${JWT_SECRET_KEY} \
   -e JWT_ALGORITHM=HS256 \
   -e JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30 \
@@ -763,9 +762,9 @@ docker run -d \
   -e NACOS_NAMESPACE=public \
   -e NACOS_GROUP=DEFAULT_GROUP \
   -e JAEGER_ENDPOINT=jaeger:4317 \
-  -e ENABLE_NACOS=true \
-  -e ENABLE_JAEGER=true \
-  -e ENABLE_PROMETHEUS=true \
+  -e ENABLE_NACOS=false \
+  -e ENABLE_JAEGER=false \
+  -e ENABLE_PROMETHEUS=false \
   -e JWT_SECRET_KEY=${JWT_SECRET_KEY} \
   -e DEBUG=false \
   -e LOG_LEVEL=INFO \
