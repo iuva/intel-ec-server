@@ -396,7 +396,15 @@ class AdminHostListRequest(BaseModel):
     page_size: int = Field(default=20, ge=1, le=100, description="每页大小（1-100）")
     mac: Optional[str] = Field(default=None, description="MAC地址（可选搜索条件，对应 host_rec.mac_addr）")
     username: Optional[str] = Field(default=None, description="主机账号（可选搜索条件，对应 host_rec.host_acct）")
-    host_state: Optional[int] = Field(default=None, description="主机状态（可选搜索条件，对应 host_rec.host_state）")
+    host_state: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=4,
+        description=(
+            "主机状态（可选搜索条件，对应 host_rec.host_state；"
+            "支持范围：0-空闲, 1-已锁定, 2-已占用, 3-case执行中, 4-离线）"
+        ),
+    )
     mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件，对应 host_rec.mg_id）")
     use_by: Optional[str] = Field(default=None, description="使用人（可选搜索条件，对应 host_exec_log.user_name）")
 
@@ -662,6 +670,10 @@ class AdminApprHostDetailResponse(BaseModel):
             "5-待激活, 6-硬件改动, 7-手动停用, 8-更新中）"
         ),
     )
+    diff_state: Optional[int] = Field(
+        default=None,
+        description="参数状态（host_hw_rec 表 diff_state，最新一条记录；1-版本号变化, 2-内容更改, 3-异常）",
+    )
     hw_list: List[AdminApprHostHwInfo] = Field(
         default_factory=list,
         description="硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）",
@@ -673,7 +685,12 @@ class AdminApprHostDetailResponse(BaseModel):
 class AdminApprHostApproveRequest(BaseModel):
     """管理后台待审批主机同意启用请求模式"""
 
-    diff_type: int = Field(..., ge=1, le=2, description="变更类型（1-版本号变化, 2-内容变化）")
+    diff_type: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=2,
+        description="变更类型（1-版本号变化, 2-内容变化；为空时代表手动停用数据）",
+    )
     host_ids: Optional[List[int]] = Field(
         default=None,
         description="主机ID列表（host_rec 表主键数组；当 diff_type=2 时必填）",

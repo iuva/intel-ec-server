@@ -31,6 +31,7 @@ try:
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
+    from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_start
 
     from shared.common.cache import redis_manager
@@ -641,6 +642,10 @@ class AdminApprHostService:
         2. 条件：host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
         3. 支持按 mac、mg_id、host_state 过滤
         4. 按 created_time 倒序排序
+        5. 关联 host_hw_rec 表，获取每个 host_id 对应的最新一条记录的 diff_state
+           - 只查询 sync_state = 1（待同步）的记录
+           - 按 created_time 倒序排序，取第一条记录的 diff_state
+           - 与 get_appr_host_detail 接口的 diff_state 获取逻辑保持一致
 
         Args:
             request: 查询请求参数（分页、搜索条件）
@@ -701,13 +706,19 @@ class AdminApprHostService:
                     base_conditions.append(HostRec.host_state == request.host_state)
 
                 # 构建子查询：获取每个 host_id 对应的最新 host_hw_rec 记录的 diff_state
-                # 1. 获取每个 host_id 的最大 created_time
+                # 注意：与 get_appr_host_detail 接口保持一致，只查询 sync_state = 1 的记录
+                # 1. 获取每个 host_id 的最大 created_time（仅 sync_state = 1 的记录）
                 max_time_subquery = (
                     select(
                         HostHwRec.host_id,
                         func.max(HostHwRec.created_time).label("max_created_time"),
                     )
-                    .where(HostHwRec.del_flag == 0)
+                    .where(
+                        and_(
+                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
+                            HostHwRec.del_flag == 0,
+                        )
+                    )
                     .group_by(HostHwRec.host_id)
                     .subquery()
                 )
@@ -726,6 +737,7 @@ class AdminApprHostService:
                             and_(
                                 HostHwRec.host_id == max_time_subquery.c.host_id,
                                 HostHwRec.created_time == max_time_subquery.c.max_created_time,
+                                HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
                                 HostHwRec.del_flag == 0,
                             ),
                         )
@@ -936,12 +948,18 @@ class AdminApprHostService:
 
             # 4. 构建硬件信息列表
             hw_list: List[AdminApprHostHwInfo] = []
+            diff_state: Optional[int] = None
+
             for hw_rec in hw_recs:
                 hw_info = AdminApprHostHwInfo(
                     created_time=hw_rec.created_time,
                     hw_info=hw_rec.hw_info,
                 )
                 hw_list.append(hw_info)
+
+            # 获取最新一条硬件记录的 diff_state（已按 created_time 倒序排序，第一条为最新）
+            if hw_recs:
+                diff_state = hw_recs[0].diff_state
 
             # 5. 构建响应数据
             detail = AdminApprHostDetailResponse(
@@ -952,6 +970,7 @@ class AdminApprHostService:
                 ***REMOVED***word=***REMOVED***,
                 port=host_rec.host_port,
                 host_state=host_rec.host_state,
+                diff_state=diff_state,
                 hw_list=hw_list,
             )
 
@@ -1004,7 +1023,19 @@ class AdminApprHostService:
         # 参数验证和 host_ids 处理
         host_ids_to_process: List[int] = []
 
-        if request.diff_type == 2:
+        if request.diff_type is None:
+            # diff_type 为空时，代表手动停用数据，host_ids 为必填
+            if not request.host_ids or len(request.host_ids) == 0:
+                raise BusinessError(
+                    message="当 diff_type 为空时，host_ids 为必填参数",
+                    message_key="error.host.appr_host_ids_required",
+                    error_code="HOST_IDS_REQUIRED",
+                    code=ServiceErrorCodes.VALIDATION_ERROR,
+                    http_status_code=400,
+                )
+            host_ids_to_process = request.host_ids
+
+        elif request.diff_type == 2:
             # diff_type = 2 时，host_ids 为必填
             if not request.host_ids or len(request.host_ids) == 0:
                 raise BusinessError(
@@ -1082,6 +1113,116 @@ class AdminApprHostService:
                 host_result = await session.execute(host_stmt)
                 host_recs_map = {host.id: host for host in host_result.scalars().all()}
 
+                # 声明 host_updates 变量（用于两个分支）
+                host_updates: Dict[int, Dict[str, Any]] = {}
+
+                # 如果 diff_type 为空，只更新 host_rec 表，不处理硬件记录
+                if request.diff_type is None:
+                    # 手动停用数据：只更新 host_rec 表
+
+                    for host_id in host_ids_to_process:
+                        try:
+                            # 验证主机是否存在且未删除
+                            host_rec = host_recs_map.get(host_id)
+                            if not host_rec:
+                                error_message = t("error.host.not_found", locale=locale, host_id=host_id)
+                                logger.warning(
+                                    "主机不存在或已删除，跳过停用",
+                                    extra={
+                                        "host_id": host_id,
+                                        "appr_by": appr_by,
+                                        "error_message": error_message,
+                                    },
+                                )
+                                results.append(
+                                    {
+                                        "host_id": host_id,
+                                        "success": False,
+                                        "message": error_message,
+                                    }
+                                )
+                                failed_count += 1
+                                continue
+
+                            # 收集主机更新信息（手动停用：appr_state = 1, host_state = 0）
+                            host_updates[host_id] = {
+                                "appr_state": APPR_STATE_ENABLE,
+                                "host_state": HOST_STATE_FREE,
+                            }
+
+                            results.append(
+                                {
+                                    "host_id": host_id,
+                                    "success": True,
+                                    "message": t(
+                                        "success.host.manual_disabled",
+                                        locale=locale,
+                                        default="主机启用成功",
+                                    ),
+                                }
+                            )
+                            success_count += 1
+
+                        except Exception as e:
+                            logger.error(
+                                f"处理主机 {host_id} 时发生异常",
+                                extra={
+                                    "host_id": host_id,
+                                    "error": str(e),
+                                    "error_type": type(e).__name__,
+                                },
+                                exc_info=True,
+                            )
+                            results.append(
+                                {
+                                    "host_id": host_id,
+                                    "success": False,
+                                    "message": t(
+                                        "error.host.process_failed",
+                                        locale=locale,
+                                        host_id=host_id,
+                                        error=str(e),
+                                        default=f"处理失败: {str(e)}",
+                                    ),
+                                }
+                            )
+                            failed_count += 1
+                            continue
+
+                    # 批量更新 host_rec 表
+                    if host_updates:
+                        bulk_update_data = [
+                            {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
+                        ]
+
+                        def _bulk_update(sync_session: Any) -> None:
+                            sync_session.bulk_update_mappings(HostRec, bulk_update_data)
+
+                        await session.run_sync(_bulk_update)
+
+                    # 提交事务
+                    await session.commit()
+
+                    logger.info(
+                        "手动停用主机处理完成",
+                        extra={
+                            "total_count": len(host_ids_to_process),
+                            "success_count": success_count,
+                            "failed_count": failed_count,
+                            "appr_by": appr_by,
+                        },
+                    )
+
+                    # 构建响应
+                    response_data = AdminApprHostApproveResponse(
+                        success_count=success_count,
+                        failed_count=failed_count,
+                        results=results,
+                    )
+
+                    return response_data
+
+                # diff_type = 1 或 2 时，需要处理硬件记录
                 # 优化：批量查询所有硬件记录（避免 N+1 查询）
                 # 查询所有符合条件的硬件记录（包括最新和其他）
                 hw_rec_stmt = (
@@ -1120,7 +1261,7 @@ class AdminApprHostService:
                 # 准备批量更新的数据
                 latest_hw_ids_to_update: List[int] = []
                 other_hw_ids_to_update: List[int] = []
-                host_updates: Dict[int, Dict[str, Any]] = {}
+                # host_updates 已在上面声明，这里直接使用
                 # 存储 hardware_id 到 hw_rec_id 的映射（用于更新 host_hw_rec 表）
                 hw_rec_hardware_id_map: Dict[int, str] = {}
 

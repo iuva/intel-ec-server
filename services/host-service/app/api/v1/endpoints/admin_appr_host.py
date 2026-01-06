@@ -78,6 +78,10 @@ async def list_appr_hosts(
     业务逻辑：
     - 查询 host_rec 表，条件：host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
     - 按 created_time 倒序排序
+    - 关联 host_hw_rec 表，获取每个 host_id 对应的最新一条记录的 diff_state
+      - 只查询 sync_state = 1（待同步）的记录
+      - 按 created_time 倒序排序，取第一条记录的 diff_state
+      - 与 get_appr_host_detail 接口的 diff_state 获取逻辑保持一致
 
     ## 搜索条件（可选）
     - `mac`: MAC地址（对应 host_rec.mac_addr）
@@ -90,7 +94,7 @@ async def list_appr_hosts(
     - `mac_addr`: MAC地址（host_rec 表 mac_addr）
     - `host_state`: 主机状态（host_rec 表 host_state）
     - `subm_time`: 申报时间（host_rec 表 subm_time）
-    - `diff_state`: 参数状态（host_hw_rec 表 diff_state，最新一条记录；1-版本号变化, 2-内容更改, 3-异常）
+    - `diff_state`: 参数状态（host_hw_rec 表 diff_state，最新一条 sync_state=1 的记录；1-版本号变化, 2-内容更改, 3-异常）
 
     Args:
         request: 查询请求参数（分页、搜索条件）
@@ -197,6 +201,7 @@ async def get_appr_host_detail(
     - `***REMOVED***word`: 主机密码（host_rec 表 host_pwd，已解密）
     - `port`: 端口（host_rec 表 host_port）
     - `host_state`: 主机状态（host_rec 表 host_state）
+    - `diff_state`: 参数状态（host_hw_rec 表 diff_state，最新一条记录；1-版本号变化, 2-内容更改, 3-异常）
     - `hw_list`: 硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）
       - `created_time`: 创建时间（host_hw_rec 表 created_time）
       - `hw_info`: 硬件信息（host_hw_rec 表 hw_info）
@@ -296,6 +301,10 @@ async def approve_hosts(
     """同意启用待审批主机（管理后台）
 
     业务逻辑：
+    - **diff_type 为空**（手动停用数据）：
+      - host_ids 为必填
+      - 修改 host_rec 表：appr_state = 1, host_state = 0
+      - 不处理硬件记录（host_hw_rec）
     - **diff_type = 1**（版本号变化）：
       - 如果传入了 host_ids，逻辑与 diff_type = 2 相同
       - 如果未传入 host_ids，自动查询所有 host_hw_rec 表 sync_state = 1, diff_state = 1 数据的 host_id
@@ -304,15 +313,15 @@ async def approve_hosts(
       - 最新一条数据：sync_state = 2, appr_time = now(), appr_by = token 中的 id
       - 其他数据：sync_state = 4
       - 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = host_hw_rec 最新一条数据的 id, subm_time = now()
-    - **邮件通知**（所有数据处理完毕后）：
+    - **邮件通知**（diff_type = 1 或 2 时，所有数据处理完毕后）：
       - 查询 sys_conf 表 conf_key = "email" 的 conf_val
       - 如果配置不为空，为每个邮箱发送通知邮件
       - 邮件内容包含：审批人信息（user_name, user_account）、变更的主机信息（hardware_id, host_ip）
       - 邮件发送失败不影响全局事务
 
     ## 请求参数
-    - `diff_type`: 变更类型（1-版本号变化, 2-内容变化）
-    - `host_ids`: 主机ID列表（当 diff_type=2 时必填；当 diff_type=1 时可选，不传则自动查询）
+    - `diff_type`: 变更类型（1-版本号变化, 2-内容变化；为空时代表手动停用数据）
+    - `host_ids`: 主机ID列表（当 diff_type 为空或 diff_type=2 时必填；当 diff_type=1 时可选，不传则自动查询）
 
     ## 返回字段
     - `success_count`: 成功处理的主机数量

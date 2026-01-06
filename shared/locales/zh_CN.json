@@ -18,6 +18,7 @@
       "already_in_state": "主机已是{state_name}状态",
       "approved": "主机启用成功",
       "approve_completed": "主机审批完成",
+      "manual_disabled": "主机手动启用成功",
       "disable": "主机停用成功",
       "force_offline": "主机强制下线成功",
       "release": "主机释放成功",
@@ -70,7 +71,7 @@
       "not_connected": "Host 未连接: {host_id}",
       "exec_log_not_found": "未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
       "hardware_not_found": "未找到待审批的硬件记录（ID: {host_id}）",
-      "appr_host_ids_required": "当 diff_type=2 时，host_ids 为必填参数",
+      "appr_host_ids_required": "当 diff_type=2 或 diff_type 为空时，host_ids 为必填参数",
       "diff_type_not_supported": "不支持的 diff_type: {diff_type}",
       "process_failed": "处理失败: {error}",
       "approve_failed": "同意启用主机失败: {error}",
@@ -78,14 +79,21 @@
       "disable_failed": "主机停用失败，记录可能已被删除（ID: {host_id}）",
       "***REMOVED***word_encrypt_failed": "密码加密失败（ID: {host_id}）",
       "***REMOVED***word_update_failed": "密码更新失败（ID: {host_id}）",
-      "force_offline_failed": "主机强制下线失败，记录可能已被删除（ID: {host_id}）"
+      "force_offline_failed": "主机强制下线失败，记录可能已被删除（ID: {host_id}）",
+      "invalid_host_state": "host_state 参数值必须在 0-4 范围内，当前值: {host_state}"
     },
     "vnc": {
       "info_incomplete": "VNC 连接信息不完整，缺少 IP 地址或端口"
     },
     "hardware": {
       "report_failed": "硬件信息上报处理失败",
-      "test_result_report_failed": "测试用例结果上报处理失败"
+      "test_result_report_failed": "测试用例结果上报处理失败",
+      "api_call_failed": "调用外部硬件接口失败: {error}",
+      "create_failed": "创建硬件记录失败",
+      "update_failed": "更新硬件记录失败",
+      "api_error": "硬件接口调用异常，请稍后重试",
+      "creation_in_progress": "硬件记录正在创建中，请稍后重试",
+      "invalid_response": "硬件接口返回了无效响应"
     },
     "auth": {
       "login_failed": "登录失败",
@@ -109,7 +117,8 @@
     },
     "email": {
       "empty": "邮箱地址不能为空",
-      "set_failed": "设置维护通知邮箱失败: {error}"
+      "set_failed": "设置维护通知邮箱失败: {error}",
+      "get_failed": "获取维护通知邮箱失败: {error}"
     },
     "service": {
       "bad_gateway": "后端服务返回了无效响应",
@@ -138,6 +147,14 @@
     "gateway": {
       "internal_error": "网关内部错误",
       "resource_not_found": "请求的资源不存在"
+    }
+  },
+  "email": {
+    "host": {
+      "approve": {
+        "subject": "变更 Host 通过硬件变更审核",
+        "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <style>\n        body {\n            font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;\n            line-height: 1.6;\n            color: #333;\n            max-width: 800px;\n            margin: 0 auto;\n            padding: 20px;\n        }\n        .header {\n            background-color: #4CAF50;\n            color: white;\n            padding: 20px;\n            border-radius: 5px 5px 0 0;\n            margin-bottom: 0;\n        }\n        .content {\n            background-color: #f9f9f9;\n            padding: 30px;\n            border: 1px solid #ddd;\n            border-top: none;\n            border-radius: 0 0 5px 5px;\n        }\n        .section {\n            margin-bottom: 25px;\n        }\n        .section-title {\n            font-size: 16px;\n            font-weight: bold;\n            color: #2c3e50;\n            margin-bottom: 12px;\n            padding-bottom: 8px;\n            border-bottom: 2px solid #4CAF50;\n        }\n        .info-item {\n            margin: 8px 0;\n            padding-left: 20px;\n            position: relative;\n        }\n        .info-item::before {\n            content: \"•\";\n            position: absolute;\n            left: 0;\n            color: #4CAF50;\n            font-weight: bold;\n        }\n        .info-label {\n            font-weight: 600;\n            color: #555;\n        }\n        .info-value {\n            color: #333;\n        }\n        .footer {\n            margin-top: 30px;\n            padding-top: 20px;\n            border-top: 1px solid #ddd;\n            font-size: 12px;\n            color: #888;\n            text-align: center;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"header\">\n        <h2 style=\"margin: 0;\">硬件变更审核通知</h2>\n    </div>\n    <div class=\"content\">\n        <p style=\"font-size: 16px; margin-top: 0;\">尊敬的维护人员：</p>\n\n        <p style=\"font-size: 15px; color: #2c3e50; margin: 20px 0;\">\n            变更的 Host 已通过硬件变更审核。\n        </p>\n\n        <div class=\"section\">\n            <div class=\"section-title\">审批人信息</div>\n            <div class=\"info-item\">\n                <span class=\"info-label\">用户名称：</span>\n                <span class=\"info-value\">{user_name}</span>\n            </div>\n            <div class=\"info-item\">\n                <span class=\"info-label\">登录账号：</span>\n                <span class=\"info-value\">{user_account}</span>\n            </div>\n        </div>\n\n        <div class=\"section\">\n            <div class=\"section-title\">变更的主机信息</div>\n            {host_table}\n        </div>\n\n        <p style=\"margin-top: 25px; color: #555;\">\n            此邮件由系统自动发送，请勿回复。\n        </p>\n    </div>\n    <div class=\"footer\">\n        <p>Intel EC 管理系统</p>\n    </div>\n</body>\n</html>"
+      }
     }
   }
 }
