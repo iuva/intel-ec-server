@@ -1101,35 +1101,6 @@ class AgentReportService:
                         },
                     )
 
-                    # ✅ 逻辑删除 host_exec_log 表中对应的 host 的有效数据
-                    delete_exec_log_stmt = (
-                        update(HostExecLog)
-                        .where(
-                            and_(
-                                HostExecLog.host_id == host_id,
-                                HostExecLog.del_flag == 0,  # 只删除有效数据
-                            )
-                        )
-                        .values(del_flag=1)  # 逻辑删除
-                    )
-                    exec_log_result = await session.execute(delete_exec_log_stmt)
-                    deleted_count = exec_log_result.rowcount
-
-                    if deleted_count > 0:
-                        logger.info(
-                            "逻辑删除 host_exec_log 表有效数据完成",
-                            extra={
-                                "host_id": host_id,
-                                "deleted_count": deleted_count,
-                            },
-                        )
-                    else:
-                        logger.debug(
-                            "未找到需要删除的 host_exec_log 记录",
-                            extra={
-                                "host_id": host_id,
-                            },
-                        )
 
                 # 4. 如果需要更新，执行更新操作
                 if updated and new_host_state is not None:

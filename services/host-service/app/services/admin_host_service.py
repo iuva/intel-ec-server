@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-from sqlalchemy import and_, func, select, update, or_
+from sqlalchemy import and_, func, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -77,11 +77,9 @@ class AdminHostService:
         """查询可用主机列表（分页、搜索）
 
         业务逻辑：
-        1. 查询 host_rec 表，条件：host_state 在 [0, 4] 之间, appr_state = 1, del_flag = 0
-        2. 关联 host_exec_log 表：
-           - 仅当 host_rec.host_state 在 [1, 2, 3] 时关联（性能优化）
-           - 获取每个 host_id 的最新一条记录（使用 Row_Number 窗口函数）
-        3. 搜索条件支持 OR 逻辑（mac, username, mg_id, use_by）
+        1. 查询 host_rec 表，条件：host_state >= 0 且 host_state <= 4, appr_state = 1, del_flag = 0
+        2. 关联 host_exec_log 表，获取每个 host_id 的最新一条记录（按 created_time 倒序）
+        3. 支持按 use_by（user_name）过滤
         4. 按 host_rec.created_time 倒序排序
 
         Args:
@@ -89,101 +87,192 @@ class AdminHostService:
 
         Returns:
             Tuple[List[AdminHostInfo], PaginationResponse]: 主机列表和分页信息
+
+        Raises:
+            BusinessError: 查询失败时
         """
         log_operation_start(
             "查询可用主机列表",
-            extra=request.model_dump(),
+            extra={
+                "page": request.page,
+                "page_size": request.page_size,
+                "mac": request.mac,
+                "username": request.username,
+                "host_state": request.host_state,
+                "mg_id": request.mg_id,
+                "use_by": request.use_by,
+            },
             logger_instance=logger,
         )
 
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
-            # 1. 构建最新日志子查询（使用窗口函数优化）
-            # Row_Number() over (Partition By host_id Order By created_time Desc)
-            log_partition = select(
-                HostExecLog.host_id,
-                HostExecLog.user_name,
-                func.row_number()
-                .over(partition_by=HostExecLog.host_id, order_by=HostExecLog.created_time.desc())
-                .label("rn"),
-            ).where(HostExecLog.del_flag == 0).alias("log_partition")
-
-            latest_log = (
-                select(log_partition.c.host_id, log_partition.c.user_name)
-                .where(log_partition.c.rn == 1)
-                .alias("latest_log")
+            # 构建子查询：获取每个 host_id 的最新一条 host_exec_log 记录
+            # 方法：先获取每个 host_id 的最大 created_time，如果相同则取 id 最大的
+            max_time_subquery = (
+                select(
+                    HostExecLog.host_id,
+                    func.max(HostExecLog.created_time).label("max_created_time"),
+                )
+                .where(HostExecLog.del_flag == 0)
+                .group_by(HostExecLog.host_id)
+                .subquery()
             )
 
-            # 2. 构建主查询
-            query = select(
-                HostRec.id.label("host_id"),
-                HostRec.host_acct.label("username"),
-                HostRec.mg_id,
-                HostRec.mac_addr.label("mac"),
-                HostRec.host_state,
-                HostRec.appr_state,
-                latest_log.c.user_name.label("use_by"),
+            # 获取每个 host_id 的最大 id（当 created_time 相同时）
+            # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+            # 使用 select_from() 配合 join() 在表对象上
+            max_id_subquery = (
+                select(
+                    HostExecLog.host_id,
+                    func.max(HostExecLog.id).label("max_id"),
+                )
+                .select_from(
+                    HostExecLog.__table__.join(
+                        max_time_subquery,
+                        and_(
+                            HostExecLog.host_id == max_time_subquery.c.host_id,
+                            HostExecLog.created_time == max_time_subquery.c.max_created_time,
+                            HostExecLog.del_flag == 0,
+                        ),
+                    )
+                )
+                .group_by(HostExecLog.host_id)
+                .subquery()
             )
 
-            # 3. 关联逻辑：仅当 host_state in (1, 2, 3) 时关联日志
-            query = query.outerjoin(
-                latest_log,
-                and_(
-                    HostRec.id == latest_log.c.host_id,
-                    HostRec.host_state.in_([1, 2, 3]),
-                ),
+            # 获取最新执行日志的完整记录（使用 id 确保唯一性）
+            # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+            latest_log_subquery = (
+                select(HostExecLog.host_id, HostExecLog.user_name)
+                .select_from(
+                    HostExecLog.__table__.join(
+                        max_id_subquery,
+                        HostExecLog.id == max_id_subquery.c.max_id,
+                    )
+                )
+                .subquery()
             )
 
-            # 4. 基础筛选条件
-            # host_state: 0-空闲, 1-锁定, 2-占用, 3-运行中, 4-离线
+            # 主查询：JOIN host_rec 和最新的 host_exec_log
+            # 基础条件：host_state >= 0 且 host_state <= 4, appr_state = 1, del_flag = 0
             base_conditions = [
-                HostRec.del_flag == 0,
-                HostRec.appr_state == 1,
                 HostRec.host_state >= 0,
                 HostRec.host_state <= 4,
+                HostRec.appr_state == 1,
+                HostRec.del_flag == 0,
             ]
 
-            # 5. 搜索条件（OR 逻辑）
-            search_conditions = []
+            # 添加搜索条件（过滤空字符串）
             if request.mac and request.mac.strip():
-                search_conditions.append(HostRec.mac_addr.like(f"%{request.mac.strip()}%"))
-            if request.username and request.username.strip():
-                search_conditions.append(HostRec.host_acct.like(f"%{request.username.strip()}%"))
-            if request.mg_id and request.mg_id.strip():
-                search_conditions.append(HostRec.mg_id.like(f"%{request.mg_id.strip()}%"))
-            if request.use_by and request.use_by.strip():
-                # use_by 搜索关联表的 user_name
-                search_conditions.append(latest_log.c.user_name.like(f"%{request.use_by.strip()}%"))
+                base_conditions.append(HostRec.mac_addr.like(f"%{request.mac.strip()}%"))
 
-            # 如果指定了具体的 host_state（精确匹配），作为 AND 条件（优先级高于通用搜索）
+            if request.username and request.username.strip():
+                base_conditions.append(HostRec.host_acct.like(f"%{request.username.strip()}%"))
+
+            # 如果指定了 host_state 过滤条件，添加精确匹配
+            # 注意：基础条件已固定为 host_state >= 0 且 host_state <= 4
+            # 如果提供了 host_state 参数，则进一步精确匹配该状态
             if request.host_state is not None:
+                # 验证 host_state 范围（0-4）
+                if request.host_state < 0 or request.host_state > 4:
+                    raise BusinessError(
+                        message=f"host_state 参数值必须在 0-4 范围内，当前值: {request.host_state}",
+                        message_key="error.host.invalid_host_state",
+                        error_code="INVALID_HOST_STATE",
+                        code=ServiceErrorCodes.HOST_INVALID_REQUEST,
+                        http_status_code=400,
+                        details={"host_state": request.host_state},
+                    )
                 base_conditions.append(HostRec.host_state == request.host_state)
 
-            if search_conditions:
-                base_conditions.append(or_(*search_conditions))
+            if request.mg_id and request.mg_id.strip():
+                base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id.strip()}%"))
 
-            query = query.where(and_(*base_conditions))
+            # 如果指定了 use_by 过滤条件，需要重新构建子查询并添加过滤
+            if request.use_by and request.use_by.strip():
+                # 重新获取最大 id，但这次要过滤 user_name
+                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+                max_id_with_filter_subquery = (
+                    select(
+                        HostExecLog.host_id,
+                        func.max(HostExecLog.id).label("max_id"),
+                    )
+                    .select_from(
+                        HostExecLog.__table__.join(
+                            max_time_subquery,
+                            and_(
+                                HostExecLog.host_id == max_time_subquery.c.host_id,
+                                HostExecLog.created_time == max_time_subquery.c.max_created_time,
+                                HostExecLog.del_flag == 0,
+                                HostExecLog.user_name.like(f"%{request.use_by.strip()}%"),
+                            ),
+                        )
+                    )
+                    .group_by(HostExecLog.host_id)
+                    .subquery()
+                )
 
-            # 6. 计算总数
-            count_stmt = select(func.count()).select_from(query.subquery())
-            total = (await session.execute(count_stmt)).scalar() or 0
+                # 获取过滤后的最新执行日志
+                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+                latest_log_subquery = (
+                    select(HostExecLog.host_id, HostExecLog.user_name)
+                    .select_from(
+                        HostExecLog.__table__.join(
+                            max_id_with_filter_subquery,
+                            HostExecLog.id == max_id_with_filter_subquery.c.max_id,
+                        )
+                    )
+                    .subquery()
+                )
 
-            # 7. 排序和分页
+            # 构建主查询：LEFT JOIN 获取最新的执行日志
+            # 如果指定了 use_by，需要过滤掉 user_name 为 None 的记录
+            query_conditions = base_conditions.copy()
+            if request.use_by and request.use_by.strip():
+                # 由于使用了 LEFT JOIN，需要过滤掉 user_name 为 None 的记录
+                query_conditions.append(latest_log_subquery.c.user_name.is_not(None))
+
+            base_query = (
+                select(
+                    HostRec.id.label("host_id"),
+                    HostRec.host_acct.label("username"),
+                    HostRec.mg_id,
+                    HostRec.mac_addr.label("mac"),
+                    HostRec.host_state,
+                    HostRec.appr_state,
+                    latest_log_subquery.c.user_name.label("use_by"),
+                )
+                .outerjoin(
+                    latest_log_subquery,
+                    HostRec.id == latest_log_subquery.c.host_id,
+                )
+                .where(and_(*query_conditions))
+            )
+
+            # 1. 查询总数
+            count_stmt = select(func.count()).select_from(base_query.subquery())
+            count_result = await session.execute(count_stmt)
+            total = count_result.scalar() or 0
+
+            # 2. 分页查询：按 created_time 倒序排序
             pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
-            query = (
-                query.order_by(HostRec.created_time.desc())
+
+            # 添加排序和分页
+            stmt = (
+                base_query.order_by(HostRec.created_time.desc())
                 .offset(pagination_params.offset)
                 .limit(pagination_params.limit)
             )
 
-            # 8. 执行查询
-            result = await session.execute(query)
+            result = await session.execute(stmt)
             rows = result.all()
 
-            # 9. 构建响应
-            host_info_list = [
-                AdminHostInfo(
-                    host_id=str(row.host_id),
+            # 3. 构建响应数据
+            host_info_list: List[AdminHostInfo] = []
+            for row in rows:
+                host_info = AdminHostInfo(
+                    host_id=str(row.host_id),  # ✅ 转换为字符串避免精度丢失
                     username=row.username,
                     mg_id=row.mg_id,
                     mac=row.mac,
@@ -191,22 +280,23 @@ class AdminHostService:
                     host_state=row.host_state,
                     appr_state=row.appr_state,
                 )
-                for row in rows
-            ]
+                host_info_list.append(host_info)
 
+            # 4. 构建分页响应
             pagination_response = PaginationResponse(
                 page=request.page,
                 page_size=request.page_size,
                 total=total,
             )
 
-            log_operation_completed(
-                "查询可用主机列表",
+            logger.info(
+                "查询可用主机列表完成",
                 extra={
                     "total": total,
-                    "returned": len(host_info_list),
+                    "returned_count": len(host_info_list),
+                    "page": request.page,
+                    "page_size": request.page_size,
                 },
-                logger_instance=logger,
             )
 
             return host_info_list, pagination_response
