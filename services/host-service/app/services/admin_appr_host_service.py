@@ -347,12 +347,15 @@ async def _call_hardware_api(
             import uuid
             return f"mock-hardware-{uuid.uuid4().hex[:8]}"
 
-    # 使用统一的外部接口调用客户端
+        # 使用统一的外部接口调用客户端
     try:
         # 构建 Head 参数（Mock 数据）
         head_data = _build_hardware_head()
 
-        if hardware_id is None:
+        # ✅ 判断 hardware_id 是否有效：None 或空字符串都视为无效，调用新增接口
+        is_valid_hardware_id = hardware_id is not None and bool(hardware_id and hardware_id.strip())
+
+        if not is_valid_hardware_id:
             # ✅ 新增硬件：使用 Redis 分布式锁防止并发创建
             lock_key = None
             lock_value = None
@@ -524,9 +527,13 @@ async def _call_hardware_api(
 
         else:
             # 修改硬件：PUT /api/v1/hardware/{hardware_id}
-            url_path = f"/api/v1/hardware/{hardware_id}"
+            # ✅ 此时 hardware_id 一定不是 None 且不是空字符串（已通过 is_valid_hardware_id 检查）
+            assert hardware_id is not None and hardware_id.strip(), "hardware_id 必须有效"
+            valid_hardware_id: str = hardware_id.strip()
+
+            url_path = f"/api/v1/hardware/{valid_hardware_id}"
             request_body = {
-                "_id": {"$oid": hardware_id},
+                "_id": {"$oid": valid_hardware_id},
                 "Head": head_data,
                 "Payload": hw_info,
             }
@@ -535,7 +542,7 @@ async def _call_hardware_api(
                 "调用外部硬件接口（修改）",
                 extra={
                     "url_path": url_path,
-                    "hardware_id": hardware_id,
+                    "hardware_id": valid_hardware_id,
                     "user_id": user_id,
                     "has_hw_info": bool(hw_info),
                 },
@@ -578,7 +585,7 @@ async def _call_hardware_api(
                     http_status_code=500,
                     details={
                         "url_path": url_path,
-                        "hardware_id": hardware_id,
+                        "hardware_id": valid_hardware_id,
                         "status_header": status_header,
                         "status_code": status_code,
                         "body_code": body_code,
@@ -589,10 +596,10 @@ async def _call_hardware_api(
             logger.info(
                 "硬件接口调用成功（修改）",
                 extra={
-                    "hardware_id": hardware_id,
+                    "hardware_id": valid_hardware_id,
                 },
             )
-            return hardware_id
+            return valid_hardware_id
 
     except BusinessError:
         raise
@@ -626,6 +633,768 @@ class AdminApprHostService:
 
     提供待审批主机的查询、搜索等业务逻辑。
     """
+
+    async def _validate_and_resolve_host_ids(
+        self,
+        request: AdminApprHostApproveRequest,
+        locale: str = "zh_CN",
+    ) -> List[int]:
+        """验证参数并解析 host_ids
+
+        Args:
+            request: 同意启用请求参数
+            locale: 语言偏好
+
+        Returns:
+            List[int]: 要处理的主机ID列表，如果未找到则返回空列表
+
+        Raises:
+            BusinessError: 参数验证失败时
+        """
+        if request.diff_type is None or request.diff_type == 2:
+            # diff_type 为空或 2 时，host_ids 为必填
+            if not request.host_ids or len(request.host_ids) == 0:
+                raise BusinessError(
+                    message=f"当 diff_type={request.diff_type} 时，host_ids 为必填参数",
+                    message_key="error.host.appr_host_ids_required",
+                    error_code="HOST_IDS_REQUIRED",
+                    code=ServiceErrorCodes.VALIDATION_ERROR,
+                    http_status_code=400,
+                )
+            return request.host_ids
+
+        elif request.diff_type == 1:
+            # diff_type = 1 时，如果传入了 host_ids，直接返回
+            if request.host_ids and len(request.host_ids) > 0:
+                return request.host_ids
+
+            # 如果未传入 host_ids，查询所有符合条件的 host_id
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as temp_session:
+                hw_query_stmt = (
+                    select(HostHwRec.host_id)
+                    .where(
+                        and_(
+                            HostHwRec.sync_state == 1,
+                            HostHwRec.diff_state == 1,
+                            HostHwRec.del_flag == 0,
+                        )
+                    )
+                    .distinct()
+                )
+                hw_query_result = await temp_session.execute(hw_query_stmt)
+                host_ids_raw = hw_query_result.scalars().all()
+                host_ids_to_process = [hid for hid in set(host_ids_raw) if hid is not None]
+
+                if not host_ids_to_process:
+                    logger.info(
+                        "未找到符合条件的主机（diff_type=1, sync_state=1, diff_state=1）",
+                        extra={"diff_type": request.diff_type},
+                    )
+                    return []
+
+                return host_ids_to_process
+        else:
+            raise BusinessError(
+                message=t(
+                    "error.host.diff_type_not_supported",
+                    locale=locale,
+                    diff_type=request.diff_type,
+                    default=f"不支持的 diff_type: {request.diff_type}",
+                ),
+                message_key="error.host.diff_type_not_supported",
+                error_code="DIFF_TYPE_NOT_SUPPORTED",
+                code=ServiceErrorCodes.VALIDATION_ERROR,
+                http_status_code=400,
+            )
+
+    def _validate_host_exists(
+        self,
+        host_id: int,
+        host_recs_map: Dict[int, HostRec],
+        locale: str = "zh_CN",
+    ) -> Optional[HostRec]:
+        """验证主机是否存在且未删除
+
+        Args:
+            host_id: 主机ID
+            host_recs_map: 主机记录映射字典
+            locale: 语言偏好
+
+        Returns:
+            Optional[HostRec]: 主机记录，如果不存在则返回 None
+        """
+        host_rec = host_recs_map.get(host_id)
+        if not host_rec:
+            logger.warning(
+                "主机不存在或已删除",
+                extra={"host_id": host_id},
+            )
+        return host_rec
+
+    async def _query_hardware_records(
+        self,
+        session: Any,
+        host_ids: List[int],
+        sync_state: Optional[int] = SYNC_STATE_WAIT,
+        need_latest_only: bool = False,
+    ) -> Dict[int, List[HostHwRec]]:
+        """查询硬件记录并按 host_id 分组
+
+        Args:
+            session: 数据库会话
+            host_ids: 主机ID列表
+            sync_state: 同步状态（None 表示不限制）
+            need_latest_only: 是否只需要最新一条（用于 diff_type is None）
+
+        Returns:
+            Dict[int, List[HostHwRec]]: 按 host_id 分组的硬件记录
+        """
+        if not host_ids:
+            return {}
+
+        # 构建查询条件
+        conditions = [
+            HostHwRec.host_id.in_(host_ids),
+            HostHwRec.del_flag == 0,
+        ]
+
+        if sync_state is not None:
+            conditions.append(HostHwRec.sync_state == sync_state)
+
+        # 查询硬件记录
+        hw_stmt = (
+            select(HostHwRec)
+            .where(and_(*conditions))
+            .order_by(HostHwRec.host_id, desc(HostHwRec.created_time), desc(HostHwRec.id))
+        )
+
+        hw_result = await session.execute(hw_stmt)
+        all_hw_recs = hw_result.scalars().all()
+
+        # 按 host_id 分组
+        hw_recs_by_host: Dict[int, List[HostHwRec]] = {}
+
+        if need_latest_only:
+            # 只保留每个 host_id 的最新一条
+            for hw_rec in all_hw_recs:
+                if hw_rec.host_id not in hw_recs_by_host:
+                    hw_recs_by_host[hw_rec.host_id] = [hw_rec]
+        else:
+            # 保留所有记录
+            for hw_rec in all_hw_recs:
+                if hw_rec.host_id not in hw_recs_by_host:
+                    hw_recs_by_host[hw_rec.host_id] = []
+                hw_recs_by_host[hw_rec.host_id].append(hw_rec)
+
+        return hw_recs_by_host
+
+    async def _process_manual_enable(
+        self,
+        host_id: int,
+        host_rec: HostRec,
+        hw_recs: List[HostHwRec],
+        appr_by: int,
+        http_request: Any,
+        locale: str = "zh_CN",
+    ) -> Dict[str, Any]:
+        """处理手动启用（diff_type is None）
+
+        Args:
+            host_id: 主机ID
+            host_rec: 主机记录
+            hw_recs: 硬件记录列表
+            appr_by: 审批人ID
+            http_request: FastAPI Request 对象
+            locale: 语言偏好
+
+        Returns:
+            Dict[str, Any]: 处理结果，包含 success, host_id, message, hardware_id, host_update
+        """
+        # 默认更新值
+        host_update: Dict[str, Any] = {
+            "appr_state": APPR_STATE_ENABLE,
+            "host_state": HOST_STATE_FREE,
+        }
+
+        # 检查是否需要调用外部接口（host_state 5 or 6）
+        if host_rec.host_state in (5, 6):
+            latest_hw_rec = hw_recs[0] if hw_recs else None
+            if latest_hw_rec and latest_hw_rec.hw_info:
+                try:
+                    # ✅ 根据 host_state 决定调用新增还是修改接口
+                    # host_state = 5（待激活）：新主机，调用新增接口（传递 None）
+                    # host_state = 6（硬件改动）：已存在主机，调用修改接口（传递 hardware_id）
+                    api_hardware_id: Optional[str] = None
+                    if host_rec.host_state == 6:
+                        # 硬件改动：使用现有的 hardware_id 调用修改接口
+                        # ✅ 检查 hardware_id 是否有效（非 None 且非空字符串）
+                        existing_hw_id = host_rec.hardware_id
+                        if existing_hw_id and existing_hw_id.strip():
+                            api_hardware_id = existing_hw_id
+                            api_type = "修改"
+                        else:
+                            # hardware_id 为空字符串，视为无效，调用新增接口
+                            api_hardware_id = None
+                            api_type = "新增"
+                            logger.warning(
+                                "host_state=6 但 hardware_id 为空字符串，强制调用新增接口",
+                                extra={
+                                    "host_id": host_id,
+                                    "host_state": host_rec.host_state,
+                                    "existing_hardware_id": existing_hw_id,
+                                    "note": "硬件改动状态但 hardware_id 无效，调用新增接口",
+                                },
+                            )
+                    else:
+                        # host_state = 5（待激活）：强制调用新增接口，即使 hardware_id 不为空
+                        api_hardware_id = None
+                        api_type = "新增"
+                        existing_hw_id = host_rec.hardware_id
+                        if existing_hw_id and existing_hw_id.strip():
+                            logger.warning(
+                                "host_state=5 但 hardware_id 不为空，强制调用新增接口",
+                                extra={
+                                    "host_id": host_id,
+                                    "host_state": host_rec.host_state,
+                                    "existing_hardware_id": existing_hw_id,
+                                    "note": "待激活状态应调用新增接口，忽略现有 hardware_id",
+                                },
+                            )
+
+                    logger.info(
+                        f"准备调用外部硬件接口（{api_type}）",
+                        extra={
+                            "host_id": host_id,
+                            "host_state": host_rec.host_state,
+                            "api_type": api_type,
+                            "api_hardware_id": api_hardware_id,
+                            "existing_hardware_id": host_rec.hardware_id,
+                        },
+                    )
+
+                    hardware_id = await _call_hardware_api(
+                        hardware_id=api_hardware_id,
+                        hw_info=latest_hw_rec.hw_info,
+                        request=http_request,
+                        user_id=appr_by,
+                        locale=locale,
+                        host_id=host_id,
+                    )
+                    if hardware_id:
+                        host_update["hardware_id"] = hardware_id
+
+                    logger.info(
+                        "外部硬件接口调用成功 (Empty Diff Type)",
+                        extra={
+                            "host_id": host_id,
+                            "host_state": host_rec.host_state,
+                            "api_type": api_type,
+                            "hardware_id": hardware_id,
+                            "is_new": api_hardware_id is None,
+                        },
+                    )
+                except Exception as e:
+                    logger.error(
+                        "外部硬件接口调用失败 (Empty Diff Type)",
+                        extra={"host_id": host_id, "error": str(e)},
+                        exc_info=True,
+                    )
+                    raise BusinessError(
+                        message=f"外部接口调用失败: {str(e)}",
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=500,
+                    )
+            else:
+                logger.warning(
+                    "状态为 5/6 但未找到硬件记录或 hw_info 为空，跳过外部接口调用",
+                    extra={"host_id": host_id, "host_state": host_rec.host_state},
+                )
+
+        return {
+            "success": True,
+            "host_id": host_id,
+            "message": t(
+                "success.host.manual_enabled",
+                locale=locale,
+                default="主机启用成功",
+            ),
+            "hardware_id": host_update.get("hardware_id"),
+            "hw_id": None,
+            "host_update": host_update,
+            "hw_updates": {},
+        }
+
+    async def _process_hardware_change_approval(
+        self,
+        host_id: int,
+        host_rec: HostRec,
+        hw_recs: List[HostHwRec],
+        appr_by: int,
+        http_request: Any,
+        locale: str = "zh_CN",
+        session: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """处理硬件变更审批（diff_type == 1 or 2）
+
+        Args:
+            host_id: 主机ID
+            host_rec: 主机记录
+            hw_recs: 硬件记录列表
+            appr_by: 审批人ID
+            http_request: FastAPI Request 对象
+            locale: 语言偏好
+            session: 数据库会话（用于调试查询）
+
+        Returns:
+            Dict[str, Any]: 处理结果，包含 success, host_id, message, hardware_id, hw_id, host_update, hw_updates
+
+        Raises:
+            BusinessError: 硬件记录不存在或处理失败时
+        """
+        # 验证硬件记录
+        if not hw_recs:
+            # 调试：查询该主机的所有硬件记录（不限制 sync_state）以帮助排查问题
+            if session:
+                debug_hw_stmt = (
+                    select(HostHwRec)
+                    .where(
+                        and_(
+                            HostHwRec.host_id == host_id,
+                            HostHwRec.del_flag == 0,
+                        )
+                    )
+                    .order_by(desc(HostHwRec.created_time), desc(HostHwRec.id))
+                )
+                debug_hw_result = await session.execute(debug_hw_stmt)
+                debug_hw_recs = debug_hw_result.scalars().all()
+
+                # 统计不同 sync_state 的记录数量
+                sync_state_stats = {}
+                for hw_rec in debug_hw_recs:
+                    sync_state = hw_rec.sync_state
+                    if sync_state not in sync_state_stats:
+                        sync_state_stats[sync_state] = 0
+                    sync_state_stats[sync_state] += 1
+
+                logger.warning(
+                    "未找到待审批的硬件记录，跳过审批",
+                    extra={
+                        "host_id": host_id,
+                        "host_exists": True,
+                        "debug_info": {
+                            "total_hw_recs": len(debug_hw_recs),
+                            "sync_state_stats": sync_state_stats,
+                            "query_condition": {
+                                "sync_state": 1,
+                                "del_flag": 0,
+                            },
+                            "latest_hw_rec": {
+                                "id": debug_hw_recs[0].id if debug_hw_recs else None,
+                                "sync_state": debug_hw_recs[0].sync_state if debug_hw_recs else None,
+                                "del_flag": debug_hw_recs[0].del_flag if debug_hw_recs else None,
+                                "created_time": (
+                                    debug_hw_recs[0].created_time.isoformat()
+                                    if debug_hw_recs and debug_hw_recs[0].created_time
+                                    else None
+                                ),
+                            },
+                        },
+                    },
+                )
+
+            raise BusinessError(
+                message=t(
+                    "error.host.hardware_not_found",
+                    locale=locale,
+                    host_id=host_id,
+                    default=f"未找到待审批的硬件记录（ID: {host_id}）",
+                ),
+                message_key="error.host.hardware_not_found",
+                error_code="HARDWARE_NOT_FOUND",
+                code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                http_status_code=404,
+            )
+
+        # 获取最新一条硬件记录
+        latest_hw_rec = hw_recs[0]
+        latest_hw_id = latest_hw_rec.id
+
+        # 调用外部硬件接口
+        hardware_id = None
+        if latest_hw_rec.hw_info:
+            try:
+                # ✅ 根据 host_state 决定调用新增还是修改接口
+                # host_state = 5（待激活）：新主机，调用新增接口（传递 None）
+                # host_state = 6（硬件改动）：已存在主机，调用修改接口（传递 hardware_id）
+                existing_hardware_id = host_rec.hardware_id
+                api_hardware_id: Optional[str] = None
+                if host_rec.host_state == 6:
+                    # 硬件改动：使用现有的 hardware_id 调用修改接口
+                    # ✅ 检查 hardware_id 是否有效（非 None 且非空字符串）
+                    if existing_hardware_id and existing_hardware_id.strip():
+                        api_hardware_id = existing_hardware_id
+                        api_type = "修改"
+                    else:
+                        # hardware_id 为空字符串，视为无效，调用新增接口
+                        api_hardware_id = None
+                        api_type = "新增"
+                        logger.warning(
+                            "host_state=6 但 hardware_id 为空字符串，强制调用新增接口（硬件变更审批）",
+                            extra={
+                                "host_id": host_id,
+                                "host_state": host_rec.host_state,
+                                "existing_hardware_id": existing_hardware_id,
+                                "diff_type": "硬件变更审批",
+                                "note": "硬件改动状态但 hardware_id 无效，调用新增接口",
+                            },
+                        )
+                else:
+                    # host_state = 5（待激活）：强制调用新增接口，即使 hardware_id 不为空
+                    api_hardware_id = None
+                    api_type = "新增"
+                    if existing_hardware_id and existing_hardware_id.strip():
+                        logger.warning(
+                            "host_state=5 但 hardware_id 不为空，强制调用新增接口（硬件变更审批）",
+                            extra={
+                                "host_id": host_id,
+                                "host_state": host_rec.host_state,
+                                "existing_hardware_id": existing_hardware_id,
+                                "diff_type": "硬件变更审批",
+                                "note": "待激活状态应调用新增接口，忽略现有 hardware_id",
+                            },
+                        )
+
+                logger.info(
+                    f"准备调用外部硬件接口（{api_type}，硬件变更审批）",
+                    extra={
+                        "host_id": host_id,
+                        "host_state": host_rec.host_state,
+                        "api_type": api_type,
+                        "api_hardware_id": api_hardware_id,
+                        "existing_hardware_id": existing_hardware_id,
+                        "diff_type": "硬件变更审批",
+                    },
+                )
+
+                hardware_id = await _call_hardware_api(
+                    hardware_id=api_hardware_id,
+                    hw_info=latest_hw_rec.hw_info,
+                    request=http_request,
+                    user_id=appr_by,
+                    locale=locale,
+                    host_id=host_id,
+                )
+
+                logger.info(
+                    "外部硬件接口调用成功（硬件变更审批）",
+                    extra={
+                        "host_id": host_id,
+                        "host_state": host_rec.host_state,
+                        "api_type": api_type,
+                        "hardware_id": hardware_id,
+                        "is_new": api_hardware_id is None,
+                    },
+                )
+            except BusinessError:
+                raise
+            except Exception as e:
+                logger.error(
+                    "调用外部硬件接口失败",
+                    extra={
+                        "host_id": host_id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                    exc_info=True,
+                )
+                raise BusinessError(
+                    message=f"调用外部硬件接口失败: {str(e)}",
+                    message_key="error.hardware.api_call_failed",
+                    error_code="HARDWARE_API_CALL_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                    details={
+                        "host_id": host_id,
+                        "error": str(e),
+                    },
+                )
+        else:
+            logger.warning(
+                "硬件记录中缺少 hw_info，跳过外部硬件接口调用",
+                extra={
+                    "host_id": host_id,
+                    "hw_rec_id": latest_hw_id,
+                },
+            )
+
+        # 构建更新数据
+        now = datetime.now(timezone.utc)
+
+        # 主机更新数据
+        host_update = {
+            "appr_state": APPR_STATE_ENABLE,
+            "host_state": HOST_STATE_FREE,
+            "hw_id": latest_hw_id,
+            "subm_time": now,
+        }
+        if hardware_id:
+            host_update["hardware_id"] = hardware_id
+
+        # 硬件记录更新数据
+        hw_updates = {
+            latest_hw_id: {
+                "sync_state": 2,
+                "appr_time": now,
+                "appr_by": appr_by,
+            }
+        }
+        if hardware_id:
+            hw_updates[latest_hw_id]["hardware_id"] = hardware_id
+
+        # 其他硬件记录更新为 sync_state = 4
+        for hw_rec in hw_recs[1:]:
+            hw_updates[hw_rec.id] = {"sync_state": 4}
+
+        return {
+            "success": True,
+            "host_id": host_id,
+            "message": t("success.host.approved", locale=locale, default="主机启用成功"),
+            "hardware_id": hardware_id,
+            "hw_id": latest_hw_id,
+            "host_update": host_update,
+            "hw_updates": hw_updates,
+        }
+
+    async def _bulk_update_host_records(
+        self,
+        session: Any,
+        host_updates: Dict[int, Dict[str, Any]],
+    ) -> None:
+        """批量更新 host_rec 表
+
+        Args:
+            session: 数据库会话
+            host_updates: 主机更新数据字典 {host_id: {field: value}}
+        """
+        if not host_updates:
+            return
+
+        bulk_update_data = [
+            {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
+        ]
+
+        def _bulk_update(sync_session: Any) -> None:
+            sync_session.bulk_update_mappings(HostRec, bulk_update_data)
+
+        await session.run_sync(_bulk_update)
+
+    async def _bulk_update_hardware_records(
+        self,
+        session: Any,
+        hw_updates: Dict[int, Dict[str, Any]],
+        now: datetime,
+        appr_by: int,
+    ) -> None:
+        """批量更新 host_hw_rec 表
+
+        Args:
+            session: 数据库会话
+            hw_updates: 硬件记录更新数据字典 {hw_rec_id: {field: value}}
+            now: 当前时间
+            appr_by: 审批人ID
+        """
+        if not hw_updates:
+            return
+
+        # 分离需要更新 hardware_id 的记录和普通记录
+        latest_hw_ids_with_hardware_id = []
+        latest_hw_ids_without_hardware_id = []
+        other_hw_ids = []
+        hw_rec_hardware_id_map: Dict[int, str] = {}
+
+        for hw_rec_id, update_values in hw_updates.items():
+            if "hardware_id" in update_values:
+                latest_hw_ids_with_hardware_id.append(hw_rec_id)
+                hw_rec_hardware_id_map[hw_rec_id] = update_values["hardware_id"]
+            elif update_values.get("sync_state") == 2:
+                latest_hw_ids_without_hardware_id.append(hw_rec_id)
+            else:
+                other_hw_ids.append(hw_rec_id)
+
+        # 批量更新最新硬件记录（有 hardware_id）
+        if latest_hw_ids_with_hardware_id:
+            for hw_rec_id in latest_hw_ids_with_hardware_id:
+                update_stmt = (
+                    update(HostHwRec)
+                    .where(HostHwRec.id == hw_rec_id)
+                    .values(
+                        sync_state=2,
+                        appr_time=now,
+                        appr_by=appr_by,
+                        hardware_id=hw_rec_hardware_id_map[hw_rec_id],
+                    )
+                )
+                await session.execute(update_stmt)
+
+        # 批量更新最新硬件记录（无 hardware_id）
+        if latest_hw_ids_without_hardware_id:
+            update_latest_stmt = (
+                update(HostHwRec)
+                .where(HostHwRec.id.in_(latest_hw_ids_without_hardware_id))
+                .values(
+                    sync_state=2,
+                    appr_time=now,
+                    appr_by=appr_by,
+                )
+            )
+            await session.execute(update_latest_stmt)
+
+        # 批量更新其他硬件记录
+        if other_hw_ids:
+            update_other_stmt = (
+                update(HostHwRec).where(HostHwRec.id.in_(other_hw_ids)).values(sync_state=4)
+            )
+            await session.execute(update_other_stmt)
+
+    async def _send_approval_email(
+        self,
+        session: Any,
+        results: List[Dict[str, Any]],
+        appr_by: int,
+        locale: str = "zh_CN",
+    ) -> List[str]:
+        """发送审批邮件通知
+
+        Args:
+            session: 数据库会话
+            results: 处理结果列表
+            appr_by: 审批人ID
+            locale: 语言偏好
+
+        Returns:
+            List[str]: 错误信息列表（如果有）
+        """
+        email_errors: List[str] = []
+
+        try:
+            # 查询邮件配置
+            email_conf_stmt = select(SysConf).where(
+                and_(
+                    SysConf.conf_key == "email",
+                    SysConf.del_flag == 0,
+                    SysConf.state_flag == 0,
+                )
+            )
+            email_conf_result = await session.execute(email_conf_stmt)
+            email_conf = email_conf_result.scalar_one_or_none()
+
+            if not email_conf or not email_conf.conf_val:
+                return email_errors
+
+            # 解析邮箱地址
+            email_list = [e.strip() for e in email_conf.conf_val.strip().split(",") if e.strip()]
+            if not email_list:
+                return email_errors
+
+            # 获取成功审批的主机ID
+            successful_host_ids = [
+                r["host_id"] for r in results if r.get("success", False) and r.get("host_id")
+            ]
+            if not successful_host_ids:
+                return email_errors
+
+            # 查询主机信息
+            host_info_stmt = select(HostRec).where(
+                and_(
+                    HostRec.id.in_(successful_host_ids),
+                    HostRec.del_flag == 0,
+                )
+            )
+            host_info_result = await session.execute(host_info_stmt)
+            host_recs = host_info_result.scalars().all()
+
+            # 查询审批人信息
+            user_stmt = select(SysUser).where(
+                and_(
+                    SysUser.id == appr_by,
+                    SysUser.del_flag == 0,
+                )
+            )
+            user_result = await session.execute(user_stmt)
+            sys_user = user_result.scalar_one_or_none()
+
+            user_name = sys_user.user_name if sys_user else ""
+            user_account = sys_user.user_account if sys_user else ""
+
+            # 构建邮件内容
+            # ✅ 过滤掉 None 和空字符串的 hardware_id
+            hardware_ids = [
+                h.hardware_id
+                for h in host_recs
+                if h.hardware_id and h.hardware_id.strip()
+            ]
+            host_ips = [h.host_ip for h in host_recs if h.host_ip]
+            host_table = _build_host_table(hardware_ids, host_ips)
+
+            subject = t(
+                "email.host.approve.subject",
+                locale=locale,
+                default="变更 Host 通过硬件变更审核",
+            )
+
+            content = t(
+                "email.host.approve.content",
+                locale=locale,
+                default=EMAIL_HOST_APPROVE_CONTENT_TEMPLATE,
+                user_name=user_name,
+                user_account=user_account,
+                host_table=host_table,
+            )
+
+            # 发送邮件
+            try:
+                email_result = await send_email(
+                    to_emails=email_list,
+                    subject=subject,
+                    content=content,
+                    locale=locale,
+                )
+                if email_result.get("failed_count", 0) > 0:
+                    email_errors.extend(email_result.get("errors", []))
+                logger.info(
+                    "邮件通知发送完成",
+                    extra={
+                        "sent_count": email_result.get("sent_count", 0),
+                        "failed_count": email_result.get("failed_count", 0),
+                        "recipient_count": len(email_list),
+                    },
+                )
+            except Exception as email_error:
+                error_msg = f"邮件发送异常: {str(email_error)}"
+                email_errors.append(error_msg)
+                logger.warning(
+                    "邮件发送异常（不影响事务）",
+                    extra={
+                        "error": str(email_error),
+                        "error_type": type(email_error).__name__,
+                    },
+                    exc_info=True,
+                )
+
+        except Exception as e:
+            error_msg = f"邮件通知处理异常: {str(e)}"
+            email_errors.append(error_msg)
+            logger.warning(
+                "邮件通知处理异常（不影响事务）",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
+
+        return email_errors
 
     @handle_service_errors(
         error_message="查询待审批主机列表失败",
@@ -705,70 +1474,13 @@ class AdminApprHostService:
                 if request.host_state is not None:
                     base_conditions.append(HostRec.host_state == request.host_state)
 
-                # 构建子查询：获取每个 host_id 对应的最新 host_hw_rec 记录的 diff_state
-                # 注意：与 get_appr_host_detail 接口保持一致，只查询 sync_state = 1 的记录
-                # 1. 获取每个 host_id 的最大 created_time（仅 sync_state = 1 的记录）
-                max_time_subquery = (
-                    select(
-                        HostHwRec.host_id,
-                        func.max(HostHwRec.created_time).label("max_created_time"),
-                    )
-                    .where(
-                        and_(
-                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
-                            HostHwRec.del_flag == 0,
-                        )
-                    )
-                    .group_by(HostHwRec.host_id)
-                    .subquery()
-                )
-
-                # 2. 获取每个 host_id 的最大 id（当 created_time 相同时，确保唯一性）
-                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
-                # 使用 select_from() 配合 join() 在表对象上
-                max_id_subquery = (
-                    select(
-                        HostHwRec.host_id,
-                        func.max(HostHwRec.id).label("max_id"),
-                    )
-                    .select_from(
-                        HostHwRec.__table__.join(
-                            max_time_subquery,
-                            and_(
-                                HostHwRec.host_id == max_time_subquery.c.host_id,
-                                HostHwRec.created_time == max_time_subquery.c.max_created_time,
-                                HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
-                                HostHwRec.del_flag == 0,
-                            ),
-                        )
-                    )
-                    .group_by(HostHwRec.host_id)
-                    .subquery()
-                )
-
-                # 3. 获取最新硬件记录的 diff_state
-                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
-                # 使用 select_from() 配合 join() 在表对象上
-                latest_hw_subquery = (
-                    select(
-                        HostHwRec.host_id,
-                        HostHwRec.diff_state,
-                    )
-                    .select_from(
-                        HostHwRec.__table__.join(
-                            max_id_subquery,
-                            HostHwRec.id == max_id_subquery.c.max_id,
-                        )
-                    )
-                    .subquery()
-                )
-
                 # 1. 查询总数
                 count_stmt = select(func.count(HostRec.id)).where(and_(*base_conditions))
                 count_result = await session.execute(count_stmt)
                 total = count_result.scalar() or 0
 
                 # 2. 分页查询：按 created_time 倒序排序，LEFT JOIN 获取 diff_state
+                # 优化：直接关联 host_hw_rec 表，无需子查询（假设每个 host 最多只有一条 sync_state=1 的记录）
                 pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
 
                 stmt = (
@@ -778,11 +1490,15 @@ class AdminApprHostService:
                         HostRec.mac_addr,
                         HostRec.host_state,
                         HostRec.subm_time,
-                        latest_hw_subquery.c.diff_state,
+                        HostHwRec.diff_state,
                     )
                     .outerjoin(
-                        latest_hw_subquery,
-                        HostRec.id == latest_hw_subquery.c.host_id,
+                        HostHwRec,
+                        and_(
+                            HostHwRec.host_id == HostRec.id,
+                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
+                            HostHwRec.del_flag == 0,
+                        ),
                     )
                     .where(and_(*base_conditions))
                     .order_by(HostRec.created_time.desc())
@@ -994,16 +1710,15 @@ class AdminApprHostService:
     ) -> AdminApprHostApproveResponse:
         """同意启用主机（管理后台）
 
-        业务逻辑（diff_type = 2 时）：
-        1. 根据传入的 host_ids，查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
-        2. 最新一条数据：sync_state = 2, appr_time = now(), appr_by = appr_by
-        3. 其他数据：sync_state = 4
-        4. 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = host_hw_rec 最新一条数据的 id, subm_time = now()
-        5. TODO: 调用外部 API 同步 host_hw_rec 最新数据的 hw_info
+        业务逻辑：
+        - diff_type is None: 手动启用，仅更新本地状态（状态 5/6 时调用外部接口）
+        - diff_type == 1 or 2: 硬件变更审批，需要处理硬件记录并调用外部接口
 
         Args:
             request: 同意启用请求参数（diff_type, host_ids）
             appr_by: 审批人ID（从 token 中获取）
+            locale: 语言偏好
+            http_request: FastAPI Request 对象
 
         Returns:
             AdminApprHostApproveResponse: 包含处理结果和统计信息
@@ -1020,78 +1735,14 @@ class AdminApprHostService:
             },
         )
 
-        # 参数验证和 host_ids 处理
-        host_ids_to_process: List[int] = []
+        # 1. 验证参数并解析 host_ids
+        host_ids_to_process = await self._validate_and_resolve_host_ids(request, locale)
 
-        if request.diff_type is None:
-            # diff_type 为空时，代表手动停用数据，host_ids 为必填
-            if not request.host_ids or len(request.host_ids) == 0:
-                raise BusinessError(
-                    message="当 diff_type 为空时，host_ids 为必填参数",
-                    message_key="error.host.appr_host_ids_required",
-                    error_code="HOST_IDS_REQUIRED",
-                    code=ServiceErrorCodes.VALIDATION_ERROR,
-                    http_status_code=400,
-                )
-            host_ids_to_process = request.host_ids
-
-        elif request.diff_type == 2:
-            # diff_type = 2 时，host_ids 为必填
-            if not request.host_ids or len(request.host_ids) == 0:
-                raise BusinessError(
-                    message="当 diff_type=2 时，host_ids 为必填参数",
-                    message_key="error.host.appr_host_ids_required",
-                    error_code="HOST_IDS_REQUIRED",
-                    code=ServiceErrorCodes.VALIDATION_ERROR,
-                    http_status_code=400,
-                )
-            host_ids_to_process = request.host_ids
-
-        elif request.diff_type == 1:
-            # diff_type = 1 时，如果传入了 host_ids，逻辑与 diff_type = 2 相同
-            if request.host_ids and len(request.host_ids) > 0:
-                host_ids_to_process = request.host_ids
-            else:
-                # 如果未传入 host_ids，需要查询所有 host_hw_rec 表 sync_state = 1, diff_state = 1 数据的 host_id
-                session_factory = mariadb_manager.get_session()
-                async with session_factory() as temp_session:
-                    hw_query_stmt = (
-                        select(HostHwRec.host_id)
-                        .where(
-                            and_(
-                                HostHwRec.sync_state == 1,
-                                HostHwRec.diff_state == 1,
-                                HostHwRec.del_flag == 0,
-                            )
-                        )
-                        .distinct()
-                    )
-                    hw_query_result = await temp_session.execute(hw_query_stmt)
-                    host_ids_raw = hw_query_result.scalars().all()
-                    host_ids_to_process = [hid for hid in set(host_ids_raw) if hid is not None]
-
-                if not host_ids_to_process:
-                    logger.info(
-                        "未找到符合条件的主机（diff_type=1, sync_state=1, diff_state=1）",
-                        extra={"diff_type": request.diff_type},
-                    )
-                    return AdminApprHostApproveResponse(
-                        success_count=0,
-                        failed_count=0,
-                        results=[],
-                    )
-        else:
-            raise BusinessError(
-                message=t(
-                    "error.host.diff_type_not_supported",
-                    locale=locale,
-                    diff_type=request.diff_type,
-                    default=f"不支持的 diff_type: {request.diff_type}",
-                ),
-                message_key="error.host.diff_type_not_supported",
-                error_code="DIFF_TYPE_NOT_SUPPORTED",
-                code=ServiceErrorCodes.VALIDATION_ERROR,
-                http_status_code=400,
+        if not host_ids_to_process:
+            return AdminApprHostApproveResponse(
+                success_count=0,
+                failed_count=0,
+                results=[],
             )
 
         session_factory = mariadb_manager.get_session()
@@ -1100,10 +1751,9 @@ class AdminApprHostService:
                 success_count = 0
                 failed_count = 0
                 results: List[Dict[str, Any]] = []
-
                 now = datetime.now(timezone.utc)
 
-                # 优化：批量查询所有主机信息（避免 N+1 查询）
+                # 2. 批量查询所有主机信息（避免 N+1 查询）
                 host_stmt = select(HostRec).where(
                     and_(
                         HostRec.id.in_(host_ids_to_process),
@@ -1113,27 +1763,33 @@ class AdminApprHostService:
                 host_result = await session.execute(host_stmt)
                 host_recs_map = {host.id: host for host in host_result.scalars().all()}
 
-                # 声明 host_updates 变量（用于两个分支）
+                # 3. 根据 diff_type 处理
                 host_updates: Dict[int, Dict[str, Any]] = {}
+                hw_updates: Dict[int, Dict[str, Any]] = {}
 
-                # 如果 diff_type 为空，只更新 host_rec 表，不处理硬件记录
                 if request.diff_type is None:
-                    # 手动停用数据：只更新 host_rec 表
+                    # 手动启用：处理每个主机
+                    # 查询需要硬件记录的主机（状态 5/6）
+                    host_ids_need_hw = [
+                        host_id
+                        for host_id in host_ids_to_process
+                        if host_recs_map.get(host_id) and host_recs_map[host_id].host_state in (5, 6)
+                    ]
 
+                    # 批量查询硬件记录（仅最新一条）
+                    hw_recs_by_host = {}
+                    if host_ids_need_hw:
+                        hw_recs_by_host = await self._query_hardware_records(
+                            session, host_ids_need_hw, sync_state=None, need_latest_only=True
+                        )
+
+                    # 处理每个主机
                     for host_id in host_ids_to_process:
                         try:
-                            # 验证主机是否存在且未删除
-                            host_rec = host_recs_map.get(host_id)
+                            # 验证主机存在
+                            host_rec = self._validate_host_exists(host_id, host_recs_map, locale)
                             if not host_rec:
                                 error_message = t("error.host.not_found", locale=locale, host_id=host_id)
-                                logger.warning(
-                                    "主机不存在或已删除，跳过停用",
-                                    extra={
-                                        "host_id": host_id,
-                                        "appr_by": appr_by,
-                                        "error_message": error_message,
-                                    },
-                                )
                                 results.append(
                                     {
                                         "host_id": host_id,
@@ -1144,28 +1800,111 @@ class AdminApprHostService:
                                 failed_count += 1
                                 continue
 
-                            # 收集主机更新信息（手动停用：appr_state = 1, host_state = 0）
-                            host_updates[host_id] = {
-                                "appr_state": APPR_STATE_ENABLE,
-                                "host_state": HOST_STATE_FREE,
-                            }
+                            # 处理手动启用
+                            hw_recs = hw_recs_by_host.get(host_id, [])
+                            process_result = await self._process_manual_enable(
+                                host_id, host_rec, hw_recs, appr_by, http_request, locale
+                            )
 
+                            host_updates[host_id] = process_result["host_update"]
                             results.append(
                                 {
-                                    "host_id": host_id,
-                                    "success": True,
-                                    "message": t(
-                                        "success.host.manual_disabled",
-                                        locale=locale,
-                                        default="主机启用成功",
-                                    ),
+                                    "host_id": process_result["host_id"],
+                                    "success": process_result["success"],
+                                    "message": process_result["message"],
                                 }
                             )
                             success_count += 1
 
                         except Exception as e:
                             logger.error(
-                                f"处理主机 {host_id} 时发生异常",
+                                "处理主机时发生异常",
+                                extra={
+                                    "host_id": host_id,
+                                    "error": str(e),
+                                    "error_type": type(e).__name__,
+                                },
+                                exc_info=True,
+                            )
+                            results.append(
+                                {
+                                    "host_id": host_id,
+                                    "success": False,
+                                    "message": f"处理失败: {str(e)}",
+                                }
+                            )
+                            failed_count += 1
+                            continue
+
+                    # 批量更新 host_rec 表
+                    await self._bulk_update_host_records(session, host_updates)
+
+                    # 提交事务
+                    await session.commit()
+
+                    return AdminApprHostApproveResponse(
+                        success_count=success_count,
+                        failed_count=failed_count,
+                        results=results,
+                    )
+
+                else:
+                    # 硬件变更审批（diff_type == 1 or 2）
+                    # 批量查询硬件记录
+                    hw_recs_by_host = await self._query_hardware_records(
+                        session, host_ids_to_process, sync_state=SYNC_STATE_WAIT, need_latest_only=False
+                    )
+
+                    logger.debug(
+                        "批量查询硬件记录完成",
+                        extra={
+                            "host_ids_count": len(host_ids_to_process),
+                            "found_hosts_count": len(hw_recs_by_host),
+                        },
+                    )
+
+                    # 处理每个主机
+                    for host_id in host_ids_to_process:
+                        try:
+                            # 验证主机存在
+                            host_rec = self._validate_host_exists(host_id, host_recs_map, locale)
+                            if not host_rec:
+                                error_message = t("error.host.not_found", locale=locale, host_id=host_id)
+                                results.append(
+                                    {
+                                        "host_id": host_id,
+                                        "success": False,
+                                        "message": error_message,
+                                    }
+                                )
+                                failed_count += 1
+                                continue
+
+                            # 处理硬件变更审批
+                            hw_recs = hw_recs_by_host.get(host_id, [])
+                            process_result = await self._process_hardware_change_approval(
+                                host_id, host_rec, hw_recs, appr_by, http_request, locale, session
+                            )
+
+                            host_updates[host_id] = process_result["host_update"]
+                            hw_updates.update(process_result["hw_updates"])
+                            results.append(
+                                {
+                                    "host_id": process_result["host_id"],
+                                    "success": process_result["success"],
+                                    "message": process_result["message"],
+                                    "hw_id": process_result["hw_id"],
+                                    "hardware_id": process_result["hardware_id"],
+                                }
+                            )
+                            success_count += 1
+
+                        except BusinessError:
+                            # 业务错误直接抛出
+                            raise
+                        except Exception as e:
+                            logger.error(
+                                "处理主机时发生异常",
                                 extra={
                                     "host_id": host_id,
                                     "error": str(e),
@@ -1189,356 +1928,11 @@ class AdminApprHostService:
                             failed_count += 1
                             continue
 
-                    # 批量更新 host_rec 表
-                    if host_updates:
-                        bulk_update_data = [
-                            {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
-                        ]
+                    # 批量更新硬件记录
+                    await self._bulk_update_hardware_records(session, hw_updates, now, appr_by)
 
-                        def _bulk_update(sync_session: Any) -> None:
-                            sync_session.bulk_update_mappings(HostRec, bulk_update_data)
-
-                        await session.run_sync(_bulk_update)
-
-                    # 提交事务
-                    await session.commit()
-
-                    logger.info(
-                        "手动停用主机处理完成",
-                        extra={
-                            "total_count": len(host_ids_to_process),
-                            "success_count": success_count,
-                            "failed_count": failed_count,
-                            "appr_by": appr_by,
-                        },
-                    )
-
-                    # 构建响应
-                    response_data = AdminApprHostApproveResponse(
-                        success_count=success_count,
-                        failed_count=failed_count,
-                        results=results,
-                    )
-
-                    return response_data
-
-                # diff_type = 1 或 2 时，需要处理硬件记录
-                # 优化：批量查询所有硬件记录（避免 N+1 查询）
-                # 查询所有符合条件的硬件记录（包括最新和其他）
-                hw_rec_stmt = (
-                    select(HostHwRec)
-                    .where(
-                        and_(
-                            HostHwRec.host_id.in_(host_ids_to_process),
-                            HostHwRec.sync_state == 1,
-                            HostHwRec.del_flag == 0,
-                        )
-                    )
-                    .order_by(HostHwRec.host_id, desc(HostHwRec.created_time), desc(HostHwRec.id))
-                )
-                hw_rec_result = await session.execute(hw_rec_stmt)
-                all_hw_recs = hw_rec_result.scalars().all()
-
-                logger.debug(
-                    "批量查询硬件记录完成",
-                    extra={
-                        "host_ids_count": len(host_ids_to_process),
-                        "found_hw_recs_count": len(all_hw_recs),
-                        "query_conditions": {
-                            "sync_state": 1,
-                            "del_flag": 0,
-                        },
-                    },
-                )
-
-                # 按 host_id 组织硬件记录
-                hw_recs_by_host: Dict[int, List[HostHwRec]] = {}
-                for hw_rec in all_hw_recs:
-                    if hw_rec.host_id not in hw_recs_by_host:
-                        hw_recs_by_host[hw_rec.host_id] = []
-                    hw_recs_by_host[hw_rec.host_id].append(hw_rec)
-
-                # 准备批量更新的数据
-                latest_hw_ids_to_update: List[int] = []
-                other_hw_ids_to_update: List[int] = []
-                # host_updates 已在上面声明，这里直接使用
-                # 存储 hardware_id 到 hw_rec_id 的映射（用于更新 host_hw_rec 表）
-                hw_rec_hardware_id_map: Dict[int, str] = {}
-
-                # 处理每个主机
-                for host_id in host_ids_to_process:
-                    try:
-                        # 1. 验证主机是否存在且未删除
-                        host_rec = host_recs_map.get(host_id)
-                        if not host_rec:
-                            error_message = t("error.host.not_found", locale=locale, host_id=host_id)
-                            logger.warning(
-                                "主机不存在或已删除，跳过审批",
-                                extra={
-                                    "host_id": host_id,
-                                    "diff_type": request.diff_type,
-                                    "appr_by": appr_by,
-                                    "error_message": error_message,
-                                },
-                            )
-                            results.append(
-                                {
-                                    "host_id": host_id,
-                                    "success": False,
-                                    "message": error_message,
-                                }
-                            )
-                            failed_count += 1
-                            continue
-
-                        # 2. 获取该主机的硬件记录
-                        hw_recs = hw_recs_by_host.get(host_id, [])
-
-                        if not hw_recs:
-                            # 调试：查询该主机的所有硬件记录（不限制 sync_state）以帮助排查问题
-                            debug_hw_stmt = (
-                                select(HostHwRec)
-                                .where(
-                                    and_(
-                                        HostHwRec.host_id == host_id,
-                                        HostHwRec.del_flag == 0,
-                                    )
-                                )
-                                .order_by(desc(HostHwRec.created_time), desc(HostHwRec.id))
-                            )
-                            debug_hw_result = await session.execute(debug_hw_stmt)
-                            debug_hw_recs = debug_hw_result.scalars().all()
-
-                            # 统计不同 sync_state 的记录数量
-                            sync_state_stats = {}
-                            for hw_rec in debug_hw_recs:
-                                sync_state = hw_rec.sync_state
-                                if sync_state not in sync_state_stats:
-                                    sync_state_stats[sync_state] = 0
-                                sync_state_stats[sync_state] += 1
-
-                            error_message = t(
-                                "error.host.hardware_not_found",
-                                locale=locale,
-                                host_id=host_id,
-                                default=f"未找到待审批的硬件记录（ID: {host_id}）",
-                            )
-                            logger.warning(
-                                "未找到待审批的硬件记录，跳过审批",
-                                extra={
-                                    "host_id": host_id,
-                                    "diff_type": request.diff_type,
-                                    "appr_by": appr_by,
-                                    "error_message": error_message,
-                                    "host_exists": True,  # 主机存在但硬件记录不存在
-                                    "debug_info": {
-                                        "total_hw_recs": len(debug_hw_recs),
-                                        "sync_state_stats": sync_state_stats,
-                                        "query_condition": {
-                                            "sync_state": 1,
-                                            "del_flag": 0,
-                                        },
-                                        "latest_hw_rec": {
-                                            "id": debug_hw_recs[0].id if debug_hw_recs else None,
-                                            "sync_state": debug_hw_recs[0].sync_state if debug_hw_recs else None,
-                                            "del_flag": debug_hw_recs[0].del_flag if debug_hw_recs else None,
-                                            "created_time": (
-                                                debug_hw_recs[0].created_time.isoformat()
-                                                if debug_hw_recs and debug_hw_recs[0].created_time
-                                                else None
-                                            ),
-                                        },
-                                    },
-                                },
-                            )
-                            results.append(
-                                {
-                                    "host_id": host_id,
-                                    "success": False,
-                                    "message": error_message,
-                                }
-                            )
-                            failed_count += 1
-                            continue
-
-                        # 3. 获取最新一条数据（已按时间倒序排列）
-                        latest_hw_rec = hw_recs[0]
-                        latest_hw_id = latest_hw_rec.id
-
-                        # 4. 调用外部硬件接口（新增或修改）
-                        # ✅ 修复：先调用外部接口，成功后再收集需要更新的数据
-                        hardware_id_result: Optional[str] = None
-                        # 初始化 hardware_id_result 为 None，如果外部接口调用成功，会更新此值
-                        if latest_hw_rec.hw_info:
-                            try:
-                                # 判断是新增还是修改（通过 host_rec.hardware_id 是否为空）
-                                existing_hardware_id = host_rec.hardware_id
-
-                                # 调用外部硬件接口（传递完整的 hw_info）
-                                hardware_id_result = await _call_hardware_api(
-                                    hardware_id=existing_hardware_id,
-                                    hw_info=latest_hw_rec.hw_info,
-                                    request=http_request,
-                                    user_id=appr_by,
-                                    locale=locale,
-                                    host_id=host_id,  # 传递 host_id 用于分布式锁
-                                )
-
-                                logger.info(
-                                    "外部硬件接口调用成功",
-                                    extra={
-                                        "host_id": host_id,
-                                        "hardware_id": hardware_id_result,
-                                        "is_new": existing_hardware_id is None,
-                                    },
-                                )
-
-                            except BusinessError:
-                                # 业务错误直接抛出，不收集更新数据
-                                raise
-                            except Exception as e:
-                                logger.error(
-                                    "调用外部硬件接口失败",
-                                    extra={
-                                        "host_id": host_id,
-                                        "error": str(e),
-                                        "error_type": type(e).__name__,
-                                    },
-                                    exc_info=True,
-                                )
-                                raise BusinessError(
-                                    message=f"调用外部硬件接口失败: {str(e)}",
-                                    message_key="error.hardware.api_call_failed",
-                                    error_code="HARDWARE_API_CALL_FAILED",
-                                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                                    http_status_code=500,
-                                    details={
-                                        "host_id": host_id,
-                                        "error": str(e),
-                                    },
-                                )
-                        else:
-                            logger.warning(
-                                "硬件记录中缺少 hw_info，跳过外部硬件接口调用",
-                                extra={
-                                    "host_id": host_id,
-                                    "hw_rec_id": latest_hw_id,
-                                },
-                            )
-
-                        # 5. ✅ 修复：只有外部接口调用成功（或跳过）后，才收集需要更新的数据
-                        # 收集需要更新的最新硬件记录ID
-                        latest_hw_ids_to_update.append(latest_hw_id)
-
-                        # 收集其他需要更新的硬件记录ID
-                        if len(hw_recs) > 1:
-                            other_hw_ids_to_update.extend([hw.id for hw in hw_recs[1:]])
-
-                        # 6. 收集主机更新信息（包含 hardware_id）
-                        host_updates[host_id] = {
-                            "appr_state": APPR_STATE_ENABLE,
-                            "host_state": HOST_STATE_FREE,
-                            "hw_id": latest_hw_id,
-                            "subm_time": now,
-                        }
-                        # 如果外部接口返回了 hardware_id，更新到 host_rec
-                        if hardware_id_result:
-                            host_updates[host_id]["hardware_id"] = hardware_id_result
-
-                        # 7. 收集硬件记录更新信息（包含 hardware_id）
-                        # 如果外部接口返回了 hardware_id，需要更新到 host_hw_rec
-                        if hardware_id_result:
-                            hw_rec_hardware_id_map[latest_hw_id] = hardware_id_result
-
-                        results.append(
-                            {
-                                "host_id": host_id,
-                                "success": True,
-                                "message": t("success.host.approved", locale=locale, default="主机启用成功"),
-                                "hw_id": latest_hw_id,
-                                "hardware_id": hardware_id_result,
-                            }
-                        )
-                        success_count += 1
-
-                    except Exception as e:
-                        logger.error(
-                            f"处理主机 {host_id} 时发生异常",
-                            extra={
-                                "host_id": host_id,
-                                "error": str(e),
-                                "error_type": type(e).__name__,
-                            },
-                            exc_info=True,
-                        )
-                        results.append(
-                            {
-                                "host_id": host_id,
-                                "success": False,
-                                "message": t(
-                                    "error.host.process_failed",
-                                    locale=locale,
-                                    host_id=host_id,
-                                    error=str(e),
-                                    default=f"处理失败: {str(e)}",
-                                ),
-                            }
-                        )
-                        failed_count += 1
-                        continue
-
-                # 批量更新操作
-                if latest_hw_ids_to_update:
-                    # 批量更新最新硬件记录
-                    # 如果有 hardware_id 需要更新，需要逐个更新（因为每个记录的 hardware_id 可能不同）
-                    if hw_rec_hardware_id_map:
-                        # 逐个更新包含 hardware_id 的记录
-                        for hw_rec_id in latest_hw_ids_to_update:
-                            update_values = {
-                                "sync_state": 2,
-                                "appr_time": now,
-                                "appr_by": appr_by,
-                            }
-                            # 如果该记录有 hardware_id，添加到更新值中
-                            if hw_rec_id in hw_rec_hardware_id_map:
-                                update_values["hardware_id"] = hw_rec_hardware_id_map[hw_rec_id]
-
-                            update_stmt = (
-                                update(HostHwRec)
-                                .where(HostHwRec.id == hw_rec_id)
-                                .values(**update_values)
-                            )
-                            await session.execute(update_stmt)
-                    else:
-                        # 没有 hardware_id 需要更新，使用批量更新
-                        update_latest_stmt = (
-                            update(HostHwRec)
-                            .where(HostHwRec.id.in_(latest_hw_ids_to_update))
-                            .values(
-                                sync_state=2,
-                                appr_time=now,
-                                appr_by=appr_by,
-                            )
-                        )
-                        await session.execute(update_latest_stmt)
-
-                if other_hw_ids_to_update:
-                    # 批量更新其他硬件记录
-                    update_other_stmt = (
-                        update(HostHwRec).where(HostHwRec.id.in_(other_hw_ids_to_update)).values(sync_state=4)
-                    )
-                    await session.execute(update_other_stmt)
-
-                if host_updates:
-                    bulk_update_data = [
-                        {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
-                    ]
-                    # 使用同步会话的 bulk_update_mappings 进行批量更新
-
-                    def _bulk_update(sync_session: Any) -> None:
-                        sync_session.bulk_update_mappings(HostRec, bulk_update_data)
-
-                    await session.run_sync(_bulk_update)
+                    # 批量更新主机记录
+                    await self._bulk_update_host_records(session, host_updates)
 
                 # 提交事务
                 await session.commit()
@@ -1554,123 +1948,12 @@ class AdminApprHostService:
                     },
                 )
 
-                # 邮件通知逻辑（在所有数据处理完毕后）
+                # 邮件通知（仅硬件变更审批时发送）
                 email_notification_errors: List[str] = []
-                try:
-                    # 1. 查询 sys_conf 表 conf_key = "email" 的 conf_val
-                    email_conf_stmt = select(SysConf).where(
-                        and_(
-                            SysConf.conf_key == "email",
-                            SysConf.del_flag == 0,
-                            SysConf.state_flag == 0,  # 启用状态
-                        )
-                    )
-                    email_conf_result = await session.execute(email_conf_stmt)
-                    email_conf = email_conf_result.scalar_one_or_none()
+                if request.diff_type in (1, 2):
+                    email_notification_errors = await self._send_approval_email(session, results, appr_by, locale)
 
-                    if email_conf and email_conf.conf_val:
-                        email_str = email_conf.conf_val.strip()
-                        if email_str:
-                            # 2. 分割邮箱地址（支持逗号分隔）
-                            email_list = [e.strip() for e in email_str.split(",") if e.strip()]
-
-                            if email_list:
-                                # 3. 查询 host_rec 表 id in (host_ids) 的数据，获取 hardware_id 和 host_ip
-                                successful_host_ids = [
-                                    r["host_id"] for r in results if r.get("success", False) and r.get("host_id")
-                                ]
-
-                                if successful_host_ids:
-                                    host_info_stmt = select(HostRec).where(
-                                        and_(
-                                            HostRec.id.in_(successful_host_ids),
-                                            HostRec.del_flag == 0,
-                                        )
-                                    )
-                                    host_info_result = await session.execute(host_info_stmt)
-                                    host_recs = host_info_result.scalars().all()
-
-                                    # 4. 查询 sys_user 表 id = appr_by 的数据，获取 user_name 和 user_account
-                                    user_stmt = select(SysUser).where(
-                                        and_(
-                                            SysUser.id == appr_by,
-                                            SysUser.del_flag == 0,
-                                        )
-                                    )
-                                    user_result = await session.execute(user_stmt)
-                                    sys_user = user_result.scalar_one_or_none()
-
-                                    user_name = sys_user.user_name if sys_user else ""
-                                    user_account = sys_user.user_account if sys_user else ""
-
-                                    # 5. 构建邮件内容
-                                    hardware_ids = [h.hardware_id for h in host_recs if h.hardware_id]
-                                    host_ips = [h.host_ip for h in host_recs if h.host_ip]
-
-                                    # 构建主机信息表格
-                                    host_table = _build_host_table(hardware_ids, host_ips)
-
-                                    # 使用多语言支持（从参数传入）
-                                    subject = t(
-                                        "email.host.approve.subject",
-                                        locale=locale,
-                                        default="变更 Host 通过硬件变更审核",
-                                    )
-
-                                    # 构建邮件正文（使用常量模板）
-                                    content = t(
-                                        "email.host.approve.content",
-                                        locale=locale,
-                                        default=EMAIL_HOST_APPROVE_CONTENT_TEMPLATE,
-                                        user_name=user_name,
-                                        user_account=user_account,
-                                        host_table=host_table,
-                                    )
-
-                                    # 6. 发送邮件（失败不影响全局事务）
-                                    try:
-                                        email_result = await send_email(
-                                            to_emails=email_list,
-                                            subject=subject,
-                                            content=content,
-                                            locale=locale,
-                                        )
-                                        if email_result.get("failed_count", 0) > 0:
-                                            email_notification_errors.extend(email_result.get("errors", []))
-                                        logger.info(
-                                            "邮件通知发送完成",
-                                            extra={
-                                                "sent_count": email_result.get("sent_count", 0),
-                                                "failed_count": email_result.get("failed_count", 0),
-                                                "recipient_count": len(email_list),
-                                            },
-                                        )
-                                    except Exception as email_error:
-                                        error_msg = f"邮件发送异常: {str(email_error)}"
-                                        email_notification_errors.append(error_msg)
-                                        logger.warning(
-                                            "邮件发送异常（不影响事务）",
-                                            extra={
-                                                "error": str(email_error),
-                                                "error_type": type(email_error).__name__,
-                                            },
-                                            exc_info=True,
-                                        )
-
-                except Exception as email_query_error:
-                    # 邮件查询或发送失败不影响全局事务
-                    error_msg = f"邮件通知处理异常: {str(email_query_error)}"
-                    email_notification_errors.append(error_msg)
-                    logger.warning(
-                        "邮件通知处理异常（不影响事务）",
-                        extra={
-                            "error": str(email_query_error),
-                            "error_type": type(email_query_error).__name__,
-                        },
-                        exc_info=True,
-                    )
-
-                # 构建响应，包含邮件通知错误信息（如果有）
+                # 构建响应
                 response_data = AdminApprHostApproveResponse(
                     success_count=success_count,
                     failed_count=failed_count,
@@ -1679,7 +1962,6 @@ class AdminApprHostService:
 
                 # 如果有邮件通知错误，添加到响应中（不影响成功状态）
                 if email_notification_errors:
-                    # 在 results 中添加邮件通知错误信息
                     response_data.results.append(
                         {
                             "type": "email_notification",

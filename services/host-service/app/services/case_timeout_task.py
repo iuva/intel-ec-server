@@ -648,6 +648,7 @@ class CaseTimeoutTaskService:
                             and_(
                                 HostRec.id == host_id,
                                 HostRec.del_flag == 0,
+                                HostRec.host_state < 5,  # 保护非业务状态
                             )
                         )
                         .values(

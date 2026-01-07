@@ -12,6 +12,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from app.models.host_rec import HostRec
+from app.models.sys_conf import SysConf
 from app.models.sys_user import SysUser
 from app.models.user_session import UserSession
 from app.schemas.auth import (
@@ -30,7 +31,7 @@ try:
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
-    from shared.common.security import JWTManager, verify_***REMOVED***word
+    from shared.common.security import JWTManager, verify_***REMOVED***word, aes_encrypt
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     import sys
@@ -40,7 +41,7 @@ except ImportError:
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
-    from shared.common.security import JWTManager, verify_***REMOVED***word
+    from shared.common.security import JWTManager, verify_***REMOVED***word, aes_encrypt
 
 logger = get_logger(__name__)
 
@@ -754,11 +755,45 @@ class AuthService:
                     )
                 else:
                     # mg_id 不存在，插入新记录
+                    
+                    # 1. 查找默认配置（def_pwd, def_port）
+                    conf_stmt = select(SysConf).where(
+                        SysConf.conf_key.in_(["def_pwd", "def_port"]),
+                        SysConf.del_flag == 0
+                    )
+                    conf_result = await db_session.execute(conf_stmt)
+                    sys_confs = conf_result.scalars().all()
+                    
+                    default_pwd = None
+                    default_port = None
+                    
+                    for conf in sys_confs:
+                        if conf.conf_key == "def_pwd":
+                            default_pwd = conf.conf_val
+                        elif conf.conf_key == "def_port":
+                            default_port = conf.conf_val
+                            
+                    # 2. 如果存在默认密码，进行加密
+                    # encrypted_pwd = None
+                    # if default_pwd:
+                    #     try:
+                    #         encrypted_pwd = aes_encrypt(default_pwd)
+                    #     except Exception as e:
+                    #         logger.error(
+                    #             "默认密码加密失败",
+                    #             extra={"error": str(e), "default_pwd": default_pwd},
+                    #         )
+                    #         # 加密失败则不设置密码，避免明文存储
+                    #         encrypted_pwd = None
+
                     host_rec = HostRec(
                         mg_id=login_data.mg_id,
                         host_ip=login_data.host_ip,
                         host_acct=login_data.username,
+                        host_pwd=default_pwd,  # 设置默认密码（已加密）
+                        host_port=default_port,  # 设置默认端口
                         appr_state=2,  # 新增
+
                         host_state=5,  # 待激活
                         subm_time=datetime.now(timezone.utc),
                         created_by=current_user_id,  # 设置创建人

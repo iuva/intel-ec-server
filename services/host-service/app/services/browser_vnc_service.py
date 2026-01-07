@@ -539,6 +539,22 @@ class BrowserVNCService:
                         http_status_code=400,
                     )
 
+                # ✅ 检查主机状态：只有业务状态 (< 4) 允许 VNC 连接
+                if host_rec.host_state is not None and host_rec.host_state >= 4:
+                    logger.warning(
+                        "主机处于非业务状态，禁止 VNC 连接",
+                        extra={
+                            "host_rec_id": host_rec_id,
+                            "host_state": host_rec.host_state,
+                        },
+                    )
+                    raise BusinessError(
+                        message="当前主机状态不支持 VNC 连接",
+                        error_code="HOST_STATE_NOT_ALLOWED",
+                        code=ServiceErrorCodes.HOST_NOT_Enabled, # Reuse or similar code
+                        http_status_code=400,
+                    )
+
                 # 检查 VNC 连接信息是否完整
                 if not host_rec.host_ip or not host_rec.host_port:
                     logger.warning(

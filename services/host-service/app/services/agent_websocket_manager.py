@@ -19,7 +19,9 @@ from starlette.websockets import WebSocketState
 
 # 使用 try-except 方式处理路径导入
 try:
+    from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_OFFLINE
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_rec import HostRec
     from app.schemas.host import HostStatusUpdate
     from app.schemas.websocket_message import MessageType
 
@@ -32,6 +34,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.host_exec_log import HostExecLog
+    from app.models.host_rec import HostRec
     from app.schemas.host import HostStatusUpdate
     from app.schemas.websocket_message import MessageType
 
@@ -216,6 +219,56 @@ class AgentWebSocketManager:
         # 更新 TCP 状态为 2 (监听/连接建立)
         await self.host_service.update_tcp_state(agent_id, tcp_state=2)
 
+        # ✅ 处理重连逻辑：如果 host_state 为 4 (离线)，则更新为 0 (空闲)
+        try:
+            # 1. 解析/查找 host_id_int
+            host_id_int = None
+            try:
+                host_id_int = int(agent_id)
+            except (ValueError, TypeError):
+                # 如果不是整数 ID，尝试通过 mg_id 查询
+                session_factory = mariadb_manager.get_session()
+                async with session_factory() as session:
+                    stmt = select(HostRec.id).where(
+                        and_(
+                            HostRec.mg_id == agent_id,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    result = await session.execute(stmt)
+                    host_id_int = result.scalar_one_or_none()
+
+            # 2. 如果找到有效的 host_id，检查并更新 host_state
+            if host_id_int:
+                session_factory = mariadb_manager.get_session()
+                async with session_factory() as session:
+                    # 查询当前 host_state
+                    stmt = select(HostRec.host_state).where(HostRec.id == host_id_int)
+                    result = await session.execute(stmt)
+                    current_host_state = result.scalar_one_or_none()
+
+                    if current_host_state == HOST_STATE_OFFLINE:
+                        # 更新为 HOST_STATE_FREE (0)
+                        await self.host_service.update_host_status(
+                            str(host_id_int),
+                            HostStatusUpdate(host_state=HOST_STATE_FREE)
+                        )
+                        logger.info(
+                            f"主机重连，状态从离线({HOST_STATE_OFFLINE})更新为空闲({HOST_STATE_FREE})",
+                            extra={
+                                "agent_id": agent_id,
+                                "host_id": host_id_int,
+                            },
+                        )
+
+        except Exception as e:
+            # 异常不影响连接建立，仅记录错误
+            logger.error(
+                f"处理主机重连状态更新失败: agent_id={agent_id}",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
+
         # ✅ 优化：不再为每个连接创建独立心跳任务
         # 统一心跳检查任务会在后台批量检查所有连接
         # 初始化心跳时间戳
@@ -352,9 +405,23 @@ class AgentWebSocketManager:
                         extra={"agent_id": agent_id, "error": str(e)},
                     )
 
-                # 更新主机状态为离线（使用静默方法，避免失败时影响断开流程）
+                # 更新主机状态为离线（仅当 host_state < 5 时更新）
+                # host_state < 5 为业务状态（空闲、锁定、占用、运行中、离线），需更新为离线状态以便感知连接断开
+                # host_state >= 5 为非业务状态（待激活、硬件变更、禁用、更新中），保持原状态（如重启动期间）
                 try:
-                    await self.host_service.update_host_status(agent_id, HostStatusUpdate(status="offline"))
+                    current_host = await self.host_service.get_host_by_id(agent_id)
+                    current_host_state = current_host.get("host_state")
+
+                    if current_host_state is not None and current_host_state < 5:
+                        await self.host_service.update_host_status(agent_id, HostStatusUpdate(status="offline"))
+                    else:
+                        logger.info(
+                            "Host 处于非业务状态(>=5)或状态未知，跳过更新为离线状态",
+                            extra={
+                                "agent_id": agent_id,
+                                "current_host_state": current_host_state,
+                            }
+                        )
                 except Exception as e:
                     # ✅ 改进：记录警告而不是错误，因为主机可能不存在或已被删除
                     logger.warning(

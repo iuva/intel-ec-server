@@ -6,7 +6,14 @@
 from datetime import datetime, timezone
 from typing import List, cast
 
-from app.constants.host_constants import APPR_STATE_ENABLE, HOST_STATE_FREE
+from app.constants.host_constants import (
+    APPR_STATE_ENABLE,
+    CASE_STATE_SUCCESS,
+    DEL_FLAG_USING,
+    HOST_STATE_FREE,
+    HOST_STATE_OFFLINE,
+    TCP_STATE_LISTEN,
+)
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
@@ -651,9 +658,12 @@ class BrowserHostService:
                 .where(
                     and_(
                         HostExecLog.user_id == user_id,
-                        HostExecLog.case_state != 2,  # 非成功状态
-                        HostExecLog.del_flag == 0,
-                        HostRec.del_flag == 0,
+                        HostExecLog.case_state != CASE_STATE_SUCCESS,  # 非成功状态
+                        HostExecLog.del_flag == DEL_FLAG_USING,
+                        HostRec.del_flag == DEL_FLAG_USING,
+                        HostRec.tcp_state == TCP_STATE_LISTEN,
+                        HostRec.host_state < HOST_STATE_OFFLINE,
+                        HostRec.appr_state == APPR_STATE_ENABLE,
                     )
                 )
                 .distinct()  # 去重，同一个 host_id 可能有多条失败记录
@@ -758,12 +768,14 @@ class BrowserHostService:
         session_factory = mariadb_manager.get_session()
         async with session_factory() as session:
             # 1. 先更新 host_rec 表的 host_state = 0（空闲状态）
+            # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
             update_host_rec_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id.in_(host_ids),
                         HostRec.del_flag == 0,  # 只更新未删除的记录
+                        HostRec.host_state < 5,  # 保护非业务状态
                     )
                 )
                 .values(host_state=HOST_STATE_FREE)  # 0 = 空闲状态

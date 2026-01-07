@@ -13,6 +13,11 @@ import time
 from typing import List, Optional, TYPE_CHECKING, cast
 
 import httpx
+from app.constants.host_constants import (
+    APPR_STATE_ENABLE,
+    HOST_STATE_FREE,
+    TCP_STATE_LISTEN,
+)
 from app.models.host_rec import HostRec
 from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, HardwareHostData, QueryAvailableHostsRequest
 from sqlalchemy import and_, select
@@ -396,24 +401,62 @@ class HostDiscoveryService:
         # 步骤 7: 进行分页切片 - 返回前 page_size 条数据
         paginated_hosts = all_available_hosts[: request.page_size]
 
-        # ✅ 如果返回为空，添加一条测试数据
+        # ✅ 如果返回为空，查询数据库里的有效数据
         if not paginated_hosts:
             logger.info(
-                "查询结果为空，添加测试数据",
+                "查询结果为空，降级查询数据库有效数据",
                 extra={
                     "tc_id": request.tc_id,
                     "cycle_name": request.cycle_name,
                 },
             )
-            # 创建测试主机数据
-            test_host = AvailableHostInfo(
-                host_rec_id="1111111",  # 测试主机ID
-                user_name="ccr\\sys_eval",  # 用户名（注意转义反斜杠）
-                host_ip="10.239.168.184",  # 主机IP
-            )
-            paginated_hosts = [test_host]
-            # 更新总数（包含测试数据）
-            all_available_hosts = [test_host]
+
+            # 从本地数据库查询有效主机
+            # 条件：host_state=0(空闲), appr_state=1(启用), del_flag=0(未删除), tcp_state=2(监听)
+            session_factory = mariadb_manager.get_session()
+            async with session_factory() as session:
+                fallback_stmt = (
+                    select(HostRec)
+                    .where(
+                        and_(
+                            HostRec.host_state == HOST_STATE_FREE,
+                            HostRec.appr_state == APPR_STATE_ENABLE,
+                            HostRec.del_flag == 0,
+                            HostRec.tcp_state == TCP_STATE_LISTEN,
+                        )
+                    )
+                    .limit(request.page_size)  # 获取一页数据
+                )
+
+                fallback_result = await session.execute(fallback_stmt)
+                fallback_hosts: List[HostRec] = fallback_result.scalars().all()
+
+                if fallback_hosts:
+                    paginated_hosts = [
+                        AvailableHostInfo(
+                            host_rec_id=str(h.id),  # 使用 alias host_rec_id
+                            user_name=h.host_acct or "",  # 使用 alias user_name
+                            host_ip=h.host_ip or "",
+                        )
+                        for h in fallback_hosts
+                    ]
+                    # 更新总数
+                    all_available_hosts = paginated_hosts
+
+                    logger.info(
+                        "降级查询成功，获取到有效主机",
+                        extra={
+                            "count": len(paginated_hosts),
+                            "first_host_id": paginated_hosts[0].id if paginated_hosts else None
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "降级查询未找到有效主机",
+                        extra={
+                            "tc_id": request.tc_id,
+                        },
+                    )
 
         # 步骤 8: 确定是否有下一页
         has_next = len(all_available_hosts) > request.page_size

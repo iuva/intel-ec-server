@@ -1088,18 +1088,28 @@ class AgentReportService:
                         )
 
                 elif vnc_state == 2:  # 连接断开/失败
-                    # ✅ 当 vnc_state = 2 时，不需要做状态判断，直接更新为空闲状态
-                    new_host_state = HOST_STATE_FREE  # 0 = 空闲
-                    updated = True
-                    logger.info(
-                        "VNC连接断开/失败，主机状态更新为空闲(0)",
-                        extra={
-                            "host_id": host_id,
-                            "old_host_state": old_host_state,
-                            "new_host_state": new_host_state,
-                            "vnc_state": vnc_state,
-                        },
-                    )
+                    # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
+                    if current_host_state is not None and current_host_state < 5:
+                        new_host_state = HOST_STATE_FREE  # 0 = 空闲
+                        updated = True
+                        logger.info(
+                            "VNC连接断开/失败，主机状态更新为空闲(0)",
+                            extra={
+                                "host_id": host_id,
+                                "old_host_state": old_host_state,
+                                "new_host_state": new_host_state,
+                                "vnc_state": vnc_state,
+                            },
+                        )
+                    else:
+                        logger.info(
+                            "VNC连接断开/失败，但主机处于非业务状态(>=5)，保持原状态",
+                            extra={
+                                "host_id": host_id,
+                                "current_host_state": current_host_state,
+                                "vnc_state": vnc_state,
+                            },
+                        )
 
 
                 # 4. 如果需要更新，执行更新操作
@@ -1345,7 +1355,19 @@ class AgentReportService:
                         old_host_state = host_rec.host_state
                         old_agent_ver = host_rec.agent_ver
 
-                        update_values: Dict[str, Any] = {"host_state": HOST_STATE_FREE}
+                        update_values: Dict[str, Any] = {}
+                        
+                        # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
+                        if old_host_state < 5:
+                            update_values["host_state"] = HOST_STATE_FREE
+                        else:
+                            logger.info(
+                                "主机处于非业务状态(>=5)，OTA 更新成功后不重置为空闲状态",
+                                extra={
+                                    "host_id": host_id,
+                                    "host_state": old_host_state,
+                                },
+                            )
                         if agent_ver:
                             # 限制 agent_ver 长度为 10
                             update_values["agent_ver"] = agent_ver[:10] if len(agent_ver) > 10 else agent_ver
