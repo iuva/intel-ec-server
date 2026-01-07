@@ -348,7 +348,7 @@ class AdminApprHostService:
                         },
                     )
 
-                    hardware_id = await call_hardware_api(
+                    api_result = await call_hardware_api(
                         hardware_id=api_hardware_id,
                         hw_info=latest_hw_rec.hw_info,
                         request=http_request,
@@ -356,8 +356,14 @@ class AdminApprHostService:
                         locale=locale,
                         host_id=host_id,
                     )
+                    hardware_id = api_result.get("hardware_id")
+                    host_name = api_result.get("host_name")
+
                     if hardware_id:
                         host_update["hardware_id"] = hardware_id
+                    # 如果 host_name 存在且不为空，添加到更新字典
+                    if host_name and host_name.strip():
+                        host_update["host_no"] = host_name.strip()
 
                     logger.info(
                         "外部硬件接口调用成功 (Empty Diff Type)",
@@ -366,6 +372,7 @@ class AdminApprHostService:
                             "host_state": host_rec.host_state,
                             "api_type": api_type,
                             "hardware_id": hardware_id,
+                            "host_name": host_name,
                             "is_new": api_hardware_id is None,
                         },
                     )
@@ -552,7 +559,7 @@ class AdminApprHostService:
                     },
                 )
 
-                hardware_id = await call_hardware_api(
+                api_result = await call_hardware_api(
                     hardware_id=api_hardware_id,
                     hw_info=latest_hw_rec.hw_info,
                     request=http_request,
@@ -560,6 +567,8 @@ class AdminApprHostService:
                     locale=locale,
                     host_id=host_id,
                 )
+                hardware_id = api_result.get("hardware_id")
+                host_name = api_result.get("host_name")
 
                 logger.info(
                     "外部硬件接口调用成功（硬件变更审批）",
@@ -568,6 +577,7 @@ class AdminApprHostService:
                         "host_state": host_rec.host_state,
                         "api_type": api_type,
                         "hardware_id": hardware_id,
+                        "host_name": host_name,
                         "is_new": api_hardware_id is None,
                     },
                 )
@@ -615,6 +625,9 @@ class AdminApprHostService:
         }
         if hardware_id:
             host_update["hardware_id"] = hardware_id
+        # 如果 host_name 存在且不为空，添加到更新字典
+        if host_name and host_name.strip():
+            host_update["host_no"] = host_name.strip()
 
         # 硬件记录更新数据
         hw_updates = {
@@ -646,7 +659,7 @@ class AdminApprHostService:
         session: Any,
         host_updates: Dict[int, Dict[str, Any]],
     ) -> None:
-        """批量更新 host_rec 表
+        """批量更新 host_rec 表（优化：按更新字段分组）
 
         Args:
             session: 数据库会话
@@ -655,14 +668,54 @@ class AdminApprHostService:
         if not host_updates:
             return
 
-        bulk_update_data = [
-            {"id": host_id, **update_values} for host_id, update_values in host_updates.items()
-        ]
+        # 分离需要更新 host_no 的记录和只更新其他字段的记录
+        hosts_with_host_no: Dict[int, Dict[str, Any]] = {}
+        hosts_without_host_no: Dict[int, Dict[str, Any]] = {}
 
-        def _bulk_update(sync_session: Any) -> None:
-            sync_session.bulk_update_mappings(HostRec, bulk_update_data)
+        for host_id, update_values in host_updates.items():
+            if "host_no" in update_values:
+                hosts_with_host_no[host_id] = update_values
+            else:
+                hosts_without_host_no[host_id] = update_values
 
-        await session.run_sync(_bulk_update)
+        # 批量更新（有 host_no）
+        if hosts_with_host_no:
+            bulk_update_data = [
+                {"id": host_id, **update_values}
+                for host_id, update_values in hosts_with_host_no.items()
+            ]
+
+            def _bulk_update_with_host_no(sync_session: Any) -> None:
+                sync_session.bulk_update_mappings(HostRec, bulk_update_data)
+
+            await session.run_sync(_bulk_update_with_host_no)
+
+            logger.debug(
+                "批量更新主机记录（包含 host_no）",
+                extra={
+                    "count": len(hosts_with_host_no),
+                    "host_ids": list(hosts_with_host_no.keys())[:10],  # 只记录前10条
+                },
+            )
+
+        # 批量更新（无 host_no）
+        if hosts_without_host_no:
+            bulk_update_data = [
+                {"id": host_id, **update_values}
+                for host_id, update_values in hosts_without_host_no.items()
+            ]
+
+            def _bulk_update_without_host_no(sync_session: Any) -> None:
+                sync_session.bulk_update_mappings(HostRec, bulk_update_data)
+
+            await session.run_sync(_bulk_update_without_host_no)
+
+            logger.debug(
+                "批量更新主机记录（不包含 host_no）",
+                extra={
+                    "count": len(hosts_without_host_no),
+                },
+            )
 
     async def _bulk_update_hardware_records(
         self,

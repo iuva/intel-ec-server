@@ -145,7 +145,7 @@ async def call_hardware_api(
     user_id: Optional[int] = None,
     locale: str = "zh_CN",
     host_id: Optional[int] = None,
-) -> str:
+) -> Dict[str, Optional[str]]:
     """调用外部硬件接口（新增或修改）
 
     使用统一的外部接口调用客户端，自动处理认证。
@@ -160,7 +160,9 @@ async def call_hardware_api(
         host_id: 主机ID（用于生成分布式锁的键，仅在新增硬件时需要）
 
     Returns:
-        返回的 hardware_id（新增时返回新ID，修改时返回原ID）
+        Dict[str, Optional[str]]: 包含 hardware_id 和 host_name 的字典
+            - hardware_id: 硬件ID（必填）
+            - host_name: 主机名称（可选，从响应体中提取）
 
     Raises:
         BusinessError: 接口调用失败时
@@ -176,13 +178,14 @@ async def call_hardware_api(
                 "is_new": hardware_id is None,
             },
         )
-        # 返回模拟的 hardware_id
+        # 返回模拟的 hardware_id 和 host_name
         if hardware_id:
-            return hardware_id
+            return {"hardware_id": hardware_id, "host_name": None}
         else:
             # 生成模拟的 hardware_id
             import uuid
-            return f"mock-hardware-{uuid.uuid4().hex[:8]}"
+            mock_id = f"mock-hardware-{uuid.uuid4().hex[:8]}"
+            return {"hardware_id": mock_id, "host_name": None}
 
         # 使用统一的外部接口调用客户端
     try:
@@ -309,7 +312,8 @@ async def call_hardware_api(
                         },
                     )
 
-                # 从响应中提取 hardware_id（直接提取 _id 字段）
+                # 从响应中提取 hardware_id 和 host_name
+                # 返回格式：{"_id": "hardware_id", "host_name": "host_name"}
                 if isinstance(response_body, dict):
                     # 直接提取 _id 字段
                     new_hardware_id = response_body.get("_id")
@@ -325,14 +329,24 @@ async def call_hardware_api(
                             code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                             http_status_code=500,
                         )
+
+                    # 提取 host_name（在响应体顶层，与 _id 同级）
+                    host_name = response_body.get("host_name")
+                    # 验证 host_name 不为空字符串或 None
+                    if host_name and isinstance(host_name, str):
+                        host_name = host_name.strip() if host_name.strip() else None
+                    else:
+                        host_name = None
+
                     logger.info(
                         "硬件接口调用成功（新增）",
                         extra={
                             "hardware_id": new_hardware_id,
+                            "host_name": host_name,
                             "host_id": host_id,
                         },
                     )
-                    return str(new_hardware_id)
+                    return {"hardware_id": str(new_hardware_id), "host_name": host_name}
                 else:
                     raise BusinessError(
                         message="硬件接口返回数据格式错误：响应不是 JSON 格式",
@@ -430,13 +444,24 @@ async def call_hardware_api(
                     },
                 )
 
+            # 提取 host_name（如果响应包含）
+            host_name = None
+            if isinstance(response_body, dict):
+                host_name = response_body.get("host_name")
+                # 验证 host_name 不为空字符串或 None
+                if host_name and isinstance(host_name, str):
+                    host_name = host_name.strip() if host_name.strip() else None
+                else:
+                    host_name = None
+
             logger.info(
                 "硬件接口调用成功（修改）",
                 extra={
                     "hardware_id": valid_hardware_id,
+                    "host_name": host_name,
                 },
             )
-            return valid_hardware_id
+            return {"hardware_id": valid_hardware_id, "host_name": host_name}
 
     except BusinessError:
         raise
