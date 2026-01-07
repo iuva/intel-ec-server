@@ -6,6 +6,8 @@
 
 from typing import Optional
 
+from fastapi import APIRouter, Depends
+
 from app.api.v1.dependencies import get_auth_service, get_current_user
 from app.schemas.auth import (
     AdminLoginRequest,
@@ -19,7 +21,6 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.auth_service import AuthService
-from fastapi import APIRouter, Depends
 
 # 使用 try-except 方式处理路径导入
 try:

@@ -1,11 +1,15 @@
 """管理后台待审批主机管理服务
 
 提供管理后台使用的待审批主机查询等核心业务逻辑。
+
+注意：工具函数和邮件服务已拆分到独立模块：
+- admin_appr_utils.py: 工具函数（build_host_table, call_hardware_api 等）
+- admin_appr_email_service.py: 邮件服务（ApprovalEmailService）
 """
 
+from datetime import datetime, timezone
 import os
 import sys
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, desc, func, select, update
@@ -20,7 +24,6 @@ try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.models.sys_user import SysUser
     from app.schemas.host import (
         AdminApprHostApproveRequest,
         AdminApprHostApproveResponse,
@@ -31,13 +34,13 @@ try:
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
-    from app.services.external_api_client import call_external_api
-    from app.utils.logging_helpers import log_operation_start
+    from app.services.admin_appr_email_service import send_approval_email
 
-    from shared.common.cache import redis_manager
+    # 从拆分的模块导入
+    from app.services.admin_appr_utils import call_hardware_api
+    from app.utils.logging_helpers import log_operation_start
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
@@ -54,7 +57,6 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.sys_conf import SysConf
-    from app.models.sys_user import SysUser
     from app.schemas.host import (
         AdminApprHostApproveRequest,
         AdminApprHostApproveResponse,
@@ -65,13 +67,13 @@ except ImportError:
         AdminMaintainEmailRequest,
         AdminMaintainEmailResponse,
     )
-    from app.services.external_api_client import call_external_api
-    from app.utils.logging_helpers import log_operation_start
+    from app.services.admin_appr_email_service import send_approval_email
 
-    from shared.common.cache import redis_manager
+    # 从拆分的模块导入
+    from app.services.admin_appr_utils import call_hardware_api
+    from app.utils.logging_helpers import log_operation_start
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
-    from shared.common.email_sender import send_email
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
@@ -81,558 +83,31 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 邮件内容模板常量
-EMAIL_HOST_APPROVE_CONTENT_TEMPLATE = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            background-color: #4CAF50;
-            color: white;
-            padding: 20px;
-            border-radius: 5px 5px 0 0;
-            margin-bottom: 0;
-        }}
-        .content {{
-            background-color: #f9f9f9;
-            padding: 30px;
-            border: 1px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-        }}
-        .section {{
-            margin-bottom: 25px;
-        }}
-        .section-title {{
-            font-size: 16px;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #4CAF50;
-        }}
-        .info-item {{
-            margin: 8px 0;
-            padding-left: 20px;
-            position: relative;
-        }}
-        .info-item::before {{
-            content: "•";
-            position: absolute;
-            left: 0;
-            color: #4CAF50;
-            font-weight: bold;
-        }}
-        .info-label {{
-            font-weight: 600;
-            color: #555;
-        }}
-        .info-value {{
-            color: #333;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            font-size: 12px;
-            color: #888;
-            text-align: center;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2 style="margin: 0;">硬件变更审核通知</h2>
-    </div>
-    <div class="content">
-        <p style="font-size: 16px; margin-top: 0;">尊敬的维护人员：</p>
-
-        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
-            变更的 Host 已通过硬件变更审核。
-        </p>
-
-        <div class="section">
-            <div class="section-title">审批人信息</div>
-            <div class="info-item">
-                <span class="info-label">用户名称：</span>
-                <span class="info-value">{user_name}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">登录账号：</span>
-                <span class="info-value">{user_account}</span>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">变更的主机信息</div>
-            {host_table}
-        </div>
-
-        <p style="margin-top: 25px; color: #555;">
-            请及时关注相关变更。
-        </p>
-
-        <div class="footer">
-            此邮件由系统自动发送，请勿回复。
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-
-def _build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
-    """构建主机信息表格（HTML格式）
-
-    Args:
-        hardware_ids: Hardware ID 列表
-        host_ips: Host IP 列表
-
-    Returns:
-        HTML 表格字符串
-    """
-    if not hardware_ids and not host_ips:
-        return "无变更的主机信息"
-
-    # 确保两个列表长度一致（用空字符串填充）
-    max_len = max(len(hardware_ids), len(host_ips))
-    hardware_ids_padded = hardware_ids + [""] * (max_len - len(hardware_ids))
-    host_ips_padded = host_ips + [""] * (max_len - len(host_ips))
-
-    # 构建 HTML 表格
-    table_rows = []
-    cell_style = "padding: 12px; border: 1px solid #ddd; text-align: left;"
-    header_style = (
-        "padding: 12px; border: 1px solid #ddd; background-color: #4CAF50; "
-        "color: white; text-align: left; font-weight: 600;"
-    )
-    row_style = "background-color: white;"
-    alternate_row_style = "background-color: #f9f9f9;"
-
-    for i in range(max_len):
-        hw_id = hardware_ids_padded[i] if i < len(hardware_ids) else ""
-        host_ip = host_ips_padded[i] if i < len(host_ips) else ""
-        row_bg = alternate_row_style if i % 2 == 1 else row_style
-        row_html = (
-            f"<tr style='{row_bg}'>"
-            f"<td style='{cell_style}'>{hw_id or '-'}</td>"
-            f"<td style='{cell_style}'>{host_ip or '-'}</td>"
-            f"</tr>"
-        )
-        table_rows.append(row_html)
-
-    table_style = (
-        "border-collapse: collapse; width: 100%; margin: 15px 0; "
-        "border-radius: 5px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
-    )
-    table_html = f"""
-<table style='{table_style}'>
-    <thead>
-        <tr>
-            <th style='{header_style}'>Hardware ID</th>
-            <th style='{header_style}'>Host IP</th>
-        </tr>
-    </thead>
-    <tbody>
-        {"".join(table_rows)}
-    </tbody>
-</table>
-"""
-
-    return table_html
-
-
-def _get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) -> str:
-    """从硬件信息中提取配置名称
-
-    Args:
-        hw_info: 硬件信息字典（包含 dmr_config）
-        host_rec: 主机记录对象
-
-    Returns:
-        配置名称字符串
-    """
-    # 优先从 dmr_config 中提取 host_name
-    try:
-        dmr_config = hw_info.get("dmr_config", {})
-        mainboard = dmr_config.get("mainboard", {})
-        board = mainboard.get("board", {})
-        board_meta_data = board.get("board_meta_data", {})
-        host_name = board_meta_data.get("host_name")
-        if host_name:
-            return host_name
-    except Exception:
-        ***REMOVED***
-
-    # 如果无法从 dmr_config 提取，使用 host_rec 的字段
-    if host_rec.host_ip:
-        return f"Host-{host_rec.host_ip}"
-    elif host_rec.mg_id:
-        return f"Host-{host_rec.mg_id}"
-    else:
-        return f"Host-{host_rec.id}"
-
-
-def _build_hardware_head() -> Dict[str, str]:
-    """构建硬件接口 Head 参数（Mock 数据）
-
-    Returns:
-        Head 参数字典
-    """
-    return {
-        "ConfigName": "DMR-sample-1",
-        "Component": "bios.playform",
-        "Owner": "zeyichen",
-        "Project": "bios.oakstream_diamondrapids",
-        "Environment": "silicon",
-        "Milestone": "Alpha",
-        "SubComponent": "",
-        "Type": "hardware",
-        "Tag": "",
-    }
-
-
-async def _call_hardware_api(
-    hardware_id: Optional[str],
-    hw_info: Dict[str, Any],
-    request=None,
-    user_id: Optional[int] = None,
-    locale: str = "zh_CN",
-    host_id: Optional[int] = None,
-) -> str:
-    """调用外部硬件接口（新增或修改）
-
-    使用统一的外部接口调用客户端，自动处理认证。
-    新增硬件时使用 Redis 分布式锁防止并发创建。
-
-    Args:
-        hardware_id: 硬件ID（如果为 None 则调用新增接口，否则调用修改接口）
-        hw_info: 硬件信息（对应 host_hw_rec 表的 hw_info 字段）
-        request: FastAPI Request 对象（用于从请求头获取 user_id）
-        user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
-        locale: 语言偏好
-        host_id: 主机ID（用于生成分布式锁的键，仅在新增硬件时需要）
-
-    Returns:
-        返回的 hardware_id（新增时返回新ID，修改时返回原ID）
-
-    Raises:
-        BusinessError: 接口调用失败时
-    """
-    # 检查是否使用 Mock 数据
-    use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
-
-    if use_mock:
-        logger.info(
-            "使用 Mock 硬件接口数据",
-            extra={
-                "hardware_id": hardware_id,
-                "is_new": hardware_id is None,
-            },
-        )
-        # 返回模拟的 hardware_id
-        if hardware_id:
-            return hardware_id
-        else:
-            # 生成模拟的 hardware_id
-            import uuid
-            return f"mock-hardware-{uuid.uuid4().hex[:8]}"
-
-        # 使用统一的外部接口调用客户端
-    try:
-        # 构建 Head 参数（Mock 数据）
-        head_data = _build_hardware_head()
-
-        # ✅ 判断 hardware_id 是否有效：None 或空字符串都视为无效，调用新增接口
-        is_valid_hardware_id = hardware_id is not None and bool(hardware_id and hardware_id.strip())
-
-        if not is_valid_hardware_id:
-            # ✅ 新增硬件：使用 Redis 分布式锁防止并发创建
-            lock_key = None
-            lock_value = None
-
-            if host_id is not None:
-                # 生成锁的键：基于 host_id，确保同一主机不会并发创建多个 hardware
-                lock_key = f"hardware_create_lock:{host_id}"
-                import uuid
-
-                lock_value = str(uuid.uuid4())
-
-                # 尝试获取锁（超时时间 30 秒）
-                lock_acquired = await redis_manager.acquire_lock(lock_key, timeout=30, lock_value=lock_value)
-
-                if not lock_acquired:
-                    # 如果 Redis 不可用，记录警告但继续执行（降级处理）
-                    if not redis_manager.is_connected:
-                        logger.warning(
-                            "Redis 不可用，无法获取分布式锁，继续执行（降级处理）",
-                            extra={
-                                "host_id": host_id,
-                                "lock_key": lock_key,
-                            },
-                        )
-                    else:
-                        # Redis 可用但获取锁失败，说明其他实例正在处理
-                        logger.warning(
-                            "获取硬件创建锁失败，可能其他实例正在处理",
-                            extra={
-                                "host_id": host_id,
-                                "lock_key": lock_key,
-                            },
-                        )
-                        raise BusinessError(
-                            message=f"主机 {host_id} 正在创建硬件记录，请稍后重试",
-                            message_key="error.hardware.creation_in_progress",
-                            error_code="HARDWARE_CREATION_IN_PROGRESS",
-                            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                            http_status_code=409,  # Conflict
-                            details={
-                                "host_id": host_id,
-                                "lock_key": lock_key,
-                            },
-                        )
-
-                logger.info(
-                    "已获取硬件创建锁",
-                    extra={
-                        "host_id": host_id,
-                        "lock_key": lock_key,
-                        "lock_value": lock_value[:8] if lock_value else None,
-                    },
-                )
-
-            try:
-                # 新增硬件：POST /api/v1/hardware/
-                url_path = "/api/v1/hardware/"
-                request_body = {
-                    "Head": head_data,
-                    "Payload": hw_info,
-                }
-
-                logger.info(
-                    "调用外部硬件接口（新增）",
-                    extra={
-                        "url_path": url_path,
-                        "user_id": user_id,
-                        "has_hw_info": bool(hw_info),
-                        "host_id": host_id,
-                    },
-                )
-
-                response = await call_external_api(
-                    method="POST",
-                    url_path=url_path,
-                    request=request,
-                    user_id=user_id,
-                    json_data=request_body,
-                    locale=locale,
-                )
-
-                # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
-                response_headers = response.get("headers", {})
-                response_body = response.get("body", {})
-                status_header = response_headers.get(":status") or response_headers.get("status")
-                status_code = response.get("status_code")
-                body_code = response_body.get("code") if isinstance(response_body, dict) else None
-
-                # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
-                is_success = (
-                    (status_header and str(status_header) == "200")
-                    or (status_code and status_code == 200)
-                    or (body_code and body_code == 200)
-                )
-
-                if not is_success:
-                    error_msg = (
-                        response_body.get("message", "未知错误")
-                        if isinstance(response_body, dict)
-                        else str(response_body)
-                    )
-                    raise BusinessError(
-                        message=f"调用硬件接口失败（新增）: {error_msg}",
-                        message_key="error.hardware.create_failed",
-                        error_code="HARDWARE_CREATE_FAILED",
-                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                        http_status_code=500,
-                        details={
-                            "url_path": url_path,
-                            "status_header": status_header,
-                            "status_code": status_code,
-                            "body_code": body_code,
-                            "response": response_body,
-                        },
-                    )
-
-                # 从响应中提取 hardware_id（直接提取 _id 字段）
-                if isinstance(response_body, dict):
-                    # 直接提取 _id 字段
-                    new_hardware_id = response_body.get("_id")
-                    if not new_hardware_id:
-                        # 如果 _id 不存在，尝试其他字段名
-                        new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
-
-                    if not new_hardware_id:
-                        raise BusinessError(
-                            message="硬件接口返回数据格式错误：缺少 _id 字段",
-                            message_key="error.hardware.invalid_response",
-                            error_code="HARDWARE_INVALID_RESPONSE",
-                            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                            http_status_code=500,
-                        )
-                    logger.info(
-                        "硬件接口调用成功（新增）",
-                        extra={
-                            "hardware_id": new_hardware_id,
-                            "host_id": host_id,
-                        },
-                    )
-                    return str(new_hardware_id)
-                else:
-                    raise BusinessError(
-                        message="硬件接口返回数据格式错误：响应不是 JSON 格式",
-                        message_key="error.hardware.invalid_response",
-                        error_code="HARDWARE_INVALID_RESPONSE",
-                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                        http_status_code=500,
-                    )
-            finally:
-                # 释放锁
-                if lock_key and lock_value:
-                    lock_released = await redis_manager.release_lock(lock_key, lock_value)
-                    if lock_released:
-                        logger.debug(
-                            "已释放硬件创建锁",
-                            extra={
-                                "host_id": host_id,
-                                "lock_key": lock_key,
-                            },
-                        )
-                    else:
-                        logger.warning(
-                            "释放硬件创建锁失败",
-                            extra={
-                                "host_id": host_id,
-                                "lock_key": lock_key,
-                            },
-                        )
-
-        else:
-            # 修改硬件：PUT /api/v1/hardware/{hardware_id}
-            # ✅ 此时 hardware_id 一定不是 None 且不是空字符串（已通过 is_valid_hardware_id 检查）
-            assert hardware_id is not None and hardware_id.strip(), "hardware_id 必须有效"
-            valid_hardware_id: str = hardware_id.strip()
-
-            url_path = f"/api/v1/hardware/{valid_hardware_id}"
-            request_body = {
-                "_id": {"$oid": valid_hardware_id},
-                "Head": head_data,
-                "Payload": hw_info,
-            }
-
-            logger.info(
-                "调用外部硬件接口（修改）",
-                extra={
-                    "url_path": url_path,
-                    "hardware_id": valid_hardware_id,
-                    "user_id": user_id,
-                    "has_hw_info": bool(hw_info),
-                },
-            )
-
-            response = await call_external_api(
-                method="PUT",
-                url_path=url_path,
-                request=request,
-                user_id=user_id,
-                json_data=request_body,
-                locale=locale,
-            )
-
-            # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
-            response_headers = response.get("headers", {})
-            response_body = response.get("body", {})
-            status_header = response_headers.get(":status") or response_headers.get("status")
-            status_code = response.get("status_code")
-            body_code = response_body.get("code") if isinstance(response_body, dict) else None
-
-            # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
-            is_success = (
-                (status_header and str(status_header) == "200")
-                or (status_code and status_code == 200)
-                or (body_code and body_code == 200)
-            )
-
-            if not is_success:
-                error_msg = (
-                    response_body.get("message", "未知错误")
-                    if isinstance(response_body, dict)
-                    else str(response_body)
-                )
-                raise BusinessError(
-                    message=f"调用硬件接口失败（修改）: {error_msg}",
-                    message_key="error.hardware.update_failed",
-                    error_code="HARDWARE_UPDATE_FAILED",
-                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                    http_status_code=500,
-                    details={
-                        "url_path": url_path,
-                        "hardware_id": valid_hardware_id,
-                        "status_header": status_header,
-                        "status_code": status_code,
-                        "body_code": body_code,
-                        "response": response_body,
-                    },
-                )
-
-            logger.info(
-                "硬件接口调用成功（修改）",
-                extra={
-                    "hardware_id": valid_hardware_id,
-                },
-            )
-            return valid_hardware_id
-
-    except BusinessError:
-        raise
-    except Exception as e:
-        logger.error(
-            "调用硬件接口异常",
-            extra={
-                "hardware_id": hardware_id,
-                "user_id": user_id,
-                "has_hw_info": bool(hw_info),
-                "error": str(e),
-                "error_type": type(e).__name__,
-            },
-            exc_info=True,
-        )
-        raise BusinessError(
-            message=f"调用硬件接口异常: {str(e)}",
-            message_key="error.hardware.api_error",
-            error_code="HARDWARE_API_ERROR",
-            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-            http_status_code=500,
-            details={
-                "hardware_id": hardware_id,
-                "error": str(e),
-            },
-        )
-
 
 class AdminApprHostService:
     """管理后台待审批主机管理服务类
 
     提供待审批主机的查询、搜索等业务逻辑。
+
+    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
     """
+
+    def __init__(self):
+        """初始化服务"""
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        - 第一次调用时初始化
+        - 后续调用复用缓存的工厂实例
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     async def _validate_and_resolve_host_ids(
         self,
@@ -669,7 +144,7 @@ class AdminApprHostService:
                 return request.host_ids
 
             # 如果未传入 host_ids，查询所有符合条件的 host_id
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as temp_session:
                 hw_query_stmt = (
                     select(HostHwRec.host_id)
@@ -873,7 +348,7 @@ class AdminApprHostService:
                         },
                     )
 
-                    hardware_id = await _call_hardware_api(
+                    hardware_id = await call_hardware_api(
                         hardware_id=api_hardware_id,
                         hw_info=latest_hw_rec.hw_info,
                         request=http_request,
@@ -1077,7 +552,7 @@ class AdminApprHostService:
                     },
                 )
 
-                hardware_id = await _call_hardware_api(
+                hardware_id = await call_hardware_api(
                     hardware_id=api_hardware_id,
                     hw_info=latest_hw_rec.hw_info,
                     request=http_request,
@@ -1198,6 +673,10 @@ class AdminApprHostService:
     ) -> None:
         """批量更新 host_hw_rec 表
 
+        ✅ 优化：使用 CASE WHEN 批量更新，减少 SQL 执行次数
+        - 优化前：N 条记录需要 N 次 SQL
+        - 优化后：最多 3 次 SQL（有 hardware_id、无 hardware_id、其他）
+
         Args:
             session: 数据库会话
             hw_updates: 硬件记录更新数据字典 {hw_rec_id: {field: value}}
@@ -1208,9 +687,9 @@ class AdminApprHostService:
             return
 
         # 分离需要更新 hardware_id 的记录和普通记录
-        latest_hw_ids_with_hardware_id = []
-        latest_hw_ids_without_hardware_id = []
-        other_hw_ids = []
+        latest_hw_ids_with_hardware_id: List[int] = []
+        latest_hw_ids_without_hardware_id: List[int] = []
+        other_hw_ids: List[int] = []
         hw_rec_hardware_id_map: Dict[int, str] = {}
 
         for hw_rec_id, update_values in hw_updates.items():
@@ -1222,20 +701,36 @@ class AdminApprHostService:
             else:
                 other_hw_ids.append(hw_rec_id)
 
-        # 批量更新最新硬件记录（有 hardware_id）
+        # ✅ 优化：使用 CASE WHEN 批量更新（有 hardware_id）
+        # 将 N 条 SQL 合并为 1 条 SQL
         if latest_hw_ids_with_hardware_id:
-            for hw_rec_id in latest_hw_ids_with_hardware_id:
-                update_stmt = (
-                    update(HostHwRec)
-                    .where(HostHwRec.id == hw_rec_id)
-                    .values(
-                        sync_state=2,
-                        appr_time=now,
-                        appr_by=appr_by,
-                        hardware_id=hw_rec_hardware_id_map[hw_rec_id],
-                    )
+            from sqlalchemy import case
+
+            # 构建 CASE WHEN 表达式：CASE id WHEN 1 THEN 'hw_id_1' WHEN 2 THEN 'hw_id_2' END
+            hardware_id_case = case(
+                hw_rec_hardware_id_map,
+                value=HostHwRec.id,
+            )
+
+            update_stmt = (
+                update(HostHwRec)
+                .where(HostHwRec.id.in_(latest_hw_ids_with_hardware_id))
+                .values(
+                    sync_state=2,
+                    appr_time=now,
+                    appr_by=appr_by,
+                    hardware_id=hardware_id_case,
                 )
-                await session.execute(update_stmt)
+            )
+            await session.execute(update_stmt)
+
+            logger.debug(
+                "批量更新硬件记录（有 hardware_id）",
+                extra={
+                    "count": len(latest_hw_ids_with_hardware_id),
+                    "hw_ids": latest_hw_ids_with_hardware_id[:10],  # 只记录前10条
+                },
+            )
 
         # 批量更新最新硬件记录（无 hardware_id）
         if latest_hw_ids_without_hardware_id:
@@ -1250,6 +745,13 @@ class AdminApprHostService:
             )
             await session.execute(update_latest_stmt)
 
+            logger.debug(
+                "批量更新硬件记录（无 hardware_id）",
+                extra={
+                    "count": len(latest_hw_ids_without_hardware_id),
+                },
+            )
+
         # 批量更新其他硬件记录
         if other_hw_ids:
             update_other_stmt = (
@@ -1257,144 +759,12 @@ class AdminApprHostService:
             )
             await session.execute(update_other_stmt)
 
-    async def _send_approval_email(
-        self,
-        session: Any,
-        results: List[Dict[str, Any]],
-        appr_by: int,
-        locale: str = "zh_CN",
-    ) -> List[str]:
-        """发送审批邮件通知
-
-        Args:
-            session: 数据库会话
-            results: 处理结果列表
-            appr_by: 审批人ID
-            locale: 语言偏好
-
-        Returns:
-            List[str]: 错误信息列表（如果有）
-        """
-        email_errors: List[str] = []
-
-        try:
-            # 查询邮件配置
-            email_conf_stmt = select(SysConf).where(
-                and_(
-                    SysConf.conf_key == "email",
-                    SysConf.del_flag == 0,
-                    SysConf.state_flag == 0,
-                )
-            )
-            email_conf_result = await session.execute(email_conf_stmt)
-            email_conf = email_conf_result.scalar_one_or_none()
-
-            if not email_conf or not email_conf.conf_val:
-                return email_errors
-
-            # 解析邮箱地址
-            email_list = [e.strip() for e in email_conf.conf_val.strip().split(",") if e.strip()]
-            if not email_list:
-                return email_errors
-
-            # 获取成功审批的主机ID
-            successful_host_ids = [
-                r["host_id"] for r in results if r.get("success", False) and r.get("host_id")
-            ]
-            if not successful_host_ids:
-                return email_errors
-
-            # 查询主机信息
-            host_info_stmt = select(HostRec).where(
-                and_(
-                    HostRec.id.in_(successful_host_ids),
-                    HostRec.del_flag == 0,
-                )
-            )
-            host_info_result = await session.execute(host_info_stmt)
-            host_recs = host_info_result.scalars().all()
-
-            # 查询审批人信息
-            user_stmt = select(SysUser).where(
-                and_(
-                    SysUser.id == appr_by,
-                    SysUser.del_flag == 0,
-                )
-            )
-            user_result = await session.execute(user_stmt)
-            sys_user = user_result.scalar_one_or_none()
-
-            user_name = sys_user.user_name if sys_user else ""
-            user_account = sys_user.user_account if sys_user else ""
-
-            # 构建邮件内容
-            # ✅ 过滤掉 None 和空字符串的 hardware_id
-            hardware_ids = [
-                h.hardware_id
-                for h in host_recs
-                if h.hardware_id and h.hardware_id.strip()
-            ]
-            host_ips = [h.host_ip for h in host_recs if h.host_ip]
-            host_table = _build_host_table(hardware_ids, host_ips)
-
-            subject = t(
-                "email.host.approve.subject",
-                locale=locale,
-                default="变更 Host 通过硬件变更审核",
-            )
-
-            content = t(
-                "email.host.approve.content",
-                locale=locale,
-                default=EMAIL_HOST_APPROVE_CONTENT_TEMPLATE,
-                user_name=user_name,
-                user_account=user_account,
-                host_table=host_table,
-            )
-
-            # 发送邮件
-            try:
-                email_result = await send_email(
-                    to_emails=email_list,
-                    subject=subject,
-                    content=content,
-                    locale=locale,
-                )
-                if email_result.get("failed_count", 0) > 0:
-                    email_errors.extend(email_result.get("errors", []))
-                logger.info(
-                    "邮件通知发送完成",
-                    extra={
-                        "sent_count": email_result.get("sent_count", 0),
-                        "failed_count": email_result.get("failed_count", 0),
-                        "recipient_count": len(email_list),
-                    },
-                )
-            except Exception as email_error:
-                error_msg = f"邮件发送异常: {str(email_error)}"
-                email_errors.append(error_msg)
-                logger.warning(
-                    "邮件发送异常（不影响事务）",
-                    extra={
-                        "error": str(email_error),
-                        "error_type": type(email_error).__name__,
-                    },
-                    exc_info=True,
-                )
-
-        except Exception as e:
-            error_msg = f"邮件通知处理异常: {str(e)}"
-            email_errors.append(error_msg)
-            logger.warning(
-                "邮件通知处理异常（不影响事务）",
+            logger.debug(
+                "批量更新其他硬件记录",
                 extra={
-                    "error": str(e),
-                    "error_type": type(e).__name__,
+                    "count": len(other_hw_ids),
                 },
-                exc_info=True,
             )
-
-        return email_errors
 
     @handle_service_errors(
         error_message="查询待审批主机列表失败",
@@ -1438,7 +808,7 @@ class AdminApprHostService:
         )
 
         try:
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             logger.debug("获取数据库会话工厂成功")
         except Exception as e:
             logger.error(
@@ -1610,7 +980,7 @@ class AdminApprHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 验证主机是否存在且未删除（使用工具函数）
             host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
@@ -1745,7 +1115,7 @@ class AdminApprHostService:
                 results=[],
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             try:
                 success_count = 0
@@ -1951,7 +1321,7 @@ class AdminApprHostService:
                 # 邮件通知（仅硬件变更审批时发送）
                 email_notification_errors: List[str] = []
                 if request.diff_type in (1, 2):
-                    email_notification_errors = await self._send_approval_email(session, results, appr_by, locale)
+                    email_notification_errors = await send_approval_email(session, results, appr_by, locale)
 
                 # 构建响应
                 response_data = AdminApprHostApproveResponse(
@@ -2051,7 +1421,7 @@ class AdminApprHostService:
                 http_status_code=400,
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             try:
                 # 2. 查询 sys_conf 表，conf_key = "email"
@@ -2182,7 +1552,7 @@ class AdminApprHostService:
             logger_instance=logger,
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             try:
                 # 查询 sys_conf 表

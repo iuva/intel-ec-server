@@ -46,7 +46,7 @@ class BusinessError(Exception):
             locale: 语言代码（用于翻译 message_key）
         """
         self.message_key = message_key
-        self.locale = locale or "zh_CN"
+        self.locale = locale or "en_US"
 
         # 如果有 message_key，自动翻译
         if message_key:

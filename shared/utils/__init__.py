@@ -15,6 +15,29 @@ from shared.utils.service_discovery import ServiceDiscovery, get_service_discove
 from shared.utils.template_validator import TemplateValidator
 from shared.utils.token_extractor import TokenExtractor, get_token_extractor
 
+# 日志工具
+from shared.utils.logging_utils import (
+    log_auth_failure,
+    log_auth_success,
+    log_db_error,
+    log_db_query,
+    log_external_api_call,
+    log_external_api_error,
+    log_operation_completed,
+    log_operation_failed,
+    log_operation_start,
+    log_request_completed,
+    log_request_received,
+    log_service_shutdown,
+    log_service_startup,
+    log_websocket_connect,
+    log_websocket_disconnect,
+    log_websocket_message,
+    timed_operation,
+    timed_operation_sync,
+    with_request_logging,
+)
+
 # 主机验证和查询工具（延迟导入，避免循环依赖）
 try:
     from shared.utils.host_validators import build_host_query, validate_host_exists
@@ -43,4 +66,24 @@ __all__ = [
     # 主机验证工具
     "validate_host_exists",
     "build_host_query",
+    # 日志工具
+    "log_request_received",
+    "log_request_completed",
+    "log_operation_start",
+    "log_operation_completed",
+    "log_operation_failed",
+    "log_db_query",
+    "log_db_error",
+    "log_external_api_call",
+    "log_external_api_error",
+    "timed_operation",
+    "timed_operation_sync",
+    "with_request_logging",
+    "log_websocket_connect",
+    "log_websocket_disconnect",
+    "log_websocket_message",
+    "log_auth_success",
+    "log_auth_failure",
+    "log_service_startup",
+    "log_service_shutdown",
 ]

@@ -16,8 +16,8 @@ from app.schemas.host import VNCConnectionReport
 
 # 使用 try-except 方式处理路径导入
 try:
-    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.schemas.websocket_message import MessageType
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.cache_invalidation import invalidate_available_hosts_cache
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -30,8 +30,8 @@ except ImportError:
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.schemas.websocket_message import MessageType
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.cache_invalidation import invalidate_available_hosts_cache
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -129,7 +129,24 @@ class BrowserVNCService:
     """浏览器插件 VNC 连接管理服务类
 
     负责处理浏览器插件的 VNC 连接相关的业务逻辑，包括连接结果上报和连接信息获取。
+
+    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
     """
+
+    def __init__(self):
+        """初始化服务"""
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     @handle_service_errors(
         error_message="上报 VNC 连接结果失败",
@@ -180,7 +197,7 @@ class BrowserVNCService:
                 http_status_code=400,
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 使用工具函数验证主机存在且未删除
             host_rec = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
@@ -515,8 +532,8 @@ class BrowserVNCService:
                     http_status_code=400,
                 )
 
-            # 查询主机记录
-            session_factory = mariadb_manager.get_session()
+            # 查询主机记录（使用缓存的会话工厂）
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 使用工具函数验证主机存在且未删除
                 host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
@@ -551,7 +568,7 @@ class BrowserVNCService:
                     raise BusinessError(
                         message="当前主机状态不支持 VNC 连接",
                         error_code="HOST_STATE_NOT_ALLOWED",
-                        code=ServiceErrorCodes.HOST_NOT_Enabled, # Reuse or similar code
+                        code=ServiceErrorCodes.HOST_NOT_Enabled,  # Reuse or similar code
                         http_status_code=400,
                     )
 

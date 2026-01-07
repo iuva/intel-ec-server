@@ -442,24 +442,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if clean_path != "/" and clean_path.endswith("/"):
             clean_path = clean_path.rstrip("/")
 
-        logger.debug(
-            "检查路径是否为公开路径",
-            extra={
-                "original_path": path,
-                "clean_path": clean_path,
-                "public_paths_count": len(self.public_paths),
-            },
-        )
-
         # 检查精确匹配
         if clean_path in self.public_paths:
-            logger.debug(
-                "路径精确匹配公开路径",
-                extra={
-                    "path": clean_path,
-                    "match_type": "exact",
-                },
-            )
             return True
 
         # ✅ 检查前缀匹配（用于文档路径和浏览器插件接口）
@@ -475,36 +459,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 检查文档路径前缀匹配
         for prefix_path in prefix_match_paths:
             if clean_path.startswith(prefix_path):
-                logger.debug(
-                    "路径前缀匹配公开路径",
-                    extra={
-                        "path": clean_path,
-                        "matched_prefix": prefix_path,
-                        "match_type": "prefix",
-                    },
-                )
                 return True
 
         # ✅ 检查浏览器插件接口前缀匹配（所有浏览器插件接口都不需要认证）
         for prefix_path in self.browser_plugin_prefixes:
             if clean_path.startswith(prefix_path):
-                logger.debug(
-                    "浏览器插件接口，跳过认证检查",
-                    extra={
-                        "path": clean_path,
-                        "matched_prefix": prefix_path,
-                        "match_type": "browser_plugin_prefix",
-                    },
-                )
                 return True
 
-        logger.debug(
-            "路径不是公开路径，需要认证",
-            extra={
-                "path": clean_path,
-                "checked_against_paths": list(self.public_paths),
-            },
-        )
         return False
 
     async def _verify_token(
@@ -527,42 +488,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         try:
             # 调用 Auth Service 的 introspect 端点来验证令牌
-            # ✅ 正确: auth_router 使用 prefix="/auth" 注册，所以端点是 /api/v1/auth/introspect
             introspect_url = f"{self.auth_service_url}/api/v1/auth/introspect"
 
-            logger.debug(
-                "调用 Auth Service 验证令牌",
-                extra={
-                    "introspect_url": introspect_url,
-                    "token_preview": token_preview,
-                    "request_path": request_path,
-                    "request_method": request_method,
-                },
-            )
-
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                logger.debug(
-                    "准备调用 Auth Service introspect",
-                    extra={
-                        "url": introspect_url,
-                        "timeout": self.timeout,
-                        "token_preview": token_preview,
-                    },
-                )
-
                 response = await client.post(
                     introspect_url,
-                    json={"token": token},  # 使用 JSON 格式
+                    json={"token": token},
                     headers={"Content-Type": "application/json"},
-                )
-
-                logger.debug(
-                    "Auth Service 响应",
-                    extra={
-                        "status_code": response.status_code,
-                        "response_preview": response.text[:200] if response.text else "",
-                        "token_preview": token_preview,
-                    },
                 )
 
                 if response.status_code == 200:
@@ -574,22 +506,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         if data.get("active"):
                             # ✅ 统一使用 id 字段，没有则返回 None（401）
                             user_id = data.get("id")
-
-                            # ✅ 增强日志：记录 Auth Service 返回的完整数据（用于诊断）
-                            logger.debug(
-                                "Auth Service 返回的验证结果",
-                                extra={
-                                    "active": data.get("active"),
-                                    "id": user_id,
-                                    "id_type": type(user_id).__name__ if user_id else None,
-                                    "username": data.get("username"),
-                                    "user_type": data.get("user_type"),
-                                    "token_type": data.get("token_type"),
-                                    "data_keys": list(data.keys()),
-                                    "token_preview": token_preview,
-                                    "request_path": request_path,
-                                },
-                            )
 
                             if not user_id:
                                 logger.warning(

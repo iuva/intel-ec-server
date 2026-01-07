@@ -7,12 +7,14 @@
 """
 
 import asyncio
-import hashlib
 import os
 import time
-from typing import List, Optional, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, List, Optional, Set, cast
 
 import httpx
+from sqlalchemy import and_, select
+from sqlalchemy.exc import OperationalError
+
 from app.constants.host_constants import (
     APPR_STATE_ENABLE,
     HOST_STATE_FREE,
@@ -20,8 +22,6 @@ from app.constants.host_constants import (
 )
 from app.models.host_rec import HostRec
 from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, HardwareHostData, QueryAvailableHostsRequest
-from sqlalchemy import and_, select
-from sqlalchemy.exc import OperationalError
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,8 +32,6 @@ _http_client: Optional["httpx.AsyncClient"] = None
 # 使用 try-except 方式处理路径导入
 try:
     from app.services.external_api_client import call_external_api
-
-    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -43,8 +41,6 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.services.external_api_client import call_external_api
-
-    from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors, monitor_operation
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -67,6 +63,18 @@ class HostDiscoveryService:
         """
         self.hardware_api_url = hardware_api_url or "http://hardware-service:8000"
         self._http_client: Optional[httpx.AsyncClient] = None
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """获取或创建 HTTP 客户端连接池（单例模式）
@@ -154,34 +162,6 @@ class HostDiscoveryService:
             },
         )
 
-        # ✅ 优化：对首次查询（last_id=None）添加短期缓存，减少外部接口调用
-        # 注意：只缓存首次查询，后续分页查询不缓存（因为 last_id 不同）
-        cache_key = None
-        if request.last_id is None:
-            # 生成缓存键（包含关键查询参数）
-            cache_params = f"{request.tc_id}:{request.cycle_name}:{request.page_size}"
-            cache_hash = hashlib.md5(cache_params.encode()).hexdigest()
-            cache_key = f"available_hosts:first_page:{cache_hash}"
-
-            # 尝试从缓存获取
-            try:
-                cached_result = await redis_manager.get(cache_key)
-                if cached_result is not None:
-                    logger.debug(
-                        "从缓存获取可用主机列表（首次查询）",
-                        extra={
-                            "cache_key": cache_key,
-                            "count": len(cached_result.get("hosts", [])) if isinstance(cached_result, dict) else 0,
-                        },
-                    )
-                    # 转换为响应对象
-                    return AvailableHostsListResponse(**cached_result)
-            except Exception as e:
-                logger.warning(
-                    "从缓存获取可用主机列表失败，将查询数据库",
-                    extra={"cache_key": cache_key, "error": str(e)},
-                )
-
         # 步骤 1: 根据 last_id 计算外部接口的初始偏移量
         initial_skip = 0
         if request.last_id is not None:
@@ -190,7 +170,7 @@ class HostDiscoveryService:
 
         # 缓存在本次查询中已处理的 host_rec_id，确保不重复
         # 这个缓存仅在单次请求中有效，不会跨越请求
-        seen_ids: set[str] = set()
+        seen_ids: Set[str] = set()
         all_available_hosts: List[AvailableHostInfo] = []
 
         # 外部接口分页参数
@@ -203,10 +183,10 @@ class HostDiscoveryService:
         no_progress_count = 0  # 连续无进展的迭代次数
         max_no_progress = 5  # 最多允许 5 次无进展迭代
         last_available_count = 0  # 上一次迭代后的可用主机数量
-        seen_hardware_ids: set[str] = set()  # 已处理过的 hardware_id 集合（用于检测重复数据）
+        seen_hardware_ids: Set[str] = set()  # 已处理过的 hardware_id 集合（用于检测重复数据）
 
         # 优化：在循环外创建数据库会话，复用连接，减少连接池压力
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 记录连接池状态（连接获取前）
             pool_status_before = mariadb_manager.get_pool_status()
@@ -413,7 +393,7 @@ class HostDiscoveryService:
 
             # 从本地数据库查询有效主机
             # 条件：host_state=0(空闲), appr_state=1(启用), del_flag=0(未删除), tcp_state=2(监听)
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 fallback_stmt = (
                     select(HostRec)
@@ -503,25 +483,6 @@ class HostDiscoveryService:
             has_next=has_next,
             last_id=last_id,
         )
-
-        # ✅ 优化：缓存首次查询结果（30秒），减少外部接口调用
-        if cache_key is not None:
-            try:
-                # 将响应对象转换为字典以便缓存
-                cache_data = {
-                    "hosts": [host.model_dump() for host in paginated_hosts],
-                    "total": len(all_available_hosts),
-                    "page_size": request.page_size,
-                    "has_next": has_next,
-                    "last_id": last_id,
-                }
-                await redis_manager.set(cache_key, cache_data, expire=30)
-                logger.debug(
-                    "可用主机列表已缓存（首次查询）",
-                    extra={"cache_key": cache_key, "expire_seconds": 30},
-                )
-            except Exception as e:
-                logger.warning("缓存可用主机列表失败", extra={"error": str(e)})
 
         return response
 
@@ -1036,7 +997,7 @@ class HostDiscoveryService:
 
         for attempt in range(max_retries):
             try:
-                session_factory = mariadb_manager.get_session()
+                session_factory = self.session_factory
                 async with session_factory() as session:
                     # 分批处理 hardware_ids
                     for i in range(0, len(hardware_ids), batch_size):

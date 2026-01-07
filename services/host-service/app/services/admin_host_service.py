@@ -3,9 +3,9 @@
 提供管理后台使用的主机查询、搜索等核心业务逻辑。
 """
 
+from datetime import datetime, timezone
 import os
 import sys
-from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import and_, func, select, update
@@ -17,20 +17,19 @@ try:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import (
-        AdminHostExecLogListRequest,
         AdminHostExecLogInfo,
+        AdminHostExecLogListRequest,
         AdminHostInfo,
         AdminHostListRequest,
     )
     from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
-    from shared.common.security import aes_encrypt, aes_decrypt
+    from shared.common.security import aes_decrypt, aes_encrypt
     from shared.utils.host_validators import validate_host_exists
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
@@ -40,20 +39,19 @@ except ImportError:
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.schemas.host import (
-        AdminHostExecLogListRequest,
         AdminHostExecLogInfo,
+        AdminHostExecLogListRequest,
         AdminHostInfo,
         AdminHostListRequest,
     )
     from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
-    from shared.common.security import aes_encrypt, aes_decrypt
+    from shared.common.security import aes_decrypt, aes_encrypt
     from shared.utils.host_validators import validate_host_exists
     from shared.utils.pagination import PaginationParams, PaginationResponse
 
@@ -64,7 +62,24 @@ class AdminHostService:
     """管理后台主机管理服务类
 
     负责管理后台的主机查询、搜索等操作。
+
+    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
     """
+
+    def __init__(self):
+        """初始化服务"""
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     @handle_service_errors(
         error_message="查询主机列表失败",
@@ -105,7 +120,7 @@ class AdminHostService:
             logger_instance=logger,
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 构建子查询：获取每个 host_id 的最新一条 host_exec_log 记录
             # 方法：先获取每个 host_id 的最大 created_time，如果相同则取 id 最大的
@@ -332,7 +347,7 @@ class AdminHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 检查主机是否存在且未删除，并获取 host_rec 对象（用于获取 hardware_id）
             host_stmt = select(HostRec).where(
@@ -567,7 +582,7 @@ class AdminHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 检查主机是否存在且未删除（使用工具函数）
             host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
@@ -682,7 +697,7 @@ class AdminHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 检查主机是否存在且未删除（使用工具函数）
             host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
@@ -799,7 +814,7 @@ class AdminHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 验证主机是否存在且未删除（使用工具函数）
             host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
@@ -913,7 +928,7 @@ class AdminHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 检查主机是否存在且未删除（使用工具函数）
             await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
@@ -1035,7 +1050,7 @@ class AdminHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 构建查询条件
             base_conditions = [

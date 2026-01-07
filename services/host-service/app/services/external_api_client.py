@@ -16,7 +16,6 @@ from sqlalchemy import select
 # 使用 try-except 方式处理路径导入
 try:
     from app.models.sys_user import SysUser
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -25,7 +24,6 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.models.sys_user import SysUser
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
@@ -39,6 +37,20 @@ _token_lock = asyncio.Lock()
 
 # Token 缓存键前缀
 TOKEN_CACHE_KEY_PREFIX = "external_api_token"
+
+# ✅ 优化：模块级会话工厂缓存
+_session_factory_cache = None
+
+
+def _get_session_factory():
+    """获取会话工厂（模块级缓存）
+
+    ✅ 优化：缓存会话工厂，避免重复获取
+    """
+    global _session_factory_cache
+    if _session_factory_cache is None:
+        _session_factory_cache = mariadb_manager.get_session()
+    return _session_factory_cache
 
 
 def _sanitize_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -183,8 +195,8 @@ async def get_external_api_token(
                 http_status_code=400,
             )
 
-        # ✅ 只有在未提供 email 时才查询数据库
-        session_factory = mariadb_manager.get_session()
+        # ✅ 只有在未提供 email 时才查询数据库（使用缓存的会话工厂）
+        session_factory = _get_session_factory()
         async with session_factory() as session:
             user_stmt = select(SysUser).where(
                 SysUser.id == user_id,

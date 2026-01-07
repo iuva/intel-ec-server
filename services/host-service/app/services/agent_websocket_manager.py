@@ -8,14 +8,15 @@
 """
 
 import asyncio
-import json
 from datetime import datetime, timezone
+import json
 from typing import Callable, Dict, List, Optional
 
-from app.services.browser_host_service import BrowserHostService
 from fastapi import WebSocket
 from sqlalchemy import and_, select, update
 from starlette.websockets import WebSocketState
+
+from app.services.browser_host_service import BrowserHostService
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -24,7 +25,6 @@ try:
     from app.models.host_rec import HostRec
     from app.schemas.host import HostStatusUpdate
     from app.schemas.websocket_message import MessageType
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.loguru_config import get_logger
@@ -37,7 +37,6 @@ except ImportError:
     from app.models.host_rec import HostRec
     from app.schemas.host import HostStatusUpdate
     from app.schemas.websocket_message import MessageType
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.loguru_config import get_logger
@@ -117,6 +116,8 @@ class AgentWebSocketManager:
         self.redis_pubsub_channel = "websocket:broadcast"  # Redis 频道名称
         self._redis_pubsub_task: Optional[asyncio.Task] = None
         self._redis_pubsub_subscriber = None
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
 
         # 注册默认的消息处理器
         self._register_default_handlers()
@@ -126,6 +127,16 @@ class AgentWebSocketManager:
 
         # ✅ 启动 Redis Pub/Sub 订阅（如果 Redis 可用）
         self._start_redis_pubsub_subscriber()
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     def _register_default_handlers(self) -> None:
         """注册默认的消息处理器"""
@@ -227,7 +238,7 @@ class AgentWebSocketManager:
                 host_id_int = int(agent_id)
             except (ValueError, TypeError):
                 # 如果不是整数 ID，尝试通过 mg_id 查询
-                session_factory = mariadb_manager.get_session()
+                session_factory = self.session_factory
                 async with session_factory() as session:
                     stmt = select(HostRec.id).where(
                         and_(
@@ -240,7 +251,7 @@ class AgentWebSocketManager:
 
             # 2. 如果找到有效的 host_id，检查并更新 host_state
             if host_id_int:
-                session_factory = mariadb_manager.get_session()
+                session_factory = self.session_factory
                 async with session_factory() as session:
                     # 查询当前 host_state
                     stmt = select(HostRec.host_state).where(HostRec.id == host_id_int)
@@ -1277,7 +1288,7 @@ class AgentWebSocketManager:
             )
 
             # 查询 host_exec_log 表
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 查询条件: host_id = agent_id, host_state = 1, del_flag = 0
                 # 按 created_at 降序，获取最新一条
@@ -1427,7 +1438,7 @@ class AgentWebSocketManager:
             )
 
             # 查询 host_exec_log 表
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 查询条件: host_id = msg_host_id, del_flag = 0
                 # 按 created_time 降序，获取最新一条

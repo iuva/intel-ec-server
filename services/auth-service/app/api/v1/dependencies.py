@@ -8,8 +8,9 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
-from app.services.auth_service import AuthService
 from fastapi import Request
+
+from app.services.auth_service import AuthService
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -120,7 +121,7 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
             }
 
             # ✅ 保留 sub 字段以兼容旧代码（向后兼容）
-            if "sub" in user_info and user_info["sub"]:
+            if user_info.get("sub"):
                 result["sub"] = user_info["sub"]
 
             logger.debug(

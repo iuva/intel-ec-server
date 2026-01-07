@@ -8,9 +8,9 @@
 """
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 import os
 import sys
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, select, update
@@ -22,12 +22,11 @@ try:
         HOST_STATE_LOCKED,
         HOST_STATE_OCCUPIED,
     )
+    from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
-    from app.models.host_exec_log import HostExecLog
-
     from shared.common.cache import redis_manager
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.email_sender import send_email
@@ -42,12 +41,11 @@ except ImportError:
         HOST_STATE_LOCKED,
         HOST_STATE_OCCUPIED,
     )
+    from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
     from app.models.host_rec import HostRec
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
-    from app.models.host_exec_log import HostExecLog
-
     from shared.common.cache import redis_manager
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.email_sender import send_email
@@ -86,6 +84,20 @@ class AgentReportService:
         self.json_comparator = JSONComparator()
         # 初始化模板验证器
         self.template_validator = TemplateValidator()
+        # ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        - 第一次调用时初始化
+        - 后续调用复用缓存的工厂实例
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     async def report_hardware(
         self,
@@ -261,7 +273,7 @@ class AgentReportService:
             )
 
         # 缓存未命中，查询数据库
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             stmt = (
                 select(SysConf)
@@ -352,7 +364,7 @@ class AgentReportService:
 
         # 缓存未命中，查询数据库
         try:
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = select(SysConf).where(
                     and_(
@@ -418,34 +430,44 @@ class AgentReportService:
         self.template_validator.validate_required_fields(dmr_config, hw_template)
         logger.info("硬件信息必填字段验证通过")
 
-    async def _get_current_hardware_record(self, host_id: int) -> Optional[HostHwRec]:
+    async def _get_current_hardware_record(
+        self, host_id: int, session: Optional[Any] = None
+    ) -> Optional[HostHwRec]:
         """获取当前生效的硬件记录
 
         查询 host_hw_rec 表中最新的硬件记录
 
+        ✅ 优化：支持传入外部会话，避免创建新会话
+
         Args:
             host_id: 主机ID
+            session: 可选的外部会话（如果不传则创建新会话）
 
         Returns:
             最新的硬件记录，如果不存在则返回None
         """
         try:
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as session:
-                stmt = (
-                    select(HostHwRec)
-                    .where(
-                        and_(
-                            HostHwRec.host_id == host_id,
-                            HostHwRec.del_flag == 0,
-                        )
+            stmt = (
+                select(HostHwRec)
+                .where(
+                    and_(
+                        HostHwRec.host_id == host_id,
+                        HostHwRec.del_flag == 0,
                     )
-                    .order_by(HostHwRec.id.desc())
-                    .limit(1)
                 )
+                .order_by(HostHwRec.id.desc())
+                .limit(1)
+            )
 
+            # ✅ 优化：如果传入了会话则直接使用，否则创建新会话
+            if session:
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
+            else:
+                session_factory = self.session_factory
+                async with session_factory() as new_session:
+                    result = await new_session.execute(stmt)
+                    return result.scalar_one_or_none()
 
         except Exception as e:
             logger.error(
@@ -553,7 +575,7 @@ class AgentReportService:
             更新结果
         """
         try:
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 如果有差异，需要更新 host_rec 和插入新的 host_hw_rec
                 if diff_state:
@@ -768,7 +790,7 @@ class AgentReportService:
                 },
             )
 
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 1. 查询最新的执行日志记录
                 stmt = (
@@ -895,7 +917,7 @@ class AgentReportService:
                 },
             )
 
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 1. 查询执行中的最新执行日志记录
                 # 查询条件：host_id, tc_id, case_state=1（启动状态）, del_flag=0
@@ -1015,7 +1037,7 @@ class AgentReportService:
                 },
             )
 
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 1. 查询 host_rec 表，验证主机是否存在
                 stmt = select(HostRec).where(
@@ -1110,7 +1132,6 @@ class AgentReportService:
                                 "vnc_state": vnc_state,
                             },
                         )
-
 
                 # 4. 如果需要更新，执行更新操作
                 if updated and new_host_state is not None:
@@ -1229,7 +1250,7 @@ class AgentReportService:
             # 映射 biz_state 到 app_state（1=更新中，2=成功，3=失败）
             app_state = biz_state
 
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 1. 查询 host_upd 表的最新有效记录
                 stmt = (
@@ -1356,7 +1377,7 @@ class AgentReportService:
                         old_agent_ver = host_rec.agent_ver
 
                         update_values: Dict[str, Any] = {}
-                        
+
                         # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
                         if old_host_state < 5:
                             update_values["host_state"] = HOST_STATE_FREE
@@ -1555,7 +1576,7 @@ class AgentReportService:
             维护人员邮箱列表
         """
         try:
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = select(SysConf).where(
                     and_(

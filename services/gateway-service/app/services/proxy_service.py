@@ -11,15 +11,22 @@ import re
 import sys
 from typing import Any, Dict, Optional
 
-import websockets
 from fastapi import Request, WebSocket, WebSocketDisconnect
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from starlette.websockets import WebSocketState
+import websockets
 
 # 使用 try-except 方式处理路径导入
 try:
     from httpx import ConnectError, HTTPStatusError, NetworkError, TimeoutException
 
+    # 导入错误处理函数（代码重用）
+    from app.services.proxy_error_handler import (
+        raise_connection_error,
+        raise_network_error,
+        raise_protocol_error,
+        raise_timeout_error,
+    )
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.i18n import parse_accept_language, t
@@ -31,6 +38,13 @@ except ImportError:
     # 兼容不同版本的 httpx
     from httpx import ConnectError, TimeoutException
 
+    # 导入错误处理函数（代码重用）
+    from app.services.proxy_error_handler import (
+        raise_connection_error,
+        raise_network_error,
+        raise_protocol_error,
+        raise_timeout_error,
+    )
     from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.i18n import parse_accept_language, t
@@ -83,19 +97,20 @@ class ProxyService:
         self.service_discovery = service_discovery
 
         # HTTP 客户端配置（在创建客户端之前必须初始化）
+        # ✅ 优化：支持环境变量配置，提高灵活性和性能
         self.http_client_config = http_client_config or HTTPClientConfig(
-            timeout=15.0,
-            connect_timeout=5.0,
-            max_keepalive_connections=20,
-            max_connections=100,
+            timeout=float(os.getenv("PROXY_HTTP_TIMEOUT", "30.0")),  # 增加超时时间
+            connect_timeout=float(os.getenv("PROXY_CONNECT_TIMEOUT", "5.0")),
+            max_keepalive_connections=int(os.getenv("PROXY_MAX_KEEPALIVE", "50")),  # 增加复用连接
+            max_connections=int(os.getenv("PROXY_MAX_CONNECTIONS", "200")),  # 增加并发支持
             max_retries=0,
             retry_delay=0.0,
             client_name="gateway_proxy_http_client",
         )
 
         self.health_check_client_config = health_check_client_config or HTTPClientConfig(
-            timeout=5.0,
-            connect_timeout=2.0,
+            timeout=float(os.getenv("PROXY_HEALTH_TIMEOUT", "5.0")),
+            connect_timeout=float(os.getenv("PROXY_HEALTH_CONNECT_TIMEOUT", "2.0")),
             max_keepalive_connections=5,
             max_connections=10,
             max_retries=1,
@@ -109,8 +124,10 @@ class ProxyService:
             "host": "host-service",
         }
 
-        # ✅ WebSocket 连接管理
-        self.max_websocket_connections = max_websocket_connections
+        # ✅ WebSocket 连接管理（支持环境变量配置）
+        self.max_websocket_connections = max_websocket_connections or int(
+            os.getenv("PROXY_MAX_WEBSOCKET_CONNECTIONS", "1000")
+        )
         self.active_websocket_connections: Dict[str, Any] = {}  # 跟踪活跃连接
         self._websocket_connection_lock: Optional[asyncio.Lock] = None  # 连接数限制锁（延迟创建）
 
@@ -213,104 +230,12 @@ class ProxyService:
         #   转发到Auth Service: /api/v1/auth/device/login ✅
         return f"{service_url}{API_PREFIX}/{service_name}/{path}"
 
-    def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
-        """记录后端错误日志
-
-        Args:
-            service_name: 服务名称
-            method: HTTP 方法
-            path: 请求路径
-            error_type: 错误类型
-            error: 错误信息
-        """
-        logger.error(
-            f"后端服务错误: {service_name} - {error_type}",
-            extra={
-                "service_name": service_name,
-                "method": method,
-                "path": path,
-                "error_type": error_type,
-                "error": error,
-            },
-            exc_info=True,
-        )
-
-    def _raise_connection_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
-        """抛出连接错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-            locale: 语言代码
-        """
-        self._log_backend_error(service_name, "", "", "CONNECTION_ERROR", str(error))
-        raise BusinessError(
-            message=t("error.service.connection_failed", locale=locale, service_name=service_name),
-            message_key="error.service.connection_failed",
-            error_code="GATEWAY_CONNECTION_FAILED",
-            code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
-            http_status_code=502,
-            locale=locale,
-            details={"original_error": str(error), "service_name": service_name},
-        )
-
-    def _raise_timeout_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
-        """抛出超时错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-            locale: 语言代码
-        """
-        self._log_backend_error(service_name, "", "", "TIMEOUT_ERROR", str(error))
-        raise BusinessError(
-            message=t("error.service.timeout_error", locale=locale, service_name=service_name),
-            message_key="error.service.timeout_error",
-            error_code="GATEWAY_TIMEOUT",
-            code=ServiceErrorCodes.GATEWAY_TIMEOUT,
-            http_status_code=504,
-            locale=locale,
-            details={"original_error": str(error), "service_name": service_name, "timeout": True},
-        )
-
-    def _raise_network_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
-        """抛出网络错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-            locale: 语言代码
-        """
-        self._log_backend_error(service_name, "", "", "NETWORK_ERROR", str(error))
-        raise BusinessError(
-            message=t("error.service.network_error", locale=locale, service_name=service_name),
-            message_key="error.service.network_error",
-            error_code="GATEWAY_NETWORK_ERROR",
-            code=ServiceErrorCodes.GATEWAY_NETWORK_ERROR,
-            http_status_code=502,
-            locale=locale,
-            details={"original_error": str(error), "service_name": service_name},
-        )
-
-    def _raise_protocol_error(self, service_name: str, error: Exception, locale: str = "zh_CN") -> None:
-        """抛出协议错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-            locale: 语言代码
-        """
-        error_type = type(error).__name__
-        self._log_backend_error(service_name, "", "", "PROTOCOL_ERROR", str(error))
-        raise BusinessError(
-            message=t("error.service.protocol_error", locale=locale, service_name=service_name),
-            message_key="error.service.protocol_error",
-            error_code="GATEWAY_PROTOCOL_ERROR",
-            code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
-            http_status_code=502,
-            locale=locale,
-            details={"original_error": str(error), "error_type": error_type, "service_name": service_name},
-        )
+    # ✅ 错误处理方法已移至 proxy_error_handler.py，使用模块级函数：
+    # - log_backend_error()
+    # - raise_connection_error()
+    # - raise_timeout_error()
+    # - raise_network_error()
+    # - raise_protocol_error()
 
     async def forward_request(
         self,
@@ -366,11 +291,6 @@ class ProxyService:
             accept_language = headers.get("Accept-Language") if headers else None
             locale = parse_accept_language(accept_language)
 
-            logger.debug(
-                f"清理后的请求头: {list(clean_headers.keys())}",
-                extra={"headers_count": len(clean_headers)},
-            )
-
             # 准备请求参数
             request_kwargs: Dict[str, Any] = {
                 "headers": clean_headers,
@@ -383,13 +303,8 @@ class ProxyService:
                 # 确保有 Content-Type 头
                 if "Content-Type" not in clean_headers:
                     clean_headers["Content-Type"] = "application/json"
-                logger.debug("使用原始请求体", extra={"content_type": clean_headers.get('Content-Type')})
             elif body is not None:
                 request_kwargs["json"] = body
-                # json 参数会自动设置 Content-Type
-                logger.debug("使用 JSON 请求体")
-            else:
-                logger.debug("无请求体")
 
             # 使用异步 HTTP 客户端发送请求
             # ✅ 禁用重试：网关调用接口失败时不进行重试，直接返回错误
@@ -406,10 +321,6 @@ class ProxyService:
             )
 
             try:
-                # ✅ 修复：使用共享的 AsyncHTTPClient
-                # 现在 AsyncHTTPClient 不会抛出异常，而是返回所有状态码的响应
-                logger.debug("使用 AsyncHTTPClient 发送请求", extra={"method": method, "full_url": full_url})
-
                 response = await self.http_client.request(
                     method=method,
                     url=full_url,
@@ -496,28 +407,28 @@ class ProxyService:
             raise
 
         except ConnectError as e:
-            # 处理连接错误
+            # 处理连接错误（使用模块级函数）
             accept_language = headers.get("Accept-Language") if headers else None
             locale = parse_accept_language(accept_language)
-            self._raise_connection_error(service_name, e, locale)
+            raise_connection_error(service_name, e, locale)
 
         except TimeoutException as e:
-            # 处理超时错误
+            # 处理超时错误（使用模块级函数）
             accept_language = headers.get("Accept-Language") if headers else None
             locale = parse_accept_language(accept_language)
-            self._raise_timeout_error(service_name, e, locale)
+            raise_timeout_error(service_name, e, locale)
 
         except NetworkError as e:
-            # 处理网络错误
+            # 处理网络错误（使用模块级函数）
             accept_language = headers.get("Accept-Language") if headers else None
             locale = parse_accept_language(accept_language)
-            self._raise_network_error(service_name, e, locale)
+            raise_network_error(service_name, e, locale)
 
         except Exception as e:
-            # 处理其他错误（协议错误等）
+            # 处理其他错误（协议错误等，使用模块级函数）
             accept_language = headers.get("Accept-Language") if headers else None
             locale = parse_accept_language(accept_language)
-            self._raise_protocol_error(service_name, e, locale)
+            raise_protocol_error(service_name, e, locale)
 
         # 不应该到达这里，但作为防御性编程
         msg = f"请求转发异常（未捕获）: {service_name}"
@@ -645,7 +556,7 @@ class ProxyService:
 
             # 连接到后端 WebSocket
             # ✅ 启用 ping/pong 心跳机制，防止中间设备（代理、负载均衡器）因检测不到活动而关闭连接
-            # 
+            #
             # 心跳配置说明：
             # 1. 协议层心跳（ping/pong）：用于保持 TCP 连接活跃，防止中间设备关闭连接
             # 2. 应用层心跳（host-service）：Agent 通过 WebSocket 消息发送，用于业务逻辑（30-60秒间隔）

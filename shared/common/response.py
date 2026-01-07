@@ -46,7 +46,7 @@ class SuccessResponse(BaseModel):
         """初始化成功响应，支持自动翻译"""
         # 如果有 message_key，自动翻译
         message_key = data.get("message_key")
-        locale = data.get("locale", "zh_CN")
+        locale = data.get("locale", "en_US")
 
         if message_key:
             # 从 kwargs 中提取格式化变量（排除已定义的字段和复杂类型）
@@ -215,7 +215,7 @@ class ErrorResponse(BaseModel):
         """初始化错误响应，支持自动翻译"""
         # 如果有 message_key，自动翻译
         message_key = data.get("message_key")
-        locale = data.get("locale", "zh_CN")
+        locale = data.get("locale", "en_US")
 
         if message_key:
             # 从 kwargs 中提取格式化变量（排除已定义的字段和复杂类型）
@@ -311,7 +311,7 @@ class PaginationResponse(BaseModel):
         """初始化分页响应，支持自动翻译"""
         # 如果有 message_key，自动翻译
         message_key = data.get("message_key")
-        locale = data.get("locale", "zh_CN")
+        locale = data.get("locale", "en_US")
 
         if message_key:
             # 从 kwargs 中提取格式化变量（排除已定义的字段）

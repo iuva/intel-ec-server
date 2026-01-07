@@ -3,9 +3,9 @@
 提供管理后台使用的 OTA 配置查询等核心业务逻辑。
 """
 
+from datetime import datetime, timezone
 import os
 import sys
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, select, update
@@ -17,7 +17,6 @@ try:
     from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.cache_invalidation import invalidate_ota_config_cache
     from app.utils.logging_helpers import log_operation_start
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -30,7 +29,6 @@ except ImportError:
     from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.cache_invalidation import invalidate_ota_config_cache
     from app.utils.logging_helpers import log_operation_start
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.decorators import handle_service_errors
@@ -41,7 +39,25 @@ logger = get_logger(__name__)
 
 
 class AdminOtaService:
-    """管理后台 OTA 管理服务"""
+    """管理后台 OTA 管理服务
+
+    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+    """
+
+    def __init__(self):
+        """初始化服务"""
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     @handle_service_errors(
         error_message="查询 OTA 配置列表失败",
@@ -71,7 +87,7 @@ class AdminOtaService:
             logger_instance=logger,
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 构建查询条件
             stmt = select(
@@ -165,7 +181,7 @@ class AdminOtaService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 查询配置是否存在
             stmt = select(SysConf).where(
@@ -336,7 +352,7 @@ class AdminOtaService:
             )
 
             # 在 host_upd 表中新增记录
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 host_upd = HostUpd(
                     host_id=host_id_int,

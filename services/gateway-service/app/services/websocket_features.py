@@ -6,13 +6,13 @@ WebSocket 高级特性管理器
 
 import asyncio
 import base64
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import gzip
 import json
 import os
 import sys
 import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Tuple
 
 try:

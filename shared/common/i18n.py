@@ -18,8 +18,8 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 默认语言
-DEFAULT_LOCALE = "zh_CN"
+# 默认语言 (Default: English)
+DEFAULT_LOCALE = "en_US"
 
 # 支持的语言列表
 SUPPORTED_LOCALES = ["zh_CN", "en_US"]

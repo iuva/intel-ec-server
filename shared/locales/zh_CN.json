@@ -23,11 +23,14 @@
       "force_offline": "主机强制下线成功",
       "release": "主机释放成功",
       "***REMOVED***word_update": "主机密码修改成功",
-      "exec_log_list_query": "查询主机执行日志列表成功"
+      "exec_log_list_query": "查询主机执行日志列表成功",
+      "retry_vnc_list_query": "查询VNC重试列表成功",
+      "reset_for_test": "主机重置测试成功"
     },
     "hardware": {
       "report": "硬件信息上报成功",
-      "test_result_report": "测试用例结果上报成功"
+      "test_result_report": "测试用例结果上报成功",
+      "due_time_report": "预期结束时间上报成功"
     },
     "websocket": {
       "get_active_hosts": "获取活跃Host成功",
@@ -38,7 +41,8 @@
     },
     "vnc": {
       "report": "VNC连接结果上报成功",
-      "get_connection": "获取 VNC 连接信息成功"
+      "get_connection": "获取 VNC 连接信息成功",
+      "agent_report": "VNC Agent上报成功"
     },
     "email": {
       "get_completed": "获取维护通知邮箱成功",
@@ -47,7 +51,8 @@
     "ota": {
       "list_query": "查询 OTA 配置列表成功",
       "deploy": "OTA 配置下发成功",
-      "query": "获取 OTA 配置成功"
+      "query": "获取 OTA 配置成功",
+      "update_status": "OTA更新状态上报成功"
     },
     "file": {
       "upload": "文件上传成功"
@@ -80,7 +85,9 @@
       "***REMOVED***word_encrypt_failed": "密码加密失败（ID: {host_id}）",
       "***REMOVED***word_update_failed": "密码更新失败（ID: {host_id}）",
       "force_offline_failed": "主机强制下线失败，记录可能已被删除（ID: {host_id}）",
-      "invalid_host_state": "host_state 参数值必须在 0-4 范围内，当前值: {host_state}"
+      "invalid_host_state": "host_state 参数值必须在 0-4 范围内，当前值: {host_state}",
+      "delete_external_api_failed": "主机删除失败：外部API通知失败（ID: {host_id}）",
+      "force_offline_state_invalid": "主机状态不允许强制下线，当前状态：{current_state}，需要状态：{required_state}"
     },
     "vnc": {
       "info_incomplete": "VNC 连接信息不完整，缺少 IP 地址或端口"
@@ -113,7 +120,8 @@
       "logout_error": "登出失败",
       "missing_user_info": "缺少用户认证信息",
       "invalid_user_info": "用户信息格式错误",
-      "get_user_failed": "获取用户信息失败"
+      "get_user_failed": "获取用户信息失败",
+      "invalid_user_type": "无效的用户类型"
     },
     "email": {
       "empty": "邮箱地址不能为空",
@@ -142,11 +150,29 @@
       "connection_failed": "WebSocket 连接失败",
       "proxy_error": "WebSocket 转发失败",
       "invalid_message_format": "消息必须包含 type 字段",
-      "host_not_connected": "消息发送失败（Host未连接）"
+      "host_not_connected": "消息发送失败（Host未连接）",
+      "connection_limit_reached": "WebSocket 连接数已达上限",
+      "forward_failed": "WebSocket 转发失败: {service_name}"
     },
     "gateway": {
       "internal_error": "网关内部错误",
       "resource_not_found": "请求的资源不存在"
+    },
+    "external_api": {
+      "email_missing": "邮箱地址为必填项但缺失",
+      "token_failed": "外部API令牌请求失败",
+      "token_invalid_response": "外部API令牌返回无效响应",
+      "token_missing": "响应中缺少外部API令牌",
+      "token_error": "外部API令牌错误: {error}",
+      "user_id_missing": "用户ID为必填项但缺失",
+      "user_id_not_found": "在外部API中未找到用户ID"
+    },
+    "user": {
+      "not_found": "用户不存在",
+      "email_empty": "用户邮箱地址为空"
+    },
+    "proxy": {
+      "service_not_found": "代理服务未找到: {service_name}"
     }
   },
   "email": {

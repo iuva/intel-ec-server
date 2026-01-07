@@ -23,11 +23,14 @@
       "force_offline": "Host force offline successfully",
       "release": "Host released successfully",
       "***REMOVED***word_update": "Host ***REMOVED***word updated successfully",
-      "exec_log_list_query": "Host execution log list query successful"
+      "exec_log_list_query": "Host execution log list query successful",
+      "retry_vnc_list_query": "VNC retry list query successful",
+      "reset_for_test": "Host reset for test successful"
     },
     "hardware": {
       "report": "Hardware information reported successfully",
-      "test_result_report": "Test case result reported successfully"
+      "test_result_report": "Test case result reported successfully",
+      "due_time_report": "Due time reported successfully"
     },
     "websocket": {
       "get_active_hosts": "Get active hosts successful",
@@ -38,7 +41,8 @@
     },
     "vnc": {
       "report": "VNC connection result reported successfully",
-      "get_connection": "Get VNC connection information successful"
+      "get_connection": "Get VNC connection information successful",
+      "agent_report": "VNC agent report successful"
     },
     "email": {
       "get_completed": "Maintenance notification email fetched successfully",
@@ -47,7 +51,8 @@
     "ota": {
       "list_query": "OTA configuration list query successful",
       "deploy": "OTA configuration deployed successfully",
-      "query": "OTA configuration retrieved successfully"
+      "query": "OTA configuration retrieved successfully",
+      "update_status": "OTA update status reported successfully"
     },
     "file": {
       "upload": "File uploaded successfully"
@@ -80,7 +85,9 @@
       "***REMOVED***word_encrypt_failed": "Password encryption failed (ID: {host_id})",
       "***REMOVED***word_update_failed": "Password update failed (ID: {host_id})",
       "force_offline_failed": "Host force offline failed, record may have been deleted (ID: {host_id})",
-      "invalid_host_state": "host_state parameter value must be in the range 0-4, current value: {host_state}"
+      "invalid_host_state": "host_state parameter value must be in the range 0-4, current value: {host_state}",
+      "delete_external_api_failed": "Host deletion failed: External API notification failed (ID: {host_id})",
+      "force_offline_state_invalid": "Host state does not allow force offline, current state: {current_state}, required state: {required_state}"
     },
     "vnc": {
       "info_incomplete": "VNC connection information incomplete, missing IP address or port"
@@ -113,7 +120,8 @@
       "logout_error": "Logout failed",
       "missing_user_info": "Missing user authentication information",
       "invalid_user_info": "Invalid user information format",
-      "get_user_failed": "Failed to get user information"
+      "get_user_failed": "Failed to get user information",
+      "invalid_user_type": "Invalid user type"
     },
     "email": {
       "empty": "Email address cannot be empty",
@@ -142,11 +150,29 @@
       "connection_failed": "WebSocket connection failed",
       "proxy_error": "WebSocket proxy failed",
       "invalid_message_format": "Message must contain type field",
-      "host_not_connected": "Message sending failed (Host not connected)"
+      "host_not_connected": "Message sending failed (Host not connected)",
+      "connection_limit_reached": "WebSocket connection limit reached",
+      "forward_failed": "WebSocket forward failed: {service_name}"
     },
     "gateway": {
       "internal_error": "Gateway internal error",
       "resource_not_found": "Requested resource not found"
+    },
+    "external_api": {
+      "email_missing": "Email address is required but missing",
+      "token_failed": "External API token request failed",
+      "token_invalid_response": "External API token returned invalid response",
+      "token_missing": "External API token is missing in response",
+      "token_error": "External API token error: {error}",
+      "user_id_missing": "User ID is required but missing",
+      "user_id_not_found": "User ID not found in external API"
+    },
+    "user": {
+      "not_found": "User not found",
+      "email_empty": "User email address is empty"
+    },
+    "proxy": {
+      "service_not_found": "Proxy service not found: {service_name}"
     }
   },
   "email": {

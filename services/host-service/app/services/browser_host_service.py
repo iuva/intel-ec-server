@@ -6,6 +6,8 @@
 from datetime import datetime, timezone
 from typing import List, cast
 
+from sqlalchemy import and_, select, update
+
 from app.constants.host_constants import (
     APPR_STATE_ENABLE,
     CASE_STATE_SUCCESS,
@@ -17,7 +19,6 @@ from app.constants.host_constants import (
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
-from sqlalchemy import and_, select, update
 
 # 使用 try-except 方式处理路径导入
 try:
@@ -48,7 +49,26 @@ class BrowserHostService:
     """浏览器插件主机管理服务类
 
     负责浏览器插件的主机管理操作，包括查询、状态更新、心跳更新等。
+
+    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
     """
+
+    def __init__(self):
+        """初始化服务"""
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        - 第一次调用时初始化
+        - 后续调用复用缓存的工厂实例
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     @handle_service_errors(
         error_message="查询主机信息失败",
@@ -76,7 +96,7 @@ class BrowserHostService:
                 http_status_code=400,
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 使用工具函数验证主机存在
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
@@ -148,7 +168,7 @@ class BrowserHostService:
                 http_status_code=400,
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             try:
                 # 使用工具函数验证主机存在
@@ -361,7 +381,7 @@ class BrowserHostService:
                 http_status_code=400,
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 使用工具函数验证主机存在
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
@@ -412,7 +432,7 @@ class BrowserHostService:
             return False
 
         try:
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = select(HostRec).where(
                     and_(
@@ -471,7 +491,7 @@ class BrowserHostService:
                 host_id_int = int(host_id)
             except (ValueError, TypeError):
                 # 如果 host_id 不是整数，尝试通过 mg_id 查询
-                session_factory = mariadb_manager.get_session()
+                session_factory = self.session_factory
                 async with session_factory() as session:
                     stmt = select(HostRec).where(
                         and_(
@@ -488,7 +508,7 @@ class BrowserHostService:
                     host_id_int = host.id
 
             # 更新 tcp_state
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # ✅ 修复：不手动设置 updated_time，让 onupdate=func.now() 自动更新
                 stmt = (
@@ -571,7 +591,7 @@ class BrowserHostService:
                 return False
 
             # 更新 agent_ver
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = (
                     update(HostRec)
@@ -643,7 +663,7 @@ class BrowserHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # ✅ 优化：使用 JOIN 查询，一次查询获取所有数据，减少数据库往返
             # 合并原来的两次查询为一次 JOIN 查询
@@ -765,7 +785,7 @@ class BrowserHostService:
             },
         )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 1. 先更新 host_rec 表的 host_state = 0（空闲状态）
             # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
@@ -924,7 +944,7 @@ class BrowserHostService:
                 http_status_code=400,
             )
 
-        session_factory = mariadb_manager.get_session()
+        session_factory = self.session_factory
         async with session_factory() as session:
             # 验证主机存在
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")

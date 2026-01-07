@@ -12,9 +12,9 @@
 """
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 import os
 import sys
-from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy import and_, or_, select, update
@@ -28,7 +28,6 @@ try:
     from app.schemas.websocket_message import MessageType
     from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.logging_helpers import log_operation_start
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.email_sender import send_email
@@ -43,7 +42,6 @@ except ImportError:
     from app.schemas.websocket_message import MessageType
     from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.utils.logging_helpers import log_operation_start
-
     from shared.common.cache import redis_manager
     from shared.common.database import mariadb_manager
     from shared.common.email_sender import send_email
@@ -69,6 +67,18 @@ class CaseTimeoutTaskService:
         self.interval: int = 600
         # 记录是否已经警告过配置缺失（避免重复警告）
         self._has_warned_missing_config: bool = False
+        # ✅ 优化：缓存会话工厂
+        self._session_factory = None
+
+    @property
+    def session_factory(self):
+        """获取会话工厂（延迟初始化，单例模式）
+
+        ✅ 优化：缓存会话工厂，避免重复获取
+        """
+        if self._session_factory is None:
+            self._session_factory = mariadb_manager.get_session()
+        return self._session_factory
 
     async def start(self) -> None:
         """启动定时任务"""
@@ -280,7 +290,7 @@ class CaseTimeoutTaskService:
                     return timeout_minutes
 
             # 2. 从数据库查询
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = (
                     select(SysConf)
@@ -363,7 +373,7 @@ class CaseTimeoutTaskService:
             now = datetime.now(timezone.utc)
             timeout_threshold = now - timedelta(minutes=timeout_minutes)
 
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # 查询条件：
                 # - host_state in (2, 3)  # 已占用或case执行中
@@ -582,7 +592,7 @@ class CaseTimeoutTaskService:
             now = datetime.now(timezone.utc)
             timeout_threshold = now - timedelta(minutes=5)  # 5分钟超时
 
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = (
                     select(HostRec)
@@ -637,7 +647,7 @@ class CaseTimeoutTaskService:
             是否清理成功
         """
         try:
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 # ✅ 使用事务确保数据一致性
                 try:
@@ -743,7 +753,7 @@ class CaseTimeoutTaskService:
         """
         try:
             # 1. 查询 host_rec 表获取 hardware_id 和 host_ip
-            session_factory = mariadb_manager.get_session()
+            session_factory = self.session_factory
             async with session_factory() as session:
                 host_stmt = select(HostRec).where(
                     and_(

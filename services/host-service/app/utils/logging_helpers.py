@@ -1,86 +1,59 @@
 """日志记录辅助函数
 
-提供统一的日志记录工具函数，减少重复的日志代码。
+提供统一的日志记录工具函数，重导出共享模块的函数以保持向后兼容。
+
+注意：此模块为向后兼容保留，新代码应直接从 shared.utils.logging_utils 导入。
 """
 
-from typing import Any, Dict, Optional
+# 重导出共享模块的函数，保持向后兼容
+from shared.utils.logging_utils import (
+    log_auth_failure,
+    log_auth_success,
+    log_db_error,
+    log_db_query,
+    log_external_api_call,
+    log_external_api_error,
+    log_operation_completed,
+    log_operation_failed,
+    log_operation_start,
+    log_request_completed,
+    log_request_received,
+    log_service_shutdown,
+    log_service_startup,
+    log_websocket_connect,
+    log_websocket_disconnect,
+    log_websocket_message,
+    timed_operation,
+    timed_operation_sync,
+    with_request_logging,
+)
 
-from shared.common.loguru_config import get_logger
-
-logger = get_logger(__name__)
-
-
-def log_request_received(
-    operation: str,
-    extra: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[Any] = None,
-) -> None:
-    """记录请求接收日志
-
-    Args:
-        operation: 操作名称（如 "query_available_hosts", "report_hardware"）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例，如果为 None 则使用模块默认 logger
-    """
-    log = logger_instance or logger
-    log.info(
-        f"接收 {operation} 请求",
-        extra=extra or {},
-    )
-
-
-def log_request_completed(
-    operation: str,
-    extra: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[Any] = None,
-) -> None:
-    """记录请求处理完成日志
-
-    Args:
-        operation: 操作名称（如 "query_available_hosts", "report_hardware"）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例，如果为 None 则使用模块默认 logger
-    """
-    log = logger_instance or logger
-    log.info(
-        f"{operation} 处理完成",
-        extra=extra or {},
-    )
-
-
-def log_operation_start(
-    operation: str,
-    extra: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[Any] = None,
-) -> None:
-    """记录操作开始日志
-
-    Args:
-        operation: 操作名称
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例，如果为 None 则使用模块默认 logger
-    """
-    log = logger_instance or logger
-    log.info(
-        f"开始 {operation}",
-        extra=extra or {},
-    )
-
-
-def log_operation_completed(
-    operation: str,
-    extra: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[Any] = None,
-) -> None:
-    """记录操作完成日志
-
-    Args:
-        operation: 操作名称
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例，如果为 None 则使用模块默认 logger
-    """
-    log = logger_instance or logger
-    log.info(
-        f"{operation} 完成",
-        extra=extra or {},
-    )
+__all__ = [
+    # 基础日志
+    "log_request_received",
+    "log_request_completed",
+    "log_operation_start",
+    "log_operation_completed",
+    "log_operation_failed",
+    # 数据库日志
+    "log_db_query",
+    "log_db_error",
+    # 外部 API 日志
+    "log_external_api_call",
+    "log_external_api_error",
+    # 性能追踪
+    "timed_operation",
+    "timed_operation_sync",
+    # 装饰器
+    "with_request_logging",
+    # WebSocket 日志
+    "log_websocket_connect",
+    "log_websocket_disconnect",
+    "log_websocket_message",
+    # 认证日志
+    "log_auth_success",
+    "log_auth_failure",
+    # 服务日志
+    "log_service_startup",
+    "log_service_shutdown",
+]

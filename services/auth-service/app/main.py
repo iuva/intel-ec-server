@@ -12,12 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 # 使用 try-except 方式处理路径导入
 try:
     from app.api.v1 import api_router
-
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
+    from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
@@ -25,12 +25,12 @@ except ImportError:
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from app.api.v1 import api_router
-
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
+    from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 
 # 加载 .env 文件（如果存在）
@@ -84,6 +84,10 @@ if config.enable_prometheus:
 
 # ✅ 立即添加统一异常处理中间件（必须在应用启动前添加）
 app.add_middleware(UnifiedExceptionMiddleware)
+
+# ✅ 添加请求上下文中间件（为每个请求生成 request_id，用于日志追踪）
+app.add_middleware(RequestContextMiddleware)
+logger.info("✅ 请求上下文中间件已启用")
 
 # ❌ 不要在这里调用 jaeger_manager.instrument_app(app)
 # 应用在此时已经启动，无法再添加 Jaeger 中间件

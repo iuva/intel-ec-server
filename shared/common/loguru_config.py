@@ -199,10 +199,26 @@ def configure_logger(
     # 设置根日志记录器级别
     root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
-    # 使用 patcher 在消息中追加 extra 信息
+    # 使用 patcher 在消息中追加 extra 信息和请求上下文
     def patcher(record: Any) -> None:
-        """修改记录，在消息后追加 extra 信息"""
+        """修改记录，在消息后追加 extra 信息和请求上下文"""
         try:
+            # ✅ 自动注入请求上下文
+            try:
+                from shared.middleware.request_context_middleware import (
+                    get_request_context,
+                )
+
+                request_context = get_request_context()
+                if request_context:
+                    # 将请求上下文注入到 extra 中
+                    for key, value in request_context.items():
+                        if key not in record["extra"]:
+                            record["extra"][key] = value
+            except ImportError:
+                # 如果请求上下文中间件未导入，跳过
+                ***REMOVED***
+
             # 收集 extra 字段（排除 service_name 和 name，因为它们已经在格式中显示）
             extra_data = {}
             for key, value in record["extra"].items():
@@ -326,6 +342,60 @@ def get_logger(name: Optional[str] = None) -> Any:
     if name:
         return logger.bind(name=name)
     return logger
+
+
+def log_with_context(
+    level: str,
+    message: str,
+    extra: Optional[Dict[str, Any]] = None,
+    logger_instance: Optional[Any] = None,
+) -> None:
+    """带上下文的日志记录
+
+    自动注入请求上下文（request_id, user_id 等）到日志中。
+
+    Args:
+        level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+        message: 日志消息
+        extra: 额外的日志字段
+        logger_instance: 自定义 logger 实例，如果为 None 则使用默认 logger
+    """
+    log = logger_instance or logger
+    log_extra = extra.copy() if extra else {}
+
+    # 尝试注入请求上下文
+    try:
+        from shared.middleware.request_context_middleware import get_request_context
+
+        request_context = get_request_context()
+        if request_context:
+            for key, value in request_context.items():
+                if key not in log_extra:
+                    log_extra[key] = value
+    except ImportError:
+        ***REMOVED***
+
+    # 记录日志
+    log.log(level.upper(), message, extra=log_extra)
+
+
+def set_log_level(level: str) -> None:
+    """动态设置日志级别
+
+    Args:
+        level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
+    """
+    valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    level = level.upper()
+    if level not in valid_levels:
+        logger.warning(f"无效的日志级别: {level}，保持当前级别")
+        return
+
+    # 更新所有处理器的级别
+    for handler_id in logger._core.handlers:
+        logger._core.handlers[handler_id]._levelno = logger.level(level).no
+
+    logger.info(f"日志级别已更新为: {level}")
 
 
 def log_slow_query(

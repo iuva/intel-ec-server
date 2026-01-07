@@ -13,33 +13,35 @@ import sys
 
 # 使用 try-except 方式处理路径导入
 try:
-    from app.api.v1 import api_router
-    from app.middleware.auth_middleware import AuthMiddleware
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
+    from app.api.v1 import api_router
+    from app.middleware.auth_middleware import AuthMiddleware
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.http_client import HTTPClientConfig
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
+    from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
     from shared.utils.service_discovery import init_service_discovery
 except ImportError:
     # 如果导入失败，添加项目根目录到 Python 路径
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from app.api.v1 import api_router
-    from app.middleware.auth_middleware import AuthMiddleware
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
+    from app.api.v1 import api_router
+    from app.middleware.auth_middleware import AuthMiddleware
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.http_client import HTTPClientConfig
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
+    from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
     from shared.utils.service_discovery import init_service_discovery
 
@@ -73,15 +75,14 @@ if environment == "production":
         logger.error("生产环境必须设置 JWT_SECRET_KEY 环境变量，且不能使用默认值")
         raise ValueError(
             "生产环境必须设置 JWT_SECRET_KEY 环境变量。"
-            "请在 .env 文件中设置 JWT_SECRET_KEY，或通过环境变量传递。"
+            + "请在 .env 文件中设置 JWT_SECRET_KEY，或通过环境变量传递。"
         )
-else:
-    # 开发环境：如果没有设置，使用默认值并警告
-    if not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
-        logger.warning(
-            "JWT_SECRET_KEY 未设置或使用默认值，这在生产环境中是不安全的。"
-            "请设置 JWT_SECRET_KEY 环境变量。"
-        )
+# 开发环境：如果没有设置，使用默认值并警告
+elif not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
+    logger.warning(
+        "JWT_SECRET_KEY 未设置或使用默认值，这在生产环境中是不安全的。"
+        + "请设置 JWT_SECRET_KEY 环境变量。"
+    )
 
 # ✅ 修复：始终初始化服务发现，支持本地多实例配置
 # 即使 Nacos 未启用，也可以使用环境变量配置的多实例（如 HOST_SERVICE_INSTANCES）
@@ -178,6 +179,10 @@ if config.enable_prometheus:
 
 # ✅ 立即添加统一异常处理中间件（必须在应用启动前添加）
 app.add_middleware(UnifiedExceptionMiddleware)
+
+# ✅ 添加请求上下文中间件（为每个请求生成 request_id，用于日志追踪）
+app.add_middleware(RequestContextMiddleware)
+logger.info("✅ 请求上下文中间件已启用")
 
 # 注意：异常处理器已经在 lifespan 的 startup() 中注册（shared/app/service_factory.py:243-245）
 # 所以这里不需要再调用 setup_exception_handling
