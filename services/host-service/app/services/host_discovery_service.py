@@ -415,7 +415,7 @@ class HostDiscoveryService:
                     paginated_hosts = [
                         AvailableHostInfo(
                             host_rec_id=str(h.id),  # 使用 alias host_rec_id
-                            user_name=h.host_acct or "",  # 使用 alias user_name
+                            user_name=h.host_no or "",  # 使用 host_no 替代 host_acct
                             host_ip=h.host_ip or "",
                         )
                         for h in fallback_hosts
@@ -921,7 +921,7 @@ class HostDiscoveryService:
                 batch_hosts: List[AvailableHostInfo] = [
                     AvailableHostInfo(
                         host_rec_id=str(host_rec.id),
-                        user_name=host_rec.host_acct or "",
+                        user_name=host_rec.host_no or "",  # 使用 host_no 替代 host_acct
                         host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
                     )
                     for host_rec in host_recs
@@ -1021,7 +1021,7 @@ class HostDiscoveryService:
                         batch_hosts: List[AvailableHostInfo] = [
                             AvailableHostInfo(
                                 host_rec_id=str(host_rec.id),  # ✅ 转换为字符串避免精度丢失
-                                user_name=host_rec.host_acct or "",
+                                user_name=host_rec.host_no or "",  # 使用 host_no 替代 host_acct
                                 host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
                             )
                             for host_rec in host_recs

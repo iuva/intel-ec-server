@@ -295,7 +295,7 @@ class AvailableHostInfo(BaseModel):
     """可用主机信息"""
 
     id: str = Field(description="主机记录ID (host_rec.id)", alias="host_rec_id")
-    username: str = Field(description="用户名 (host_acct)", alias="user_name")
+    username: str = Field(description="主机编号 (host_no)", alias="user_name")
     host_ip: str = Field(description="主机IP地址 (host_ip)")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
@@ -353,7 +353,7 @@ class RetryVNCHostInfo(BaseModel):
 
     host_id: str = Field(description="主机ID (host_rec.id)")
     host_ip: str = Field(description="主机IP")
-    user_name: str = Field(description="主机账号 (host_acct)")
+    user_name: str = Field(description="主机编号 (host_no)")
 
     model_config = {"from_attributes": True}
 

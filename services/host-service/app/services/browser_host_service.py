@@ -668,7 +668,7 @@ class BrowserHostService:
             # ✅ 优化：使用 JOIN 查询，一次查询获取所有数据，减少数据库往返
             # 合并原来的两次查询为一次 JOIN 查询
             stmt = (
-                select(HostRec.id, HostRec.host_ip, HostRec.host_acct)
+                select(HostRec.id, HostRec.host_ip, HostRec.host_no)
                 .select_from(
                     HostExecLog.__table__.join(
                         HostRec.__table__,
@@ -715,7 +715,7 @@ class BrowserHostService:
                 RetryVNCHostInfo(
                     host_id=str(host[0]),  # ✅ 转换为字符串避免精度丢失
                     host_ip=host[1] or "",  # 防止 None 值
-                    user_name=host[2] or "",  # host_acct 重命名为 user_name
+                    user_name=host[2] or "",  # host_no 重命名为 user_name
                 )
                 for host in hosts
             ]
