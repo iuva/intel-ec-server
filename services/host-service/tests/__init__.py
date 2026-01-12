@@ -1,3 +1,3 @@
 """
-Host Service WebSocket 测试包
+Host Service WebSocket Test Package
 """

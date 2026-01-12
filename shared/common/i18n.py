@@ -1,7 +1,7 @@
 """
-国际化 (i18n) 模块
+Internationalization (i18n) module
 
-提供多语言消息支持，支持从请求头 Accept-Language 自动检测语言偏好。
+Provides multilingual message support, automatically detects language preference from Accept-Language header.
 """
 
 import json
@@ -18,27 +18,27 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 默认语言 (Default: English)
+# Default language (Default: English)
 DEFAULT_LOCALE = "en_US"
 
-# 支持的语言列表
+# Supported locales list
 SUPPORTED_LOCALES = ["zh_CN", "en_US"]
 
 
 class I18nManager:
-    """国际化管理器
+    """Internationalization Manager
 
-    管理多语言翻译资源，支持动态加载和缓存。
+    Manages multilingual translation resources, supports dynamic loading and caching.
     """
 
     def __init__(self, locales_dir: Optional[str] = None):
-        """初始化国际化管理器
+        """Initialize the Internationalization Manager
 
         Args:
-            locales_dir: 语言文件目录路径，如果为 None 则自动检测
+            locales_dir: Path to the language files directory, if None then auto-detect
         """
         if locales_dir is None:
-            # 自动检测语言文件目录
+            # Auto-detect language files directory
             current_file = Path(__file__).resolve()
             project_root = current_file.parent.parent.parent
             locales_dir = str(project_root / "shared" / "locales")
@@ -48,9 +48,9 @@ class I18nManager:
         self._load_translations()
 
     def _load_translations(self) -> None:
-        """加载所有语言文件"""
+        """Load all language files"""
         if not self.locales_dir.exists():
-            logger.warning(f"语言文件目录不存在: {self.locales_dir}")
+            logger.warning(f"Language files directory does not exist: {self.locales_dir}")
             return
 
         for locale in SUPPORTED_LOCALES:
@@ -59,75 +59,76 @@ class I18nManager:
                 try:
                     with open(locale_file, "r", encoding="utf-8") as f:
                         self._translations[locale] = json.load(f)
-                    logger.info(f"已加载语言文件: {locale} ({len(self._translations[locale])} 条翻译)")
+                    logger.info(f"Loaded language file: {locale} ({len(self._translations[locale])} translations)")
                 except Exception as e:
-                    logger.error(f"加载语言文件失败: {locale_file}, 错误: {str(e)}")
+                    logger.error(f"Failed to load language file: {locale_file}, Error: {str(e)}")
             else:
-                logger.warning(f"语言文件不存在: {locale_file}")
+                logger.warning(f"Language file does not exist: {locale_file}")
 
     def translate(self, key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs: Any) -> str:
-        """翻译消息键
+        """Translate message key
 
         Args:
-            key: 翻译键（支持点号分隔的嵌套键，如 "error.host.not_found"）
-            locale: 语言代码（如 "zh_CN", "en_US"），如果为 None 则使用默认语言
-            default: 默认消息（如果键不存在时使用），如果为 None 则返回键本身
-            **kwargs: 用于格式化消息的变量（如 name="test" 会替换 {name}）
+            key: Translation key (supports dot-separated nested keys, e.g., "error.host.not_found")
+            locale: Locale code (e.g., "zh_CN", "en_US"), if None then uses default language
+            default: Default message (used when key doesn't exist), if None then returns key itself
+            **kwargs: Variables for message formatting (e.g., name="test" replaces {name})
 
         Returns:
-            翻译后的消息
+            Translated message
 
         Examples:
             >>> i18n = I18nManager()
             >>> i18n.translate("success.operation", locale="zh_CN")
-            "操作成功"
+            "Operation successful"
             >>> i18n.translate("error.host.not_found", locale="en_US", host_id="123")
             "Host not found: 123"
         """
         if locale is None:
             locale = DEFAULT_LOCALE
 
-        # 如果语言不存在，使用默认语言
+        # If locale doesn't exist, use default language
         if locale not in self._translations:
-            logger.debug(f"语言不存在: {locale}，使用默认语言: {DEFAULT_LOCALE}")
+            logger.debug(f"Locale doesn't exist: {locale}, using default language: {DEFAULT_LOCALE}")
             locale = DEFAULT_LOCALE
 
-        # 获取翻译
+        # Get translation
         translations = self._translations.get(locale, {})
         message = self._get_nested_value(translations, key)
 
-        # 如果找不到翻译，使用默认值或键本身
+        # If translation not found, use default value or key itself
         if message is None:
             if default is not None:
                 message = default
             else:
-                logger.warning(f"翻译键不存在: {key} (locale: {locale})")
+                logger.warning(f"Translation key doesn't exist: {key} (locale: {locale})")
                 message = key
 
-        # 格式化消息（支持 {variable} 占位符）
-        # 只使用基本类型（str, int, float, bool, None）进行格式化，避免传递字典等复杂类型
+        # Format message (supports {variable} placeholders)
+        # Only use basic types (str, int, float, bool, None) for formatting
+        # avoid ***REMOVED***ing complex types like dictionaries
         if kwargs:
-            # 过滤掉复杂类型，只保留基本类型
+            # Filter out complex types, only keep basic types
             format_kwargs = {k: v for k, v in kwargs.items() if isinstance(v, (str, int, float, bool, type(None)))}
             try:
                 message = message.format(**format_kwargs)
             except KeyError as e:
-                logger.warning(f"格式化消息时缺少变量: {key}, 缺少: {e}")
-                # 如果格式化失败，返回原始消息
+                logger.warning(f"Missing variables when formatting message: {key}, Missing: {e}")
+                # If formatting fails, return original message
             except Exception as e:
-                logger.error(f"格式化消息失败: {key}, 错误: {str(e)}")
+                logger.error(f"Failed to format message: {key}, Error: {str(e)}")
 
         return message
 
     def _get_nested_value(self, data: Dict[str, Any], key: str) -> Optional[str]:
-        """获取嵌套字典的值
+        """Get value from nested dictionary
 
         Args:
-            data: 字典数据
-            key: 键（支持点号分隔，如 "error.host.not_found"）
+            data: Dictionary data
+            key: Key (supports dot-separated, e.g., "error.host.not_found")
 
         Returns:
-            值，如果不存在则返回 None
+            Value, or None if not exists
         """
         keys = key.split(".")
         current = data
@@ -141,21 +142,21 @@ class I18nManager:
         return str(current) if current is not None else None
 
     def reload(self) -> None:
-        """重新加载语言文件（用于开发环境热重载）"""
+        """Reload language files (for hot reloading in development environment)"""
         self._translations.clear()
         self._load_translations()
-        logger.info("语言文件已重新加载")
+        logger.info("Language files reloaded")
 
 
-# 全局实例
+# Global instance
 _i18n_manager_instance: Optional[I18nManager] = None
 
 
 def get_i18n_manager() -> I18nManager:
-    """获取全局国际化管理器实例（单例模式）
+    """Get global internationalization manager instance (singleton pattern)
 
     Returns:
-        I18nManager 实例
+        I18nManager instance
     """
     global _i18n_manager_instance
 
@@ -166,16 +167,16 @@ def get_i18n_manager() -> I18nManager:
 
 
 def t(key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs: Any) -> str:
-    """翻译快捷函数
+    """Translation shortcut function
 
     Args:
-        key: 翻译键
-        locale: 语言代码
-        default: 默认消息
-        **kwargs: 格式化变量
+        key: Translation key
+        locale: Locale code
+        default: Default message
+        **kwargs: Formatting variables
 
     Returns:
-        翻译后的消息
+        Translated message
 
     Example:
         >>> t("success.operation", locale="en_US")
@@ -185,13 +186,13 @@ def t(key: str, locale: Optional[str] = None, default: Optional[str] = None, **k
 
 
 def parse_accept_language(accept_language: Optional[str]) -> str:
-    """解析 Accept-Language 请求头，返回最佳匹配的语言代码
+    """Parse Accept-Language header, return the best matching locale code
 
     Args:
-        accept_language: Accept-Language 请求头值（如 "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"）
+        accept_language: Accept-Language header value (e.g., "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
 
     Returns:
-        语言代码（如 "zh_CN", "en_US"），如果无法解析则返回默认语言
+        Locale code (e.g., "zh_CN", "en_US"), return default language if unable to parse
 
     Examples:
         >>> parse_accept_language("zh-CN,zh;q=0.9")
@@ -204,7 +205,7 @@ def parse_accept_language(accept_language: Optional[str]) -> str:
     if not accept_language:
         return DEFAULT_LOCALE
 
-    # 解析 Accept-Language（格式: "lang;q=priority,lang;q=priority"）
+    # Parse Accept-Language (format: "lang;q=priority,lang;q=priority")
     languages = []
     for part in accept_language.split(","):
         part = part.strip()
@@ -221,24 +222,24 @@ def parse_accept_language(accept_language: Optional[str]) -> str:
         else:
             languages.append((part.strip(), 1.0))
 
-    # 按优先级排序
+    # Sort by priority
     languages.sort(key=lambda x: x[1], reverse=True)
 
-    # 查找匹配的语言
+    # Find matching language
     for lang, _ in languages:
-        # 标准化语言代码（zh-CN -> zh_CN）
+        # Normalize locale code (zh-CN -> zh_CN)
         normalized = lang.replace("-", "_")
 
-        # 完整匹配
+        # Full match
         if normalized in SUPPORTED_LOCALES:
             return normalized
 
-        # 部分匹配（zh -> zh_CN, en -> en_US）
+        # Partial match (zh -> zh_CN, en -> en_US)
         lang_code = normalized.split("_")[0].lower()
         if lang_code == "zh":
             return "zh_CN"
         elif lang_code == "en":
             return "en_US"
 
-    # 默认语言
+    # Default language
     return DEFAULT_LOCALE

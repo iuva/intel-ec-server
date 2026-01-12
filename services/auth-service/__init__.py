@@ -1,9 +1,9 @@
 """
-Auth Service - 认证授权服务
+Auth Service - Authentication and Authorization Service
 
-提供用户认证和授权相关的API接口，包括：
-- 用户登录认证
-- JWT Token生成和验证
-- 用户会话管理
-- Token刷新和退出登录
+Provides API interfaces related to user authentication and authorization, including:
+- User login authentication
+- JWT Token generation and validation
+- User session management
+- Token refresh and logout
 """

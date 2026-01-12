@@ -1,75 +1,75 @@
 # ==========================================
 # Gateway Service Dockerfile
-# 使用多阶段构建优化镜像大小
+# Using multi-stage build to optimize image size
 # ==========================================
 
 # ==========================================
-# 阶段 1: 构建阶段
+# Stage 1: Build stage
 # ==========================================
 FROM python:3.8.10-slim AS builder
 
-# 设置工作目录
+# Set working directory
 WORKDIR /build
 
-# 设置环境变量
+# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 复制依赖文件（使用无哈希版本）
+# Copy dependency files (using non-hashed version)
 COPY services/gateway-service/requirements-no-hash.txt ./requirements.txt
 
-# 安装 Python 依赖到临时目录
+# Install Python dependencies to temporary directory
 RUN pip install --upgrade pip && \
     pip install --prefix=/install -r requirements.txt
 
 # ==========================================
-# 阶段 2: 运行阶段
+# Stage 2: Runtime stage
 # ==========================================
 FROM python:3.8.10-slim
 
-# 设置工作目录
+# Set working directory
 WORKDIR /app
 
-# 设置环境变量
+# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SERVICE_PORT=8000 \
     PATH="/install/bin:${PATH}" \
     PYTHONPATH="/install/lib/python3.8/site-packages:/app:${PYTHONPATH}"
 
-# 安装运行时依赖（curl 用于健康检查）
-# 注意：如果 apt-get 失败，健康检查将使用 Python 替代方案
+# Install runtime dependencies (curl for health check)
+# Note: If apt-get fails, health check will use Python alternative
 RUN apt-get update && apt-get install -y --no-install-recommends curl || true && \
     rm -rf /var/lib/apt/lists/* || true
 
-# 从构建阶段复制已安装的依赖
+# Copy installed dependencies from build stage
 COPY --from=builder /install /install
 
-# 复制共享模块
+# Copy shared modules
 COPY shared/ /app/shared/
 
-# 复制服务代码
+# Copy service code
 COPY services/gateway-service/app/ /app/app/
 
-# 创建日志目录
+# Create logs directory
 RUN mkdir -p /app/logs && \
     chmod 755 /app/logs
 
-# 创建非root用户
+# Create non-root user
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
-# 切换到非root用户
+# Switch to non-root user
 USER appuser
 
-# 暴露端口
+# Expose port
 EXPOSE 8000
 
-# 健康检查（使用 Python 而不依赖 curl）
+# Health check (using Python instead of curl dependency)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-# 启动命令
+# Startup command
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,6 +1,6 @@
 """
-Auth Service 核心模块
+Auth Service core module
 
-包含核心业务逻辑和公共组件，
-如认证中间件、安全配置等。
+Contains core business logic and public components,
+such as authentication middleware, security configuration, etc.
 """

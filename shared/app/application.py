@@ -1,7 +1,7 @@
 """
-FastAPI应用模板模块
+FastAPI Application Template Module
 
-提供统一的FastAPI应用创建和配置功能
+Provides unified FastAPI application creation and configuration functionality
 """
 
 import logging
@@ -37,64 +37,64 @@ def create_lifespan_handler(
     startup_handlers: Optional[List[Callable]] = None,
     shutdown_handlers: Optional[List[Callable]] = None,
 ) -> Callable:
-    """创建应用生命周期处理器
+    """Create application lifecycle handler
 
     Args:
-        service_name: 服务名称
-        database_url: 数据库连接URL
-        redis_url: Redis连接URL
-        jwt_secret_key: JWT密钥
-        jaeger_endpoint: Jaeger端点
-        startup_handlers: 启动时执行的处理器列表
-        shutdown_handlers: 关闭时执行的处理器列表
+        service_name: Service name
+        database_url: Database connection URL
+        redis_url: Redis connection URL
+        jwt_secret_key: JWT secret key
+        jaeger_endpoint: Jaeger endpoint
+        startup_handlers: List of handlers to execute during startup
+        shutdown_handlers: List of handlers to execute during shutdown
 
     Returns:
-        生命周期上下文管理器
+        Lifecycle context manager
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        """应用生命周期管理"""
-        # ==================== 启动阶段 ====================
-        logger.info(f"{service_name} 服务启动中...")
+        """Application lifecycle management"""
+        # ==================== Startup Phase ====================
+        logger.info(f"{service_name} service starting...")
 
-        # 初始化数据库连接
+        # Initialize database connection
         if database_url:
             try:
                 await mariadb_manager.connect(database_url)
-                logger.info("数据库连接成功")
+                logger.info("Database connection successful")
             except Exception as e:
-                logger.error(f"数据库连接失败: {e!s}")
+                logger.error(f"Database connection failed: {e!s}")
                 raise
 
-        # 初始化Redis连接
+        # Initialize Redis connection
         if redis_url:
             try:
                 await redis_manager.connect(redis_url)
-                logger.info("Redis连接成功")
+                logger.info("Redis connection successful")
             except Exception as e:
-                logger.warning(f"Redis连接失败: {e!s}, 降级到无缓存模式")
+                logger.warning(f"Redis connection failed: {e!s}, degrading to no-cache mode")
 
-        # 初始化JWT管理器
+        # Initialize JWT manager
         if jwt_secret_key:
             try:
                 init_jwt_manager(jwt_secret_key)
-                logger.info("JWT管理器初始化成功")
+                logger.info("JWT manager initialized successfully")
             except Exception as e:
-                logger.error(f"JWT管理器初始化失败: {e!s}")
+                logger.error(f"JWT manager initialization failed: {e!s}")
 
-        # 初始化Jaeger追踪
+        # Initialize Jaeger tracing
         if jaeger_endpoint:
             try:
                 jaeger_manager.init_tracer(service_name=service_name, jaeger_endpoint=jaeger_endpoint)
-                # ❌ 注意：不要在这里调用 jaeger_manager.instrument_fastapi(app)
-                # 因为应用已经在处理请求，无法再添加中间件
-                # 应该在创建 FastAPI app 后立即调用
-                logger.info("Jaeger追踪初始化成功")
+                # ❌ Note: Do not call jaeger_manager.instrument_fastapi(app) here
+                # Because the application is already handling requests and cannot add middleware anymore
+                # Should be called immediately after creating the FastAPI app
+                logger.info("Jaeger tracing initialized successfully")
             except Exception as e:
-                logger.warning(f"Jaeger追踪初始化失败: {e!s}")
+                logger.warning(f"Jaeger tracing initialization failed: {e!s}")
 
-        # 执行自定义启动处理器
+        # Execute custom startup handlers
         if startup_handlers:
             for handler in startup_handlers:
                 try:
@@ -103,16 +103,16 @@ def create_lifespan_handler(
                         if hasattr(result, "__await__"):
                             await result
                 except Exception as e:
-                    logger.error(f"启动处理器执行失败: {e!s}")
+                    logger.error(f"Startup handler execution failed: {e!s}")
 
-        logger.info(f"{service_name} 服务启动完成")
+        logger.info(f"{service_name} service startup completed")
 
         yield
 
-        # ==================== 关闭阶段 ====================
-        logger.info(f"{service_name} 服务关闭中...")
+        # ==================== Shutdown Phase ====================
+        logger.info(f"{service_name} service shutting down...")
 
-        # 执行自定义关闭处理器
+        # Execute custom shutdown handlers
         if shutdown_handlers:
             for handler in shutdown_handlers:
                 try:
@@ -121,41 +121,41 @@ def create_lifespan_handler(
                         if hasattr(result, "__await__"):
                             await result
                 except Exception as e:
-                    logger.error(f"关闭处理器执行失败: {e!s}")
+                    logger.error(f"Shutdown handler execution failed: {e!s}")
 
-        # 关闭Jaeger追踪
+        # Close Jaeger tracing
         try:
             jaeger_manager.shutdown()
         except Exception as e:
-            logger.error(f"Jaeger追踪关闭失败: {e!s}")
+            logger.error(f"Jaeger tracing shutdown failed: {e!s}")
 
-        # 关闭Redis连接
+        # Close Redis connection
         try:
             await redis_manager.disconnect()
         except Exception as e:
-            logger.error(f"Redis连接关闭失败: {e!s}")
+            logger.error(f"Redis connection close failed: {e!s}")
 
-        # 关闭数据库连接
+        # Close database connection
         try:
             await mariadb_manager.disconnect()
         except Exception as e:
-            logger.error(f"数据库连接关闭失败: {e!s}")
+            logger.error(f"Database connection close failed: {e!s}")
 
-        logger.info(f"{service_name} 服务关闭完成")
+        logger.info(f"{service_name} service shutdown completed")
 
     return lifespan
 
 
 def create_exception_handlers() -> Dict[type, Callable]:
-    """创建全局异常处理器
+    """Create global exception handlers
 
     Returns:
-        异常处理器字典
+        Exception handler dictionary
     """
 
     async def business_error_handler(request: Request, exc: BusinessError) -> JSONResponse:
-        """业务异常处理器"""
-        logger.warning(f"业务异常: [{exc.code}] {exc.error_code} - {exc.message}")
+        """Business exception handler"""
+        logger.warning(f"Business exception: [{exc.code}] {exc.error_code} - {exc.message}")
 
         error_response = create_error_response(
             message=exc.message,
@@ -167,11 +167,11 @@ def create_exception_handlers() -> Dict[type, Callable]:
         return JSONResponse(status_code=exc.code, content=error_response.model_dump())
 
     async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        """请求验证异常处理器"""
-        logger.warning(f"请求验证失败: {exc.errors()}")
+        """Request validation exception handler"""
+        logger.warning(f"Request validation failed: {exc.errors()}")
 
         error_response = create_error_response(
-            message="请求参数验证失败",
+            message="Request parameter validation failed",
             error_code="VALIDATION_ERROR",
             code=422,
             details={"errors": exc.errors()},
@@ -180,10 +180,10 @@ def create_exception_handlers() -> Dict[type, Callable]:
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        """HTTP异常处理器"""
-        logger.warning(f"HTTP异常: {exc.status_code} - {exc.detail}")
+        """HTTP exception handler"""
+        logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
 
-        # 检查 detail 是否已经是 ErrorResponse 格式的字典
+        # Check if detail is already in ErrorResponse format dictionary
         detail_value = getattr(exc, "detail", None)
         if isinstance(detail_value, dict) and all(key in detail_value for key in ["code", "message", "error_code"]):
             return JSONResponse(status_code=exc.status_code, content=detail_value)
@@ -196,10 +196,10 @@ def create_exception_handlers() -> Dict[type, Callable]:
         return JSONResponse(status_code=exc.status_code, content=error_response.model_dump())
 
     async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        """通用异常处理器"""
-        logger.error(f"未处理的异常: {exc!s}", exc_info=True)
+        """General exception handler"""
+        logger.error(f"Unhandled exception: {exc!s}", exc_info=True)
 
-        error_response = create_error_response(message="服务器内部错误", error_code="INTERNAL_ERROR", code=500)
+        error_response = create_error_response(message="Internal server error", error_code="INTERNAL_ERROR", code=500)
 
         return JSONResponse(status_code=500, content=error_response.model_dump())
 
@@ -227,31 +227,31 @@ def create_fastapi_app(
     startup_handlers: Optional[List[Callable]] = None,
     shutdown_handlers: Optional[List[Callable]] = None,
 ) -> FastAPI:
-    """创建FastAPI应用
+    """Create FastAPI application
 
     Args:
-        service_name: 服务名称
-        service_version: 服务版本
-        description: 服务描述
-        database_url: 数据库连接URL
-        redis_url: Redis连接URL
-        jwt_secret_key: JWT密钥
-        jaeger_endpoint: Jaeger端点
-        log_level: 日志级别
-        enable_docs: 是否启用API文档
-        enable_prometheus: 是否启用Prometheus监控（默认：True）
-        cors_origins: CORS允许的源
-        trusted_hosts: 信任的主机列表
-        startup_handlers: 启动处理器列表
-        shutdown_handlers: 关闭处理器列表
+        service_name: Service name
+        service_version: Service version
+        description: Service description
+        database_url: Database connection URL
+        redis_url: Redis connection URL
+        jwt_secret_key: JWT secret key
+        jaeger_endpoint: Jaeger endpoint
+        log_level: Log level
+        enable_docs: Whether to enable API documentation
+        enable_prometheus: Whether to enable Prometheus monitoring (default: True)
+        cors_origins: CORS allowed origins
+        trusted_hosts: List of trusted hosts
+        startup_handlers: Startup handler list
+        shutdown_handlers: Shutdown handler list
 
     Returns:
-        配置好的FastAPI应用实例
+        Configured FastAPI application instance
     """
-    # 配置日志
+    # Configure logging
     configure_logger(service_name=service_name, log_level=log_level)
 
-    # 初始化监控指标（根据开关）
+    # Initialize monitoring metrics (based on switch)
     if enable_prometheus:
         init_metrics(
             service_name=service_name,
@@ -259,10 +259,10 @@ def create_fastapi_app(
             environment="development",
         )
 
-    # 创建FastAPI应用
+    # Create FastAPI application
     app = FastAPI(
         title=f"{service_name} API",
-        description=description or f"{service_name} 微服务API",
+        description=description or f"{service_name} microservice API",
         version=service_version,
         lifespan=create_lifespan_handler(
             service_name=service_name,
@@ -278,7 +278,7 @@ def create_fastapi_app(
         openapi_url="/openapi.json" if enable_docs else None,
     )
 
-    # 添加中间件
+    # Add middleware
     if trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 
@@ -291,21 +291,21 @@ def create_fastapi_app(
             allow_headers=["*"],
         )
 
-    # 添加请求日志中间件（仅在启用Prometheus时）
+    # Add request logging middleware (only when Prometheus is enabled)
     if enable_prometheus:
 
         @app.middleware("http")
         async def log_requests(request: Request, call_next: Any) -> Any:
-            """记录HTTP请求"""
+            """Log HTTP requests"""
             start_time = time.time()
 
-            # 处理请求
+            # Process request
             response = await call_next(request)
 
-            # 计算耗时
+            # Calculate duration
             duration = time.time() - start_time
 
-            # 记录指标
+            # Record metrics
             metrics_collector.record_http_request(
                 method=request.method,
                 endpoint=request.url.path,
@@ -315,28 +315,28 @@ def create_fastapi_app(
 
             return response
 
-    # 注册异常处理器
+    # Register exception handlers
     exception_handlers = create_exception_handlers()
     for exc_class, handler in exception_handlers.items():
         app.add_exception_handler(exc_class, handler)
 
-    # 健康检查端点
-    @app.get("/health", tags=["健康检查"])
+    # Health check endpoint
+    @app.get("/health", tags=["Health Check"])
     async def health_check() -> Any:
-        """健康检查"""
+        """Health check"""
         health_status = {
             "service": service_name,
             "version": service_version,
             "status": "healthy",
         }
 
-        # 检查数据库连接
+        # Check database connection
         if mariadb_manager.is_connected:
             health_status["database"] = "connected"
         else:
             health_status["database"] = "disconnected"
 
-        # 检查Redis连接
+        # Check Redis connection
         if redis_manager.is_connected:
             health_status["cache"] = "connected"
         else:
@@ -344,18 +344,18 @@ def create_fastapi_app(
 
         return create_success_response(data=health_status)
 
-    # 监控指标端点（仅在启用Prometheus时）
+    # Monitoring metrics endpoint (only when Prometheus is enabled)
     if enable_prometheus:
 
-        @app.get("/metrics", tags=["监控"])
+        @app.get("/metrics", tags=["Monitoring"])
         async def metrics() -> Response:
-            """Prometheus监控指标"""
+            """Prometheus monitoring metrics"""
             return get_metrics_response()
 
-    # 根路径端点
-    @app.get("/", tags=["根路径"])
+    # Root path endpoint
+    @app.get("/", tags=["Root Path"])
     async def root() -> Any:
-        """根路径"""
+        """Root path"""
         return create_success_response(
             data={
                 "service": service_name,
@@ -364,7 +364,7 @@ def create_fastapi_app(
                 "health": "/health",
                 "metrics": "/metrics" if enable_prometheus else "disabled",
             },
-            message=f"{service_name} 服务运行正常",
+            message=f"{service_name} service running normally",
         )
 
     return app

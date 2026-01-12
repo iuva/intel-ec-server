@@ -1,7 +1,7 @@
 """
-SQL性能监控模块
+SQL Performance Monitoring Module
 
-提供SQL查询性能监控和慢查询检测功能
+Provides SQL query performance monitoring and slow query detection functionality
 """
 
 import hashlib
@@ -23,9 +23,9 @@ logger = get_logger(__name__)
 
 
 class SQLPerformanceMonitor:
-    """SQL性能监控器
+    """SQL Performance Monitor
 
-    自动监控SQL查询性能，检测慢查询并记录详细信息
+    Automatically monitors SQL query performance, detects slow queries and records detailed information
     """
 
     def __init__(
@@ -34,12 +34,12 @@ class SQLPerformanceMonitor:
         enabled: bool = True,
         service_name: str = "unknown",
     ) -> None:
-        """初始化SQL性能监控器
+        """Initialize SQL performance monitor
 
         Args:
-            slow_query_threshold: 慢查询阈值（秒），默认2秒
-            enabled: 是否启用监控
-            service_name: 服务名称，用于指标标签
+            slow_query_threshold: Slow query threshold (seconds), default 2 seconds
+            enabled: Whether to enable monitoring
+            service_name: Service name, used for metrics labels
         """
         self.slow_query_threshold = slow_query_threshold
         self.enabled = enabled
@@ -48,31 +48,31 @@ class SQLPerformanceMonitor:
         self._query_contexts: Dict[str, Dict[str, Any]] = {}
 
     def _generate_sql_hash(self, sql: str) -> str:
-        """生成SQL语句的哈希值（用于去重）
+        """Generate hash value for SQL statement (for deduplication)
 
         Args:
-            sql: SQL语句
+            sql: SQL statement
 
         Returns:
-            SQL哈希值（前8位）
+            SQL hash value (first 8 characters)
         """
-        # 标准化SQL（移除多余空格和换行）
+        # Normalize SQL (remove extra spaces and line breaks)
         normalized_sql = re.sub(r"\s+", " ", sql.strip())
         sql_hash = hashlib.md5(normalized_sql.encode()).hexdigest()[:8]
         return sql_hash
 
     def _parse_sql_info(self, sql: str) -> Tuple[str, str]:
-        """解析SQL语句，提取操作类型和表名
+        """Parse SQL statement, extract operation type and table name
 
         Args:
-            sql: SQL语句
+            sql: SQL statement
 
         Returns:
-            (操作类型, 表名)
+            (operation type, table name)
         """
         sql_upper = sql.upper().strip()
 
-        # 提取操作类型
+        # Extract operation type
         operation = "unknown"
         if sql_upper.startswith("SELECT"):
             operation = "select"
@@ -89,7 +89,7 @@ class SQLPerformanceMonitor:
         elif sql_upper.startswith("DROP"):
             operation = "drop"
 
-        # 提取表名（简化版，适用于常见SQL模式）
+        # Extract table name (simplified version, suitable for common SQL patterns)
         table = "unknown"
         table_patterns = [
             r"FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)",
@@ -115,17 +115,17 @@ class SQLPerformanceMonitor:
         table: str,
         sql_hash: str,
     ) -> None:
-        """记录慢查询
+        """Record slow query
 
         Args:
-            sql: SQL语句
-            parameters: SQL参数
-            duration: 执行时间（秒）
-            operation: 操作类型
-            table: 表名
-            sql_hash: SQL哈希值
+            sql: SQL statement
+            parameters: SQL parameters
+            duration: Execution time (seconds)
+            operation: Operation type
+            table: Table name
+            sql_hash: SQL hash value
         """
-        # 记录Prometheus指标
+        # Record Prometheus metrics
         try:
             db_slow_queries_total.labels(
                 operation=operation,
@@ -141,9 +141,9 @@ class SQLPerformanceMonitor:
                 sql_hash=sql_hash,
             ).observe(duration)
         except Exception as e:
-            logger.warning(f"记录慢查询指标失败: {e!s}", exc_info=True)
+            logger.warning(f"Failed to record slow query metrics: {e!s}", exc_info=True)
 
-        # 记录结构化日志
+        # Record structured logs
         try:
             from shared.common.loguru_config import log_slow_query
 
@@ -156,7 +156,7 @@ class SQLPerformanceMonitor:
                 sql_hash=sql_hash,
             )
         except Exception as e:
-            logger.warning(f"记录慢查询日志失败: {e!s}", exc_info=True)
+            logger.warning(f"Failed to record slow query logs: {e!s}", exc_info=True)
 
     def _before_cursor_execute(
         self,
@@ -167,24 +167,24 @@ class SQLPerformanceMonitor:
         context: Any,
         executemany: bool,
     ) -> None:
-        """SQL执行前的回调
+        """Callback before SQL execution
 
         Args:
-            conn: 数据库连接
-            cursor: 游标
-            statement: SQL语句
-            parameters: SQL参数
-            context: 执行上下文
-            executemany: 是否批量执行
+            conn: Database connection
+            cursor: Cursor
+            statement: SQL statement
+            parameters: SQL parameters
+            context: Execution context
+            executemany: Whether to execute in batches
         """
         if not self.enabled:
             return
 
-        # 记录开始时间
-        query_id = str(id(cursor))  # 转换为字符串以匹配字典键类型
+        # Record start time
+        query_id = str(id(cursor))  # Convert to string to match dictionary key type
         self._query_timings[query_id] = time.time()
 
-        # 保存查询上下文
+        # Save query context
         self._query_contexts[query_id] = {
             "sql": statement,
             "parameters": parameters,
@@ -200,39 +200,39 @@ class SQLPerformanceMonitor:
         context: Any,
         executemany: bool,
     ) -> None:
-        """SQL执行后的回调
+        """Callback after SQL execution
 
         Args:
-            conn: 数据库连接
-            cursor: 游标
-            statement: SQL语句
-            parameters: SQL参数
-            context: 执行上下文
-            executemany: 是否批量执行
+            conn: Database connection
+            cursor: Cursor
+            statement: SQL statement
+            parameters: SQL parameters
+            context: Execution context
+            executemany: Whether to execute in batches
         """
         if not self.enabled:
             return
 
-        query_id = str(id(cursor))  # 转换为字符串以匹配字典键类型
+        query_id = str(id(cursor))  # Convert to string to match dictionary key type
         start_time = self._query_timings.pop(query_id, None)
         query_context = self._query_contexts.pop(query_id, None)
 
         if start_time is None or query_context is None:
             return
 
-        # 计算执行时间
+        # Calculate execution time
         duration = time.time() - start_time
 
-        # 检查是否为慢查询
+        # Check if it's a slow query
         if duration >= self.slow_query_threshold:
             sql = query_context["sql"]
             sql_params = query_context.get("parameters")
 
-            # 解析SQL信息
+            # Parse SQL information
             operation, table = self._parse_sql_info(sql)
             sql_hash = self._generate_sql_hash(sql)
 
-            # 记录慢查询
+            # Record slow query
             self._record_slow_query(
                 sql=sql,
                 parameters=sql_params,
@@ -243,34 +243,34 @@ class SQLPerformanceMonitor:
             )
 
     def attach_to_engine(self, engine: Any) -> None:
-        """将监控器附加到SQLAlchemy引擎
+        """Attach monitor to SQLAlchemy engine
 
         Args:
-            engine: SQLAlchemy引擎（同步或异步）
+            engine: SQLAlchemy engine (sync or async)
         """
         if not self.enabled:
             return
 
-        # 监听同步引擎
+        # Listen to sync engine
         if isinstance(engine, Engine):
             event.listen(engine, "before_cursor_execute", self._before_cursor_execute)
             event.listen(engine, "after_cursor_execute", self._after_cursor_execute)
-            logger.info(f"SQL性能监控已附加到同步引擎: {self.service_name}")
-        # 监听异步引擎
+            logger.info(f"SQL performance monitoring attached to sync engine: {self.service_name}")
+        # Listen to async engine
         elif isinstance(engine, AsyncEngine):
-            # 异步引擎需要同步包装器
+            # Async engine needs sync wrapper
             sync_engine = engine.sync_engine
             event.listen(sync_engine, "before_cursor_execute", self._before_cursor_execute)
             event.listen(sync_engine, "after_cursor_execute", self._after_cursor_execute)
-            logger.info(f"SQL性能监控已附加到异步引擎: {self.service_name}")
+            logger.info(f"SQL performance monitoring attached to async engine: {self.service_name}")
         else:
-            logger.warning(f"不支持的引擎类型: {type(engine)}")
+            logger.warning(f"Unsupported engine type: {type(engine)}")
 
     def detach_from_engine(self, engine: Any) -> None:
-        """从SQLAlchemy引擎移除监控器
+        """Remove monitor from SQLAlchemy engine
 
         Args:
-            engine: SQLAlchemy引擎（同步或异步）
+            engine: SQLAlchemy engine (sync or async)
         """
         if not self.enabled:
             return
@@ -283,20 +283,20 @@ class SQLPerformanceMonitor:
                 sync_engine = engine.sync_engine
                 event.remove(sync_engine, "before_cursor_execute", self._before_cursor_execute)
                 event.remove(sync_engine, "after_cursor_execute", self._after_cursor_execute)
-            logger.info(f"SQL性能监控已从引擎移除: {self.service_name}")
+            logger.info(f"SQL performance monitoring removed from engine: {self.service_name}")
         except Exception as e:
-            logger.warning(f"移除SQL性能监控失败: {e!s}", exc_info=True)
+            logger.warning(f"Failed to remove SQL performance monitoring: {e!s}", exc_info=True)
 
 
-# 全局SQL性能监控器实例
+# Global SQL performance monitor instance
 _sql_monitor: Optional[SQLPerformanceMonitor] = None
 
 
 def get_sql_monitor() -> Optional[SQLPerformanceMonitor]:
-    """获取全局SQL性能监控器实例
+    """Get global SQL performance monitor instance
 
     Returns:
-        SQL性能监控器实例，如果未初始化则返回None
+        SQL performance monitor instance, or None if not initialized
     """
     return _sql_monitor
 
@@ -306,15 +306,15 @@ def init_sql_monitor(
     enabled: bool = True,
     service_name: str = "unknown",
 ) -> SQLPerformanceMonitor:
-    """初始化全局SQL性能监控器
+    """Initialize global SQL performance monitor
 
     Args:
-        slow_query_threshold: 慢查询阈值（秒），默认2秒
-        enabled: 是否启用监控
-        service_name: 服务名称
+        slow_query_threshold: Slow query threshold (seconds), default 2 seconds
+        enabled: Whether to enable monitoring
+        service_name: Service name
 
     Returns:
-        初始化的SQL性能监控器实例
+        Initialized SQL performance monitor instance
     """
     global _sql_monitor
     _sql_monitor = SQLPerformanceMonitor(
@@ -322,7 +322,9 @@ def init_sql_monitor(
         enabled=enabled,
         service_name=service_name,
     )
-    logger.info(
-        f"SQL性能监控器已初始化: service={service_name}, threshold={slow_query_threshold}s, enabled={enabled}"
+    message = (
+        f"SQL Performance Monitor initialized: service={service_name}, "
+        f"threshold={slow_query_threshold}s, enabled={enabled}"
     )
+    logger.info(message)
     return _sql_monitor

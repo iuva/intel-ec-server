@@ -1,6 +1,6 @@
-"""文件管理服务
+"""File management service
 
-提供文件上传、存储和访问等核心业务逻辑。
+Provides core business logic for file upload, storage, and access.
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ import sys
 from typing import Any, Dict, Optional
 import uuid
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.decorators import handle_service_errors
     from shared.common.exceptions import BusinessError, ErrorCode, ServiceErrorCodes
@@ -25,47 +25,50 @@ logger = get_logger(__name__)
 
 
 class FileManageService:
-    """文件管理服务"""
+    """File management service"""
 
     def __init__(self, upload_dir: Optional[str] = None):
-        """初始化文件管理服务
+        """Initialize file management service
 
         Args:
-            upload_dir: 文件上传目录，如果为 None 则从环境变量获取
+            upload_dir: File upload directory, if None then get from environment variable
         """
-        # 从环境变量获取上传目录，默认为 /app/uploads
+        # Get upload directory from environment variable, default to /app/uploads
         self.upload_dir = upload_dir or os.getenv("FILE_UPLOAD_DIR", "/app/uploads")
 
-        # 确保上传目录存在
+        # Ensure upload directory exists
         self._ensure_upload_dir()
 
     def _ensure_upload_dir(self) -> None:
-        """确保上传目录存在且可写"""
+        """Ensure upload directory exists and is writable"""
         try:
             upload_path = Path(self.upload_dir)
-            # 创建目录（如果不存在）
+            # Create directory (if it doesn't exist)
             upload_path.mkdir(parents=True, exist_ok=True)
 
-            # 检查目录是否可写
+            # Check if directory is writable
             if not os.access(upload_path, os.W_OK):
                 logger.warning(
-                    f"文件上传目录不可写: {self.upload_dir}，尝试修复权限",
+                    f"File upload directory is not writable: {self.upload_dir}, attempting to fix permissions",
                     extra={
                         "upload_dir": self.upload_dir,
                         "current_permissions": oct(upload_path.stat().st_mode)[-3:],
                     },
                 )
-                # 尝试设置权限（可能失败，如果是卷挂载且权限受限）
+                # Try to set permissions (may fail if volume is mounted with restricted permissions)
                 try:
                     upload_path.chmod(0o755)
                 except PermissionError:
                     logger.warning(
-                        "无法修改文件上传目录权限，请确保 Docker 卷挂载权限正确",
+                        (
+                            "Cannot modify file upload directory permissions, please ensure "
+                            "Docker volume mount permissions are correct"
+                        ),
                         extra={"upload_dir": self.upload_dir},
                     )
 
             logger.info(
-                f"文件上传目录已准备: {self.upload_dir}",
+                f"File upload directory prepared: {self.upload_dir}",
                 extra={
                     "upload_dir": self.upload_dir,
                     "exists": upload_path.exists(),
@@ -74,17 +77,17 @@ class FileManageService:
             )
         except Exception as e:
             logger.error(
-                f"创建上传目录失败: {self.upload_dir}, 错误: {str(e)}",
+                f"Failed to create upload directory: {self.upload_dir}, error: {str(e)}",
                 extra={"upload_dir": self.upload_dir, "error_type": type(e).__name__},
                 exc_info=True,
             )
             raise BusinessError(
-                message="文件上传目录初始化失败",
+                message="File upload directory initialization failed",
                 error_code=ServiceErrorCodes.FILE_UPLOAD_FAILED,
             )
 
     @handle_service_errors(
-        error_message="文件上传失败",
+        error_message="File upload failed",
         error_code="FILE_UPLOAD_FAILED",
     )
     async def upload_file(
@@ -93,49 +96,49 @@ class FileManageService:
         filename: str,
         content_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """上传文件
+        """Upload file
 
-        业务逻辑：
-        1. 生成唯一文件名（使用 UUID 避免文件名冲突）
-        2. 保存文件到配置的上传目录
-        3. 返回文件访问 URL
+        Business logic:
+        1. Generate unique filename (using UUID to avoid filename conflicts)
+        2. Save file to configured upload directory
+        3. Return file access URL
 
         Args:
-            file_content: 文件内容（字节）
-            filename: 原始文件名
-            content_type: 文件 MIME 类型
+            file_content: File content (bytes)
+            filename: Original filename
+            content_type: File MIME type
 
         Returns:
-            Dict[str, Any]: 文件信息，包含：
-                - file_id: 文件唯一标识
-                - filename: 原始文件名
-                - saved_filename: 保存的文件名
-                - file_url: 文件访问 URL
-                - file_size: 文件大小（字节）
-                - content_type: 文件 MIME 类型
-                - upload_time: 上传时间
+            Dict[str, Any]: File information, containing:
+                - file_id: File unique identifier
+                - filename: Original filename
+                - saved_filename: Saved filename
+                - file_url: File access URL
+                - file_size: File size (bytes)
+                - content_type: File MIME type
+                - upload_time: Upload time
 
         Raises:
-            BusinessError: 文件上传失败时抛出业务异常
+            BusinessError: Raises business exception when file upload fails
         """
         try:
-            # 生成唯一文件名
+            # Generate unique filename
             file_extension = Path(filename).suffix
             file_id = str(uuid.uuid4())
             saved_filename = f"{file_id}{file_extension}"
 
-            # 构建文件保存路径
+            # Build file save path
             file_path = Path(self.upload_dir) / saved_filename
 
-            # 保存文件
+            # Save file
             with open(file_path, "wb") as f:
                 f.write(file_content)
 
-            # 获取文件大小
+            # Get file size
             file_size = len(file_content)
 
-            # 构建文件访问 URL
-            # 使用 /api/v1/host/file/ 作为文件访问路径前缀
+            # Build file access URL
+            # Use /api/v1/host/file/ as file access path prefix
             file_url = f"/api/v1/host/file/{saved_filename}"
 
             file_info = {
@@ -149,7 +152,7 @@ class FileManageService:
             }
 
             logger.info(
-                "文件上传成功",
+                "File upload succeeded",
                 extra={
                     "operation": "upload_file",
                     "file_id": file_id,
@@ -163,7 +166,7 @@ class FileManageService:
 
         except Exception as e:
             logger.error(
-                "文件上传失败",
+                "File upload failed",
                 extra={
                     "operation": "upload_file",
                     "filename": filename,
@@ -173,27 +176,27 @@ class FileManageService:
                 exc_info=True,
             )
             raise BusinessError(
-                message=f"文件上传失败: {str(e)}",
+                message=f"File upload failed: {str(e)}",
                 error_code=ServiceErrorCodes.FILE_UPLOAD_FAILED,
             )
 
     def get_file_path(self, saved_filename: str) -> Path:
-        """获取文件路径
+        """Get file path
 
         Args:
-            saved_filename: 保存的文件名
+            saved_filename: Saved filename
 
         Returns:
-            Path: 文件完整路径
+            Path: File full path
 
         Raises:
-            BusinessError: 文件不存在时抛出业务异常
+            BusinessError: Raises business exception when file does not exist
         """
         file_path = Path(self.upload_dir) / saved_filename
 
         if not file_path.exists():
             raise BusinessError(
-                message="文件不存在",
+                message="File does not exist",
                 error_code=ErrorCode.FILE_NOT_FOUND,
                 code=ServiceErrorCodes.FILE_NOT_FOUND,
                 http_status_code=404,

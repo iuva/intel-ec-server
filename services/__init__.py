@@ -1,8 +1,8 @@
 """
-微服务集合根模块
+Microservices collection root module
 
-包含所有微服务的实现：
-- auth-service: 认证授权服务
-- gateway-service: API网关服务
-- host-service: 主机管理服务
+Contains implementations of all microservices:
+- auth-service: Authentication and authorization service
+- gateway-service: API gateway service
+- host-service: Host management service
 """

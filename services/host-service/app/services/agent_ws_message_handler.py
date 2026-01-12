@@ -1,11 +1,11 @@
-"""Agent WebSocket 消息处理器模块
+"""Agent WebSocket message handler module
 
-提供 Agent 消息处理的核心业务逻辑，包括：
-- 连接结果处理
-- 下线通知处理
-- 版本更新处理
+Provides core business logic for Agent message processing, including:
+- Connection result processing
+- Offline notification processing
+- Version update processing
 
-从 agent_websocket_manager.py 拆分出来，提高代码可维护性。
+Extracted from agent_websocket_manager.py to improve code maintainability.
 """
 
 from datetime import datetime, timezone
@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 from sqlalchemy import and_, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import HOST_STATE_OFFLINE
     from app.models.host_exec_log import HostExecLog
@@ -36,21 +36,21 @@ logger = get_logger(__name__)
 
 
 class AgentMessageHandler:
-    """Agent 消息处理器
+    """Agent message handler
 
-    负责处理各类 Agent 上报的消息，包括：
-    - CONNECTION_RESULT: Agent 上报连接结果
-    - HOST_OFFLINE_NOTIFICATION: Host 下线通知
-    - VERSION_UPDATE: Agent 版本更新
+    Responsible for processing various messages reported by Agent, including:
+    - CONNECTION_RESULT: Agent reports connection result
+    - HOST_OFFLINE_NOTIFICATION: Host offline notification
+    - VERSION_UPDATE: Agent version update
     """
 
     def __init__(self) -> None:
-        """初始化消息处理器"""
+        """Initialize message handler"""
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）"""
+        """Get session factory (lazy initialization, singleton pattern)"""
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
@@ -62,57 +62,57 @@ class AgentMessageHandler:
         send_callback: Callable,
         send_error_callback: Callable,
     ) -> None:
-        """处理 Agent 上报连接结果
+        """Handle Agent reported connection result
 
-        业务逻辑:
-        1. 查询 host_exec_log 表: host_id = agent_id, host_state = 1, del_flag = 0
-        2. 获取最新一条数据（按 created_at 降序）
-        3. 如果数据不存在: 发送错误消息
-        4. 如果数据存在:
-           - 更新 host_state = 2 (已占用)
-           - 提取 tc_id, cycle_name, user_name
-           - 下发执行参数给 Agent
+        Business logic:
+        1. Query host_exec_log table: host_id = agent_id, host_state = 1, del_flag = 0
+        2. Get latest record (ordered by created_at desc)
+        3. If record does not exist: send error message
+        4. If record exists:
+           - Update host_state = 2 (occupied)
+           - Extract tc_id, cycle_name, user_name
+           - Send execution parameters to Agent
 
         Args:
-            agent_id: Agent/Host ID (来自 token)
-            data: 消息数据
-            send_callback: 发送消息的回调函数
-            send_error_callback: 发送错误消息的回调函数
+            agent_id: Agent/Host ID (from token)
+            data: Message data
+            send_callback: Callback function to send message
+            send_error_callback: Callback function to send error message
         """
         try:
-            # 转换 agent_id 为整数
+            # Convert agent_id to integer
             try:
                 host_id_int = int(agent_id)
             except (ValueError, TypeError):
                 logger.error(
-                    f"Agent ID 格式错误: {agent_id}",
+                    f"Agent ID format error: {agent_id}",
                     extra={
                         "agent_id": agent_id,
                         "error": "not a valid integer",
                     },
                 )
-                await send_error_callback(agent_id, "Host ID 格式无效")
+                await send_error_callback(agent_id, "Host ID format invalid")
                 return
 
             logger.info(
-                "开始处理 Agent 连接结果上报",
+                "Start processing Agent connection result report",
                 extra={
                     "agent_id": agent_id,
                     "host_id": host_id_int,
                 },
             )
 
-            # 查询 host_exec_log 表
+            # Query host_exec_log table
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 查询条件: host_id = agent_id, host_state = 1, del_flag = 0
-                # 按 created_at 降序，获取最新一条
+                # Query conditions: host_id = agent_id, host_state = 1, del_flag = 0
+                # Order by created_at desc, get latest one
                 stmt = (
                     select(HostExecLog)
                     .where(
                         and_(
                             HostExecLog.host_id == host_id_int,
-                            HostExecLog.host_state == 1,  # 已锁定
+                            HostExecLog.host_state == 1,  # Locked
                             HostExecLog.del_flag == 0,
                         )
                     )
@@ -124,9 +124,9 @@ class AgentMessageHandler:
                 exec_log = result.scalar_one_or_none()
 
                 if not exec_log:
-                    # 数据不存在: 发送错误消息
+                    # Record does not exist: send error message
                     logger.warning(
-                        "未找到执行日志记录",
+                        "Execution log record not found",
                         extra={
                             "agent_id": agent_id,
                             "host_id": host_id_int,
@@ -137,16 +137,16 @@ class AgentMessageHandler:
 
                     error_msg = {
                         "type": MessageType.ERROR,
-                        "message": "未找到待执行任务，请先通过 VNC 上报连接结果",
+                        "message": "Pending execution task not found, please report connection result via VNC first",
                         "error_code": "CONNECTION_RESULT_NOT_FOUND",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                     await send_callback(agent_id, error_msg)
                     return
 
-                # 数据存在: 更新 host_state = 2
+                # Record exists: update host_state = 2
                 logger.info(
-                    "找到执行日志记录，准备更新状态并下发执行参数",
+                    "Execution log record found, preparing to update state and send execution parameters",
                     extra={
                         "agent_id": agent_id,
                         "log_id": exec_log.id,
@@ -156,15 +156,13 @@ class AgentMessageHandler:
                     },
                 )
 
-                # 更新 host_state = 2 (已占用)
-                update_stmt = (
-                    update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=2)
-                )
+                # Update host_state = 2 (occupied)
+                update_stmt = update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=2)
                 await session.execute(update_stmt)
                 await session.commit()
 
                 logger.info(
-                    "执行日志状态已更新",
+                    "Execution log state updated",
                     extra={
                         "agent_id": agent_id,
                         "log_id": exec_log.id,
@@ -173,22 +171,22 @@ class AgentMessageHandler:
                     },
                 )
 
-                # 提取执行参数
+                # Extract execution parameters
                 execute_params = {
                     "type": MessageType.COMMAND,
                     "command": "execute_test_case",
                     "tc_id": exec_log.tc_id,
                     "cycle_name": exec_log.cycle_name,
                     "user_name": exec_log.user_name,
-                    "message": "执行参数已下发",
+                    "message": "Execution parameters sent",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
-                # 下发执行参数给 Agent
+                # Send execution parameters to Agent
                 await send_callback(agent_id, execute_params)
 
                 logger.info(
-                    "执行参数已下发",
+                    "Execution parameters sent",
                     extra={
                         "agent_id": agent_id,
                         "tc_id": exec_log.tc_id,
@@ -199,10 +197,10 @@ class AgentMessageHandler:
 
         except Exception as e:
             logger.error(
-                f"处理 Agent 连接结果失败: {agent_id}, 错误: {e!s}",
+                f"Failed to process Agent connection result: {agent_id}, error: {e!s}",
                 exc_info=True,
             )
-            await send_error_callback(agent_id, "处理连接结果失败")
+            await send_error_callback(agent_id, "Failed to process connection result")
 
     async def handle_host_offline_notification(
         self,
@@ -210,26 +208,26 @@ class AgentMessageHandler:
         data: dict,
         send_callback: Callable,
     ) -> None:
-        """处理 Host 下线通知
+        """Handle Host offline notification
 
-        业务逻辑:
-        1. 从消息中获取 host_id
-        2. 查询 host_exec_log 表: host_id = data['host_id'], del_flag = 0
-        3. 获取最新一条数据（按 created_time 降序）
-        4. 如果数据存在:
-           - 更新 host_state = 4 (离线)
+        Business logic:
+        1. Get host_id from message
+        2. Query host_exec_log table: host_id = data['host_id'], del_flag = 0
+        3. Get latest record (ordered by created_time desc)
+        4. If record exists:
+           - Update host_state = 4 (offline)
 
         Args:
-            agent_id: Agent/Host ID (来自 token)
-            data: 消息数据，包含 host_id 字段
-            send_callback: 发送消息的回调函数
+            agent_id: Agent/Host ID (from token)
+            data: Message data, contains host_id field
+            send_callback: Callback function to send message
         """
         try:
-            # 从消息中获取 host_id
+            # Get host_id from message
             host_id_str = data.get("host_id")
             if not host_id_str:
                 logger.warning(
-                    "下线通知缺少 host_id",
+                    "Offline notification missing host_id",
                     extra={
                         "agent_id": agent_id,
                         "data": data,
@@ -237,12 +235,12 @@ class AgentMessageHandler:
                 )
                 return
 
-            # 转换 host_id 为整数
+            # Convert host_id to integer
             try:
                 host_id_int = int(host_id_str)
             except (ValueError, TypeError):
                 logger.error(
-                    f"Host ID 格式错误: {host_id_str}",
+                    f"Host ID format error: {host_id_str}",
                     extra={
                         "agent_id": agent_id,
                         "host_id": host_id_str,
@@ -252,17 +250,17 @@ class AgentMessageHandler:
                 return
 
             logger.info(
-                "开始处理 Host 下线通知",
+                "Start processing Host offline notification",
                 extra={
                     "agent_id": agent_id,
                     "host_id": host_id_int,
                 },
             )
 
-            # 查询并更新数据库
+            # Query and update database
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 查询 host_exec_log 表: host_id = data['host_id'], del_flag = 0
+                # Query host_exec_log table: host_id = data['host_id'], del_flag = 0
                 stmt = (
                     select(HostExecLog)
                     .where(
@@ -279,17 +277,13 @@ class AgentMessageHandler:
                 exec_log = result.scalar_one_or_none()
 
                 if exec_log:
-                    # 更新 host_state = 4 (离线)
-                    update_stmt = (
-                        update(HostExecLog)
-                        .where(HostExecLog.id == exec_log.id)
-                        .values(host_state=4)
-                    )
+                    # Update host_state = 4 (offline)
+                    update_stmt = update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=4)
                     await session.execute(update_stmt)
                     await session.commit()
 
                     logger.info(
-                        "执行日志状态已更新为离线",
+                        "Execution log state updated to offline",
                         extra={
                             "agent_id": agent_id,
                             "host_id": host_id_int,
@@ -300,14 +294,14 @@ class AgentMessageHandler:
                     )
                 else:
                     logger.info(
-                        "未找到需要更新的执行日志记录",
+                        "Execution log record not found for update",
                         extra={
                             "agent_id": agent_id,
                             "host_id": host_id_int,
                         },
                     )
 
-                # 同时更新 host_rec 表的主机状态为离线
+                # Also update host_rec table host state to offline
                 host_update_stmt = (
                     update(HostRec)
                     .where(
@@ -322,7 +316,7 @@ class AgentMessageHandler:
                 await session.commit()
 
                 logger.info(
-                    "主机状态已更新为离线",
+                    "Host state updated to offline",
                     extra={
                         "host_id": host_id_int,
                         "new_state": HOST_STATE_OFFLINE,
@@ -331,7 +325,7 @@ class AgentMessageHandler:
 
         except Exception as e:
             logger.error(
-                f"处理 Host 下线通知失败: {agent_id}, 错误: {e!s}",
+                f"Failed to process Host offline notification: {agent_id}, error: {e!s}",
                 exc_info=True,
             )
 
@@ -340,17 +334,17 @@ class AgentMessageHandler:
         agent_id: str,
         data: dict,
     ) -> None:
-        """处理 Agent 版本更新
+        """Handle Agent version update
 
         Args:
             agent_id: Agent/Host ID
-            data: 消息数据，包含版本信息
+            data: Message data, contains version information
         """
         try:
             version = data.get("version")
             if not version:
                 logger.warning(
-                    "版本更新消息缺少版本号",
+                    "Version update message missing version number",
                     extra={
                         "agent_id": agent_id,
                         "data": data,
@@ -358,12 +352,12 @@ class AgentMessageHandler:
                 )
                 return
 
-            # 转换 agent_id 为整数
+            # Convert agent_id to integer
             try:
                 host_id_int = int(agent_id)
             except (ValueError, TypeError):
                 logger.error(
-                    f"Agent ID 格式错误: {agent_id}",
+                    f"Agent ID format error: {agent_id}",
                     extra={
                         "agent_id": agent_id,
                         "error": "not a valid integer",
@@ -372,7 +366,7 @@ class AgentMessageHandler:
                 return
 
             logger.info(
-                "处理 Agent 版本更新",
+                "Processing Agent version update",
                 extra={
                     "agent_id": agent_id,
                     "host_id": host_id_int,
@@ -380,7 +374,7 @@ class AgentMessageHandler:
                 },
             )
 
-            # 更新数据库中的版本信息
+            # Update version information in database
             session_factory = self.session_factory
             async with session_factory() as session:
                 update_stmt = (
@@ -397,7 +391,7 @@ class AgentMessageHandler:
                 await session.commit()
 
                 logger.info(
-                    "Agent 版本已更新",
+                    "Agent version updated",
                     extra={
                         "host_id": host_id_int,
                         "version": version,
@@ -406,20 +400,20 @@ class AgentMessageHandler:
 
         except Exception as e:
             logger.error(
-                f"处理 Agent 版本更新失败: {agent_id}, 错误: {e!s}",
+                f"Failed to process Agent version update: {agent_id}, error: {e!s}",
                 exc_info=True,
             )
 
 
-# 模块级实例
+# Module-level instance
 _message_handler_instance: Optional[AgentMessageHandler] = None
 
 
 def get_agent_message_handler() -> AgentMessageHandler:
-    """获取消息处理器实例（单例模式）
+    """Get message handler instance (singleton pattern)
 
     Returns:
-        AgentMessageHandler: 消息处理器实例
+        AgentMessageHandler: Message handler instance
     """
     global _message_handler_instance
     if _message_handler_instance is None:

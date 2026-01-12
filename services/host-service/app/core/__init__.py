@@ -1,6 +1,6 @@
 """
-Host Service 核心模块
+Host Service core module
 
-包含核心业务逻辑和公共组件，
-如主机管理核心功能、配置等。
+Contains core business logic and common components,
+such as host management core functionality, configuration, etc.
 """

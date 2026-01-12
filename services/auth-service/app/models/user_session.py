@@ -1,7 +1,7 @@
 """
-用户会话数据模型
+User Session Data Model
 
-定义用户会话表结构和字段
+Define the structure and fields of the user session table
 """
 
 from datetime import datetime
@@ -10,11 +10,11 @@ from typing import Optional
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from shared.common.database import Base
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     import os
     import sys
 
@@ -23,48 +23,48 @@ except ImportError:
 
 
 class UserSession(Base):
-    """用户会话模型"""
+    """User Session Model"""
 
     __tablename__ = "user_sessions"
 
-    # 主键
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="主键ID")
+    # Primary key
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, comment="Primary key ID")
 
-    # 关联字段 - 现在支持多种实体类型
+    # Association fields - now supports multiple entity types
     entity_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, index=True, comment="实体ID（管理后台用户ID或设备ID）"
+        Integer, nullable=False, index=True, comment="Entity ID (admin user ID or device ID)"
     )
     entity_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, index=True, comment="实体类型（admin_user或device）"
+        String(50), nullable=False, index=True, comment="Entity type (admin_user or device)"
     )
 
-    # 会话字段
-    session_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True, comment="会话ID")
-    access_token: Mapped[str] = mapped_column(Text, nullable=False, comment="访问令牌")
-    refresh_token: Mapped[str] = mapped_column(Text, nullable=False, comment="刷新令牌")
+    # Session fields
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True, comment="Session ID")
+    access_token: Mapped[str] = mapped_column(Text, nullable=False, comment="Access token")
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False, comment="Refresh token")
 
-    # 客户端信息
-    client_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True, comment="客户端IP")
-    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="用户代理")
+    # Client information
+    client_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True, comment="Client IP")
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="User agent")
 
-    # 过期时间
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, comment="过期时间")
+    # Expiration time
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, comment="Expiration time")
 
-    # 时间字段
+    # Time fields
     created_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
+        DateTime(timezone=True), default=func.now(), nullable=False, comment="Creation time"
     )
     updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),
         onupdate=func.now(),
         nullable=False,
-        comment="更新时间",
+        comment="Update time",
     )
-    del_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否已删除")
+    del_flag: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="Is deleted")
 
     def __repr__(self) -> str:
-        """字符串表示"""
+        """String representation"""
         return (
             f"<UserSession(id={self.id}, entity_id={self.entity_id}, "
             f"entity_type={self.entity_type}, session_id={self.session_id})>"

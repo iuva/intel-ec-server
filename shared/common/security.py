@@ -1,7 +1,7 @@
 """
-认证和安全工具模块
+Authentication and Security Tools Module
 
-提供JWT令牌管理、密码加密和验证等安全功能
+Provides JWT token management, ***REMOVED***word encryption and verification security functions
 """
 
 import base64
@@ -19,15 +19,15 @@ from ***REMOVED***lib.context import CryptContext
 
 logger = logging.getLogger(__name__)
 
-# 密码加密上下文
+# Password encryption context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# AES 加密配置
-AES_KEY_LENGTH = 32  # AES-256 需要 32 字节密钥
-AES_IV_LENGTH = 16  # AES 块大小
+# AES encryption configuration
+AES_KEY_LENGTH = 32  # AES-256 requires 32-byte key
+AES_IV_LENGTH = 16  # AES block size
 AES_KEY = os.getenv("AES_ENCRYPTION_KEY", "default_aes_key_32_bytes_long_0123456789").encode()[:AES_KEY_LENGTH]
 
-# 如果密钥长度不足，使用 PBKDF2 派生
+# If key length is insufficient, use PBKDF2 derivation
 if len(AES_KEY) < AES_KEY_LENGTH:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -43,9 +43,9 @@ if len(AES_KEY) < AES_KEY_LENGTH:
 
 
 class JWTManager:
-    """JWT令牌管理器
+    """JWT Token Manager
 
-    提供JWT令牌的创建、验证和刷新功能
+    Provides JWT token creation, verification and refresh functions
     """
 
     def __init__(
@@ -55,13 +55,13 @@ class JWTManager:
         access_token_expire_minutes: int = 30,
         refresh_token_expire_days: int = 7,
     ) -> None:
-        """初始化JWT管理器
+        """Initialize JWT manager
 
         Args:
-            secret_key: JWT密钥
-            algorithm: 加密算法
-            access_token_expire_minutes: 访问令牌过期时间（分钟）
-            refresh_token_expire_minutes: 刷新令牌过期时间（天）
+            secret_key: JWT key
+            algorithm: Encryption algorithm
+            access_token_expire_minutes: Access token expiration time (minutes)
+            refresh_token_expire_days: Refresh token expiration time (days)
         """
         self.secret_key = secret_key
         self.algorithm = algorithm
@@ -69,14 +69,14 @@ class JWTManager:
         self.refresh_token_expire_days = refresh_token_expire_days
 
     def create_access_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-        """创建访问令牌
+        """Create access token
 
         Args:
-            data: 要编码的数据
-            expires_delta: 自定义过期时间
+            data: Data to encode
+            expires_delta: Custom expiration time
 
         Returns:
-            JWT访问令牌
+            JWT access token
         """
         to_encode = data.copy()
 
@@ -90,18 +90,18 @@ class JWTManager:
         try:
             return jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
         except Exception as e:
-            logger.error(f"创建访问令牌失败: {e!s}")
+            logger.error(f"Failed to create access token: {e!s}")
             raise
 
     def create_refresh_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-        """创建刷新令牌
+        """Create refresh token
 
         Args:
-            data: 要编码的数据
-            expires_delta: 自定义过期时间
+            data: Data to encode
+            expires_delta: Custom expiration time
 
         Returns:
-            JWT刷新令牌
+            JWT refresh token
         """
         to_encode = data.copy()
 
@@ -115,28 +115,28 @@ class JWTManager:
         try:
             return jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
         except Exception as e:
-            logger.error(f"创建刷新令牌失败: {e!s}")
+            logger.error(f"Failed to create refresh token: {e!s}")
             raise
 
     def verify_token(self, token: str, token_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """验证令牌
+        """Verify token
 
         Args:
-            token: JWT令牌
-            token_type: 令牌类型（access或refresh）
+            token: JWT token
+            token_type: Token type (access or refresh)
 
         Returns:
-            解码后的令牌数据，验证失败返回None
+            Decoded token data, None if verification fails
         """
         token_preview = token[:20] + "..." if len(token) > 20 else token
 
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
 
-            # 验证令牌类型
+            # Verify token type
             if token_type and payload.get("type") != token_type:
                 logger.warning(
-                    "令牌类型不匹配",
+                    "Token type mismatch",
                     extra={
                         "expected_type": token_type,
                         "actual_type": payload.get("type"),
@@ -149,9 +149,9 @@ class JWTManager:
             return payload
 
         except ExpiredSignatureError as e:
-            # ✅ 增强日志：记录详细的过期信息
+            # ✅ Enhanced logging: Record detailed expiration information
             try:
-                # 尝试解码 token 获取过期时间信息
+                # Try to decode token to get expiration time information
                 decoded = jwt.decode(token, key="", options={"verify_signature": False})
                 exp = decoded.get("exp")
                 exp_time = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
@@ -161,7 +161,7 @@ class JWTManager:
                 current_time = datetime.now(timezone.utc)
 
             logger.warning(
-                "令牌已过期",
+                "Token has expired",
                 extra={
                     "token_preview": token_preview,
                     "operation": "verify_token",
@@ -174,23 +174,23 @@ class JWTManager:
             )
             return None
         except JWTError as e:
-            # ✅ 增强日志：记录 JWT 错误（包括解码错误和签名错误）
-            # 注意：jose 库中，解码错误和签名错误都会抛出 JWTError
+            # ✅ Enhanced logging: Record JWT errors (including decoding errors and signature errors)
+            # Note: In jose library, both decoding errors and signature errors throw JWTError
             error_type = type(e).__name__
             error_message = str(e).lower()
             is_signature_error = "signature" in error_message or "signature" in error_type.lower()
             is_decode_error = "decode" in error_message or "invalid" in error_message or "malformed" in error_message
 
-            # 根据错误类型确定日志消息
+            # Determine log message based on error type
             if is_signature_error:
-                log_message = "令牌签名无效"
-                hint = "令牌可能被篡改或使用了错误的密钥签名"
+                log_message = "Token signature invalid"
+                hint = "Token may have been tampered with or signed with wrong key"
             elif is_decode_error:
-                log_message = "令牌格式错误，无法解码"
-                hint = "令牌格式不正确，可能不是有效的 JWT"
+                log_message = "Token format error, unable to decode"
+                hint = "Token format is incorrect, may not be a valid JWT"
             else:
-                log_message = "JWT 验证失败"
-                hint = "令牌验证失败，可能是格式错误、签名错误或其他 JWT 相关问题"
+                log_message = "JWT verification failed"
+                hint = "Token verification failed, may be format error, signature error or other JWT related issue"
 
             logger.warning(
                 log_message,
@@ -206,9 +206,9 @@ class JWTManager:
             )
             return None
         except Exception as e:
-            # ✅ 增强日志：记录未知错误（非 JWT 相关异常）
+            # ✅ Enhanced logging: Record unknown errors (non-JWT related exceptions)
             logger.error(
-                "验证令牌失败 - 未知错误",
+                "Token verification failed - Unknown error",
                 extra={
                     "token_preview": token_preview,
                     "operation": "verify_token",
@@ -220,22 +220,22 @@ class JWTManager:
             return None
 
     def decode_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """解码令牌（不验证签名）
+        """Decode token (without verifying signature)
 
         Args:
-            token: JWT令牌
+            token: JWT token
 
         Returns:
-            解码后的令牌数据
+            Decoded token data
         """
         try:
             return jwt.decode(token, key="", options={"verify_signature": False})
         except Exception as e:
-            logger.error(f"解码令牌失败: {e!s}")
+            logger.error(f"Failed to decode token: {e!s}")
             return None
 
 
-# 全局JWT管理器实例
+# Global JWT manager instance
 _jwt_manager: Optional[JWTManager] = None
 
 
@@ -245,16 +245,16 @@ def init_jwt_manager(
     access_token_expire_minutes: int = 30,
     refresh_token_expire_days: int = 7,
 ) -> JWTManager:
-    """初始化全局JWT管理器
+    """Initialize global JWT manager
 
     Args:
-        secret_key: JWT密钥
-        algorithm: 加密算法
-        access_token_expire_minutes: 访问令牌过期时间（分钟）
-        refresh_token_expire_days: 刷新令牌过期时间（天）
+        secret_key: JWT key
+        algorithm: Encryption algorithm
+        access_token_expire_minutes: Access token expiration time (minutes)
+        refresh_token_expire_days: Refresh token expiration time (days)
 
     Returns:
-        JWT管理器实例
+        JWT manager instance
     """
     global _jwt_manager
     _jwt_manager = JWTManager(
@@ -263,134 +263,134 @@ def init_jwt_manager(
         access_token_expire_minutes=access_token_expire_minutes,
         refresh_token_expire_days=refresh_token_expire_days,
     )
-    logger.info("JWT管理器初始化成功")
+    logger.info("JWT manager initialized successfully")
     return _jwt_manager
 
 
 def get_jwt_manager() -> JWTManager:
-    """获取全局JWT管理器
+    """Get global JWT manager
 
     Returns:
-        JWT管理器实例
+        JWT manager instance
 
     Raises:
-        RuntimeError: 如果JWT管理器未初始化
+        RuntimeError: If JWT manager is not initialized
     """
     if _jwt_manager is None:
-        raise RuntimeError("JWT管理器未初始化，请先调用init_jwt_manager()")
+        raise RuntimeError("JWT manager not initialized, please call init_jwt_manager() first")
     return _jwt_manager
 
 
 def hash_***REMOVED***word(***REMOVED***word: str) -> str:
-    """加密密码
+    """Hash ***REMOVED***word
 
     Args:
-        ***REMOVED***word: 明文密码
+        ***REMOVED***word: Plain text ***REMOVED***word
 
     Returns:
-        加密后的密码哈希
+        Hashed ***REMOVED***word
     """
     return pwd_context.hash(***REMOVED***word)
 
 
 def verify_***REMOVED***word(plain_***REMOVED***word: str, hashed_***REMOVED***word: str) -> bool:
-    """验证密码
+    """Verify ***REMOVED***word
 
     Args:
-        plain_***REMOVED***word: 明文密码
-        hashed_***REMOVED***word: 加密后的密码哈希
+        plain_***REMOVED***word: Plain text ***REMOVED***word
+        hashed_***REMOVED***word: Hashed ***REMOVED***word
 
     Returns:
-        密码是否匹配
+        Whether ***REMOVED***words match
     """
     try:
         return pwd_context.verify(plain_***REMOVED***word, hashed_***REMOVED***word)
     except Exception as e:
-        logger.error(f"验证密码失败: {e!s}")
+        logger.error(f"Failed to verify ***REMOVED***word: {e!s}")
         return False
 
 
 def get_***REMOVED***word_hash(***REMOVED***word: str) -> str:
-    """获取密码哈希（hash_***REMOVED***word的别名）
+    """Get ***REMOVED***word hash (alias for hash_***REMOVED***word)
 
     Args:
-        ***REMOVED***word: 明文密码
+        ***REMOVED***word: Plain text ***REMOVED***word
 
     Returns:
-        加密后的密码哈希
+        Hashed ***REMOVED***word
     """
     return hash_***REMOVED***word(***REMOVED***word)
 
 
 def aes_encrypt(plaintext: str) -> str:
-    """AES 加密函数
+    """AES encryption function
 
-    使用 AES-256-CBC 模式加密明文
+    Encrypts plaintext using AES-256-CBC mode
 
     Args:
-        plaintext: 明文字符串
+        plaintext: Plain text string
 
     Returns:
-        加密后的 Base64 编码字符串
+        Encrypted Base64 encoded string
 
     Raises:
-        Exception: 加密失败时抛出异常
+        Exception: Thrown when encryption fails
     """
     try:
-        # 生成随机 IV
+        # Generate random IV
         iv = os.urandom(AES_IV_LENGTH)
 
-        # 创建加密器
+        # Create encryptor
         cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=default_backend())
         encryptor = cipher.encryptor()
 
-        # 添加 PKCS7 填充
+        # Add PKCS7 padding
         padder = padding.PKCS7(128).padder()
         padded_data = padder.update(plaintext.encode("utf-8"))
         padded_data += padder.finalize()
 
-        # 加密
+        # Encrypt
         ciphertext = encryptor.update(padded_data) + encryptor.finalize()
 
-        # 将 IV 和密文组合，然后 Base64 编码
+        # Combine IV and ciphertext, then Base64 encode
         encrypted_data = iv + ciphertext
         return base64.b64encode(encrypted_data).decode("utf-8")
 
     except Exception as e:
-        logger.error(f"AES 加密失败: {e!s}")
+        logger.error(f"AES encryption failed: {e!s}")
         raise
 
 
 def aes_decrypt(ciphertext: str) -> Optional[str]:
-    """AES 解密函数
+    """AES decryption function
 
-    使用 AES-256-CBC 模式解密密文
+    Decrypt ciphertext using AES-256-CBC mode
 
     Args:
-        ciphertext: Base64 编码的密文字符串
+        ciphertext: Base64 encoded ciphertext string
 
     Returns:
-        解密后的明文字符串，解密失败返回 None
+        Decrypted plaintext string, None if decryption fails
 
     Raises:
-        Exception: 解密失败时抛出异常
+        Exception: Thrown when decryption fails
     """
     try:
-        # Base64 解码
+        # Base64 decode
         encrypted_data = base64.b64decode(ciphertext.encode("utf-8"))
 
-        # 提取 IV 和密文
+        # Extract IV and ciphertext
         iv = encrypted_data[:AES_IV_LENGTH]
         ciphertext_bytes = encrypted_data[AES_IV_LENGTH:]
 
-        # 创建解密器
+        # Create decryptor
         cipher = Cipher(algorithms.AES(AES_KEY), modes.CBC(iv), backend=default_backend())
         decryptor = cipher.decryptor()
 
-        # 解密
+        # Decrypt
         padded_data = decryptor.update(ciphertext_bytes) + decryptor.finalize()
 
-        # 去除 PKCS7 填充
+        # Remove PKCS7 padding
         unpadder = padding.PKCS7(128).unpadder()
         plaintext = unpadder.update(padded_data)
         plaintext += unpadder.finalize()
@@ -398,5 +398,5 @@ def aes_decrypt(ciphertext: str) -> Optional[str]:
         return plaintext.decode("utf-8")
 
     except Exception as e:
-        logger.error(f"AES 解密失败: {e!s}")
+        logger.error(f"AES decryption failed: {e!s}")
         return None

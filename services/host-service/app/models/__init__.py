@@ -1,4 +1,4 @@
-"""数据模型模块"""
+"""Data models module"""
 
 from app.models.host_hw_rec import HostHwRec
 from app.models.host_rec import HostRec

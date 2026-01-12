@@ -1,6 +1,6 @@
-"""WebSocket 消息协议定义
+"""WebSocket message protocol definitions
 
-定义所有消息类型和格式规范
+Defines all message types and format specifications
 """
 
 from datetime import datetime, timezone
@@ -11,192 +11,208 @@ from pydantic import BaseModel, Field
 
 
 class MessageType(str, Enum):
-    """消息类型枚举"""
+    """Message type enumeration"""
 
-    # 连接管理
-    WELCOME = "welcome"  # 连接建立欢迎消息
-    HEARTBEAT = "heartbeat"  # Agent心跳
-    HEARTBEAT_ACK = "heartbeat_ack"  # 心跳确认
+    # Connection management
+    WELCOME = "welcome"  # Connection established welcome message
+    HEARTBEAT = "heartbeat"  # Agent heartbeat
+    HEARTBEAT_ACK = "heartbeat_ack"  # Heartbeat acknowledgment
 
-    # 状态管理
-    STATUS_UPDATE = "status_update"  # Agent状态更新
-    STATUS_UPDATE_ACK = "status_update_ack"  # 状态更新确认
+    # Status management
+    STATUS_UPDATE = "status_update"  # Agent status update
+    STATUS_UPDATE_ACK = "status_update_ack"  # Status update acknowledgment
 
-    # 命令执行
-    COMMAND = "command"  # 执行命令
-    COMMAND_RESPONSE = "command_response"  # 命令响应
-    CONNECTION_RESULT = "connection_result"  # Agent上报连接结果
+    # Command execution
+    COMMAND = "command"  # Execute command
+    COMMAND_RESPONSE = "command_response"  # Command response
+    CONNECTION_RESULT = "connection_result"  # Agent reports connection result
 
-    # 系统消息
-    NOTIFICATION = "notification"  # 系统通知
-    ERROR = "error"  # 错误消息
-    HEARTBEAT_TIMEOUT_WARNING = "heartbeat_timeout_warning"  # 心跳超时警告
-    HOST_OFFLINE_NOTIFICATION = "host_offline_notification"  # Host下线通知
-    CONNECTION_NOTIFICATION = "connection_notification"  # 连接通知（VNC连接成功时通知Agent进行日志监控）
-    VERSION_UPDATE = "version_update"  # Agent版本更新
+    # System messages
+    NOTIFICATION = "notification"  # System notification
+    ERROR = "error"  # Error message
+    HEARTBEAT_TIMEOUT_WARNING = "heartbeat_timeout_warning"  # Heartbeat timeout warning
+    HOST_OFFLINE_NOTIFICATION = "host_offline_notification"  # Host offline notification
+    CONNECTION_NOTIFICATION = "connection_notification"  # Connection notification (notify Agent to start
+    # log monitoring when VNC connection succeeds)
+    VERSION_UPDATE = "version_update"  # Agent version update
 
 
 class BaseMessage(BaseModel):
-    """基础消息格式
+    """Base message format
 
-    所有消息都必须继承此类，确保包含基本字段
+    All messages must inherit from this class to ensure basic fields are included
     """
 
-    type: MessageType = Field(..., description="消息类型")
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="消息时间戳")
-    message_id: Optional[str] = Field(default=None, description="消息ID（用于追踪）")
+    type: MessageType = Field(..., description="Message type")
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(), description="Message timestamp"
+    )
+    message_id: Optional[str] = Field(default=None, description="Message ID (for tracking)")
 
     model_config = {"from_attributes": True}
 
 
-# ========== 连接管理消息 ==========
+# ========== Connection management messages ==========
 
 
 class WelcomeMessage(BaseMessage):
-    """欢迎消息 - Server → Agent"""
+    """Welcome message - Server → Agent"""
 
-    type: MessageType = Field(default=MessageType.WELCOME, description="消息类型")
+    type: MessageType = Field(default=MessageType.WELCOME, description="Message type")
     agent_id: str = Field(..., description="Agent ID")
-    message: str = Field(default="WebSocket 连接已建立", description="欢迎消息")
+    message: str = Field(default="WebSocket connection established", description="Welcome message")
 
 
 class HeartbeatMessage(BaseMessage):
-    """心跳消息 - Agent → Server"""
+    """Heartbeat message - Agent → Server"""
 
-    type: MessageType = Field(default=MessageType.HEARTBEAT, description="消息类型")
+    type: MessageType = Field(default=MessageType.HEARTBEAT, description="Message type")
     agent_id: str = Field(..., description="Agent ID")
 
 
 class HeartbeatAckMessage(BaseMessage):
-    """心跳确认 - Server → Agent"""
+    """Heartbeat acknowledgment - Server → Agent"""
 
-    type: MessageType = Field(default=MessageType.HEARTBEAT_ACK, description="消息类型")
-    message: str = Field(default="心跳已接收", description="确认消息")
+    type: MessageType = Field(default=MessageType.HEARTBEAT_ACK, description="Message type")
+    message: str = Field(default="Heartbeat received", description="Acknowledgment message")
 
 
-# ========== 状态管理消息 ==========
+# ========== Status management messages ==========
 
 
 class StatusUpdateMessage(BaseMessage):
-    """状态更新消息 - Agent → Server"""
+    """Status update message - Agent → Server"""
 
-    type: MessageType = Field(default=MessageType.STATUS_UPDATE, description="消息类型")
+    type: MessageType = Field(default=MessageType.STATUS_UPDATE, description="Message type")
     agent_id: str = Field(..., description="Agent ID")
-    status: str = Field(..., description="新状态 (online/offline/busy/error)")
-    details: Optional[Dict[str, Any]] = Field(default=None, description="状态详情")
+    status: str = Field(..., description="New status (online/offline/busy/error)")
+    details: Optional[Dict[str, Any]] = Field(default=None, description="Status details")
 
 
 class StatusUpdateAckMessage(BaseMessage):
-    """状态更新确认 - Server → Agent"""
+    """Status update acknowledgment - Server → Agent"""
 
-    type: MessageType = Field(default=MessageType.STATUS_UPDATE_ACK, description="消息类型")
-    message: str = Field(default="状态更新成功", description="确认消息")
-    status: str = Field(..., description="更新后的状态")
+    type: MessageType = Field(default=MessageType.STATUS_UPDATE_ACK, description="Message type")
+    message: str = Field(default="Status update succeeded", description="Acknowledgment message")
+    status: str = Field(..., description="Updated status")
 
 
-# ========== 命令执行消息 ==========
+# ========== Command execution messages ==========
 
 
 class CommandMessage(BaseMessage):
-    """命令消息 - Server → Agent
+    """Command message - Server → Agent
 
-    用于通知Agent执行特定命令
+    Used to notify Agent to execute specific command
     """
 
-    type: MessageType = Field(default=MessageType.COMMAND, description="消息类型")
-    command_id: str = Field(..., description="命令ID（唯一标识）")
-    command: str = Field(..., description="命令名称")
-    args: Optional[Dict[str, Any]] = Field(default=None, description="命令参数")
-    target_agents: Optional[List[str]] = Field(default=None, description="目标Agent列表（None表示所有）")
+    type: MessageType = Field(default=MessageType.COMMAND, description="Message type")
+    command_id: str = Field(..., description="Command ID (unique identifier)")
+    command: str = Field(..., description="Command name")
+    args: Optional[Dict[str, Any]] = Field(default=None, description="Command arguments")
+    target_agents: Optional[List[str]] = Field(
+        default=None, description="Target Agent list (None means all)"
+    )
 
 
 class CommandResponseMessage(BaseMessage):
-    """命令响应 - Agent → Server
+    """Command response - Agent → Server
 
-    Agent执行命令后返回的结果
+    Result returned by Agent after executing command
     """
 
-    type: MessageType = Field(default=MessageType.COMMAND_RESPONSE, description="消息类型")
+    type: MessageType = Field(default=MessageType.COMMAND_RESPONSE, description="Message type")
     agent_id: str = Field(..., description="Agent ID")
-    command_id: str = Field(..., description="对应的命令ID")
-    result: Optional[Dict[str, Any]] = Field(default=None, description="命令执行结果")
-    error: Optional[str] = Field(default=None, description="错误信息（如果执行失败）")
-    success: bool = Field(..., description="命令是否执行成功")
+    command_id: str = Field(..., description="Corresponding command ID")
+    result: Optional[Dict[str, Any]] = Field(default=None, description="Command execution result")
+    error: Optional[str] = Field(
+        default=None, description="Error information (if execution failed)"
+    )
+    success: bool = Field(..., description="Whether command execution succeeded")
 
 
-# ========== 系统消息 ==========
+# ========== System messages ==========
 
 
 class NotificationMessage(BaseMessage):
-    """系统通知 - Server → Agent/Broadcast
+    """System notification - Server → Agent/Broadcast
 
-    用于向Agent或所有连接的Agents发送通知
+    Used to send notifications to Agent or all connected Agents
     """
 
-    type: MessageType = Field(default=MessageType.NOTIFICATION, description="消息类型")
-    title: str = Field(..., description="通知标题")
-    content: str = Field(..., description="通知内容")
-    level: str = Field(default="info", description="通知级别 (info/warning/error/critical)")
-    data: Optional[Dict[str, Any]] = Field(default=None, description="附加数据")
+    type: MessageType = Field(default=MessageType.NOTIFICATION, description="Message type")
+    title: str = Field(..., description="Notification title")
+    content: str = Field(..., description="Notification content")
+    level: str = Field(
+        default="info", description="Notification level (info/warning/error/critical)"
+    )
+    data: Optional[Dict[str, Any]] = Field(default=None, description="Additional data")
 
 
 class ErrorMessage(BaseMessage):
-    """错误消息 - Server → Agent"""
+    """Error message - Server → Agent"""
 
-    type: MessageType = Field(default=MessageType.ERROR, description="消息类型")
-    message: str = Field(..., description="错误消息")
-    error_code: Optional[str] = Field(default=None, description="错误码")
-    details: Optional[Dict[str, Any]] = Field(default=None, description="错误详情")
+    type: MessageType = Field(default=MessageType.ERROR, description="Message type")
+    message: str = Field(..., description="Error message")
+    error_code: Optional[str] = Field(default=None, description="Error code")
+    details: Optional[Dict[str, Any]] = Field(default=None, description="Error details")
 
 
 class HeartbeatTimeoutWarningMessage(BaseMessage):
-    """心跳超时警告 - Server → Agent"""
+    """Heartbeat timeout warning - Server → Agent"""
 
-    type: MessageType = Field(default=MessageType.HEARTBEAT_TIMEOUT_WARNING, description="消息类型")
-    message: str = Field(default="心跳超时警告", description="警告消息")
-    timeout: int = Field(..., description="心跳超时时间（秒）")
+    type: MessageType = Field(default=MessageType.HEARTBEAT_TIMEOUT_WARNING, description="Message type")
+    message: str = Field(default="Heartbeat timeout warning", description="Warning message")
+    timeout: int = Field(..., description="Heartbeat timeout time (seconds)")
 
 
 class HostOfflineNotificationMessage(BaseMessage):
-    """Host下线通知 - Server → Agent
+    """Host offline notification - Server → Agent
 
-    通知Agent其Host已下线，Agent收到后需要更新host_exec_log表的host_state为4
+    Notify Agent that its Host has gone offline, Agent needs to update
+    host_exec_log table host_state to 4 after receiving
+
     """
 
-    type: MessageType = Field(default=MessageType.HOST_OFFLINE_NOTIFICATION, description="消息类型")
+    type: MessageType = Field(default=MessageType.HOST_OFFLINE_NOTIFICATION, description="Message type")
     host_id: str = Field(..., description="Host ID")
-    message: str = Field(default="Host已下线", description="下线消息")
-    reason: Optional[str] = Field(default=None, description="下线原因")
+    message: str = Field(default="Host has gone offline", description="Offline message")
+    reason: Optional[str] = Field(default=None, description="Offline reason")
 
 
 class ConnectionNotificationMessage(BaseMessage):
-    """连接通知 - Server → Agent
+    """Connection notification - Server → Agent
 
-    当浏览器 VNC 连接成功时，通知 Agent 进行日志监控
+    When browser VNC connection succeeds, notify Agent to start log monitoring
     """
 
-    type: MessageType = Field(default=MessageType.CONNECTION_NOTIFICATION, description="消息类型")
+    type: MessageType = Field(default=MessageType.CONNECTION_NOTIFICATION, description="Message type")
     host_id: str = Field(..., description="Host ID")
-    message: str = Field(default="VNC连接成功，请开始日志监控", description="通知消息")
-    action: str = Field(default="start_log_monitoring", description="操作类型（start_log_monitoring）")
-    details: Optional[Dict[str, Any]] = Field(default=None, description="附加信息（如用户ID、测试ID等）")
+    message: str = Field(
+        default="VNC connection succeeded, please start log monitoring",
+        description="Notification message"
+    )
+    action: str = Field(default="start_log_monitoring", description="Action type (start_log_monitoring)")
+    details: Optional[Dict[str, Any]] = Field(
+        default=None, description="Additional information (such as user ID, test ID, etc.)"
+    )
 
 
 class VersionUpdateMessage(BaseMessage):
-    """版本更新消息 - Agent → Server
+    """Version update message - Agent → Server
 
-    Agent 上报当前版本号，用于更新 host_rec 表的 agent_ver 字段
+    Agent reports current version number, used to update agent_ver field in host_rec table
 
     Note:
-        - agent_id 从 WebSocket 连接时的 token 中获取，不需要在消息中传递
-        - 消息中只需要包含 version 字段
+        - agent_id is obtained from token when WebSocket connects, doesn't need to be ***REMOVED***ed in message
+        - Message only needs to contain version field
     """
 
-    type: MessageType = Field(default=MessageType.VERSION_UPDATE, description="消息类型")
-    version: str = Field(..., max_length=10, description="Agent 版本号")
+    type: MessageType = Field(default=MessageType.VERSION_UPDATE, description="Message type")
+    version: str = Field(..., max_length=10, description="Agent version number")
 
 
-# 消息类型映射
+# Message type mapping
 MESSAGE_TYPE_MAP = {
     MessageType.WELCOME: WelcomeMessage,
     MessageType.HEARTBEAT: HeartbeatMessage,
@@ -215,28 +231,28 @@ MESSAGE_TYPE_MAP = {
 
 
 def parse_message(data: Dict[str, Any]) -> Optional[BaseMessage]:
-    """解析JSON数据为对应的消息类型
+    """Parse JSON data into corresponding message type
 
     Args:
-        data: 原始消息数据
+        data: Raw message data
 
     Returns:
-        解析后的消息对象，如果类型无效则返回None
+        Parsed message object, returns None if type is invalid
     """
     try:
         msg_type_str = data.get("type")
         if not msg_type_str:
             return None
 
-        # 尝试转换为MessageType枚举
+        # Try to convert to MessageType enum
         msg_type = MessageType(msg_type_str)
 
-        # 根据类型获取对应的消息类
+        # Get corresponding message class based on type
         message_class = MESSAGE_TYPE_MAP.get(msg_type)
         if not message_class:
             return None
 
-        # 解析消息
+        # Parse message
         return message_class(**data)
 
     except (ValueError, KeyError, TypeError):

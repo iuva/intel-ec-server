@@ -1,7 +1,7 @@
 """
-主机硬件记录查询构建器
+Host Hardware Record Query Builder
 
-提供主机硬件记录相关的查询构建功能，减少代码重复。
+Provides query building functions related to host hardware records, reducing code duplication.
 """
 
 import os
@@ -11,7 +11,7 @@ from typing import List, Optional
 from sqlalchemy import Select, and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from app.models.host_hw_rec import HostHwRec
 
@@ -32,26 +32,26 @@ def build_pending_hw_records_query(
     diff_state: Optional[int] = None,
     include_deleted: bool = False,
 ) -> Select:
-    """构建待审批硬件记录查询语句
+    """Build query statement for pending hardware records
 
     Args:
-        host_id: 单个主机ID（可选）
-        host_ids: 多个主机ID列表（可选，与 host_id 互斥）
-        sync_state: 同步状态（默认：1-待同步）
-        diff_state: 参数状态（可选）
-        include_deleted: 是否包含已删除的记录
+        host_id: Single host ID (optional)
+        host_ids: List of multiple host IDs (optional, mutually exclusive with host_id)
+        sync_state: Sync state (default: 1-pending sync)
+        diff_state: Parameter state (optional)
+        include_deleted: Whether to include deleted records
 
     Returns:
-        SQLAlchemy Select 语句（已按 created_time 和 id 倒序排序）
+        SQLAlchemy Select statement (already ordered by created_time and id in descending order)
 
     Example:
         ```python
-        # 查询单个主机的待审批硬件记录
+        # Query pending hardware records for a single host
         stmt = build_pending_hw_records_query(host_id=123)
         result = await session.execute(stmt)
         hw_recs = result.scalars().all()
 
-        # 查询多个主机的待审批硬件记录
+        # Query pending hardware records for multiple hosts
         stmt = build_pending_hw_records_query(host_ids=[123, 456])
         result = await session.execute(stmt)
         hw_recs = result.scalars().all()
@@ -77,7 +77,7 @@ def build_pending_hw_records_query(
     if conditions:
         stmt = stmt.where(and_(*conditions))
 
-    # 按创建时间和ID倒序排序（获取最新记录）
+    # Order by creation time and ID in descending order (to get latest records)
     stmt = stmt.order_by(desc(HostHwRec.created_time), desc(HostHwRec.id))
 
     return stmt
@@ -89,22 +89,22 @@ async def get_latest_hw_record(
     sync_state: int = 1,
     locale: str = "zh_CN",
 ) -> Optional[HostHwRec]:
-    """获取主机的最新硬件记录
+    """Get the latest hardware record for a host
 
     Args:
-        session: 数据库会话
-        host_id: 主机ID
-        sync_state: 同步状态（默认：1-待同步）
-        locale: 语言代码（用于错误消息）
+        session: Database session
+        host_id: Host ID
+        sync_state: Sync state (default: 1-pending sync)
+        locale: Language code (for error messages)
 
     Returns:
-        最新的硬件记录，如果不存在则返回 None
+        The latest hardware record, or None if it does not exist
 
     Example:
         ```python
         latest_hw = await get_latest_hw_record(session, host_id=123)
         if latest_hw:
-            # 处理最新硬件记录
+            # Process latest hardware record
             ***REMOVED***
         ```
     """
@@ -124,24 +124,24 @@ async def get_all_pending_hw_records(
     sync_state: int = 1,
     diff_state: Optional[int] = None,
 ) -> List[HostHwRec]:
-    """获取所有待审批硬件记录
+    """Get all pending hardware records
 
     Args:
-        session: 数据库会话
-        host_id: 单个主机ID（可选）
-        host_ids: 多个主机ID列表（可选）
-        sync_state: 同步状态（默认：1-待同步）
-        diff_state: 参数状态（可选）
+        session: Database session
+        host_id: Single host ID (optional)
+        host_ids: List of multiple host IDs (optional)
+        sync_state: Sync state (default: 1-pending sync)
+        diff_state: Parameter state (optional)
 
     Returns:
-        硬件记录列表
+        List of hardware records
 
     Example:
         ```python
-        # 获取单个主机的所有待审批硬件记录
+        # Get all pending hardware records for a single host
         hw_recs = await get_all_pending_hw_records(session, host_id=123)
 
-        # 获取多个主机的所有待审批硬件记录
+        # Get all pending hardware records for multiple hosts
         hw_recs = await get_all_pending_hw_records(session, host_ids=[123, 456])
         ```
     """

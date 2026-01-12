@@ -1,6 +1,6 @@
-"""响应构建辅助函数
+"""Response building helper functions
 
-提供统一的响应构建工具函数，减少代码重复。
+Provides unified response building utility functions to reduce code duplication.
 """
 
 from typing import Any, Optional
@@ -16,17 +16,17 @@ def create_success_result(
     default_message: Optional[str] = None,
     code: int = 200,
 ) -> Result[Any]:
-    """创建成功响应结果
+    """Create success response result
 
     Args:
-        data: 响应数据
-        message_key: 消息键（用于多语言）
-        locale: 语言偏好，默认 "zh_CN"
-        default_message: 默认消息（如果翻译键不存在时使用）
-        code: HTTP 状态码，默认 200
+        data: Response data
+        message_key: Message key (for internationalization)
+        locale: Language preference, default "zh_CN"
+        default_message: Default message (used when translation key does not exist)
+        code: HTTP status code, default 200
 
     Returns:
-        Result: 成功响应结果
+        Result: Success response result
     """
-    message = t(message_key, locale=locale, default=default_message or "操作成功")
+    message = t(message_key, locale=locale, default=default_message or "Operation successful")
     return Result(code=code, message=message, data=data, locale=locale)

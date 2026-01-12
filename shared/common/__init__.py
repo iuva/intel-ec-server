@@ -1,7 +1,7 @@
 """
-共享通用模块
+Shared common modules
 
-提供数据库、缓存、日志、响应、安全和异常处理等通用功能
+Provide common functions such as database, cache, logging, response, security and exception handling
 """
 
 from shared.common.cache import cache_result, get_cache, redis_manager, set_cache
@@ -38,18 +38,18 @@ from shared.common.security import (
 )
 
 __all__ = [
-    # 异常
+    # Exceptions
     "AuthenticationError",
     "AuthorizationError",
-    # 数据库
+    # Database
     "Base",
     "BaseDBModel",
     "BusinessError",
     "DatabaseError",
-    # 响应
+    # Response
     "ErrorResponse",
     "ErrorType",
-    # 安全
+    # Security
     "JWTManager",
     "PaginationInfo",
     "PaginationResponse",
@@ -58,9 +58,9 @@ __all__ = [
     "ServiceUnavailableError",
     "SuccessResponse",
     "ValidationError",
-    # 缓存
+    # Cache
     "cache_result",
-    # 日志
+    # Logging
     "configure_logger",
     "create_error_response",
     "create_pagination_response",
@@ -70,7 +70,7 @@ __all__ = [
     "get_jwt_manager",
     "get_logger",
     "get_***REMOVED***word_hash",
-    # 装饰器
+    # Decorators
     "handle_api_errors",
     "handle_service_errors",
     "hash_***REMOVED***word",

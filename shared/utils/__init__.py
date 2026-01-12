@@ -1,7 +1,7 @@
 """
-共享工具模块
+Shared Utilities Module
 
-提供项目中常用的工具类和辅助函数
+Provides commonly used utility classes and helper functions in the project
 """
 
 from shared.utils.json_comparator import JSONComparator
@@ -15,7 +15,7 @@ from shared.utils.service_discovery import ServiceDiscovery, get_service_discove
 from shared.utils.template_validator import TemplateValidator
 from shared.utils.token_extractor import TokenExtractor, get_token_extractor
 
-# 日志工具
+# Logging utilities
 from shared.utils.logging_utils import (
     log_auth_failure,
     log_auth_success,
@@ -38,35 +38,35 @@ from shared.utils.logging_utils import (
     with_request_logging,
 )
 
-# 主机验证和查询工具（延迟导入，避免循环依赖）
+# Host validation and query tools (lazy import to avoid circular dependencies)
 try:
     from shared.utils.host_validators import build_host_query, validate_host_exists
 except ImportError:
-    # 如果导入失败，提供占位符（避免循环导入）
+    # If import fails, provide placeholders (to avoid circular imports)
     validate_host_exists = None  # type: ignore[assignment, misc]
     build_host_query = None  # type: ignore[assignment, misc]
 
 __all__ = [
-    # JSON 对比工具
+    # JSON comparison tools
     "JSONComparator",
-    # 分页工具
+    # Pagination tools
     "PaginationParams",
     "PaginationResponse",
     "CursorPaginationParams",
     "CursorPaginationResponse",
-    # 服务发现工具
+    # Service discovery tools
     "ServiceDiscovery",
     "get_service_discovery",
     "init_service_discovery",
-    # 模板验证工具
+    # Template validation tools
     "TemplateValidator",
-    # Token 提取工具
+    # Token extraction tools
     "TokenExtractor",
     "get_token_extractor",
-    # 主机验证工具
+    # Host validation tools
     "validate_host_exists",
     "build_host_query",
-    # 日志工具
+    # Logging utilities
     "log_request_received",
     "log_request_completed",
     "log_operation_start",

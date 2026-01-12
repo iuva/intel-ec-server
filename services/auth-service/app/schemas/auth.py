@@ -1,7 +1,7 @@
 """
-认证相关的 Pydantic 数据模式
+Pydantic Data Schemas for Authentication
 
-定义登录、令牌等请求和响应模式
+Define request and response schemas for login, tokens, etc.
 """
 
 from typing import Optional
@@ -10,13 +10,13 @@ from pydantic import BaseModel, Field
 
 
 class TokenResponse(BaseModel):
-    """令牌响应"""
+    """Token Response"""
 
-    access_token: str = Field(description="访问令牌")
-    refresh_token: str = Field(description="刷新令牌")
-    token_type: str = Field(default="bearer", description="令牌类型")
-    expires_in: int = Field(description="过期时间（秒）")
-    refresh_expires_in: Optional[int] = Field(default=None, description="刷新令牌过期时间（秒）")
+    access_token: str = Field(description="Access token")
+    refresh_token: str = Field(description="Refresh token")
+    token_type: str = Field(default="bearer", description="Token type")
+    expires_in: int = Field(description="Expiration time (seconds)")
+    refresh_expires_in: Optional[int] = Field(default=None, description="Refresh token expiration time (seconds)")
 
     model_config = {
         "json_schema_extra": {
@@ -32,9 +32,9 @@ class TokenResponse(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    """刷新令牌请求"""
+    """Refresh Token Request"""
 
-    refresh_token: str = Field(description="刷新令牌")
+    refresh_token: str = Field(description="Refresh token")
 
     model_config = {
         "json_schema_extra": {
@@ -46,10 +46,10 @@ class RefreshTokenRequest(BaseModel):
 
 
 class AutoRefreshTokenRequest(BaseModel):
-    """自动续期令牌请求（同时续期 access_token 和 refresh_token）"""
+    """Auto-refresh Token Request (renew both access_token and refresh_token simultaneously)"""
 
-    refresh_token: str = Field(description="当前刷新令牌")
-    auto_renew: bool = Field(default=True, description="是否自动续期 refresh_token")
+    refresh_token: str = Field(description="Current refresh token")
+    auto_renew: bool = Field(default=True, description="Whether to automatically renew refresh_token")
 
     model_config = {
         "json_schema_extra": {
@@ -62,9 +62,9 @@ class AutoRefreshTokenRequest(BaseModel):
 
 
 class IntrospectRequest(BaseModel):
-    """令牌验证请求"""
+    """Token Validation Request"""
 
-    token: str = Field(description="待验证的令牌")
+    token: str = Field(description="Token to be validated")
 
     model_config = {
         "json_schema_extra": {
@@ -76,20 +76,20 @@ class IntrospectRequest(BaseModel):
 
 
 class IntrospectResponse(BaseModel):
-    """令牌验证响应"""
+    """Token Validation Response"""
 
-    active: bool = Field(description="令牌是否有效")
-    id: Optional[str] = Field(default=None, description="用户/设备ID（统一字段名）")
-    username: Optional[str] = Field(default=None, description="用户名")
-    user_id: Optional[str] = Field(default=None, description="用户ID（兼容字段，已废弃，使用 id）")
-    exp: Optional[int] = Field(default=None, description="过期时间戳")
-    token_type: Optional[str] = Field(default=None, description="令牌类型")
-    # 新增字段：支持设备登录的额外信息
-    user_type: Optional[str] = Field(default=None, description="用户类型（admin/device）")
-    mg_id: Optional[str] = Field(default=None, description="设备管理ID")
-    host_ip: Optional[str] = Field(default=None, description="主机IP")
-    sub: Optional[str] = Field(default=None, description="Subject（用户/设备ID，兼容字段）")
-    error: Optional[str] = Field(default=None, description="错误信息（当 active=False 时）")
+    active: bool = Field(description="Whether the token is valid")
+    id: Optional[str] = Field(default=None, description="User/Device ID (unified field name)")
+    username: Optional[str] = Field(default=None, description="Username")
+    user_id: Optional[str] = Field(default=None, description="User ID (compatibility field, deprecated, use id)")
+    exp: Optional[int] = Field(default=None, description="Expiration timestamp")
+    token_type: Optional[str] = Field(default=None, description="Token type")
+    # Additional fields: Support additional information for device login
+    user_type: Optional[str] = Field(default=None, description="User type (admin/device)")
+    mg_id: Optional[str] = Field(default=None, description="Device management ID")
+    host_ip: Optional[str] = Field(default=None, description="Host IP")
+    sub: Optional[str] = Field(default=None, description="Subject (user/device ID, compatibility field)")
+    error: Optional[str] = Field(default=None, description="Error message (when active=False)")
 
     model_config = {
         "json_schema_extra": {
@@ -105,9 +105,9 @@ class IntrospectResponse(BaseModel):
 
 
 class LogoutRequest(BaseModel):
-    """注销请求"""
+    """Logout Request"""
 
-    token: str = Field(description="访问令牌")
+    token: str = Field(description="Access token")
 
     model_config = {
         "json_schema_extra": {
@@ -119,10 +119,10 @@ class LogoutRequest(BaseModel):
 
 
 class AdminLoginRequest(BaseModel):
-    """管理后台登录请求"""
+    """Admin Login Request"""
 
-    username: str = Field(description="用户名")
-    ***REMOVED***word: str = Field(description="密码")
+    username: str = Field(description="Username")
+    ***REMOVED***word: str = Field(description="Password")
 
     model_config = {
         "json_schema_extra": {
@@ -135,11 +135,11 @@ class AdminLoginRequest(BaseModel):
 
 
 class DeviceLoginRequest(BaseModel):
-    """设备登录请求"""
+    """Device Login Request"""
 
-    mg_id: str = Field(description="唯一引导ID")
-    host_ip: str = Field(description="主机IP地址")
-    username: str = Field(description="主机账号")
+    mg_id: str = Field(description="Unique boot ID")
+    host_ip: str = Field(description="Host IP address")
+    username: str = Field(description="Host account")
 
     model_config = {
         "json_schema_extra": {
@@ -153,17 +153,17 @@ class DeviceLoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """登录响应"""
+    """Login Response"""
 
-    access_token: str = Field(description="访问令牌")
+    access_token: str = Field(description="Access token")
     token: Optional[str] = Field(
         default=None,
-        description="访问令牌兼容字段（与 access_token 相同，保留用于向后兼容）",
+        description="Access token compatibility field (same as access_token, retained for backward compatibility)",
     )
-    refresh_token: Optional[str] = Field(default=None, description="刷新令牌")
-    token_type: str = Field(default="bearer", description="令牌类型")
-    expires_in: int = Field(description="过期时间（秒）")
-    refresh_expires_in: Optional[int] = Field(default=None, description="刷新令牌过期时间（秒）")
+    refresh_token: Optional[str] = Field(default=None, description="Refresh token")
+    token_type: str = Field(default="bearer", description="Token type")
+    expires_in: int = Field(description="Expiration time (seconds)")
+    refresh_expires_in: Optional[int] = Field(default=None, description="Refresh token expiration time (seconds)")
 
     model_config = {
         "json_schema_extra": {

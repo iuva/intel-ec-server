@@ -1,136 +1,136 @@
-# Auth Service (认证服务)
+# Auth Service (Authentication Service)
 
-## 概述
+## Overview
 
-Auth Service 是 Intel EC 微服务架构中的认证服务，提供用户认证、设备认证、JWT令牌管理等功能。
+Auth Service is the authentication service in Intel EC microservice architecture, providing user authentication, device authentication, JWT token management, and other functions.
 
-## 功能特性
+## Features
 
-- ✅ 管理员登录认证（传统方式）
-- ✅ 设备登录认证（传统方式）
-- ✅ JWT 令牌生成和验证
-- ✅ 令牌刷新机制
-- ✅ 用户注销（令牌黑名单）
-- ✅ 健康检查
-- ✅ Prometheus 监控指标
-- ✅ Jaeger 分布式追踪
+- ✅ Administrator login authentication (traditional way)
+- ✅ Device login authentication (traditional way)
+- ✅ JWT token generation and validation
+- ✅ Token refresh mechanism
+- ✅ User logout (token blacklisting)
+- ✅ Health checks
+- ✅ Prometheus monitoring metrics
+- ✅ Jaeger distributed tracing
 
-## 技术栈
+## Tech Stack
 
 - **Python**: 3.8.10
-- **Web框架**: FastAPI 0.116.1
-- **数据库**: MariaDB (SQLAlchemy 异步ORM)
-- **缓存**: Redis
-- **服务发现**: Nacos
-- **监控**: Prometheus + Jaeger
-- **日志**: Loguru
+- **Web Framework**: FastAPI 0.116.1
+- **Database**: MariaDB (SQLAlchemy async ORM)
+- **Cache**: Redis
+- **Service Discovery**: Nacos
+- **Monitoring**: Prometheus + Jaeger
+- **Logging**: Loguru
 
-## 项目结构
+## Project Structure
 
 ```
 auth-service/
 ├── app/
 │   ├── api/
 │   │   └── v1/
-│   │       ├── dependencies.py      # 依赖注入
+│   │       ├── dependencies.py      # Dependency injection
 │   │       └── endpoints/
-│   │           └── auth.py          # 认证端点
-│   ├── core/                        # 核心配置
+│   │           └── auth.py          # Authentication endpoints
+│   ├── core/                        # Core configuration
 │   ├── models/
-│   │   ├── user.py                  # 用户模型
-│   │   └── user_session.py          # 会话模型
+│   │   ├── user.py                  # User model
+│   │   └── user_session.py          # Session model
 │   ├── schemas/
-│   │   ├── auth.py                  # 认证数据模式
-│   │   └── user.py                  # 用户数据模式
+│   │   ├── auth.py                  # Authentication data schemas
+│   │   └── user.py                  # User data schemas
 │   ├── services/
-│   │   └── auth_service.py          # 认证业务逻辑
-│   └── main.py                      # 应用入口
-├── create_tables.py                 # 数据库表创建脚本
-├── Dockerfile                       # Docker配置
-├── requirements.txt                 # Python依赖
-└── README.md                        # 本文档
+│   │   └── auth_service.py          # Authentication business logic
+│   └── main.py                      # Application entry
+├── create_tables.py                 # Database table creation script
+├── Dockerfile                       # Docker configuration
+├── requirements.txt                 # Python dependencies
+└── README.md                        # This document
 ```
 
-## API 端点
+## API Endpoints
 
-### 认证相关
+### Authentication Related
 
-- `POST /api/v1/auth/admin/login` - 管理员登录
-- `POST /api/v1/auth/device/login` - 设备登录
-- `POST /api/v1/auth/refresh` - 刷新访问令牌
-- `POST /api/v1/auth/introspect` - 验证令牌
-- `POST /api/v1/auth/logout` - 用户注销
+- `POST /api/v1/auth/admin/login` - Admin login
+- `POST /api/v1/auth/device/login` - Device login
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `POST /api/v1/auth/introspect` - Validate token
+- `POST /api/v1/auth/logout` - User logout
 
-### 系统端点
+### System Endpoints
 
-- `GET /health` - 健康检查
-- `GET /metrics` - Prometheus 指标
-- `GET /docs` - API 文档
-- `GET /` - 服务信息
+- `GET /health` - Health check
+- `GET /metrics` - Prometheus metrics
+- `GET /docs` - API documentation
+- `GET /` - Service information
 
-## 数据库表
+## Database Tables
 
-### sys_user 表（管理员）
+### sys_user Table (Administrators)
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| id | BIGINT | 主键ID |
-| user_name | VARCHAR(32) | 用户名称 |
-| user_account | VARCHAR(32) | 登录账号 |
-| user_pwd | VARCHAR(128) | 登录密码（bcrypt加密） |
-| user_avatar | VARCHAR(32) | 用户头像 |
-| email | VARCHAR(32) | 邮箱 |
-| state_flag | SMALLINT | 账号状态（0:启用, 1:停用） |
-| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
-| created_time | DATETIME | 创建时间 |
-| updated_time | DATETIME | 更新时间 |
+| id | BIGINT | Primary key ID |
+| user_name | VARCHAR(32) | User name |
+| user_account | VARCHAR(32) | Login account |
+| user_pwd | VARCHAR(128) | Login ***REMOVED***word (bcrypt encrypted) |
+| user_avatar | VARCHAR(32) | User avatar |
+| email | VARCHAR(32) | Email |
+| state_flag | SMALLINT | Account status (0: enabled, 1: disabled) |
+| del_flag | SMALLINT | Deletion flag (0: in use, 1: deleted) |
+| created_time | DATETIME | Creation time |
+| updated_time | DATETIME | Update time |
 
-### host_rec 表（设备）
+### host_rec Table (Devices)
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| id | BIGINT | 主键ID（雪花ID） |
-| mg_id | VARCHAR(128) | 唯一引导ID |
-| host_ip | VARCHAR(32) | IP地址 |
-| host_acct | VARCHAR(32) | 主机账号 |
-| appr_state | SMALLINT | 审批状态 |
-| host_state | SMALLINT | 主机状态 |
-| subm_time | DATETIME | 申报时间 |
-| created_by | BIGINT | 创建人（当前登录用户ID，从token自动获取） |
-| created_time | DATETIME | 创建时间 |
-| updated_by | BIGINT | 更新人（当前登录用户ID，从token自动获取） |
-| updated_time | DATETIME | 更新时间 |
-| del_flag | SMALLINT | 删除标识（0:使用中, 1:删除） |
+| id | BIGINT | Primary key ID (Snowflake ID) |
+| mg_id | VARCHAR(128) | Unique boot ID |
+| host_ip | VARCHAR(32) | IP address |
+| host_acct | VARCHAR(32) | Host account |
+| appr_state | SMALLINT | Approval status |
+| host_state | SMALLINT | Host status |
+| subm_time | DATETIME | Submission time |
+| created_by | BIGINT | Created by (current logged-in user ID, automatically obtained from token) |
+| created_time | DATETIME | Creation time |
+| updated_by | BIGINT | Updated by (current logged-in user ID, automatically obtained from token) |
+| updated_time | DATETIME | Update time |
+| del_flag | SMALLINT | Deletion flag (0: in use, 1: deleted) |
 
-### user_sessions 表（会话管理）
+### user_sessions Table (Session Management)
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| id | INT | 主键ID |
-| entity_id | INT | 实体ID（用户或设备ID） |
-| entity_type | VARCHAR(50) | 实体类型（admin_user/device） |
-| session_id | VARCHAR(255) | 会话ID（唯一） |
-| access_token | TEXT | 访问令牌 |
-| refresh_token | TEXT | 刷新令牌 |
-| client_ip | VARCHAR(45) | 客户端IP |
-| expires_at | DATETIME | 过期时间 |
-| created_time | DATETIME | 创建时间 |
-| del_flag | BOOLEAN | 是否已删除 |
+| id | INT | Primary key ID |
+| entity_id | INT | Entity ID (user or device ID) |
+| entity_type | VARCHAR(50) | Entity type (admin_user/device) |
+| session_id | VARCHAR(255) | Session ID (unique) |
+| access_token | TEXT | Access token |
+| refresh_token | TEXT | Refresh token |
+| client_ip | VARCHAR(45) | Client IP |
+| expires_at | DATETIME | Expiration time |
+| created_time | DATETIME | Creation time |
+| del_flag | BOOLEAN | Is deleted |
 
-## 设备登录（Device Login）审计机制
+## Device Login Audit Mechanism
 
-### 问题描述
+### Problem Description
 
-2025-10-20 发现设备登录（Device Login）时 `host_rec` 表中 `id` 字段报错：`Field 'id' doesn't have a default value`。
+On 2025-10-20, it was found that during device login, the `id` field in the `host_rec` table reported an error: `Field 'id' doesn't have a default value`.
 
-### 解决方案
+### Solution
 
-#### 1. 主键改为雪花ID生成
+#### 1. Primary key changed to Snowflake ID generation
 
 ```python
 # app/models/host_rec.py
 def generate_snowflake_id() -> int:
-    """生成雪花ID"""
+    """Generate Snowflake ID"""
     import random, time
     timestamp = int(time.time() * 1000)
     random_part = random.randint(0, 999999)
@@ -141,13 +141,13 @@ class HostRec(Base):
         BigInteger, 
         primary_key=True, 
         default=generate_snowflake_id,
-        comment="主键（雪花ID）"
+        comment="Primary key (Snowflake ID)"
     )
 ```
 
-#### 2. 审计字段自动设置
+#### 2. Audit fields automatic setting
 
-设备登录时自动从 JWT token 中获取用户 ID，设置 `created_by` 和 `updated_by` 字段：
+During device login, automatically get user ID from JWT token and set `created_by` and `updated_by` fields:
 
 ```python
 # app/services/auth_service.py
@@ -155,27 +155,27 @@ async def device_login(
     self, login_data: DeviceLoginRequest, 
     current_user_id: Optional[int] = None
 ) -> LoginResponse:
-    # 创建新设备时
+    # When creating new device
     host_rec = HostRec(
         mg_id=login_data.mg_id,
         host_ip=login_data.host_ip,
         host_acct=login_data.username,
-        created_by=current_user_id,      # 设置创建人
+        created_by=current_user_id,      # Set creator
         created_time=datetime.now(timezone.utc),
-        updated_by=current_user_id,      # 设置更新人
+        updated_by=current_user_id,      # Set updater
         updated_time=datetime.now(timezone.utc),
         del_flag=0,
     )
     
-    # 更新现有设备时
+    # When updating existing device
     if host_rec:
         host_rec.host_ip = login_data.host_ip
         host_rec.host_acct = login_data.username
-        host_rec.updated_by = current_user_id  # 更新人
+        host_rec.updated_by = current_user_id  # Updater
         host_rec.updated_time = datetime.now(timezone.utc)
 ```
 
-#### 3. API 端点获取当前用户信息
+#### 3. API endpoint gets current user information
 
 ```python
 # app/api/v1/endpoints/auth.py
@@ -183,80 +183,80 @@ async def device_login(
 async def device_login(
     login_data: DeviceLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
-    current_user: Optional[dict] = Depends(get_current_user),  # 获取当前用户
+    current_user: Optional[dict] = Depends(get_current_user),  # Get current user
 ) -> SuccessResponse:
-    # 从 token 中提取 user_id
+    # Extract user_id from token
     current_user_id = None
     if current_user:
         current_user_id = int(current_user.get("sub", 0)) if current_user.get("sub") else None
     
-    # 传递给服务层
+    # Pass to service layer
     login_response = await auth_service.device_login(
         login_data, 
         current_user_id=current_user_id
     )
 ```
 
-### 审计追踪优势
+### Audit Tracking Advantages
 
-- ✅ 记录设备何时创建、由谁创建
-- ✅ 记录设备何时更新、由谁更新
-- ✅ 完整的操作审计追踪链
-- ✅ 便于问题排查和日志分析
+- ✅ Record when device was created and by whom
+- ✅ Record when device was updated and by whom
+- ✅ Complete audit trail chain
+- ✅ Facilitate issue troubleshooting and log analysis
 
-### 环境变量
+### Environment Variables
 
 ```bash
-# 服务配置
+# Service configuration
 SERVICE_NAME=auth-service
 SERVICE_PORT=8001
 SERVICE_IP=172.20.0.101
 
-# 数据库配置
+# Database configuration
 MYSQL_URL=mysql+aiomysql://root:root123@mysql:3306/intel_cw
 
-# Redis配置
+# Redis configuration
 REDIS_URL=redis://redis:6379/1
 
-# Nacos配置
+# Nacos configuration
 NACOS_SERVER_ADDR=172.20.0.12:8848
 
-# Jaeger配置
+# Jaeger configuration
 JAEGER_ENDPOINT=http://jaeger:4318/v1/traces
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 创建数据库表
+### 1. Create database tables
 
 ```bash
 cd services/auth-service
 python create_tables.py create
 ```
 
-### 2. 启动服务
+### 2. Start the service
 
-> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
+> **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
 
 ```bash
-# 开发模式（支持热重载）
+# Development mode (supports hot reload)
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
-# 生产模式
+# Production mode
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
-**环境变量配置**:
-- 如果数据库在 Docker 中，需要在 `.env` 文件中设置正确的数据库主机地址
-- 详细配置请参考 [快速开始指南](../../docs/00-quick-start.md#步骤-7-本地启动微服务非-docker-方式)
+**Environment Variable Configuration**:
+- If the database is in Docker, you need to set the correct database host address in the `.env` file
+- For detailed configuration, please refer to [Quick Start Guide](../../docs/00-quick-start.md#step-7-start-microservices-locally-non-docker-way)
 
-### 3. Docker 部署
+### 3. Docker Deployment
 
 ```bash
-# 构建镜像
+# Build image
 docker build -t intel-cw-ms/auth-service:latest -f services/auth-service/Dockerfile .
 
-# 运行容器
+# Run container
 docker run -d \
   --name auth-service \
   -p 8001:8001 \
@@ -265,9 +265,9 @@ docker run -d \
   intel-cw-ms/auth-service:latest
 ```
 
-## API 使用示例
+## API Usage Examples
 
-### 管理员登录
+### Administrator Login
 
 ```bash
 curl -X POST http://localhost:8001/api/v1/auth/admin/login \
@@ -278,12 +278,12 @@ curl -X POST http://localhost:8001/api/v1/auth/admin/login \
   }'
 ```
 
-响应：
+Response:
 
 ```json
 {
   "code": 200,
-  "message": "登录成功",
+  "message": "Login successful",
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",
@@ -292,7 +292,7 @@ curl -X POST http://localhost:8001/api/v1/auth/admin/login \
 }
 ```
 
-### 设备登录
+### Device Login
 
 ```bash
 curl -X POST http://localhost:8001/api/v1/auth/device/login \
@@ -304,12 +304,12 @@ curl -X POST http://localhost:8001/api/v1/auth/device/login \
   }'
 ```
 
-响应：
+Response:
 
 ```json
 {
   "code": 200,
-  "message": "登录成功",
+  "message": "Login successful",
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "token_type": "bearer",

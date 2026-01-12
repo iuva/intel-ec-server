@@ -1,14 +1,14 @@
-"""Case 超时检测定时任务服务
+"""Case timeout detection scheduled task service
 
-定期检测执行超时的测试用例，并通过邮件通知相关人员。
+Periodically detects timeout test cases and notifies relevant personnel via email.
 
-功能：
-1. 每 10 分钟执行一次超时检测
-2. 从 sys_conf 表查询 case_timeout 配置（缓存 1 小时）
-3. 查询超时的 host_exec_log 记录（优先使用 due_time，否则使用 case_timeout）
-4. 只查询 notify_state = 0（未通知）的记录，避免重复通知
-5. 通过邮件通知相关人员（发送 hardware_id, host_ip, begin_time, due_time）
-6. 邮件发送成功后，更新 notify_state = 1（已通知），标记为已通知
+Features:
+1. Execute timeout detection every 10 minutes
+2. Query case_timeout configuration from sys_conf table (cached for 1 hour)
+3. Query timeout host_exec_log records (prefer due_time, otherwise use case_timeout)
+4. Only query records with notify_state = 0 (not notified) to avoid duplicate notifications
+5. Notify relevant personnel via email (send hardware_id, host_ip, begin_time, due_time)
+6. After email is sent successfully, update notify_state = 1 (notified) to mark as notified
 """
 
 import asyncio
@@ -19,7 +19,7 @@ from typing import List, Optional
 
 from sqlalchemy import and_, or_, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_LOCKED
     from app.models.host_exec_log import HostExecLog
@@ -50,46 +50,46 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 缓存键
+# Cache keys
 CACHE_KEY_CASE_TIMEOUT = "sys_conf:case_timeout"
-# 缓存过期时间：1小时（3600秒）
+# Cache expiration time: 1 hour (3600 seconds)
 CACHE_EXPIRE_CASE_TIMEOUT = 3600
 
 
 class CaseTimeoutTaskService:
-    """Case 超时检测定时任务服务"""
+    """Case timeout detection scheduled task service"""
 
     def __init__(self):
-        """初始化定时任务服务"""
+        """Initialize scheduled task service"""
         self._task: Optional[asyncio.Task] = None
         self._running: bool = False
-        # 任务执行间隔：10分钟（600秒）
+        # Task execution interval: 10 minutes (600 seconds)
         self.interval: int = 600
-        # 记录是否已经警告过配置缺失（避免重复警告）
+        # Record whether configuration missing has been warned (avoid duplicate warnings)
         self._has_warned_missing_config: bool = False
-        # ✅ 优化：缓存会话工厂
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
     async def start(self) -> None:
-        """启动定时任务"""
+        """Start scheduled task"""
         if self._running:
-            logger.warning("定时任务已在运行中")
+            logger.warning("Scheduled task is already running")
             return
 
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
         logger.info(
-            "Case 超时检测定时任务已启动",
+            "Case timeout detection scheduled task started",
             extra={
                 "interval_seconds": self.interval,
                 "interval_minutes": self.interval // 60,
@@ -97,7 +97,7 @@ class CaseTimeoutTaskService:
         )
 
     async def stop(self) -> None:
-        """停止定时任务"""
+        """Stop scheduled task"""
         if not self._running:
             return
 
@@ -110,117 +110,118 @@ class CaseTimeoutTaskService:
             except asyncio.CancelledError:
                 ***REMOVED***
 
-        logger.info("Case 超时检测定时任务已停止")
+        logger.info("Case timeout detection scheduled task stopped")
 
     async def _run_loop(self) -> None:
-        """定时任务循环"""
-        # ✅ 服务启动时延迟首次检查，避免立即检查历史数据产生大量警告
-        # 等待 60 秒后再执行第一次检查，给服务一些时间建立连接
+        """Scheduled task loop"""
+        # ✅ Delay first check on service startup to avoid immediately checking historical data causing many warnings
+        # Wait 60 seconds before executing first check, giving service time to establish connections
         await asyncio.sleep(60)
 
         while self._running:
             try:
-                # 执行超时检测
+                # Execute timeout detection
                 await self._check_timeout_cases()
 
-                # ✅ 执行 VNC 连接超时检测
+                # ✅ Execute VNC connection timeout detection
                 await self._check_vnc_connection_timeout()
 
-                # 等待指定间隔
+                # Wait for specified interval
                 await asyncio.sleep(self.interval)
 
             except asyncio.CancelledError:
-                logger.info("定时任务循环已取消")
+                logger.info("Scheduled task loop cancelled")
                 break
             except Exception as e:
                 logger.error(
-                    "定时任务执行异常",
+                    "Scheduled task execution exception",
                     extra={
                         "error_type": type(e).__name__,
                         "error_message": str(e),
                     },
                     exc_info=True,
                 )
-                # 异常后等待一段时间再继续
+                # Wait for a period after exception before continuing
                 await asyncio.sleep(60)
 
     async def _check_timeout_cases(self) -> None:
-        """检查超时的测试用例"""
+        """Check timeout test cases"""
         try:
             log_operation_start(
-                "检测超时的测试用例",
+                "Detect timeout test cases",
                 logger_instance=logger,
             )
 
-            # 1. 获取 case_timeout 配置（带缓存）
+            # 1. Get case_timeout configuration (with cache)
             timeout_minutes = await self._get_case_timeout_config()
             if timeout_minutes is None or timeout_minutes <= 0:
-                # 只在第一次检测时记录警告，避免重复日志
+                # Only log warning on first detection to avoid duplicate logs
                 if not self._has_warned_missing_config:
                     logger.warning(
                         (
-                            "case_timeout 配置无效或未设置，跳过检测。请在 sys_conf 表中插入配置："
+                            "case_timeout configuration is invalid or not set, skipping detection. "
+                            "Please insert configuration in sys_conf table: "
                             "INSERT INTO sys_conf (conf_key, conf_val, conf_name, state_flag, del_flag) "
-                            "VALUES ('case_timeout', '30', 'Case超时时间(分钟)', 0, 0);"
+                            "VALUES ('case_timeout', '30', 'Case timeout (minutes)', 0, 0);"
                         ),
                         extra={"timeout_minutes": timeout_minutes},
                     )
                     self._has_warned_missing_config = True
                 else:
                     logger.debug(
-                        "case_timeout 配置无效或未设置，跳过检测",
+                        "case_timeout configuration is invalid or not set, skipping detection",
                         extra={"timeout_minutes": timeout_minutes},
                     )
                 return
 
-            # 如果配置存在，重置警告标志（配置可能刚被添加）
+            # If configuration exists, reset warning flag (configuration may have just been added)
             if self._has_warned_missing_config:
                 self._has_warned_missing_config = False
 
             logger.debug(
-                "获取到 case_timeout 配置",
+                "Retrieved case_timeout configuration",
                 extra={"timeout_minutes": timeout_minutes},
             )
 
-            # 如果配置存在，重置警告标志（配置可能刚被添加）
+            # If configuration exists, reset warning flag (configuration may have just been added)
             if self._has_warned_missing_config:
                 self._has_warned_missing_config = False
-                logger.info("case_timeout 配置已生效", extra={"timeout_minutes": timeout_minutes})
+                logger.info("case_timeout configuration is now effective", extra={"timeout_minutes": timeout_minutes})
 
-            # 2. 查询超时的 host_exec_log 记录（优先使用 due_time，否则使用 case_timeout）
+            # 2. Query timeout host_exec_log records (prefer due_time, otherwise use case_timeout)
             timeout_cases = await self._query_timeout_cases(timeout_minutes)
             if not timeout_cases:
-                logger.debug("未发现超时的测试用例")
+                logger.debug("No timeout test cases found")
                 return
 
             logger.info(
-                "发现超时的测试用例",
+                "Found timeout test cases",
                 extra={
                     "count": len(timeout_cases),
                     "timeout_minutes": timeout_minutes,
                 },
             )
 
-            # 3. 发送邮件通知
+            # 3. Send email notifications
             success_count = 0
             failed_count = 0
 
             for exec_log in timeout_cases:
                 if not exec_log.host_id:
                     logger.warning(
-                        "执行日志记录缺少 host_id，跳过",
+                        "Execution log record missing host_id, skipping",
                         extra={"log_id": exec_log.id},
                     )
                     failed_count += 1
                     continue
 
-                # 发送邮件通知
+                # Send email notification
                 success = await self._send_timeout_email_notification(exec_log)
 
                 if success:
                     success_count += 1
                     logger.info(
-                        "超时邮件通知已发送",
+                        "Timeout email notification sent",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
@@ -230,7 +231,7 @@ class CaseTimeoutTaskService:
                 else:
                     failed_count += 1
                     logger.error(
-                        "超时邮件通知发送失败",
+                        "Timeout email notification failed",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
@@ -238,7 +239,7 @@ class CaseTimeoutTaskService:
                     )
 
             logger.info(
-                "超时检测完成",
+                "Timeout detection completed",
                 extra={
                     "total": len(timeout_cases),
                     "success": success_count,
@@ -248,7 +249,7 @@ class CaseTimeoutTaskService:
 
         except Exception as e:
             logger.error(
-                "检测超时测试用例异常",
+                "Exception detecting timeout test cases",
                 extra={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -257,39 +258,41 @@ class CaseTimeoutTaskService:
             )
 
     async def _get_case_timeout_config(self) -> Optional[int]:
-        """获取 case_timeout 配置值（带缓存）
+        """Get case_timeout configuration value (with cache)
 
         Returns:
-            超时时间（分钟），如果未找到或无效则返回 None
+            Timeout duration (minutes), returns None if not found or invalid
         """
         try:
-            # 1. 先从缓存获取
+            # 1. First get from cache
             cached_value = await redis_manager.get(CACHE_KEY_CASE_TIMEOUT)
             if cached_value is not None:
-                # JSON 解析后可能是整数或字符串，统一转换为整数
+                # After JSON parsing, may be int or string, convert to int uniformly
                 if isinstance(cached_value, int):
                     timeout_minutes = cached_value
                 elif isinstance(cached_value, str):
                     try:
                         timeout_minutes = int(cached_value)
                     except (ValueError, TypeError):
-                        logger.warning("缓存中的 case_timeout 配置格式无效，将从数据库重新获取")
+                        logger.warning(
+                            "case_timeout configuration format in cache is invalid, will retrieve from database"
+                        )
                         timeout_minutes = None
                 else:
                     logger.warning(
-                        "缓存中的 case_timeout 配置类型无效，将从数据库重新获取",
+                        "case_timeout configuration type in cache is invalid, will retrieve from database",
                         extra={"cached_type": type(cached_value).__name__},
                     )
                     timeout_minutes = None
 
                 if timeout_minutes is not None:
                     logger.debug(
-                        "从缓存获取 case_timeout 配置",
+                        "Retrieved case_timeout configuration from cache",
                         extra={"timeout_minutes": timeout_minutes},
                     )
                     return timeout_minutes
 
-            # 2. 从数据库查询
+            # 2. Query from database
             session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = (
@@ -298,7 +301,7 @@ class CaseTimeoutTaskService:
                         and_(
                             SysConf.conf_key == "case_timeout",
                             SysConf.del_flag == 0,
-                            SysConf.state_flag == 0,  # 启用状态
+                            SysConf.state_flag == 0,  # Enabled state
                         )
                     )
                     .limit(1)
@@ -308,27 +311,27 @@ class CaseTimeoutTaskService:
                 sys_conf = result.scalar_one_or_none()
 
                 if not sys_conf or not sys_conf.conf_val:
-                    # 日志级别降低，避免每次定时任务都记录警告
-                    # 具体警告已在 _check_timeout_cases 中处理
-                    logger.debug("未找到 case_timeout 配置")
+                    # Lower log level to avoid warning on every scheduled task execution
+                    # Specific warning already handled in _check_timeout_cases
+                    logger.debug("case_timeout configuration not found")
                     return None
 
-                # 3. 解析配置值
+                # 3. Parse configuration value
                 try:
                     timeout_minutes = int(sys_conf.conf_val)
                     logger.info(
-                        "从数据库获取 case_timeout 配置",
+                        "Retrieved case_timeout configuration from database",
                         extra={"timeout_minutes": timeout_minutes},
                     )
 
-                    # 4. 存入缓存（1小时过期）
+                    # 4. Store in cache (expires in 1 hour)
                     await redis_manager.set(
                         CACHE_KEY_CASE_TIMEOUT,
                         timeout_minutes,
                         expire=CACHE_EXPIRE_CASE_TIMEOUT,
                     )
                     logger.debug(
-                        "case_timeout 配置已缓存",
+                        "case_timeout configuration cached",
                         extra={
                             "timeout_minutes": timeout_minutes,
                             "expire_seconds": CACHE_EXPIRE_CASE_TIMEOUT,
@@ -339,14 +342,14 @@ class CaseTimeoutTaskService:
 
                 except (ValueError, TypeError):
                     logger.error(
-                        "case_timeout 配置值格式无效（应为整数）",
+                        "case_timeout configuration value format is invalid (should be integer)",
                         extra={"conf_val": sys_conf.conf_val},
                     )
                     return None
 
         except Exception as e:
             logger.error(
-                "获取 case_timeout 配置异常",
+                "Exception getting case_timeout configuration",
                 extra={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -356,18 +359,18 @@ class CaseTimeoutTaskService:
             return None
 
     async def _query_timeout_cases(self, timeout_minutes: int) -> List[HostExecLog]:
-        """查询超时的 host_exec_log 记录
+        """Query timeout host_exec_log records
 
-        超时判断逻辑：
-        1. 如果存在 due_time，则判断 due_time < 当前时间
-        2. 如果不存在 due_time，则判断 begin_time < 当前时间 - timeout_minutes
-        3. 只查询 notify_state = 0（未通知）的记录，避免重复通知
+        Timeout judgment logic:
+        1. If due_time exists, check if due_time < current time
+        2. If due_time does not exist, check if begin_time < current time - timeout_minutes
+        3. Only query records with notify_state = 0 (not notified) to avoid duplicate notifications
 
         Args:
-            timeout_minutes: 超时时间（分钟，当 due_time 不存在时使用）
+            timeout_minutes: Timeout duration (minutes, used when due_time does not exist)
 
         Returns:
-            超时的执行日志记录列表（仅包含未通知的记录）
+            List of timeout execution log records (only includes unnotified records)
         """
         try:
             now = datetime.now(timezone.utc)
@@ -375,13 +378,13 @@ class CaseTimeoutTaskService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 查询条件：
-                # - host_state in (2, 3)  # 已占用或case执行中
-                # - case_state = 1        # 启动
-                # - del_flag = 0          # 未删除
-                # - notify_state = 0      # 未通知
-                # - (due_time IS NOT NULL AND due_time < 当前时间) OR
-                #   (due_time IS NULL AND begin_time < 当前时间 - timeout_minutes)
+                # Query conditions:
+                # - host_state in (2, 3)  # Occupied or case executing
+                # - case_state = 1        # Started
+                # - del_flag = 0          # Not deleted
+                # - notify_state = 0      # Not notified
+                # - (due_time IS NOT NULL AND due_time < current time) OR
+                #   (due_time IS NULL AND begin_time < current time - timeout_minutes)
                 stmt = (
                     select(HostExecLog)
                     .where(
@@ -389,7 +392,7 @@ class CaseTimeoutTaskService:
                             HostExecLog.host_state.in_([2, 3]),
                             HostExecLog.case_state == 1,
                             HostExecLog.del_flag == 0,
-                            HostExecLog.notify_state == 0,  # 只查询未通知的记录
+                            HostExecLog.notify_state == 0,  # Only query unnotified records
                             or_(
                                 and_(
                                     HostExecLog.due_time.is_not(None),
@@ -409,7 +412,7 @@ class CaseTimeoutTaskService:
                 exec_logs = result.scalars().all()
 
                 logger.debug(
-                    "查询超时的执行日志",
+                    "Query timeout execution logs",
                     extra={
                         "timeout_minutes": timeout_minutes,
                         "timeout_threshold": timeout_threshold.isoformat(),
@@ -422,7 +425,7 @@ class CaseTimeoutTaskService:
 
         except Exception as e:
             logger.error(
-                "查询超时执行日志异常",
+                "Exception querying timeout execution logs",
                 extra={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -433,37 +436,37 @@ class CaseTimeoutTaskService:
             return []
 
     async def _check_vnc_connection_timeout(self) -> None:
-        """检查 VNC 连接超时
+        """Check VNC connection timeout
 
-        业务逻辑：
-        1. 查询 host_state = 1（已锁定）且 subm_time - now() > 5分钟 的主机
-        2. 对每个超时主机：
-           - 尝试通过 WebSocket 通知 Agent 下线
-           - 如果 Agent 未在线，执行清理操作：
-             - 更新 host_rec 表：host_state = 0, subm_time = null
-             - 逻辑删除 host_exec_log 表有效数据：del_flag = 1
+        Business logic:
+        1. Query hosts with host_state = 1 (locked) and subm_time - now() > 5 minutes
+        2. For each timeout host:
+           - Try to notify Agent to go offline via WebSocket
+           - If Agent is not online, perform cleanup:
+             - Update host_rec table: host_state = 0, subm_time = null
+             - Logically delete valid data in host_exec_log table: del_flag = 1
         """
         try:
             log_operation_start(
-                "检测 VNC 连接超时",
+                "Detect VNC connection timeout",
                 logger_instance=logger,
             )
 
-            # 1. 查询超时的主机（host_state = 1 且 subm_time - now() > 5分钟）
+            # 1. Query timeout hosts (host_state = 1 and subm_time - now() > 5 minutes)
             timeout_hosts = await self._query_vnc_timeout_hosts()
             if not timeout_hosts:
-                logger.debug("未发现 VNC 连接超时的主机")
+                logger.debug("No VNC connection timeout hosts found")
                 return
 
             logger.info(
-                "发现 VNC 连接超时的主机",
+                "Found VNC connection timeout hosts",
                 extra={"count": len(timeout_hosts)},
             )
 
-            # 2. 获取 WebSocket 管理器
+            # 2. Get WebSocket manager
             ws_manager = get_agent_websocket_manager()
 
-            # 3. 处理每个超时主机
+            # 3. Process each timeout host
             success_count = 0
             failed_count = 0
 
@@ -472,22 +475,22 @@ class CaseTimeoutTaskService:
                     host_id = host_rec.id
                     host_id_str = str(host_id)
 
-                    # 3.1 尝试通知 Agent 下线
+                    # 3.1 Try to notify Agent to go offline
                     offline_notification = {
                         "type": MessageType.HOST_OFFLINE_NOTIFICATION,
                         "host_id": host_id_str,
-                        "message": "VNC连接超时，Host已下线",
-                        "reason": "VNC连接超时（超过5分钟未建立连接）",
+                        "message": "VNC connection timeout, Host is offline",
+                        "reason": "VNC connection timeout (exceeded 5 minutes without establishing connection)",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
 
-                    # 检查 Agent 是否在线
+                    # Check if Agent is online
                     is_agent_online = ws_manager.is_connected(host_id_str)
 
                     if is_agent_online:
-                        # Agent 在线，发送下线通知
+                        # Agent is online, send offline notification
                         logger.info(
-                            "Agent 在线，发送下线通知",
+                            "Agent is online, sending offline notification",
                             extra={
                                 "host_id": host_id,
                                 "host_id_str": host_id_str,
@@ -497,40 +500,40 @@ class CaseTimeoutTaskService:
 
                         if notification_sent:
                             logger.info(
-                                "VNC 连接超时下线通知已发送给 Agent",
+                                "VNC connection timeout offline notification sent to Agent",
                                 extra={
                                     "host_id": host_id,
                                     "host_id_str": host_id_str,
                                 },
                             )
                             success_count += 1
-                            # 通知已发送，等待 Agent 处理，不立即清理
+                            # Notification sent, wait for Agent to process, do not cleanup immediately
                             continue
                         else:
                             logger.warning(
-                                "VNC 连接超时下线通知发送失败，Agent 可能已断开",
+                                "VNC connection timeout offline notification failed, Agent may have disconnected",
                                 extra={
                                     "host_id": host_id,
                                     "host_id_str": host_id_str,
                                 },
                             )
-                            # 通知发送失败，执行清理操作
+                            # Notification failed, perform cleanup
                     else:
                         logger.info(
-                            "Agent 未在线，跳过通知，直接执行清理操作",
+                            "Agent is not online, skip notification, perform cleanup directly",
                             extra={
                                 "host_id": host_id,
                                 "host_id_str": host_id_str,
                             },
                         )
 
-                    # 3.2 Agent 未在线或通知发送失败，执行清理操作
+                    # 3.2 Agent is not online or notification failed, perform cleanup
                     cleanup_success = await self._cleanup_vnc_timeout_host(host_id)
 
                     if cleanup_success:
                         success_count += 1
                         logger.info(
-                            "VNC 连接超时主机清理完成",
+                            "VNC connection timeout host cleanup completed",
                             extra={
                                 "host_id": host_id,
                                 "host_id_str": host_id_str,
@@ -539,7 +542,7 @@ class CaseTimeoutTaskService:
                     else:
                         failed_count += 1
                         logger.error(
-                            "VNC 连接超时主机清理失败",
+                            "VNC connection timeout host cleanup failed",
                             extra={
                                 "host_id": host_id,
                                 "host_id_str": host_id_str,
@@ -549,7 +552,7 @@ class CaseTimeoutTaskService:
                 except Exception as e:
                     failed_count += 1
                     logger.error(
-                        "处理 VNC 连接超时主机异常",
+                        "Exception processing VNC connection timeout host",
                         extra={
                             "host_id": host_rec.id if host_rec else None,
                             "error_type": type(e).__name__,
@@ -559,7 +562,7 @@ class CaseTimeoutTaskService:
                     )
 
             logger.info(
-                "VNC 连接超时检测完成",
+                "VNC connection timeout detection completed",
                 extra={
                     "total": len(timeout_hosts),
                     "success": success_count,
@@ -569,7 +572,7 @@ class CaseTimeoutTaskService:
 
         except Exception as e:
             logger.error(
-                "检测 VNC 连接超时异常",
+                "Exception detecting VNC connection timeout",
                 extra={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -578,19 +581,19 @@ class CaseTimeoutTaskService:
             )
 
     async def _query_vnc_timeout_hosts(self) -> List[HostRec]:
-        """查询 VNC 连接超时的主机
+        """Query VNC connection timeout hosts
 
-        查询条件：
-        - host_state = 1（已锁定）
+        Query conditions:
+        - host_state = 1 (locked)
         - subm_time IS NOT NULL
-        - subm_time < 当前时间 - 5分钟
+        - subm_time < current time - 5 minutes
 
         Returns:
-            VNC 连接超时的主机列表
+            List of VNC connection timeout hosts
         """
         try:
             now = datetime.now(timezone.utc)
-            timeout_threshold = now - timedelta(minutes=5)  # 5分钟超时
+            timeout_threshold = now - timedelta(minutes=5)  # 5 minutes timeout
 
             session_factory = self.session_factory
             async with session_factory() as session:
@@ -598,20 +601,20 @@ class CaseTimeoutTaskService:
                     select(HostRec)
                     .where(
                         and_(
-                            HostRec.host_state == HOST_STATE_LOCKED,  # 已锁定状态
-                            HostRec.subm_time.is_not(None),  # subm_time 不为空
-                            HostRec.subm_time < timeout_threshold,  # 超过5分钟
-                            HostRec.del_flag == 0,  # 未删除
+                            HostRec.host_state == HOST_STATE_LOCKED,  # Locked state
+                            HostRec.subm_time.is_not(None),  # subm_time is not null
+                            HostRec.subm_time < timeout_threshold,  # Exceeded 5 minutes
+                            HostRec.del_flag == 0,  # Not deleted
                         )
                     )
-                    .order_by(HostRec.subm_time.asc())  # 按 subm_time 升序，优先处理最早超时的
+                    .order_by(HostRec.subm_time.asc())  # Order by subm_time ascending, prioritize earliest timeout
                 )
 
                 result = await session.execute(stmt)
                 host_recs = result.scalars().all()
 
                 logger.debug(
-                    "查询 VNC 连接超时的主机",
+                    "Query VNC connection timeout hosts",
                     extra={
                         "timeout_threshold": timeout_threshold.isoformat(),
                         "now": now.isoformat(),
@@ -623,7 +626,7 @@ class CaseTimeoutTaskService:
 
         except Exception as e:
             logger.error(
-                "查询 VNC 连接超时主机异常",
+                "Exception querying VNC connection timeout hosts",
                 extra={
                     "error_type": type(e).__name__,
                     "error_message": str(e),
@@ -633,43 +636,43 @@ class CaseTimeoutTaskService:
             return []
 
     async def _cleanup_vnc_timeout_host(self, host_id: int) -> bool:
-        """清理 VNC 连接超时的主机
+        """Cleanup VNC connection timeout host
 
-        业务逻辑（在同一个事务中执行）：
-        1. 更新 host_rec 表：host_state = 0, subm_time = null
-        2. 逻辑删除 host_exec_log 表有效数据：del_flag = 1
-           - 查询条件：host_id = host_id, del_flag = 0
+        Business logic (executed in the same transaction):
+        1. Update host_rec table: host_state = 0, subm_time = null
+        2. Logically delete valid data in host_exec_log table: del_flag = 1
+           - Query condition: host_id = host_id, del_flag = 0
 
         Args:
-            host_id: 主机ID
+            host_id: Host ID
 
         Returns:
-            是否清理成功
+            Whether cleanup succeeded
         """
         try:
             session_factory = self.session_factory
             async with session_factory() as session:
-                # ✅ 使用事务确保数据一致性
+                # ✅ Use transaction to ensure data consistency
                 try:
-                    # 1. 更新 host_rec 表
+                    # 1. Update host_rec table
                     update_host_stmt = (
                         update(HostRec)
                         .where(
                             and_(
                                 HostRec.id == host_id,
                                 HostRec.del_flag == 0,
-                                HostRec.host_state < 5,  # 保护非业务状态
+                                HostRec.host_state < 5,  # Protect non-business states
                             )
                         )
                         .values(
-                            host_state=HOST_STATE_FREE,  # 设置为空闲
-                            subm_time=None,  # 清空 subm_time
+                            host_state=HOST_STATE_FREE,  # Set to free
+                            subm_time=None,  # Clear subm_time
                         )
                     )
                     await session.execute(update_host_stmt)
 
                     logger.debug(
-                        "host_rec 表已更新（VNC 连接超时清理）",
+                        "host_rec table updated (VNC connection timeout cleanup)",
                         extra={
                             "host_id": host_id,
                             "new_host_state": HOST_STATE_FREE,
@@ -677,34 +680,34 @@ class CaseTimeoutTaskService:
                         },
                     )
 
-                    # 2. 逻辑删除 host_exec_log 表有效数据
+                    # 2. Logically delete valid data in host_exec_log table
                     update_exec_log_stmt = (
                         update(HostExecLog)
                         .where(
                             and_(
                                 HostExecLog.host_id == host_id,
-                                HostExecLog.del_flag == 0,  # 只更新未删除的记录
+                                HostExecLog.del_flag == 0,  # Only update non-deleted records
                             )
                         )
-                        .values(del_flag=1)  # 逻辑删除
+                        .values(del_flag=1)  # Logical delete
                     )
                     exec_log_result = await session.execute(update_exec_log_stmt)
 
                     deleted_count = exec_log_result.rowcount
 
                     logger.debug(
-                        "host_exec_log 表已更新（VNC 连接超时清理）",
+                        "host_exec_log table updated (VNC connection timeout cleanup)",
                         extra={
                             "host_id": host_id,
                             "deleted_count": deleted_count,
                         },
                     )
 
-                    # 3. 提交事务
+                    # 3. Commit transaction
                     await session.commit()
 
                     logger.info(
-                        "VNC 连接超时主机清理成功（事务已提交）",
+                        "VNC connection timeout host cleanup succeeded (transaction committed)",
                         extra={
                             "host_id": host_id,
                             "deleted_exec_log_count": deleted_count,
@@ -714,10 +717,10 @@ class CaseTimeoutTaskService:
                     return True
 
                 except Exception as e:
-                    # 事务回滚
+                    # Rollback transaction
                     await session.rollback()
                     logger.error(
-                        "VNC 连接超时主机清理失败，事务已回滚",
+                        "VNC connection timeout host cleanup failed, transaction rolled back",
                         extra={
                             "host_id": host_id,
                             "error_type": type(e).__name__,
@@ -729,7 +732,7 @@ class CaseTimeoutTaskService:
 
         except Exception as e:
             logger.error(
-                "清理 VNC 连接超时主机异常",
+                "Exception cleaning up VNC connection timeout host",
                 extra={
                     "host_id": host_id,
                     "error_type": type(e).__name__,
@@ -740,19 +743,19 @@ class CaseTimeoutTaskService:
             return False
 
     async def _send_timeout_email_notification(self, exec_log: HostExecLog) -> bool:
-        """发送任务超时邮件通知
+        """Send task timeout email notification
 
-        发送邮件成功后，会自动更新 notify_state = 1（已通知），
-        确保同一条记录不会被重复通知。
+        After email is sent successfully, automatically updates notify_state = 1 (notified),
+        ensuring the same record will not be notified repeatedly.
 
         Args:
-            exec_log: 执行日志记录
+            exec_log: Execution log record
 
         Returns:
-            是否通知成功（成功时会更新 notify_state = 1）
+            Whether notification succeeded (updates notify_state = 1 on success)
         """
         try:
-            # 1. 查询 host_rec 表获取 hardware_id 和 host_ip
+            # 1. Query host_rec table to get hardware_id and host_ip
             session_factory = self.session_factory
             async with session_factory() as session:
                 host_stmt = select(HostRec).where(
@@ -766,7 +769,7 @@ class CaseTimeoutTaskService:
 
                 if not host_rec:
                     logger.warning(
-                        "未找到主机记录，跳过邮件通知",
+                        "Host record not found, skipping email notification",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
@@ -777,7 +780,7 @@ class CaseTimeoutTaskService:
                 hardware_id = host_rec.hardware_id or "-"
                 host_ip = host_rec.host_ip or "-"
 
-                # 2. 查询 sys_conf 表获取邮箱配置
+                # 2. Query sys_conf table to get email configuration
                 email_stmt = (
                     select(SysConf)
                     .where(
@@ -795,7 +798,7 @@ class CaseTimeoutTaskService:
 
                 if not email_conf or not email_conf.conf_val:
                     logger.warning(
-                        "未找到邮箱配置，跳过邮件通知",
+                        "Email configuration not found, skipping email notification",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
@@ -803,28 +806,25 @@ class CaseTimeoutTaskService:
                     )
                     return False
 
-                # 3. 解析邮箱列表
+                # 3. Parse email list
                 email_str = email_conf.conf_val.strip()
                 email_list = [e.strip() for e in email_str.split(",") if e.strip()]
 
                 if not email_list:
                     logger.warning(
-                        "邮箱列表为空，跳过邮件通知",
-                        extra={
-                            "host_id": exec_log.host_id,
-                            "log_id": exec_log.id
-                        },
+                        "Email list is empty, skipping email notification",
+                        extra={"host_id": exec_log.host_id, "log_id": exec_log.id},
                     )
                     return False
 
-                # 4. 构建邮件内容
+                # 4. Build email content
                 begin_time_str = exec_log.begin_time.isoformat() if exec_log.begin_time else "-"
                 due_time_str = exec_log.due_time.isoformat() if exec_log.due_time else "-"
 
                 subject = t(
                     "email.case.timeout.subject",
                     locale="zh_CN",
-                    default="测试用例执行超时通知",
+                    default="Test case execution timeout notification",
                 )
 
                 content = self._build_timeout_email_content(
@@ -836,7 +836,7 @@ class CaseTimeoutTaskService:
                     log_id=exec_log.id,
                 )
 
-                # 5. 发送邮件
+                # 5. Send email
                 email_result = await send_email(
                     to_emails=email_list,
                     subject=subject,
@@ -845,17 +845,13 @@ class CaseTimeoutTaskService:
                 )
 
                 if email_result.get("sent_count", 0) > 0:
-                    # 6. 邮件发送成功后，更新 notify_state = 1（已通知）
-                    update_stmt = (
-                        update(HostExecLog)
-                        .where(HostExecLog.id == exec_log.id)
-                        .values(notify_state=1)
-                    )
+                    # 6. After email is sent successfully, update notify_state = 1 (notified)
+                    update_stmt = update(HostExecLog).where(HostExecLog.id == exec_log.id).values(notify_state=1)
                     await session.execute(update_stmt)
                     await session.commit()
 
                     logger.info(
-                        "超时邮件通知发送成功，已更新通知状态",
+                        "Timeout email notification sent successfully, notification state updated",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
@@ -867,7 +863,7 @@ class CaseTimeoutTaskService:
                     return True
                 else:
                     logger.error(
-                        "超时邮件通知发送失败",
+                        "Timeout email notification failed",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
@@ -878,7 +874,7 @@ class CaseTimeoutTaskService:
 
         except Exception as e:
             logger.error(
-                "发送超时邮件通知异常",
+                "Exception sending timeout email notification",
                 extra={
                     "host_id": exec_log.host_id,
                     "log_id": exec_log.id,
@@ -898,18 +894,18 @@ class CaseTimeoutTaskService:
         tc_id: str,
         log_id: int,
     ) -> str:
-        """构建超时邮件内容
+        """Build timeout email content
 
         Args:
-            hardware_id: 硬件ID
-            host_ip: 主机IP
-            begin_time: 开始时间
-            due_time: 预期结束时间
-            tc_id: 测试用例ID
-            log_id: 执行日志ID
+            hardware_id: Hardware ID
+            host_ip: Host IP
+            begin_time: Start time
+            due_time: Expected end time
+            tc_id: Test case ID
+            log_id: Execution log ID
 
         Returns:
-            HTML格式的邮件内容
+            HTML formatted email content
         """
         return f"""<!DOCTYPE html>
 <html>
@@ -980,17 +976,17 @@ class CaseTimeoutTaskService:
 </head>
 <body>
     <div class="header">
-        <h2 style="margin: 0;">测试用例执行超时通知</h2>
+        <h2 style="margin: 0;">Test Case Execution Timeout Notification</h2>
     </div>
     <div class="content">
-        <p style="font-size: 16px; margin-top: 0;">尊敬的维护人员：</p>
+        <p style="font-size: 16px; margin-top: 0;">Dear Maintenance Staff:</p>
 
         <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
-            检测到测试用例执行超时，请及时关注。
+            Test case execution timeout detected, please pay attention.
         </p>
 
         <div class="section">
-            <div class="section-title">超时任务信息</div>
+            <div class="section-title">Timeout Task Information</div>
             <div class="info-item">
                 <span class="info-label">Hardware ID：</span>
                 <span class="info-value">{hardware_id}</span>
@@ -1000,29 +996,29 @@ class CaseTimeoutTaskService:
                 <span class="info-value">{host_ip}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">测试用例ID：</span>
+                <span class="info-label">Test Case ID:</span>
                 <span class="info-value">{tc_id}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">执行日志ID：</span>
+                <span class="info-label">Execution Log ID:</span>
                 <span class="info-value">{log_id}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">开始时间：</span>
+                <span class="info-label">Start Time:</span>
                 <span class="info-value">{begin_time}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">预期结束时间：</span>
+                <span class="info-label">Expected End Time:</span>
                 <span class="info-value">{due_time}</span>
             </div>
         </div>
 
         <p style="margin-top: 25px; color: #555;">
-            请及时关注相关任务执行情况。
+            Please pay attention to the execution status of related tasks in a timely manner.
         </p>
 
         <div class="footer">
-            此邮件由系统自动发送，请勿回复。
+            This email is automatically sent by the system, please do not reply.
         </div>
     </div>
 </body>
@@ -1030,20 +1026,20 @@ class CaseTimeoutTaskService:
 """
 
 
-# 全局定时任务服务实例（单例）
+# Global scheduled task service instance (singleton)
 _case_timeout_task_instance: Optional[CaseTimeoutTaskService] = None
 
 
 def get_case_timeout_task_service() -> CaseTimeoutTaskService:
-    """获取 Case 超时检测定时任务服务实例（单例）
+    """Get Case timeout detection scheduled task service instance (singleton)
 
     Returns:
-        CaseTimeoutTaskService 实例
+        CaseTimeoutTaskService instance
     """
     global _case_timeout_task_instance
 
     if _case_timeout_task_instance is None:
         _case_timeout_task_instance = CaseTimeoutTaskService()
-        logger.info("Case 超时检测定时任务服务实例已创建")
+        logger.info("Case timeout detection scheduled task service instance created")
 
     return _case_timeout_task_instance

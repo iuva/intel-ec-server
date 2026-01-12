@@ -1,17 +1,18 @@
 """
-JSON深度对比工具类
+JSON Deep Comparison Utility Class
 
-提供JSON数据结构的深度对比功能，用于检测配置变更、数据差异等场景。
+Provides deep comparison functionality for JSON data structures,
+used to detect configuration changes, data differences, and other scenarios.
 """
 
 from typing import Any, Dict, List
 
 
 class JSONComparator:
-    """JSON深度对比工具类
+    """JSON Deep Comparison Utility Class
 
-    支持对比任意复杂的JSON数据结构（字典、列表、嵌套结构），
-    并返回详细的差异信息，包括新增、删除、修改等类型。
+    Supports comparison of arbitrarily complex JSON data structures (dictionaries, lists, nested structures),
+    and returns detailed difference information, including added, removed, modified types.
 
     Example:
         >>> comparator = JSONComparator()
@@ -26,7 +27,7 @@ class JSONComparator:
         }
     """
 
-    # 差异类型常量
+    # Difference type constants
     DIFF_TYPE_ADDED = "added"
     DIFF_TYPE_REMOVED = "removed"
     DIFF_TYPE_MODIFIED = "modified"
@@ -37,15 +38,15 @@ class JSONComparator:
         current: Dict[str, Any],
         path: str = "",
     ) -> Dict[str, Any]:
-        """对比两个JSON对象
+        """Compare two JSON objects
 
         Args:
-            previous: 历史数据
-            current: 当前数据
-            path: 当前路径前缀（用于记录差异位置）
+            previous: Historical data
+            current: Current data
+            path: Current path prefix (used to record difference location)
 
         Returns:
-            差异字典，格式为 {
+            Difference dictionary, formatted as {
                 "path.to.field": {
                     "type": "added" | "removed" | "modified",
                     "previous": previous_value,
@@ -65,27 +66,27 @@ class JSONComparator:
         return self._deep_compare_dict(previous, current, path)
 
     def _deep_compare_dict(self, previous: Dict[str, Any], current: Dict[str, Any], path: str = "") -> Dict[str, Any]:
-        """深度对比字典数据
+        """Deep comparison of dictionary data
 
-        递归对比两个字典对象，找出所有差异字段
+        Recursively compares two dictionary objects, finding all difference fields
 
         Args:
-            previous: 历史字典
-            current: 当前字典
-            path: 当前路径（用于记录差异位置）
+            previous: Historical dictionary
+            current: Current dictionary
+            path: Current path (used to record difference location)
 
         Returns:
-            差异字典
+            Difference dictionary
         """
         diff = {}
 
-        # 获取所有键（包括previous和current的键）
+        # Get all keys (including keys from both previous and current)
         all_keys = set(previous.keys()) | set(current.keys())
 
         for key in all_keys:
             current_path = f"{path}.{key}" if path else key
 
-            # 新增字段
+            # Added field
             if key not in previous:
                 diff[current_path] = {
                     "type": self.DIFF_TYPE_ADDED,
@@ -94,7 +95,7 @@ class JSONComparator:
                 }
                 continue
 
-            # 删除字段
+            # Removed field
             if key not in current:
                 diff[current_path] = {
                     "type": self.DIFF_TYPE_REMOVED,
@@ -106,17 +107,17 @@ class JSONComparator:
             prev_value = previous[key]
             curr_value = current[key]
 
-            # 递归对比字典
+            # Recursively compare dictionaries
             if isinstance(prev_value, dict) and isinstance(curr_value, dict):
                 nested_diff = self._deep_compare_dict(prev_value, curr_value, current_path)
                 diff.update(nested_diff)
 
-            # 递归对比列表
+            # Recursively compare lists
             elif isinstance(prev_value, list) and isinstance(curr_value, list):
                 list_diff = self._compare_list(prev_value, curr_value, current_path)
                 diff.update(list_diff)
 
-            # 值类型不同或值不同
+            # Value type differs or values are different
             elif type(curr_value) is not type(prev_value) or prev_value != curr_value:
                 diff[current_path] = {
                     "type": self.DIFF_TYPE_MODIFIED,
@@ -127,21 +128,21 @@ class JSONComparator:
         return diff
 
     def _compare_list(self, previous: List[Any], current: List[Any], path: str) -> Dict[str, Any]:
-        """对比列表数据
+        """Compare list data
 
-        逐项对比两个列表，检测新增、删除、修改的项
+        Compare two lists item by item, detecting added, removed, and modified items
 
         Args:
-            previous: 历史列表
-            current: 当前列表
-            path: 当前路径
+            previous: Historical list
+            current: Current list
+            path: Current path
 
         Returns:
-            差异字典
+            Difference dictionary
         """
         diff = {}
 
-        # 列表长度变化
+        # List length change
         if len(previous) != len(current):
             diff[f"{path}.length"] = {
                 "type": self.DIFF_TYPE_MODIFIED,
@@ -149,34 +150,34 @@ class JSONComparator:
                 "current": len(current),
             }
 
-        # 对比列表项
+        # Compare list items
         max_len = max(len(previous), len(current))
         for idx in range(max_len):
             if idx >= len(previous):
-                # 新增项
+                # Added item
                 diff[f"{path}[{idx}]"] = {
                     "type": self.DIFF_TYPE_ADDED,
                     "previous": None,
                     "current": current[idx],
                 }
             elif idx >= len(current):
-                # 删除项
+                # Removed item
                 diff[f"{path}[{idx}]"] = {
                     "type": self.DIFF_TYPE_REMOVED,
                     "previous": previous[idx],
                     "current": None,
                 }
             else:
-                # 对比项内容
+                # Compare item content
                 prev_item = previous[idx]
                 curr_item = current[idx]
 
                 if isinstance(prev_item, dict) and isinstance(curr_item, dict):
-                    # 递归对比字典项
+                    # Recursively compare dictionary items
                     item_diff = self._deep_compare_dict(prev_item, curr_item, f"{path}[{idx}]")
                     diff.update(item_diff)
                 elif prev_item != curr_item:
-                    # 值不同
+                    # Values are different
                     diff[f"{path}[{idx}]"] = {
                         "type": self.DIFF_TYPE_MODIFIED,
                         "previous": prev_item,
@@ -186,13 +187,13 @@ class JSONComparator:
         return diff
 
     def has_changes(self, diff: Dict[str, Any]) -> bool:
-        """检查是否存在差异
+        """Check if there are differences
 
         Args:
-            diff: compare() 方法返回的差异字典
+            diff: Difference dictionary returned by compare() method
 
         Returns:
-            True 如果存在差异，否则 False
+            True if there are differences, otherwise False
 
         Example:
             >>> comparator = JSONComparator()
@@ -206,13 +207,13 @@ class JSONComparator:
         return len(diff) > 0
 
     def get_added_fields(self, diff: Dict[str, Any]) -> List[str]:
-        """获取所有新增字段
+        """Get all added fields
 
         Args:
-            diff: compare() 方法返回的差异字典
+            diff: Difference dictionary returned by compare() method
 
         Returns:
-            新增字段路径列表
+            List of added field paths
 
         Example:
             >>> comparator = JSONComparator()
@@ -223,13 +224,13 @@ class JSONComparator:
         return [path for path, change in diff.items() if change["type"] == self.DIFF_TYPE_ADDED]
 
     def get_removed_fields(self, diff: Dict[str, Any]) -> List[str]:
-        """获取所有删除字段
+        """Get all removed fields
 
         Args:
-            diff: compare() 方法返回的差异字典
+            diff: Difference dictionary returned by compare() method
 
         Returns:
-            删除字段路径列表
+            List of removed field paths
 
         Example:
             >>> comparator = JSONComparator()
@@ -240,13 +241,13 @@ class JSONComparator:
         return [path for path, change in diff.items() if change["type"] == self.DIFF_TYPE_REMOVED]
 
     def get_modified_fields(self, diff: Dict[str, Any]) -> List[str]:
-        """获取所有修改字段
+        """Get all modified fields
 
         Args:
-            diff: compare() 方法返回的差异字典
+            diff: Difference dictionary returned by compare() method
 
         Returns:
-            修改字段路径列表
+            List of modified field paths
 
         Example:
             >>> comparator = JSONComparator()
@@ -257,36 +258,36 @@ class JSONComparator:
         return [path for path, change in diff.items() if change["type"] == self.DIFF_TYPE_MODIFIED]
 
     def format_diff_summary(self, diff: Dict[str, Any]) -> str:
-        """格式化差异摘要
+        """Format difference summary
 
-        生成易读的差异摘要信息
+        Generate human-readable difference summary information
 
         Args:
-            diff: compare() 方法返回的差异字典
+            diff: Difference dictionary returned by compare() method
 
         Returns:
-            格式化的差异摘要字符串
+            Formatted difference summary string
 
         Example:
             >>> comparator = JSONComparator()
             >>> diff = comparator.compare({"a": 1}, {"a": 2, "b": 3})
             >>> print(comparator.format_diff_summary(diff))
-            差异摘要:
-            - 新增字段: 1 个
-            - 删除字段: 0 个
-            - 修改字段: 1 个
-            - 总计: 2 处差异
+            Difference Summary:
+            - Added fields: 1
+            - Removed fields: 0
+            - Modified fields: 1
+            - Total: 2 differences
         """
         added = self.get_added_fields(diff)
         removed = self.get_removed_fields(diff)
         modified = self.get_modified_fields(diff)
 
         summary_lines = [
-            "差异摘要:",
-            f"- 新增字段: {len(added)} 个",
-            f"- 删除字段: {len(removed)} 个",
-            f"- 修改字段: {len(modified)} 个",
-            f"- 总计: {len(diff)} 处差异",
+            "Difference Summary:",
+            f"- Added fields: {len(added)}",
+            f"- Removed fields: {len(removed)}",
+            f"- Modified fields: {len(modified)}",
+            f"- Total: {len(diff)} differences",
         ]
 
         return "\n".join(summary_lines)

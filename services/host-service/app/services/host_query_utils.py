@@ -1,9 +1,9 @@
-"""主机服务通用查询工具模块
+"""Host service common query utility module
 
-提供主机相关服务共享的查询工具函数。
+Provides shared query utility functions for host-related services.
 
-用于减少 admin_host_service.py, host_discovery_service.py,
-browser_host_service.py 等文件中的重复代码。
+Used to reduce duplicate code in files like admin_host_service.py, host_discovery_service.py,
+browser_host_service.py, etc.
 """
 
 import os
@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_OFFLINE
     from app.models.host_rec import HostRec
@@ -32,15 +32,15 @@ async def get_host_by_id(
     host_id: int,
     include_deleted: bool = False,
 ) -> Optional[HostRec]:
-    """根据 ID 获取主机记录
+    """Get host record by ID
 
     Args:
-        session: 数据库会话
-        host_id: 主机 ID
-        include_deleted: 是否包含已删除记录
+        session: Database session
+        host_id: Host ID
+        include_deleted: Whether to include deleted records
 
     Returns:
-        Optional[HostRec]: 主机记录，如果不存在则返回 None
+        Optional[HostRec]: Host record, returns None if not exists
     """
     conditions = [HostRec.id == host_id]
     if not include_deleted:
@@ -57,16 +57,16 @@ async def get_active_hosts(
     appr_state: int = 1,
     limit: Optional[int] = None,
 ) -> List[HostRec]:
-    """获取活跃主机列表
+    """Get active host list
 
     Args:
-        session: 数据库会话
-        host_states: 允许的主机状态列表，默认为 [0, 1, 2, 3, 4]
-        appr_state: 审批状态，默认为 1（启用）
-        limit: 返回数量限制
+        session: Database session
+        host_states: Allowed host state list, default is [0, 1, 2, 3, 4]
+        appr_state: Approval state, default is 1 (enabled)
+        limit: Return count limit
 
     Returns:
-        List[HostRec]: 主机列表
+        List[HostRec]: Host list
     """
     if host_states is None:
         host_states = [0, 1, 2, 3, 4]
@@ -91,15 +91,15 @@ async def get_free_hosts(
     appr_state: int = 1,
     limit: Optional[int] = None,
 ) -> List[HostRec]:
-    """获取空闲主机列表
+    """Get free host list
 
     Args:
-        session: 数据库会话
-        appr_state: 审批状态，默认为 1（启用）
-        limit: 返回数量限制
+        session: Database session
+        appr_state: Approval state, default is 1 (enabled)
+        limit: Return count limit
 
     Returns:
-        List[HostRec]: 空闲主机列表
+        List[HostRec]: Free host list
     """
     return await get_active_hosts(
         session=session,
@@ -114,15 +114,15 @@ async def get_offline_hosts(
     appr_state: int = 1,
     limit: Optional[int] = None,
 ) -> List[HostRec]:
-    """获取离线主机列表
+    """Get offline host list
 
     Args:
-        session: 数据库会话
-        appr_state: 审批状态，默认为 1（启用）
-        limit: 返回数量限制
+        session: Database session
+        appr_state: Approval state, default is 1 (enabled)
+        limit: Return count limit
 
     Returns:
-        List[HostRec]: 离线主机列表
+        List[HostRec]: Offline host list
     """
     return await get_active_hosts(
         session=session,
@@ -136,14 +136,14 @@ def host_to_dict(
     host: HostRec,
     include_sensitive: bool = False,
 ) -> Dict[str, Any]:
-    """将主机记录转换为字典
+    """Convert host record to dictionary
 
     Args:
-        host: 主机记录
-        include_sensitive: 是否包含敏感字段（如密码）
+        host: Host record
+        include_sensitive: Whether to include sensitive fields (e.g., ***REMOVED***word)
 
     Returns:
-        Dict[str, Any]: 主机信息字典
+        Dict[str, Any]: Host information dictionary
     """
     result = {
         "id": host.id,
@@ -169,14 +169,14 @@ def format_host_list_response(
     hosts: List[HostRec],
     include_sensitive: bool = False,
 ) -> List[Dict[str, Any]]:
-    """格式化主机列表响应
+    """Format host list response
 
     Args:
-        hosts: 主机列表
-        include_sensitive: 是否包含敏感字段
+        hosts: Host list
+        include_sensitive: Whether to include sensitive fields
 
     Returns:
-        List[Dict[str, Any]]: 格式化后的主机信息列表
+        List[Dict[str, Any]]: Formatted host information list
     """
     return [host_to_dict(host, include_sensitive) for host in hosts]
 
@@ -186,15 +186,15 @@ def calculate_pagination(
     page: int,
     page_size: int,
 ) -> Dict[str, Any]:
-    """计算分页信息
+    """Calculate pagination information
 
     Args:
-        total: 总记录数
-        page: 当前页码
-        page_size: 每页数量
+        total: Total record count
+        page: Current page number
+        page_size: Items per page
 
     Returns:
-        Dict[str, Any]: 分页信息
+        Dict[str, Any]: Pagination information
     """
     total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
     has_next = page < total_pages
@@ -216,16 +216,16 @@ def build_host_filter_conditions(
     tcp_state: Optional[int] = None,
     keyword: Optional[str] = None,
 ) -> List:
-    """构建主机过滤条件
+    """Build host filter conditions
 
     Args:
-        host_state: 主机状态过滤
-        appr_state: 审批状态过滤
-        tcp_state: TCP 状态过滤
-        keyword: 关键词搜索（匹配 hardware_id 或 host_ip）
+        host_state: Host state filter
+        appr_state: Approval state filter
+        tcp_state: TCP state filter
+        keyword: Keyword search (matches hardware_id or host_ip)
 
     Returns:
-        List: SQLAlchemy 过滤条件列表
+        List: SQLAlchemy filter conditions list
     """
     from sqlalchemy import or_
 

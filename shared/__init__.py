@@ -1,9 +1,9 @@
 """
-共享模块集合
+Shared Modules Collection
 
-提供所有微服务共享的通用功能，包括：
-- 应用程序初始化和配置
-- 通用工具和组件
-- 服务发现和配置管理
-- 中间件和监控功能
+Provides common functionality shared by all microservices, including:
+- Application initialization and configuration
+- Common tools and components
+- Service discovery and configuration management
+- Middleware and monitoring functions
 """

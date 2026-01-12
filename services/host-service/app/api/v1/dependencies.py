@@ -1,7 +1,7 @@
 """
-Host Service API 依赖注入
+Host Service API dependency injection
 
-提供服务实例的依赖注入函数
+Provides dependency injection functions for service instances
 """
 
 import json
@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.services.browser_host_service import BrowserHostService
     from app.services.browser_vnc_service import BrowserVNCService
@@ -42,16 +42,17 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# ==================== 辅助函数 ====================
+# ==================== Helper Functions ====================
+
 
 def _get_locale_from_request(request: Request) -> str:
-    """从请求中获取语言偏好
+    """Get language preference from request
 
     Args:
-        request: FastAPI 请求对象
+        request: FastAPI request object
 
     Returns:
-        语言代码（如 "zh_CN", "en_US"）
+        Language code (e.g., "zh_CN", "en_US")
     """
     accept_language = request.headers.get("Accept-Language")
     return parse_accept_language(accept_language)
@@ -64,17 +65,17 @@ def _create_auth_error_response(
     error_code: str,
     details: Optional[Dict[str, Any]] = None,
 ) -> HTTPException:
-    """创建认证错误响应
+    """Create authentication error response
 
     Args:
-        request: FastAPI 请求对象
-        message: 错误消息
-        message_key: 错误消息键（用于多语言）
-        error_code: 错误代码
-        details: 错误详情
+        request: FastAPI request object
+        message: Error message
+        message_key: Error message key (for internationalization)
+        error_code: Error code
+        details: Error details
 
     Returns:
-        HTTPException: 认证错误异常
+        HTTPException: Authentication error exception
     """
     locale = _get_locale_from_request(request)
     return HTTPException(
@@ -91,31 +92,31 @@ def _create_auth_error_response(
 
 
 def _parse_user_info_header(user_info_header: str) -> Dict[str, Any]:
-    """解析 X-User-Info header
+    """Parse X-User-Info header
 
     Args:
-        user_info_header: X-User-Info header 值
+        user_info_header: X-User-Info header value
 
     Returns:
-        解析后的用户信息字典
+        Parsed user information dictionary
 
     Raises:
-        ValueError: 解析失败时抛出
+        ValueError: Raises when parsing fails
     """
     if not user_info_header or not user_info_header.strip():
-        raise ValueError("X-User-Info header 为空")
+        raise ValueError("X-User-Info header is empty")
 
     user_info = json.loads(user_info_header)
 
     if not isinstance(user_info, dict):
-        raise ValueError(f"X-User-Info 解析后不是字典类型，而是: {type(user_info).__name__}")
+        raise ValueError(f"X-User-Info parsed result is not dict type, but: {type(user_info).__name__}")
 
     return user_info
 
 
-# ==================== 全局服务实例缓存 ====================
+# ==================== Global Service Instance Cache ====================
 
-# 全局服务实例缓存（使用 Optional 类型注解）
+# Global service instance cache (using Optional type annotation)
 _browser_host_service_instance: Optional[BrowserHostService] = None
 _browser_vnc_service_instance: Optional[BrowserVNCService] = None
 _host_discovery_service_instance: Optional[HostDiscoveryService] = None
@@ -126,10 +127,10 @@ _file_manage_service_instance: Optional["FileManageService"] = None
 
 
 def get_host_service() -> BrowserHostService:
-    """获取浏览器插件主机服务实例（单例模式）
+    """Get browser extension host service instance (singleton pattern)
 
     Returns:
-        BrowserHostService: 浏览器插件主机服务实例
+        BrowserHostService: Browser extension host service instance
     """
     global _browser_host_service_instance
 
@@ -140,10 +141,10 @@ def get_host_service() -> BrowserHostService:
 
 
 def get_vnc_service() -> BrowserVNCService:
-    """获取浏览器插件 VNC 服务实例（单例模式）
+    """Get browser extension VNC service instance (singleton pattern)
 
     Returns:
-        BrowserVNCService: 浏览器插件 VNC 服务实例
+        BrowserVNCService: Browser extension VNC service instance
     """
     global _browser_vnc_service_instance
 
@@ -154,17 +155,17 @@ def get_vnc_service() -> BrowserVNCService:
 
 
 def get_host_discovery_service() -> HostDiscoveryService:
-    """获取主机发现服务实例（单例模式）
+    """Get host discovery service instance (singleton pattern)
 
-    从环境变量中读取硬件接口 URL 配置，注入到 HostDiscoveryService 中。
+    Reads hardware API URL configuration from environment variables and injects it into HostDiscoveryService.
 
     Returns:
-        HostDiscoveryService: 主机发现服务实例
+        HostDiscoveryService: Host discovery service instance
     """
     global _host_discovery_service_instance
 
     if _host_discovery_service_instance is None:
-        # 从环境变量读取硬件接口 URL
+        # Read hardware API URL from environment variables
         hardware_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
         _host_discovery_service_instance = HostDiscoveryService(hardware_api_url)
 
@@ -172,10 +173,10 @@ def get_host_discovery_service() -> HostDiscoveryService:
 
 
 def get_admin_host_service() -> Any:
-    """获取管理后台主机服务实例（单例模式）
+    """Get admin backend host service instance (singleton pattern)
 
     Returns:
-        AdminHostService: 管理后台主机服务实例
+        AdminHostService: Admin backend host service instance
     """
     global _admin_host_service_instance
 
@@ -186,10 +187,10 @@ def get_admin_host_service() -> Any:
 
 
 def get_admin_appr_host_service() -> Any:
-    """获取管理后台待审批主机服务实例（单例模式）
+    """Get admin backend pending approval host service instance (singleton pattern)
 
     Returns:
-        AdminApprHostService: 管理后台待审批主机服务实例
+        AdminApprHostService: Admin backend pending approval host service instance
     """
     global _admin_appr_host_service_instance
 
@@ -200,10 +201,10 @@ def get_admin_appr_host_service() -> Any:
 
 
 def get_admin_ota_service() -> "AdminOtaService":
-    """获取管理后台 OTA 服务实例（单例模式）
+    """Get admin backend OTA service instance (singleton pattern)
 
     Returns:
-        AdminOtaService: 管理后台 OTA 服务实例
+        AdminOtaService: Admin backend OTA service instance
     """
     global _admin_ota_service_instance
 
@@ -214,10 +215,10 @@ def get_admin_ota_service() -> "AdminOtaService":
 
 
 def get_file_manage_service() -> "FileManageService":
-    """获取文件管理服务实例（单例模式）
+    """Get file management service instance (singleton pattern)
 
     Returns:
-        FileManageService: 文件管理服务实例
+        FileManageService: File management service instance
     """
     global _file_manage_service_instance
 
@@ -228,28 +229,28 @@ def get_file_manage_service() -> "FileManageService":
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:
-    """获取当前用户信息（从 Gateway 传递的 X-User-Info header 获取）
+    """Get current user information (from X-User-Info header ***REMOVED***ed by Gateway)
 
-    ✅ 架构说明：
-    - Gateway 已经验证了 token 并提取了 id，确保 id 存在后才转发请求
-    - Gateway 已经删除了客户端传入的 X-User-Info header，并添加了自己的 header
-    - 后端服务只需要从 X-User-Info header 读取用户信息即可
+    ✅ Architecture notes:
+    - Gateway has already verified token and extracted id, ensures id exists before forwarding request
+    - Gateway has already removed client-provided X-User-Info header and added its own header
+    - Backend service only needs to read user information from X-User-Info header
 
     Args:
-        request: FastAPI 请求对象
+        request: FastAPI request object
 
     Returns:
-        dict: 用户信息，包含 id、username、user_type、active 等字段
+        dict: User information, contains id, username, user_type, active and other fields
 
     Raises:
-        HTTPException: 缺少 X-User-Info header 或解析失败时抛出 401
+        HTTPException: Raises 401 when X-User-Info header is missing or parsing fails
     """
-    # ✅ 从 Gateway 传递的 X-User-Info header 中获取用户信息
+    # ✅ Get user information from X-User-Info header ***REMOVED***ed by Gateway
     user_info_header = request.headers.get("X-User-Info")
 
     if not user_info_header:
         logger.warning(
-            "缺少 X-User-Info header",
+            "Missing X-User-Info header",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -257,18 +258,21 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         )
         raise _create_auth_error_response(
             request=request,
-            message="缺少用户认证信息",
+            message="Missing user authentication information",
             message_key="error.auth.missing_user_info",
             error_code="UNAUTHORIZED",
-            details={"hint": "请求必须通过 Gateway 转发，Gateway 会在认证后传递 X-User-Info header"},
+            details={
+                "hint": "Request must be forwarded through Gateway, "
+                "Gateway will ***REMOVED*** X-User-Info header after authentication"
+            },
         )
 
-    # 解析用户信息 JSON
+    # Parse user information JSON
     try:
         user_info = _parse_user_info_header(user_info_header)
     except (json.JSONDecodeError, ValueError) as e:
         logger.error(
-            "解析 X-User-Info header 失败",
+            "Failed to parse X-User-Info header",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -279,12 +283,12 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
         )
         raise _create_auth_error_response(
             request=request,
-            message="用户信息格式错误",
+            message="User information format error",
             message_key="error.auth.invalid_user_info",
             error_code="INVALID_USER_INFO",
         )
 
-    # ✅ Gateway 已经确保 id 存在，直接返回用户信息
+    # ✅ Gateway has already ensured id exists, directly return user information
     return {
         "id": user_info.get("id"),
         "username": user_info.get("username"),
@@ -294,21 +298,21 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
 
 
 async def get_current_agent(request: Request) -> Dict[str, Any]:
-    """获取当前 Agent 信息（从 Gateway 传递的 X-User-Info header 获取）
+    """Get current Agent information (from X-User-Info header ***REMOVED***ed by Gateway)
 
-    ✅ 架构说明：
-    - Gateway 已经验证了 token 并提取了 id，确保 id 存在后才转发请求
-    - Gateway 已经删除了客户端传入的 X-User-Info header，并添加了自己的 header
-    - 后端服务只需要从 X-User-Info header 读取用户信息，并验证 user_type 必须是 "device"
+    ✅ Architecture notes:
+    - Gateway has already verified token and extracted id, ensures id exists before forwarding request
+    - Gateway has already removed client-provided X-User-Info header and added its own header
+    - Backend service only needs to read user information from X-User-Info header and verify user_type must be "device"
 
     Args:
-        request: FastAPI 请求对象
+        request: FastAPI request object
 
     Returns:
-        dict: Agent 信息，包含 id、username、user_type、permissions、mg_id 等字段
+        dict: Agent information, contains id, username, user_type, permissions, mg_id and other fields
 
     Raises:
-        HTTPException: 缺少 X-User-Info header、解析失败或 user_type 不是 "device" 时抛出 401
+        HTTPException: Raises 401 when X-User-Info header is missing, parsing fails, or user_type is not "device"
 
     Example:
         >>> @router.post("/hardware/report")
@@ -317,12 +321,12 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         >>> ):
         >>>     host_id = agent_info["id"]
     """
-    # ✅ 从 Gateway 传递的 X-User-Info header 中获取用户信息
+    # ✅ Get user information from X-User-Info header ***REMOVED***ed by Gateway
     user_info_header = request.headers.get("X-User-Info")
 
     if not user_info_header:
         logger.warning(
-            "Agent 请求缺少 X-User-Info header",
+            "Agent request missing X-User-Info header",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -330,20 +334,21 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         )
         raise _create_auth_error_response(
             request=request,
-            message="缺少用户认证信息",
+            message="Missing user authentication information",
             message_key="error.auth.missing_user_info",
             error_code="UNAUTHORIZED",
             details={
-                "hint": "请求必须通过 Gateway 转发，Gateway 会在认证后传递 X-User-Info header"
+                "hint": "Request must be forwarded through Gateway, "
+                "Gateway will ***REMOVED*** X-User-Info header after authentication"
             },
         )
 
-    # 解析用户信息 JSON
+    # Parse user information JSON
     try:
         user_info = _parse_user_info_header(user_info_header)
     except (json.JSONDecodeError, ValueError) as e:
         logger.error(
-            "解析 X-User-Info header 失败",
+            "Failed to parse X-User-Info header",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -354,16 +359,16 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         )
         raise _create_auth_error_response(
             request=request,
-            message="用户信息格式错误",
+            message="User information format error",
             message_key="error.auth.invalid_user_info",
             error_code="INVALID_USER_INFO",
         )
 
-    # ✅ 验证 user_type 必须是 "device"
+    # ✅ Verify user_type must be "device"
     user_type = user_info.get("user_type")
     if user_type != "device":
         logger.warning(
-            "Agent 请求的 user_type 不是 device",
+            "Agent request user_type is not device",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -373,13 +378,13 @@ async def get_current_agent(request: Request) -> Dict[str, Any]:
         )
         raise _create_auth_error_response(
             request=request,
-            message="此接口仅允许设备（Agent）访问",
+            message="This interface only allows device (Agent) access",
             message_key="error.auth.invalid_user_type",
             error_code="INVALID_USER_TYPE",
-            details={"hint": "请使用设备登录获取的 token", "user_type": user_type},
+            details={"hint": "Please use token obtained from device login", "user_type": user_type},
         )
 
-    # ✅ Gateway 已经确保 id 存在，直接构建 Agent 信息
+    # ✅ Gateway has already ensured id exists, directly build Agent information
     return {
         "id": user_info.get("id"),
         "username": user_info.get("username"),

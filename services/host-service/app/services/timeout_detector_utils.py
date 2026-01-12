@@ -1,8 +1,8 @@
-"""超时检测工具模块
+"""Timeout detection utility module
 
-提供用例超时和 VNC 超时检测相关的工具函数。
+Provides utility functions for case timeout and VNC timeout detection.
 
-从 case_timeout_task.py 提取，减少主文件代码量。
+Extracted from case_timeout_task.py to reduce main file code size.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -13,7 +13,7 @@ from typing import List, Optional
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import HOST_STATE_OCCUPIED
     from app.models.host_exec_log import HostExecLog
@@ -29,24 +29,24 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# 超时检测相关常量
-DEFAULT_CASE_TIMEOUT_MINUTES = 60  # 默认用例超时时间（分钟）
-DEFAULT_VNC_TIMEOUT_MINUTES = 30  # 默认 VNC 超时时间（分钟）
-DEFAULT_CHECK_INTERVAL_SECONDS = 60  # 默认检查间隔（秒）
+# Timeout detection related constants
+DEFAULT_CASE_TIMEOUT_MINUTES = 60  # Default case timeout (minutes)
+DEFAULT_VNC_TIMEOUT_MINUTES = 30  # Default VNC timeout (minutes)
+DEFAULT_CHECK_INTERVAL_SECONDS = 60  # Default check interval (seconds)
 
 
 def calculate_timeout_threshold(
     timeout_minutes: int,
     current_time: Optional[datetime] = None,
 ) -> datetime:
-    """计算超时阈值时间
+    """Calculate timeout threshold time
 
     Args:
-        timeout_minutes: 超时时间（分钟）
-        current_time: 当前时间（默认使用 UTC 时间）
+        timeout_minutes: Timeout duration (minutes)
+        current_time: Current time (defaults to UTC time)
 
     Returns:
-        datetime: 超时阈值时间
+        datetime: Timeout threshold time
     """
     if current_time is None:
         current_time = datetime.now(timezone.utc)
@@ -58,28 +58,28 @@ def is_exec_log_timeout(
     timeout_minutes: int,
     current_time: Optional[datetime] = None,
 ) -> bool:
-    """判断执行日志是否超时
+    """Check if execution log is timeout
 
     Args:
-        exec_log: 执行日志记录
-        timeout_minutes: 超时时间（分钟）
-        current_time: 当前时间
+        exec_log: Execution log record
+        timeout_minutes: Timeout duration (minutes)
+        current_time: Current time
 
     Returns:
-        bool: 是否超时
+        bool: Whether timeout
     """
     if current_time is None:
         current_time = datetime.now(timezone.utc)
 
-    # 检查是否有预期结束时间
+    # Check if there is expected end time
     if exec_log.due_time:
-        # 确保时区一致
+        # Ensure timezone consistency
         due_time = exec_log.due_time
         if due_time.tzinfo is None:
             due_time = due_time.replace(tzinfo=timezone.utc)
         return current_time > due_time
 
-    # 如果没有预期结束时间，使用创建时间 + 超时时间
+    # If no expected end time, use creation time + timeout duration
     created_time = exec_log.created_time
     if created_time:
         if created_time.tzinfo is None:
@@ -95,20 +95,20 @@ def is_vnc_connection_timeout(
     timeout_minutes: int,
     current_time: Optional[datetime] = None,
 ) -> bool:
-    """判断 VNC 连接是否超时
+    """Check if VNC connection is timeout
 
     Args:
-        host: 主机记录
-        timeout_minutes: 超时时间（分钟）
-        current_time: 当前时间
+        host: Host record
+        timeout_minutes: Timeout duration (minutes)
+        current_time: Current time
 
     Returns:
-        bool: 是否超时
+        bool: Whether timeout
     """
     if current_time is None:
         current_time = datetime.now(timezone.utc)
 
-    # VNC 超时基于主机更新时间判断
+    # VNC timeout is determined based on host update time
     if host.updated_time:
         updated_time = host.updated_time
         if updated_time.tzinfo is None:
@@ -124,25 +124,25 @@ async def find_timeout_exec_logs(
     timeout_minutes: int,
     limit: int = 100,
 ) -> List[HostExecLog]:
-    """查找超时的执行日志
+    """Find timeout execution logs
 
     Args:
-        session: 数据库会话
-        timeout_minutes: 超时时间（分钟）
-        limit: 返回数量限制
+        session: Database session
+        timeout_minutes: Timeout duration (minutes)
+        limit: Return count limit
 
     Returns:
-        List[HostExecLog]: 超时的执行日志列表
+        List[HostExecLog]: List of timeout execution logs
     """
     current_time = datetime.now(timezone.utc)
     timeout_threshold = calculate_timeout_threshold(timeout_minutes, current_time)
 
-    # 查询条件：host_state = 2（已占用）, del_flag = 0, 且超时
+    # Query conditions: host_state = 2 (occupied), del_flag = 0, and timeout
     stmt = (
         select(HostExecLog)
         .where(
             and_(
-                HostExecLog.host_state == 2,  # 已占用
+                HostExecLog.host_state == 2,  # Occupied
                 HostExecLog.del_flag == 0,
                 HostExecLog.created_time < timeout_threshold,
             )
@@ -159,20 +159,20 @@ async def find_vnc_timeout_hosts(
     timeout_minutes: int,
     limit: int = 100,
 ) -> List[HostRec]:
-    """查找 VNC 超时的主机
+    """Find VNC timeout hosts
 
     Args:
-        session: 数据库会话
-        timeout_minutes: 超时时间（分钟）
-        limit: 返回数量限制
+        session: Database session
+        timeout_minutes: Timeout duration (minutes)
+        limit: Return count limit
 
     Returns:
-        List[HostRec]: VNC 超时的主机列表
+        List[HostRec]: List of VNC timeout hosts
     """
     current_time = datetime.now(timezone.utc)
     timeout_threshold = calculate_timeout_threshold(timeout_minutes, current_time)
 
-    # 查询条件：host_state = 2（已占用）, appr_state = 1, del_flag = 0, 且更新时间超时
+    # Query conditions: host_state = 2 (occupied), appr_state = 1, del_flag = 0, and update time timeout
     stmt = (
         select(HostRec)
         .where(
@@ -198,18 +198,18 @@ def format_timeout_log_extra(
     created_time: Optional[datetime] = None,
     due_time: Optional[datetime] = None,
 ) -> dict:
-    """格式化超时日志的 extra 字段
+    """Format timeout log extra field
 
     Args:
-        log_id: 日志 ID
-        host_id: 主机 ID
-        timeout_type: 超时类型（case / vnc）
-        timeout_minutes: 超时时间（分钟）
-        created_time: 创建时间
-        due_time: 预期结束时间
+        log_id: Log ID
+        host_id: Host ID
+        timeout_type: Timeout type (case / vnc)
+        timeout_minutes: Timeout duration (minutes)
+        created_time: Creation time
+        due_time: Expected end time
 
     Returns:
-        dict: 日志 extra 字段
+        dict: Log extra field
     """
     return {
         "log_id": log_id,
@@ -226,19 +226,19 @@ def get_timeout_message(
     host_id: int,
     timeout_minutes: int,
 ) -> str:
-    """获取超时消息
+    """Get timeout message
 
     Args:
-        timeout_type: 超时类型
-        host_id: 主机 ID
-        timeout_minutes: 超时时间
+        timeout_type: Timeout type
+        host_id: Host ID
+        timeout_minutes: Timeout duration
 
     Returns:
-        str: 超时消息
+        str: Timeout message
     """
     if timeout_type == "case":
-        return f"主机 {host_id} 的测试用例执行超时（超过 {timeout_minutes} 分钟）"
+        return f"Host {host_id} test case execution timeout (exceeded {timeout_minutes} minutes)"
     elif timeout_type == "vnc":
-        return f"主机 {host_id} 的 VNC 连接超时（超过 {timeout_minutes} 分钟）"
+        return f"Host {host_id} VNC connection timeout (exceeded {timeout_minutes} minutes)"
     else:
-        return f"主机 {host_id} 超时（超过 {timeout_minutes} 分钟）"
+        return f"Host {host_id} timeout (exceeded {timeout_minutes} minutes)"

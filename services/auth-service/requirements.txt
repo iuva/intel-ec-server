@@ -1,39 +1,39 @@
-# FastAPI 和 Web 框架
+# FastAPI and Web framework
 fastapi==0.116.1
 uvicorn[standard]==0.32.1
 python-multipart==0.0.20
 
-# 数据库 - MariaDB 10.11 兼容
+# Database - MariaDB 10.11 compatible
 aiomysql==0.2.0
 sqlalchemy[asyncio]==2.0.36
 
 # Redis
 redis==5.2.1
 
-# 数据验证
+# Data validation
 pydantic==2.10.6
 pydantic-settings==2.7.1
 
-# 认证和安全
+# Authentication and security
 python-jose[cryptography]==3.3.0
 ***REMOVED***lib[bcrypt]==1.7.4
 bcrypt==3.2.2
 
-# 服务发现
+# Service discovery
 nacos-sdk-python==1.0.0
 
-# 监控和追踪
+# Monitoring and tracing
 opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
 opentelemetry-instrumentation-fastapi==0.50b0
 opentelemetry-exporter-otlp==1.29.0
 prometheus-client==0.21.1
 
-# 日志
+# Logging
 loguru==0.7.3
 
-# HTTP客户端
+# HTTP client
 httpx==0.28.1
 
-# 工具
+# Tools
 python-dotenv==1.0.1

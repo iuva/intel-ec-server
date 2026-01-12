@@ -1,14 +1,14 @@
 """
-模板字段验证器工具类
+Template Field Validator Utility Class
 
-提供递归验证数据是否符合模板定义的必填字段要求。
+Provides recursive validation of whether data meets the required field requirements defined by templates.
 """
 
 import os
 import sys
 from typing import Any, Dict
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.exceptions import BusinessError
     from shared.common.loguru_config import get_logger
@@ -21,30 +21,31 @@ logger = get_logger(__name__)
 
 
 class TemplateValidator:
-    """模板字段验证器
+    """Template Field Validator
 
-    用于验证数据是否符合模板定义的必填字段要求，支持递归验证嵌套结构。
+    Used to validate whether data meets the required field requirements defined by templates,
+    supporting recursive validation of nested structures.
     """
 
     def __init__(self, required_marker: str = "required"):
-        """初始化验证器
+        """Initialize the validator
 
         Args:
-            required_marker: 必填字段标记（默认为 "required"）
+            required_marker: Required field marker (defaults to "required")
         """
         self.required_marker = required_marker
 
     def validate_required_fields(self, data: Dict[str, Any], template: Dict[str, Any]) -> None:
-        """验证数据中的必填字段
+        """Validate required fields in the data
 
-        遍历模板，检查值为 required_marker 的字段是否在数据中存在。
+        Traverse the template to check if fields with required_marker values exist in the data.
 
         Args:
-            data: 待验证的数据
-            template: 模板定义
+            data: Data to be validated
+            template: Template definition
 
         Raises:
-            BusinessError: 缺少必填字段时抛出
+            BusinessError: Thrown when required fields are missing
 
         Example:
             >>> validator = TemplateValidator()
@@ -55,37 +56,37 @@ class TemplateValidator:
             ... }
             >>> data = {"name": "John", "age": 30}
             >>> validator.validate_required_fields(data, template)
-            # 抛出 BusinessError: 缺少必填字段: email
+            # Throws BusinessError: Missing required field: email
         """
 
         def check_required(data_item: Any, template_item: Any, path: str = "") -> None:
-            """递归检查必填字段
+            """Recursively check required fields
 
             Args:
-                data_item: 当前数据项
-                template_item: 当前模板项
-                path: 当前字段路径（用于错误提示）
+                data_item: Current data item
+                template_item: Current template item
+                path: Current field path (used for error messages)
             """
             if isinstance(template_item, dict):
                 for key, value in template_item.items():
                     current_path = f"{path}.{key}" if path else key
 
-                    # 如果模板值为必填标记，检查数据中是否存在
+                    # If template value is required marker, check if it exists in data
                     if value == self.required_marker:
                         if not isinstance(data_item, dict) or key not in data_item:
                             raise BusinessError(
-                                message=f"缺少必填字段: {current_path}",
+                                message=f"Missing required field: {current_path}",
                                 error_code="MISSING_REQUIRED_FIELD",
                                 code=400,
                                 details={"field": current_path},
                             )
 
-                    # 如果模板值是字典，递归检查
+                    # If template value is a dictionary, recursively check
                     elif isinstance(value, dict):
                         if isinstance(data_item, dict) and key in data_item:
                             check_required(data_item[key], value, current_path)
 
-                    # 如果模板值是列表，检查数据中的列表项
+                    # If template value is a list, check list items in data
                     elif isinstance(value, list) and value:
                         if isinstance(data_item, dict) and key in data_item:
                             if isinstance(data_item[key], list):
@@ -94,13 +95,13 @@ class TemplateValidator:
 
         try:
             check_required(data, template)
-            logger.info("模板字段验证通过")
+            logger.info("Template field validation ***REMOVED***ed")
         except BusinessError:
             raise
         except Exception as e:
-            logger.error(f"模板字段验证异常: {str(e)}", exc_info=True)
+            logger.error(f"Template field validation exception: {str(e)}", exc_info=True)
             raise BusinessError(
-                message="模板字段验证失败",
+                message="Template field validation failed",
                 error_code="VALIDATION_FAILED",
                 code=500,
             )

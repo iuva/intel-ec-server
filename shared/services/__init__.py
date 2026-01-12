@@ -1,6 +1,6 @@
 """
-共享业务服务模块
+Shared Business Services Module
 
-提供所有微服务可复用的业务服务和工具类，
-如通用服务接口、公共业务逻辑等。
+Provides reusable business services and utility classes for all microservices,
+such as common service interfaces, public business logic, etc.
 """

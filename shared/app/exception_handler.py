@@ -1,5 +1,5 @@
 """
-统一异常处理集成工具
+Unified Exception Handling Integration Tool
 """
 
 import json
@@ -20,31 +20,35 @@ logger = get_logger(__name__)
 
 
 def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> None:
-    """为FastAPI应用设置统一异常处理
+    """Set up unified exception handling for FastAPI application
 
     Args:
-        app: FastAPI应用实例
-        service_name: 服务名称（用于日志）
+        app: FastAPI application instance
+        service_name: Service name (for logging)
     """
 
-    # 注册 Pydantic 验证错误处理器（处理 422 错误）
+    # Register Pydantic validation error handler (handle 422 errors)
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        """处理 Pydantic 验证错误"""
-        # ✅ 增强日志：记录详细的验证错误信息，包括堆栈跟踪
-        # 尝试获取请求体（如果可用）
+        """Handle Pydantic validation errors"""
+        # ✅ Enhanced logging: record detailed validation error information, including stack trace
+        # Try to get request body (if available)
         request_body_preview = None
         try:
-            # 检查请求体是否已被读取
+            # Check if request body has been read
             if hasattr(request, "_body") and request._body:
-                body_str = request._body.decode("utf-8", errors="ignore") if isinstance(request._body, bytes) else str(request._body)
+                body_str = (
+                    request._body.decode("utf-8", errors="ignore")
+                    if isinstance(request._body, bytes)
+                    else str(request._body)
+                )
                 request_body_preview = body_str[:500] if len(body_str) > 500 else body_str
         except Exception:
-            # 如果无法读取请求体，忽略错误
+            # If unable to read request body, ignore error
             ***REMOVED***
 
         logger.warning(
-            "参数验证失败",
+            "Parameter validation failed",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -53,54 +57,54 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
                 "error_count": len(exc.errors()),
                 "request_body_preview": request_body_preview,
             },
-            exc_info=True,  # ✅ 打印完整堆栈信息
+            exc_info=True,  # ✅ Print complete stack trace
         )
 
-        # 格式化错误信息，提供更清晰的字段级别错误
+        # Format error information, provide clearer field-level errors
         field_errors: Dict[str, str] = {}
         for error in exc.errors():
-            field_path = ".".join(str(loc) for loc in error["loc"])
-            # 只保留错误信息，不保留类型
+            field_path = "".join(str(loc) for loc in error["loc"])
+            # Only keep error message, not type
             field_errors[field_path] = error.get("msg", "Unknown error")
 
         error_response = ErrorResponse(
             code=422,
-            message="请求参数验证失败",
+            message="Request parameter validation failed",
             error_code=ErrorCode.VALIDATION_ERROR,
             details={"errors": field_errors},
         )
 
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
-    # 注册 HTTP 异常处理器
+    # Register HTTP exception handler
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        """处理 HTTP 异常"""
-        logger.warning(f"HTTP异常: {exc.status_code} - {exc.detail}")
+        """Handle HTTP exception"""
+        logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
 
-        # 获取语言偏好
+        # Get language preference
         accept_language = request.headers.get("Accept-Language")
         locale = parse_accept_language(accept_language)
 
-        # 尝试理解 detail 的实际内容
+        # Try to understand the actual content of detail
         detail: Any = exc.detail
 
-        # 如果是dict且包含error_code，说明是从@handle_api_errors抛出的统一格式
+        # If it's a dict and contains error_code, it means it's a unified format thrown from @handle_api_errors
         if isinstance(detail, dict) and "error_code" in detail:
-            # 直接返回统一格式的错误响应
+            # Directly return unified format error response
             return JSONResponse(status_code=exc.status_code, content=detail)
 
-        # 如果是字符串，尝试解析JSON
+        # If it's a string, try to parse JSON
         if isinstance(detail, str):
             try:
                 detail = json.loads(detail)
                 if isinstance(detail, dict) and "error_code" in detail:
                     return JSONResponse(status_code=exc.status_code, content=detail)
             except (json.JSONDecodeError, TypeError):
-                # JSON解析失败，继续使用转换逻辑
+                # JSON parsing failed, continue with conversion logic
                 ***REMOVED***
 
-        # 对于非统一格式的异常，转换为统一格式
+        # For non-unified format exceptions, convert to unified format
         error_code_map = {
             400: ErrorCode.VALIDATION_ERROR,
             401: ErrorCode.UNAUTHORIZED,
@@ -110,15 +114,15 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
             500: ErrorCode.INTERNAL_SERVER_ERROR,
         }
 
-        # 为 405 错误提供更友好的错误消息（使用多语言）
+        # Provide more friendly error message for 405 error (using multilingual)
         if exc.status_code == 405:
-            # 尝试从 detail 中提取允许的方法
+            # Try to extract allowed methods from detail
             detail_str = str(detail)
 
-            # FastAPI 的 405 错误可能包含允许的方法信息
-            # 例如: "Method Not Allowed" 或更详细的错误信息
+            # FastAPI's 405 error may contain allowed methods information
+            # For example: "Method Not Allowed" or more detailed error message
             if "Method Not Allowed" in detail_str or "method not allowed" in detail_str.lower():
-                # 尝试提取允许的方法（如果有）
+                # Try to extract allowed methods (if any)
                 allowed_match = re.search(r"allowed.*?\[(.*?)\]", detail_str, re.IGNORECASE)
                 if allowed_match:
                     allowed_methods = allowed_match.group(1)
@@ -139,7 +143,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
                 locale=locale,
             )
         else:
-            # 其他错误使用默认消息
+            # Other errors use default message
             error_response = ErrorResponse(
                 code=exc.status_code,
                 message=str(detail),
@@ -149,11 +153,11 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
 
         return JSONResponse(status_code=exc.status_code, content=error_response.model_dump())
 
-    # 注册业务异常处理器
+    # Register business exception handler
     @app.exception_handler(BusinessError)
     async def business_error_handler(request: Request, exc: BusinessError) -> JSONResponse:
-        """处理业务异常"""
-        logger.warning(f"业务异常: {exc.error_code} - {exc.message}")
+        """Handle business exception"""
+        logger.warning(f"Business exception: {exc.error_code} - {exc.message}")
 
         error_response = ErrorResponse(
             code=exc.code,
@@ -162,15 +166,16 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
             details=exc.details,
         )
 
-        # 使用 http_status_code 作为 HTTP 响应状态码（必须是有效的 HTTP 状态码 100-599）
-        # 响应体中的 code 是自定义错误码（可能是 53009 这样的服务级错误码）
+        # Use http_status_code as HTTP response status code (must be valid HTTP status code 100-599)
+        # The code in response body is custom error code (may be service-level error code like 53009)
         return JSONResponse(status_code=exc.http_status_code, content=error_response.model_dump())
 
-    # ❌ 重要: 不要在这里添加中间件！
-    # 当 setup_exception_handling 被调用时，应用已经在 lifespan 中启动
-    # 此时无法再添加中间件（会抛出 "Cannot add middleware after an application has started" 错误）
-    # 中间件必须在 FastAPI 应用创建后、lifespan 启动前添加
-    # 参考: auth-service/app/main.py 第70-71行 - 在创建app之后立即添加
+    # ❌ Important: Do not add middleware here!
+    # When setup_exception_handling is called, the application has already started in lifespan
+    # Middleware cannot be added at this point
+    # (will throw "Cannot add middleware after an application has started" error)
+    # Middleware must be added after FastAPI application creation, before lifespan starts
+    # Reference: auth-service/app/main.py lines 70-71 - Add immediately after app creation
 
-    logger.info(f"已为 {service_name} 启用统一异常处理")
-    logger.info("已注册异常处理器: RequestValidationError, HTTPException, BusinessError")
+    logger.info(f"Unified exception handling enabled for {service_name}")
+    logger.info("Exception handlers registered: RequestValidationError, HTTPException, BusinessError")

@@ -1,6 +1,6 @@
 """
-Prometheus 指标收集中间件
-自动收集 HTTP 请求的指标数据
+Prometheus Metrics Collection Middleware
+Automatically collect metrics data for HTTP requests
 """
 
 import time
@@ -23,53 +23,53 @@ logger = get_logger(__name__)
 
 class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
     """
-    Prometheus 指标收集中间件
+    Prometheus Metrics Collection Middleware
 
-    自动收集所有 HTTP 请求的指标：
-    - 请求总数
-    - 请求响应时间
-    - 请求/响应大小
-    - 进行中的请求数
+    Automatically collects metrics for all HTTP requests:
+    - Total requests
+    - Request response time
+    - Request/response size
+    - In-progress requests count
     """
 
     def __init__(self, app: Any, service_name: str) -> None:
         """
-        初始化中间件
+        Initialize the middleware
 
         Args:
-            app: FastAPI 应用实例
-            service_name: 服务名称
+            app: FastAPI application instance
+            service_name: Service name
         """
         super().__init__(app)
         self.service_name = service_name
-        logger.info(f"✅ PrometheusMetricsMiddleware 已初始化: service_name={self.service_name}")
+        logger.info(f"✅ PrometheusMetricsMiddleware initialized: service_name={self.service_name}")
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         """
-        处理请求并收集指标
+        Process request and collect metrics
 
         Args:
-            request: HTTP 请求
-            call_next: 下一个中间件或路由处理器
+            request: HTTP request
+            call_next: Next middleware or route handler
 
         Returns:
-            HTTP 响应
+            HTTP response
         """
-        # 跳过 /metrics 端点本身
+        # Skip /metrics endpoint itself
         if request.url.path == "/metrics":
             return await call_next(request)
 
         method = request.method
         endpoint = request.url.path
 
-        # 增加进行中的请求数
+        # Increase in-progress requests count
         try:
             http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).inc()
             logger.debug(f"Incremented http_requests_in_progress for {method} {endpoint}")
         except Exception as e:
-            logger.error(f"❌ 增加 http_requests_in_progress 失败: {e!s}")
+            logger.error(f"❌ Failed to increment http_requests_in_progress: {e!s}")
 
-        # 记录请求大小
+        # Record request size
         request_size = int(request.headers.get("content-length", 0))
         if request_size > 0:
             http_request_size_bytes.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
@@ -77,23 +77,23 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
             )
             logger.debug(f"Observed request size {request_size} for {method} {endpoint}")
 
-        # 记录开始时间
+        # Record start time
         start_time = time.time()
         logger.debug(f"Start time recorded for {method} {endpoint}")
 
         try:
-            # 处理请求
+            # Process request
             response = await call_next(request)
             logger.debug(f"Request processed for {method} {endpoint}")
 
-            # 记录响应时间
+            # Record response time
             duration = time.time() - start_time
             http_request_duration_seconds.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
                 duration
             )
             logger.debug(f"Observed duration {duration} for {method} {endpoint}")
 
-            # 记录请求总数
+            # Record total requests
             status = response.status_code
             try:
                 http_requests_total.labels(
@@ -104,9 +104,9 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
                 ).inc()
                 logger.debug(f"Incremented http_requests_total for {method} {endpoint} with status {status}")
             except Exception as e:
-                logger.error(f"❌ 增加 http_requests_total 失败: {e!s}")
+                logger.error(f"❌ Failed to increment http_requests_total: {e!s}")
 
-            # 记录响应大小
+            # Record response size
             response_size = int(response.headers.get("content-length", 0))
             if response_size > 0:
                 http_response_size_bytes.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
@@ -117,7 +117,7 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
             return response
 
         except Exception:
-            # 记录异常请求
+            # Record exception request
             duration = time.time() - start_time
             http_request_duration_seconds.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
                 duration
@@ -130,6 +130,6 @@ class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
             raise
 
         finally:
-            # 减少进行中的请求数
+            # Decrease in-progress requests count
             http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).dec()
             logger.debug(f"Decremented http_requests_in_progress for {method} {endpoint}")

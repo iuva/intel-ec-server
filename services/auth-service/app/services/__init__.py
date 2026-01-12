@@ -1,7 +1,7 @@
 """
-Auth Service 业务逻辑
+Auth Service Business Logic
 
-导出所有服务类
+Export all service classes
 """
 
 from app.services.auth_service import AuthService

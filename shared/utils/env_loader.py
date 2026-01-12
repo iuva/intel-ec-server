@@ -1,6 +1,7 @@
-"""环境变量加载工具
+"""Environment Variable Loading Tool
 
-自动加载 .env 文件到环境变量中，确保本地启动时能够读取 .env 配置。
+Automatically loads .env files into environment variables,
+ensuring that .env configurations can be read during local startup.
 """
 
 import os
@@ -10,33 +11,33 @@ from typing import Optional
 try:
     from dotenv import load_dotenv
 except ImportError:
-    # 如果没有安装 python-dotenv，提供空函数
+    # If python-dotenv is not installed, provide a dummy function
     def load_dotenv(*args, **kwargs) -> bool:
         """Fallback function when python-dotenv is not installed"""
         return False
 
 
 def load_env_file(env_file: Optional[str] = None) -> bool:
-    """加载 .env 文件到环境变量
+    """Load .env file into environment variables
 
-    优先查找以下位置的 .env 文件：
-    1. 指定的 env_file 路径
-    2. 项目根目录的 .env 文件
-    3. 当前工作目录的 .env 文件
+    Priority lookup for .env files at the following locations:
+    1. Specified env_file path
+    2. .env file in project root directory
+    3. .env file in current working directory
 
     Args:
-        env_file: .env 文件路径（可选）
+        env_file: .env file path (optional)
 
     Returns:
-        是否成功加载 .env 文件
+        Whether the .env file was loaded successfully
     """
     env_paths = []
 
-    # 1. 如果指定了路径，优先使用
+    # 1. If a path is specified, use it first
     if env_file:
         env_paths.append(Path(env_file).resolve())
 
-    # 2. 查找项目根目录的 .env（向上查找最多 5 层）
+    # 2. Look for .env in project root directory (search up to 5 levels)
     current_dir = Path.cwd()
     for _ in range(5):
         env_path = current_dir / ".env"
@@ -44,14 +45,14 @@ def load_env_file(env_file: Optional[str] = None) -> bool:
             env_paths.append(env_path.resolve())
             break
         parent = current_dir.parent
-        if parent == current_dir:  # 已到达根目录
+        if parent == current_dir:  # Already reached root directory
             break
         current_dir = parent
 
-    # 3. 当前目录的 .env
+    # 3. .env in current directory
     env_paths.append(Path(".env").resolve())
 
-    # 尝试加载第一个存在的文件
+    # Try to load the first existing file
     for env_path in env_paths:
         if env_path.exists() and env_path.is_file():
             try:
@@ -64,12 +65,12 @@ def load_env_file(env_file: Optional[str] = None) -> bool:
 
 
 def ensure_env_loaded() -> None:
-    """确保 .env 文件已加载
+    """Ensure .env file is loaded
 
-    如果环境变量中没有关键配置，尝试加载 .env 文件。
-    只在未设置环境变量时才加载，避免覆盖已设置的值。
+    If there are no critical configurations in environment variables, try to load .env file.
+    Only load when environment variables are not set, to avoid overwriting set values.
     """
-    # 检查是否已设置关键环境变量
+    # Check if critical environment variables are already set
     key_vars = [
         "MARIADB_HOST",
         "MARIADB_USER",
@@ -77,20 +78,20 @@ def ensure_env_loaded() -> None:
         "NACOS_SERVER_ADDR",
     ]
 
-    # 如果所有关键变量都已设置，不需要加载 .env
+    # If all critical variables are set, no need to load .env
     if all(os.getenv(var) for var in key_vars):
         return
 
-    # 尝试加载 .env 文件
+    # Try to load .env file
     if load_env_file():
-        # 验证是否成功加载
+        # Verify if loaded successfully
         if any(os.getenv(var) for var in key_vars):
             return
 
 
-# 在模块导入时自动加载（可选）
-# 注意：这会在导入时就加载，可能会影响性能
-# 建议在应用启动时显式调用 ensure_env_loaded()
+# Automatically load when module is imported (optional)
+# Note: This will load upon import, which may affect performance
+# Recommended to explicitly call ensure_env_loaded() at application startup
 _AUTO_LOAD = os.getenv("AUTO_LOAD_DOTENV", "false").lower() == "true"
 
 if _AUTO_LOAD:

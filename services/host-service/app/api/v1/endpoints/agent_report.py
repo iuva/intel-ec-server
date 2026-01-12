@@ -1,6 +1,6 @@
-"""Agent 信息上报 API 端点
+"""Agent information reporting API endpoints
 
-提供 Agent 上报信息的 HTTP API 接口。
+Provides HTTP API interfaces for Agent information reporting.
 """
 
 import os
@@ -10,10 +10,12 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Body, Depends
 from starlette.status import HTTP_200_OK
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.host import (
+        AgentInitConfigItem,
+        AgentInitConfigListResponse,
         AgentOtaUpdateStatusRequest,
         AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
@@ -39,6 +41,8 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.api.v1.dependencies import get_current_agent
     from app.schemas.host import (
+        AgentInitConfigItem,
+        AgentInitConfigListResponse,
         AgentOtaUpdateStatusRequest,
         AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
@@ -70,50 +74,50 @@ router = APIRouter()
     "/hardware/report",
     response_model=Result[HardwareReportResponse],
     status_code=HTTP_200_OK,
-    summary="上报硬件信息",
+    summary="Report hardware information",
     description="""
-    Agent 上报主机硬件信息，系统会自动检测硬件变更。
+    Agent reports host hardware information, system will automatically detect hardware changes.
 
-    ## 功能说明
-    1. 接收 Agent 上报的硬件信息（动态 JSON）
-    2. 验证硬件信息必填字段（基于硬件模板）
-    3. 对比硬件版本号和内容变化
-    4. 根据对比结果更新数据库记录
+    ## Function description
+    1. Receive hardware information reported by Agent (dynamic JSON)
+    2. Validate required fields in hardware information (based on hardware template)
+    3. Compare hardware version number and content changes
+    4. Update database records based on comparison results
 
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
+    ## Authentication requirements
+    - Need to provide valid JWT token in Authorization header
+    - Token format: `Bearer <token>`
+    - id in token (extracted from user_id or sub field) will be used as host_id
 
-    ## 请求参数
-    - `dmr_config`: DMR硬件配置（必需），必须包含 `revision` 字段
-    - `name`: 配置名称（可选）
-    - `updated_by`: 更新者（可选）
-    - `tags`: 标签列表（可选）
+    ## Request parameters
+    - `dmr_config`: DMR hardware configuration (required), must include `revision` field
+    - `name`: Configuration name (optional)
+    - `updated_by`: Updater (optional)
+    - `tags`: Tag list (optional)
 
-    ## 业务逻辑
-    1. **首次上报**: 直接插入硬件记录，审批状态为通过
-    2. **版本号变化**: 标记为版本号变化（diff_state=1），等待审批
-    3. **内容变化**: 标记为内容更改（diff_state=2），等待审批
-    4. **无变化**: 不更新记录，返回无变化状态
+    ## Business logic
+    1. **First report**: Directly insert hardware record, approval status is ***REMOVED***ed
+    2. **Version change**: Mark as version change (diff_state=1), waiting for approval
+    3. **Content change**: Mark as content change (diff_state=2), waiting for approval
+    4. **No change**: Do not update record, return no change status
 
-    ## 注意事项
-    - `dmr_config.revision` 是必传字段
-    - 硬件模板中标记为 `required` 的字段必须提供
-    - 硬件变更会触发主机状态更新（appr_state=2, host_state=6）
+    ## Notes
+    - `dmr_config.revision` is a required field
+    - Fields marked as `required` in hardware template must be provided
+    - Hardware changes will trigger host status update (appr_state=2, host_state=6)
     """,
     responses={
         200: {
-            "description": "上报成功",
+            "description": "Report succeeded",
             "model": Result[HardwareReportResponse],
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53024,
-                        "message": "dmr_config 是必传字段",
+                        "message": "dmr_config is a required field",
                         "error_code": "MISSING_DMR_CONFIG",
                         "details": None,
                         "timestamp": "2025-01-30T10:00:00Z",
@@ -122,12 +126,12 @@ router = APIRouter()
             },
         },
         401: {
-            "description": "认证失败",
+            "description": "Authentication failed",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 401,
-                        "message": "缺少有效的认证令牌",
+                        "message": "Missing valid authentication token",
                         "error_code": "UNAUTHORIZED",
                         "details": None,
                         "timestamp": "2025-01-30T10:00:00Z",
@@ -136,12 +140,12 @@ router = APIRouter()
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53027,
-                        "message": "硬件信息上报处理失败",
+                        "message": "Hardware information report processing failed",
                         "error_code": "HARDWARE_REPORT_FAILED",
                         "details": None,
                         "timestamp": "2025-01-30T10:00:00Z",
@@ -155,7 +159,7 @@ router = APIRouter()
 async def report_hardware(
     hardware_data: Dict[str, Any] = Body(
         ...,
-        description="硬件信息（动态JSON）",
+        description="Hardware information (dynamic JSON)",
         example={
             "name": "Updated Agent Config",
             "dmr_config": {
@@ -228,27 +232,27 @@ async def report_hardware(
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[HardwareReportResponse]:
-    """上报硬件信息
+    """Report hardware information
 
     Args:
-        hardware_data: 硬件信息（动态JSON），包含：
-            - dmr_config: DMR硬件配置（必需）
-            - type: 上报类型（可选，默认为0）
-                - 0: 成功，走正常对比逻辑
-                - 1: 异常，直接设置 diff_state=3
-        agent_info: 当前Agent信息（从token中提取，包含id）
-        agent_report_service: Agent硬件服务实例
+        hardware_data: Hardware information (dynamic JSON), contains:
+            - dmr_config: DMR hardware configuration (required)
+            - type: Report type (optional, default 0)
+                - 0: Success, follow normal comparison logic
+                - 1: Abnormal, directly set diff_state=3
+        agent_info: Current Agent information (extracted from token, contains id)
+        agent_report_service: Agent hardware service instance
 
     Returns:
-        SuccessResponse: 处理结果
+        SuccessResponse: Processing result
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+        HTTPException: Business logic error or system error (handled uniformly by @handle_api_errors)
     """
-    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    # ✅ Get id from token (already validated by get_current_agent dependency injection)
     host_id = agent_info["id"]
 
-    # 提取 type 参数（可选，默认为 0）
+    # Extract type parameter (optional, default 0)
     report_type = hardware_data.get("type", 0)
 
     log_request_received(
@@ -261,7 +265,7 @@ async def report_hardware(
         logger_instance=logger,
     )
 
-    # 调用服务层处理硬件信息上报
+    # Call service layer to process hardware information report
     result = await agent_report_service.report_hardware(
         host_id=host_id,
         hardware_data=hardware_data,
@@ -273,7 +277,7 @@ async def report_hardware(
         data=response_data,
         message_key="success.hardware.report",
         locale=locale,
-        default_message="硬件信息上报成功",
+        default_message="Hardware information report succeeded",
     )
 
 
@@ -281,62 +285,65 @@ async def report_hardware(
     "/testcase/report",
     response_model=Result[TestCaseReportResponse],
     status_code=HTTP_200_OK,
-    summary="上报测试用例执行结果",
+    summary="Report test case execution result",
     description="""
-    Agent 上报测试用例执行结果，系统会更新执行日志记录。
+    Agent reports test case execution result, system will update execution log records.
 
-    ## 功能说明
-    1. 接收 Agent 上报的测试用例执行结果
-    2. 从 JWT token 中提取 host_id
-    3. 根据 host_id 和 tc_id 查询最新的执行日志记录
-    4. 更新执行状态、结果消息和日志URL
+    ## Function description
+    1. Receive test case execution result reported by Agent
+    2. Extract host_id from JWT token
+    3. Query latest execution log record based on host_id and tc_id
+    4. Update execution status, result message and log URL
 
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
+    ## Authentication requirements
+    - Need to provide valid JWT token in Authorization header
+    - Token format: `Bearer <token>`
+    - id in token (extracted from user_id or sub field) will be used as host_id
 
-    ## 请求参数
-    - `tc_id`: 测试用例ID（必需）
-    - `state`: 执行状态（必需）；0-空闲 1-启动 2-成功 3-失败
-    - `result_msg`: 结果消息（可选）
-    - `log_url`: 日志文件URL（可选）
+    ## Request parameters
+    - `tc_id`: Test case ID (required)
+    - `state`: Execution status (required); 0-idle 1-started 2-success 3-failed
+    - `result_msg`: Result message (optional)
+    - `log_url`: Log file URL (optional)
 
-    ## 业务逻辑
-    1. 根据 host_id 和 tc_id 查询 host_exec_log 表最新一条记录
-    2. 更新 case_state、result_msg 和 log_url 字段
-    3. 返回更新结果
+    ## Business logic
+    1. Query latest record in host_exec_log table based on host_id and tc_id
+    2. Update case_state, result_msg and log_url fields
+    3. Return update result
 
-    ## 注意事项
-    - tc_id 是必传字段
-    - state 必须在 0-3 范围内
-    - 如果未找到对应的执行日志记录，返回404错误
+    ## Notes
+    - tc_id is a required field
+    - state must be in range 0-3
+    - If corresponding execution log record is not found, return 404 error
     """,
     responses={
         200: {
-            "description": "上报成功",
+            "description": "Report succeeded",
             "model": Result[TestCaseReportResponse],
         },
         400: {
-            "description": "请求参数错误或业务逻辑错误（包括：请求参数验证失败、未找到执行日志记录等）",
+            "description": (
+                "Request parameter error or business logic error "
+                "(including: request parameter validation failed, execution log record not found, etc.)"
+            ),
             "content": {
                 "application/json": {
                     "examples": {
                         "validation_error": {
-                            "summary": "请求参数验证失败",
+                            "summary": "Request parameter validation failed",
                             "value": {
                                 "code": 400,
-                                "message": "请求参数验证失败",
+                                "message": "Request parameter validation failed",
                                 "error_code": "VALIDATION_ERROR",
                                 "details": None,
                                 "timestamp": "2025-10-30T10:00:00Z",
                             },
                         },
                         "exec_log_not_found": {
-                            "summary": "未找到执行日志记录",
+                            "summary": "Execution log record not found",
                             "value": {
                                 "code": 53012,
-                                "message": "未找到主机的测试用例执行记录",
+                                "message": "Test case execution record for host not found",
                                 "error_code": "EXEC_LOG_NOT_FOUND",
                                 "details": None,
                                 "timestamp": "2025-10-30T10:00:00Z",
@@ -347,12 +354,12 @@ async def report_hardware(
             },
         },
         401: {
-            "description": "认证失败",
+            "description": "Authentication failed",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 401,
-                        "message": "缺少有效的认证令牌",
+                        "message": "Missing valid authentication token",
                         "error_code": "UNAUTHORIZED",
                         "details": None,
                         "timestamp": "2025-10-30T10:00:00Z",
@@ -361,12 +368,12 @@ async def report_hardware(
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53029,
-                        "message": "测试用例结果上报处理失败",
+                        "message": "Test case result report processing failed",
                         "error_code": "TESTCASE_REPORT_FAILED",
                         "details": None,
                         "timestamp": "2025-10-30T10:00:00Z",
@@ -380,30 +387,30 @@ async def report_hardware(
 async def report_testcase_result(
     report_data: TestCaseReportRequest = Body(
         ...,
-        description="测试用例执行结果",
+        description="Test case execution result",
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[TestCaseReportResponse]:
-    """上报测试用例执行结果
+    """Report test case execution result
 
     Args:
-        report_data: 测试用例执行结果
-        agent_info: 当前Agent信息（从token中提取，包含id）
-        agent_report_service: Agent硬件服务实例
+        report_data: Test case execution result
+        agent_info: Current Agent information (extracted from token, contains id)
+        agent_report_service: Agent hardware service instance
 
     Returns:
-        SuccessResponse: 处理结果
+        SuccessResponse: Processing result
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+        HTTPException: Business logic error or system error (handled uniformly by @handle_api_errors)
     """
-    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    # ✅ Get id from token (already validated by get_current_agent dependency injection)
     host_id = agent_info["id"]
 
     logger.info(
-        "收到测试用例结果上报请求",
+        "Received test case result report request",
         extra={
             "host_id": host_id,
             "tc_id": report_data.tc_id,
@@ -411,7 +418,7 @@ async def report_testcase_result(
         },
     )
 
-    # 调用服务层处理测试用例结果上报
+    # Call service layer to process test case result report
     result = await agent_report_service.report_testcase_result(
         host_id=host_id,
         tc_id=report_data.tc_id,
@@ -425,7 +432,7 @@ async def report_testcase_result(
         data=response_data,
         message_key="success.hardware.test_result_report",
         locale=locale,
-        default_message="测试用例结果上报成功",
+        default_message="Test case result report succeeded",
     )
 
 
@@ -433,62 +440,65 @@ async def report_testcase_result(
     "/testcase/due-time",
     response_model=Result[TestCaseDueTimeResponse],
     status_code=HTTP_200_OK,
-    summary="上报测试用例预期结束时间",
+    summary="Report test case expected end time",
     description="""
-    Agent 上报测试用例预期结束时间，系统会更新执行日志记录的 due_time 字段。
+    Agent reports test case expected end time, system will update due_time field in execution log records.
 
-    ## 功能说明
-    1. 接收 Agent 上报的预期结束时间
-    2. 从 JWT token 中提取 host_id
-    3. 根据 host_id 和 tc_id 查询执行中的最新执行日志记录（case_state=1）
-    4. 更新 due_time 字段
+    ## Function description
+    1. Receive expected end time reported by Agent
+    2. Extract host_id from JWT token
+    3. Query latest execution log record in execution (case_state=1) based on host_id and tc_id
+    4. Update due_time field
 
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
+    ## Authentication requirements
+    - Need to provide valid JWT token in Authorization header
+    - Token format: `Bearer <token>`
+    - id in token (extracted from user_id or sub field) will be used as host_id
 
-    ## 请求参数
-    - `tc_id`: 测试用例ID（必需）
-    - `due_time`: 预期结束时间（必需，分钟时间差，整数，从当前时间开始计算）
+    ## Request parameters
+    - `tc_id`: Test case ID (required)
+    - `due_time`: Expected end time (required, minutes difference, integer, calculated from current time)
 
-    ## 业务逻辑
-    1. 服务器根据当前时间和 `due_time`（分钟数）计算实际的预期结束时间
-    2. 根据 host_id 和 tc_id 查询 host_exec_log 表执行中的最新一条记录（case_state=1）
-    3. 更新 due_time 字段
-    4. 返回更新结果
+    ## Business logic
+    1. Server calculates actual expected end time based on current time and `due_time` (minutes)
+    2. Query latest record in execution (case_state=1) in host_exec_log table based on host_id and tc_id
+    3. Update due_time field
+    4. Return update result
 
-    ## 注意事项
-    - tc_id 是必传字段
-    - due_time 必须是大于等于 0 的整数（表示分钟数）
-    - 服务器会自动计算：预期结束时间 = 当前时间 + due_time 分钟
-    - 如果未找到执行中的记录，返回400错误
+    ## Notes
+    - tc_id is a required field
+    - due_time must be an integer greater than or equal to 0 (represents minutes)
+    - Server will automatically calculate: expected end time = current time + due_time minutes
+    - If record in execution is not found, return 400 error
     """,
     responses={
         200: {
-            "description": "上报成功",
+            "description": "Report succeeded",
             "model": Result[TestCaseDueTimeResponse],
         },
         400: {
-            "description": "请求参数错误或业务逻辑错误（包括：请求参数验证失败、未找到执行中的记录等）",
+            "description": (
+                "Request parameter error or business logic error "
+                "(including: request parameter validation failed, record in execution not found, etc.)"
+            ),
             "content": {
                 "application/json": {
                     "examples": {
                         "validation_error": {
-                            "summary": "请求参数验证失败",
+                            "summary": "Request parameter validation failed",
                             "value": {
                                 "code": 400,
-                                "message": "请求参数验证失败",
+                                "message": "Request parameter validation failed",
                                 "error_code": "VALIDATION_ERROR",
                                 "details": None,
                                 "timestamp": "2025-01-30T10:00:00Z",
                             },
                         },
                         "exec_log_not_found": {
-                            "summary": "未找到执行中的记录",
+                            "summary": "Record in execution not found",
                             "value": {
                                 "code": 53012,
-                                "message": "未找到主机 {host_id} 的测试用例 {tc_id} 执行中的记录",
+                                "message": "Test case {tc_id} execution record for host {host_id} not found",
                                 "error_code": "EXEC_LOG_NOT_FOUND",
                                 "details": None,
                                 "timestamp": "2025-01-30T10:00:00Z",
@@ -499,12 +509,12 @@ async def report_testcase_result(
             },
         },
         401: {
-            "description": "认证失败",
+            "description": "Authentication failed",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 401,
-                        "message": "缺少有效的认证令牌",
+                        "message": "Missing valid authentication token",
                         "error_code": "UNAUTHORIZED",
                         "details": None,
                         "timestamp": "2025-01-30T10:00:00Z",
@@ -513,12 +523,12 @@ async def report_testcase_result(
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53030,
-                        "message": "预期结束时间上报处理失败",
+                        "message": "Expected end time report processing failed",
                         "error_code": "DUE_TIME_UPDATE_FAILED",
                         "details": None,
                         "timestamp": "2025-01-30T10:00:00Z",
@@ -532,30 +542,30 @@ async def report_testcase_result(
 async def report_due_time(
     report_data: TestCaseDueTimeRequest = Body(
         ...,
-        description="测试用例预期结束时间",
+        description="Test case expected end time",
     ),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[TestCaseDueTimeResponse]:
-    """上报测试用例预期结束时间
+    """Report test case expected end time
 
     Args:
-        report_data: 测试用例预期结束时间
-        agent_info: 当前Agent信息（从token中提取，包含id）
-        agent_report_service: Agent硬件服务实例
+        report_data: Test case expected end time
+        agent_info: Current Agent information (extracted from token, contains id)
+        agent_report_service: Agent hardware service instance
 
     Returns:
-        Result: 处理结果
+        Result: Processing result
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+        HTTPException: Business logic error or system error (handled uniformly by @handle_api_errors)
     """
-    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    # ✅ Get id from token (already validated by get_current_agent dependency injection)
     host_id = agent_info["id"]
 
     logger.info(
-        "收到预期结束时间上报请求",
+        "Received expected end time report request",
         extra={
             "host_id": host_id,
             "tc_id": report_data.tc_id,
@@ -563,7 +573,7 @@ async def report_due_time(
         },
     )
 
-    # 调用服务层处理预期结束时间上报（服务器计算实际时间）
+    # Call service layer to process expected end time report (server calculates actual time)
     result = await agent_report_service.update_due_time(
         host_id=host_id,
         tc_id=report_data.tc_id,
@@ -575,7 +585,7 @@ async def report_due_time(
         data=response_data,
         message_key="success.hardware.due_time_report",
         locale=locale,
-        default_message="预期结束时间上报成功",
+        default_message="Expected end time report succeeded",
     )
 
 
@@ -583,19 +593,19 @@ async def report_due_time(
     "/ota/latest",
     response_model=Result[List[OtaConfigItem]],
     status_code=HTTP_200_OK,
-    summary="获取最新 OTA 配置信息",
+    summary="Get latest OTA configuration information",
     description="""
-    Agent 获取 OTA 版本配置信息。
+    Agent gets OTA version configuration information.
 
-    ## 功能说明
-    1. 查询 `sys_conf` 表中 `conf_key = "ota"` 的有效配置
-    2. 返回按更新时间倒序排列的配置列表
+    ## Function description
+    1. Query valid configurations in `sys_conf` table where `conf_key = "ota"`
+    2. Return configuration list sorted by update time descending
 
-    ## 响应说明
-    - `conf_name`: 配置名称
-    - `conf_ver`: 配置版本号
-    - `conf_url`: OTA 包下载地址
-    - `conf_md5`: OTA 包 MD5 校验值
+    ## Response description
+    - `conf_name`: Configuration name
+    - `conf_ver`: Configuration version number
+    - `conf_url`: OTA package download URL
+    - `conf_md5`: OTA package MD5 checksum
     """,
 )
 @handle_api_errors
@@ -603,7 +613,7 @@ async def get_latest_ota_configs(
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[List[OtaConfigItem]]:
-    """获取最新 OTA 配置信息"""
+    """Get latest OTA configuration information"""
     log_request_received(
         "get_latest_ota_configs",
         logger_instance=logger,
@@ -616,7 +626,7 @@ async def get_latest_ota_configs(
         data=ota_items,
         message_key="success.ota.query",
         locale=locale,
-        default_message="获取 OTA 配置成功",
+        default_message="Get OTA configuration succeeded",
     )
 
 
@@ -624,63 +634,64 @@ async def get_latest_ota_configs(
     "/vnc/report",
     response_model=Result[AgentVNCConnectionReportResponse],
     status_code=HTTP_200_OK,
-    summary="Agent 上报 VNC 连接状态",
+    summary="Agent reports VNC connection status",
     description="""
-    Agent 上报 VNC 连接状态，系统会根据状态更新主机状态。
+    Agent reports VNC connection status, system will update host status based on status.
 
-    ## 功能说明
-    1. 从 JWT token 中提取 host_id
-    2. 根据 vnc_state 和当前 host_state 更新主机状态
+    ## Function description
+    1. Extract host_id from JWT token
+    2. Update host status based on vnc_state and current host_state
 
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
+    ## Authentication requirements
+    - Need to provide valid JWT token in Authorization header
+    - Token format: `Bearer <token>`
+    - id in token (extracted from user_id or sub field) will be used as host_id
 
-    ## 请求参数
-    - `vnc_state`: VNC连接状态（必需）
-        - `1`: 连接成功
-        - `2`: 连接断开
+    ## Request parameters
+    - `vnc_state`: VNC connection status (required)
+        - `1`: Connection succeeded
+        - `2`: Connection disconnected
 
-    ## 业务逻辑
-    1. 从 token 中解析 host_id（通过依赖注入自动完成）
-    2. 查询 host_rec 表，验证主机是否存在
-    3. 根据 vnc_state 和当前 host_state 更新状态：
-        - 当 `vnc_state = 1`（连接成功）时：
-            - 如果 `host_state = 1`（已锁定），则修改为 `host_state = 2`（已占用）
-            - 如果 `host_state` 不等于 1，将返回 `VNC_STATE_MISMATCH` 错误
-        - 当 `vnc_state = 2`（连接断开/失败）时：
-            - 不需要做状态判断，直接修改为 `host_state = 0`（空闲）
-            - 同时逻辑删除 `host_exec_log` 表中对应的 host 的有效数据（`del_flag = 1`）
+    ## Business logic
+    1. Parse host_id from token (automatically completed through dependency injection)
+    2. Query host_rec table, verify if host exists
+    3. Update status based on vnc_state and current host_state:
+        - When `vnc_state = 1` (connection succeeded):
+            - If `host_state = 1` (locked), change to `host_state = 2` (occupied)
+            - If `host_state` is not equal to 1, return `VNC_STATE_MISMATCH` error
+        - When `vnc_state = 2` (connection disconnected/failed):
+            - No need to check status, directly change to `host_state = 0` (idle)
+            - Simultaneously logically delete valid data for corresponding host in "
+                "`host_exec_log` table (`del_flag = 1`)
 
-    ## 返回数据
-    - `host_id`: 主机ID
-    - `host_state`: 更新后的主机状态（0=空闲，1=已锁定，2=已占用）
-    - `vnc_state`: 上报的VNC连接状态（1=连接成功，2=连接断开）
-    - `updated`: 是否成功更新
+    ## Return data
+    - `host_id`: Host ID
+    - `host_state`: Updated host status (0=idle, 1=locked, 2=occupied)
+    - `vnc_state`: Reported VNC connection status (1=connection succeeded, 2=connection disconnected)
+    - `updated`: Whether update succeeded
 
-    ## 错误码
-    - `HOST_NOT_FOUND`: 主机不存在或已删除（404，错误码：53001）
-    - `VNC_STATE_MISMATCH`: VNC连接成功但主机状态不匹配（400，错误码：53016）
-        - 当 `vnc_state = 1`（连接成功）时，要求 `host_state = 1`（已锁定）
-        - 如果 `host_state` 不等于 1，将返回此错误
-    - `VNC_CONNECTION_REPORT_FAILED`: 上报处理失败（500，错误码：53020）
+    ## Error codes
+    - `HOST_NOT_FOUND`: Host does not exist or has been deleted (404, error code: 53001)
+    - `VNC_STATE_MISMATCH`: VNC connection succeeded but host status does not match (400, error code: 53016)
+        - When `vnc_state = 1` (connection succeeded), requires `host_state = 1` (locked)
+        - If `host_state` is not equal to 1, this error will be returned
+    - `VNC_CONNECTION_REPORT_FAILED`: Report processing failed (500, error code: 53020)
     """,
     responses={
         200: {
-            "description": "上报成功",
+            "description": "Report succeeded",
             "model": Result[AgentVNCConnectionReportResponse],
         },
         400: {
-            "description": "请求参数错误或业务逻辑错误",
+            "description": "Request parameter error or business logic error",
             "content": {
                 "application/json": {
                     "examples": {
                         "validation_error": {
-                            "summary": "请求参数验证失败",
+                            "summary": "Request parameter validation failed",
                             "value": {
                                 "code": 400,
-                                "message": "请求参数验证失败",
+                                "message": "Request parameter validation failed",
                                 "error_code": "VALIDATION_ERROR",
                                 "details": {
                                     "errors": [
@@ -694,10 +705,13 @@ async def get_latest_ota_configs(
                             },
                         },
                         "vnc_state_mismatch": {
-                            "summary": "VNC连接成功但主机状态不匹配",
+                            "summary": "VNC connection succeeded but host status does not match",
                             "value": {
                                 "code": 53016,
-                                "message": "VNC连接成功，但主机状态不匹配。当前状态：0，需要状态：1（已锁定）",
+                                "message": (
+                                    "VNC connection succeeded, but host status does not match. "
+                                    "Current status: 0, required status: 1 (locked)"
+                                ),
                                 "error_code": "VNC_STATE_MISMATCH",
                                 "http_status_code": 400,
                                 "details": {
@@ -713,24 +727,24 @@ async def get_latest_ota_configs(
             },
         },
         404: {
-            "description": "主机不存在或已删除",
+            "description": "Host does not exist or has been deleted",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53001,
-                        "message": "主机不存在: 123",
+                        "message": "Host does not exist: 123",
                         "error_code": "HOST_NOT_FOUND",
                     }
                 }
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53020,
-                        "message": "Agent VNC 连接状态上报处理失败",
+                        "message": "Agent VNC connection status report processing failed",
                         "error_code": "VNC_CONNECTION_REPORT_FAILED",
                     }
                 }
@@ -740,57 +754,56 @@ async def get_latest_ota_configs(
 )
 @handle_api_errors
 async def report_vnc_connection_state(
-    request: AgentVNCConnectionReportRequest = Body(..., description="Agent VNC 连接状态上报请求"),
+    request: AgentVNCConnectionReportRequest = Body(..., description="Agent VNC connection status report request"),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[AgentVNCConnectionReportResponse]:
-    """Agent 上报 VNC 连接状态
+    """Agent reports VNC connection status
 
-    ## 业务逻辑
-    1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
-    2. 根据 vnc_state 和当前 host_state 更新主机状态：
-        - `vnc_state = 1`（连接成功）且 `host_state = 1`（已锁定）→ 更新为 `host_state = 2`（已占用）
-            - 如果 `host_state` 不等于 1，将返回 `VNC_STATE_MISMATCH` 错误
-        - `vnc_state = 2`（连接断开/失败）→ 直接更新为 `host_state = 0`（空闲）
-            - 不需要做状态判断
-            - 同时逻辑删除 `host_exec_log` 表中对应的 host 的有效数据（`del_flag = 1`）
+    ## Business logic
+    1. Parse host_id from token (already validated by get_current_agent dependency injection)
+    2. Update host status based on vnc_state and current host_state:
+        - `vnc_state = 1` (connection succeeded) and `host_state = 1` (locked) → update to `host_state = 2` (occupied)
+            - If `host_state` is not equal to 1, return `VNC_STATE_MISMATCH` error
+        - `vnc_state = 2` (connection disconnected/failed) → directly update to `host_state = 0` (idle)
+            - No need to check status
+            - Simultaneously logically delete valid data for corresponding host in "
+                "`host_exec_log` table (`del_flag = 1`)
 
     Args:
-        request: Agent VNC 连接状态上报请求（包含 vnc_state 字段）
-        agent_info: 当前Agent信息（从token中提取，包含id）
-        agent_report_service: Agent上报服务实例
-        locale: 语言偏好
+        request: Agent VNC connection status report request (contains vnc_state field)
+        agent_info: Current Agent information (extracted from token, contains id)
+        agent_report_service: Agent reporting service instance
+        locale: Language preference
 
     Returns:
-        Result: 统一格式的成功响应，包含更新结果
+        Result: Unified format success response, contains update result
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+        HTTPException: Business logic error or system error (handled uniformly by @handle_api_errors)
     """
-    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    # ✅ Get id from token (already validated by get_current_agent dependency injection)
     host_id = agent_info["id"]
     vnc_state = request.vnc_state
 
     logger.info(
-        "收到 Agent VNC 连接状态上报请求",
+        "Received Agent VNC connection status report request",
         extra={
             "host_id": host_id,
             "vnc_state": vnc_state,
         },
     )
 
-    # 调用服务层处理 VNC 连接状态上报
-    result = await agent_report_service.report_vnc_connection_state(
-        host_id=host_id, vnc_state=vnc_state
-    )
+    # Call service layer to process VNC connection status report
+    result = await agent_report_service.report_vnc_connection_state(host_id=host_id, vnc_state=vnc_state)
 
     response_data = AgentVNCConnectionReportResponse(**result)
     return create_success_result(
         data=response_data,
         message_key="success.vnc.agent_report",
         locale=locale,
-        default_message="Agent VNC 连接状态上报成功",
+        default_message="Agent VNC connection status report succeeded",
     )
 
 
@@ -798,74 +811,75 @@ async def report_vnc_connection_state(
     "/ota/update-status",
     response_model=Result[AgentOtaUpdateStatusResponse],
     status_code=HTTP_200_OK,
-    summary="Agent 上报 OTA 更新状态",
+    summary="Agent reports OTA update status",
     description="""
-    Agent 上报 OTA 更新状态，系统会根据状态更新 host_upd 表和 host_rec 表。
+    Agent reports OTA update status, system will update host_upd table and host_rec table based on status.
 
-    ## 功能说明
-    1. 从 JWT token 中提取 host_id
-    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
-    3. 如果未找到记录，创建新记录（在创建前，逻辑删除其他有效记录，保证有效数据只有一条）
-    4. 更新 host_upd 表的 app_state 字段（1=更新中，2=成功，3=失败）
-    5. 如果 biz_state=2（成功）：
-       - 更新 host_rec 表的 host_state=0（free）
-       - 更新 host_rec 表的 agent_ver（新版本）
-       - 逻辑删除 host_upd 表的当前记录（del_flag=1）
+    ## Function description
+    1. Extract host_id from JWT token
+    2. Query latest valid record (del_flag=0) in host_upd table based on host_id, app_name, app_ver
+    3. If record not found, create new record (before creating, logically delete other "
+        "valid records to ensure only one valid record exists)
+    4. Update app_state field in host_upd table (1=updating, 2=success, 3=failed)
+    5. If biz_state=2 (success):
+       - Update host_state=0 (free) in host_rec table
+       - Update agent_ver (new version) in host_rec table
+       - Logically delete current record in host_upd table (del_flag=1)
 
-    ## 认证要求
-    - 需要在 Authorization 头中提供有效的 JWT token
-    - Token 格式：`Bearer <token>`
-    - Token 中的 id（从 user_id 或 sub 字段提取）将作为 host_id 使用
+    ## Authentication requirements
+    - Need to provide valid JWT token in Authorization header
+    - Token format: `Bearer <token>`
+    - id in token (extracted from user_id or sub field) will be used as host_id
 
-    ## 请求参数
-    - `app_name`: 应用名称（必需，对应 host_upd 表的 app_name）
-    - `app_ver`: 应用版本号（必需，对应 host_upd 表的 app_ver）
-    - `biz_state`: 业务状态（必需）
-        - `1`: 更新中
-        - `2`: 成功
-        - `3`: 失败
-    - `agent_ver`: Agent 版本号（更新成功时必填，用于更新 host_rec 表的 agent_ver）
+    ## Request parameters
+    - `app_name`: Application name (required, corresponds to app_name in host_upd table)
+    - `app_ver`: Application version number (required, corresponds to app_ver in host_upd table)
+    - `biz_state`: Business status (required)
+        - `1`: Updating
+        - `2`: Success
+        - `3`: Failed
+    - `agent_ver`: Agent version number (required when update succeeds, used to update agent_ver in host_rec table)
 
-    ## 业务逻辑
-    1. 从 token 中解析 host_id（通过依赖注入自动完成）
-    2. 查询 host_upd 表的最新有效记录（del_flag=0）
-    3. 如果未找到记录：
-       - 逻辑删除该 host_id 和 app_name 的所有有效记录（保证有效数据只有一条）
-       - 创建新记录，设置 app_state 为 biz_state
-    4. 如果找到记录：
-       - 更新 host_upd 表的 app_state 字段
-    5. 如果 biz_state=2（成功）：
-       - 更新 host_rec 表的 host_state=0（free）
-       - 更新 host_rec 表的 agent_ver（新版本）
-       - 逻辑删除 host_upd 表的当前记录（del_flag=1）
+    ## Business logic
+    1. Parse host_id from token (automatically completed through dependency injection)
+    2. Query latest valid record (del_flag=0) in host_upd table
+    3. If record not found:
+       - Logically delete all valid records for this host_id and app_name (ensure only one valid record exists)
+       - Create new record, set app_state to biz_state
+    4. If record found:
+       - Update app_state field in host_upd table
+    5. If biz_state=2 (success):
+       - Update host_state=0 (free) in host_rec table
+       - Update agent_ver (new version) in host_rec table
+       - Logically delete current record in host_upd table (del_flag=1)
 
-    ## 返回数据
-    - `host_id`: 主机ID
-    - `host_upd_id`: 更新记录ID（host_upd 表主键）
-    - `app_state`: 更新后的状态（0=预更新，1=更新中，2=成功，3=失败）
-    - `host_state`: 更新后的主机状态（如果更新成功，则为 0=空闲）
-    - `agent_ver`: 更新后的 Agent 版本号
-    - `updated`: 是否成功更新
+    ## Return data
+    - `host_id`: Host ID
+    - `host_upd_id`: Update record ID (host_upd table primary key)
+    - `app_state`: Updated status (0=pre-update, 1=updating, 2=success, 3=failed)
+    - `host_state`: Updated host status (if update succeeds, then 0=idle)
+    - `agent_ver`: Updated Agent version number
+    - `updated`: Whether update succeeded
 
-    ## 错误码
-    - `AGENT_VER_REQUIRED`: 更新成功时 agent_ver 字段必填（400，错误码：53022）
-    - `OTA_UPDATE_STATUS_REPORT_FAILED`: 上报处理失败（500，错误码：53021）
+    ## Error codes
+    - `AGENT_VER_REQUIRED`: agent_ver field is required when update succeeds (400, error code: 53022)
+    - `OTA_UPDATE_STATUS_REPORT_FAILED`: Report processing failed (500, error code: 53021)
     """,
     responses={
         200: {
-            "description": "上报成功",
+            "description": "Report succeeded",
             "model": Result[AgentOtaUpdateStatusResponse],
         },
         400: {
-            "description": "请求参数错误或业务逻辑错误",
+            "description": "Request parameter error or business logic error",
             "content": {
                 "application/json": {
                     "examples": {
                         "validation_error": {
-                            "summary": "请求参数验证失败",
+                            "summary": "Request parameter validation failed",
                             "value": {
                                 "code": 400,
-                                "message": "请求参数验证失败",
+                                "message": "Request parameter validation failed",
                                 "error_code": "VALIDATION_ERROR",
                                 "details": {
                                     "errors": [
@@ -879,10 +893,10 @@ async def report_vnc_connection_state(
                             },
                         },
                         "agent_ver_required": {
-                            "summary": "更新成功时 agent_ver 字段必填",
+                            "summary": "agent_ver field is required when update succeeds",
                             "value": {
                                 "code": 53022,
-                                "message": "更新成功时，agent_ver 字段必填",
+                                "message": "agent_ver field is required when update succeeds",
                                 "error_code": "AGENT_VER_REQUIRED",
                             },
                         },
@@ -891,12 +905,12 @@ async def report_vnc_connection_state(
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53021,
-                        "message": "OTA 更新状态上报处理失败",
+                        "message": "OTA update status report processing failed",
                         "error_code": "OTA_UPDATE_STATUS_REPORT_FAILED",
                     }
                 }
@@ -906,43 +920,43 @@ async def report_vnc_connection_state(
 )
 @handle_api_errors
 async def report_ota_update_status(
-    request: AgentOtaUpdateStatusRequest = Body(..., description="Agent OTA 更新状态上报请求"),
+    request: AgentOtaUpdateStatusRequest = Body(..., description="Agent OTA update status report request"),
     agent_info: Dict[str, Any] = Depends(get_current_agent),
     agent_report_service: AgentReportService = Depends(get_agent_report_service),
     locale: str = Depends(get_locale),
 ) -> Result[AgentOtaUpdateStatusResponse]:
-    """Agent 上报 OTA 更新状态
+    """Agent reports OTA update status
 
-    ## 业务逻辑
-    1. 从 token 中解析 host_id（已通过 get_current_agent 依赖注入验证）
-    2. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
-    3. 如果未找到记录：
-       - 逻辑删除该 host_id 和 app_name 的所有有效记录（保证有效数据只有一条）
-       - 创建新记录，设置 app_state 为 biz_state
-    4. 如果找到记录：
-       - 更新 host_upd 表的 app_state 字段
-    5. 如果 biz_state=2（成功）：
-       - 更新 host_rec 表的 host_state=0（free）
-       - 更新 host_rec 表的 agent_ver（新版本）
-       - 逻辑删除 host_upd 表的当前记录（del_flag=1）
+    ## Business logic
+    1. Parse host_id from token (already validated by get_current_agent dependency injection)
+    2. Query latest valid record (del_flag=0) in host_upd table based on host_id, app_name, app_ver
+    3. If record not found:
+       - Logically delete all valid records for this host_id and app_name (ensure only one valid record exists)
+       - Create new record, set app_state to biz_state
+    4. If record found:
+       - Update app_state field in host_upd table
+    5. If biz_state=2 (success):
+       - Update host_state=0 (free) in host_rec table
+       - Update agent_ver (new version) in host_rec table
+       - Logically delete current record in host_upd table (del_flag=1)
 
     Args:
-        request: Agent OTA 更新状态上报请求（包含 app_name、app_ver、biz_state、agent_ver 字段）
-        agent_info: 当前Agent信息（从token中提取，包含id）
-        agent_report_service: Agent上报服务实例
-        locale: 语言偏好
+        request: Agent OTA update status report request (contains app_name, app_ver, biz_state, agent_ver fields)
+        agent_info: Current Agent information (extracted from token, contains id)
+        agent_report_service: Agent reporting service instance
+        locale: Language preference
 
     Returns:
-        Result: 统一格式的成功响应，包含更新结果
+        Result: Unified format success response, contains update result
 
     Raises:
-        HTTPException: 业务逻辑错误或系统错误（由 @handle_api_errors 统一处理）
+        HTTPException: Business logic error or system error (handled uniformly by @handle_api_errors)
     """
-    # ✅ 从 token 中获取 id（已通过 get_current_agent 依赖注入验证）
+    # ✅ Get id from token (already validated by get_current_agent dependency injection)
     host_id = agent_info["id"]
 
     logger.info(
-        "收到 Agent OTA 更新状态上报请求",
+        "Received Agent OTA update status report request",
         extra={
             "host_id": host_id,
             "app_name": request.app_name,
@@ -952,7 +966,7 @@ async def report_ota_update_status(
         },
     )
 
-    # 调用服务层处理 OTA 更新状态上报
+    # Call service layer to process OTA update status report
     result = await agent_report_service.report_ota_update_status(
         host_id=host_id,
         app_name=request.app_name,
@@ -966,5 +980,107 @@ async def report_ota_update_status(
         data=response_data,
         message_key="success.ota.update_status",
         locale=locale,
-        default_message="OTA 更新状态上报成功",
+        default_message="OTA update status report succeeded",
+    )
+
+
+@router.get(
+    "/init",
+    response_model=Result[AgentInitConfigListResponse],
+    status_code=HTTP_200_OK,
+    summary="Get agent initialization configurations",
+    description="""
+    Agent gets initialization configuration information.
+
+    ## Function description
+    1. Query sys_conf table for records where conf_key starts with 'agent_init_'
+    2. Filter by state_flag = 0 (enabled) and del_flag = 0 (not deleted)
+    3. Return configuration list sorted by update time descending
+
+    ## Authentication requirements
+    - Need to provide valid JWT token in Authorization header
+    - Token format: `Bearer <token>`
+
+    ## Response description
+    - `configs`: List of initialization configurations, each containing:
+        - `conf_key`: Configuration key (starts with 'agent_init_')
+        - `conf_val`: Configuration value
+        - `conf_ver`: Configuration version
+        - `conf_name`: Configuration name
+        - `conf_json`: Configuration JSON
+    - `total`: Total number of configurations
+    """,
+    responses={
+        200: {
+            "description": "Query succeeded",
+            "model": Result[AgentInitConfigListResponse],
+        },
+        401: {
+            "description": "Authentication failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 401,
+                        "message": "Missing valid authentication token",
+                        "error_code": "UNAUTHORIZED",
+                        "details": None,
+                        "timestamp": "2025-01-30T10:00:00Z",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 500,
+                        "message": "Failed to get agent initialization configurations",
+                        "error_code": "GET_AGENT_INIT_CONFIG_FAILED",
+                        "details": None,
+                        "timestamp": "2025-01-30T10:00:00Z",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def get_agent_init_configs(
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[AgentInitConfigListResponse]:
+    """Get agent initialization configurations
+
+    Query sys_conf table for records where conf_key starts with 'agent_init_',
+    state_flag = 0 (enabled), and del_flag = 0 (not deleted).
+
+    Args:
+        agent_report_service: Agent reporting service instance
+        locale: Language preference
+
+    Returns:
+        Result: Unified format success response, contains initialization configuration list
+
+    Raises:
+        HTTPException: Business logic error or system error (handled uniformly by @handle_api_errors)
+    """
+    log_request_received(
+        "get_agent_init_configs",
+        logger_instance=logger,
+    )
+
+    configs = await agent_report_service.get_agent_init_configs()
+    init_items = [AgentInitConfigItem(**config) for config in configs]
+
+    response_data = AgentInitConfigListResponse(
+        configs=init_items,
+        total=len(init_items),
+    )
+
+    return create_success_result(
+        data=response_data,
+        message_key="success.agent.init_config_query",
+        locale=locale,
+        default_message="Get agent initialization configurations succeeded",
     )

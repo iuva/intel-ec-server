@@ -1,8 +1,8 @@
-"""Agent VNC/OTA 状态上报服务模块
+"""Agent VNC/OTA Status Report Service Module
 
-提供 VNC 连接状态和 OTA 更新状态上报功能。
+Provides VNC connection status and OTA update status reporting functionality.
 
-从 agent_report_service.py 拆分出来，提高代码可维护性。
+Split from agent_report_service.py to improve code maintainability.
 """
 
 from datetime import datetime, timezone
@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, desc, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import (
         HOST_STATE_FREE,
@@ -43,51 +43,49 @@ logger = get_logger(__name__)
 
 
 class AgentVncOtaReportService:
-    """Agent VNC/OTA 状态上报服务
+    """Agent VNC/OTA Status Report Service
 
-    负责处理：
-    - VNC 连接状态上报
-    - OTA 更新状态上报
-    - OTA 配置获取
+    Responsible for handling:
+    - VNC connection status reporting
+    - OTA update status reporting
+    - OTA configuration retrieval
     """
 
     def __init__(self) -> None:
-        """初始化服务"""
+        """Initialize service"""
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）"""
+        """Get session factory (lazy initialization, singleton pattern)"""
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
-    async def report_vnc_connection_state(
-        self, host_id: int, vnc_state: int
-    ) -> Dict[str, Any]:
-        """Agent 上报 VNC 连接状态
+    async def report_vnc_connection_state(self, host_id: int, vnc_state: int) -> Dict[str, Any]:
+        """Agent reports VNC connection state
 
-        业务逻辑：
-        1. 从 token 中解析 host_id（已在依赖注入中完成）
-        2. 根据 vnc_state 和当前 host_state 更新主机状态：
-            - 当 `vnc_state = 1`（连接成功）时：
-                - 如果 `host_state = 1`（已锁定），则修改为 `host_state = 2`（已占用）
-            - 当 `vnc_state = 2`（连接断开）时：
-                - 如果 `host_state = 2`（已占用），则修改为 `host_state = 0`（空闲）
+        Business logic:
+        1. Parse host_id from token (already completed in dependency injection)
+        2. Update host state based on vnc_state and current host_state:
+            - When `vnc_state = 1` (connection succeeded):
+                - If `host_state = 1` (locked), change to `host_state = 2` (occupied)
+            - When `vnc_state = 2` (connection disconnected):
+                - If `host_state = 2` (occupied), change to `host_state = 0` (free)
 
         Args:
-            host_id: 主机ID（从token中获取）
-            vnc_state: VNC连接状态（1=连接成功，2=连接断开）
+            host_id: Host ID (obtained from token)
+            vnc_state: VNC connection state (1=connection succeeded, 2=connection disconnected)
 
         Returns:
-            更新结果，包含 host_id、host_state、vnc_state 和 updated 字段
+            Update result, containing host_id, host_state, vnc_state and updated fields
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
             logger.info(
-                "开始处理 Agent VNC 连接状态上报",
+                "Starting to process Agent VNC connection state report",
                 extra={
                     "host_id": host_id,
                     "vnc_state": vnc_state,
@@ -96,7 +94,7 @@ class AgentVncOtaReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询 host_rec 表，验证主机是否存在
+                # 1. Query host_rec table to verify host exists
                 stmt = select(HostRec).where(
                     and_(
                         HostRec.id == host_id,
@@ -108,33 +106,33 @@ class AgentVncOtaReportService:
 
                 if not host_rec:
                     logger.warning(
-                        "主机不存在或已删除",
+                        "Host does not exist or has been deleted",
                         extra={
                             "host_id": host_id,
                             "vnc_state": vnc_state,
                         },
                     )
                     raise BusinessError(
-                        message=f"主机不存在: {host_id}",
+                        message=f"Host does not exist: {host_id}",
                         error_code="HOST_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_NOT_FOUND,
                         http_status_code=404,
                     )
 
-                # 2. 记录更新前的状态
+                # 2. Record state before update
                 old_host_state = host_rec.host_state
                 current_host_state = host_rec.host_state
 
-                # 3. 根据 vnc_state 和当前 host_state 确定新状态
+                # 3. Determine new state based on vnc_state and current host_state
                 new_host_state = None
                 updated = False
 
-                if vnc_state == 1:  # 连接成功
-                    if current_host_state == HOST_STATE_LOCKED:  # 1 = 已锁定
-                        new_host_state = HOST_STATE_OCCUPIED  # 2 = 已占用
+                if vnc_state == 1:  # Connection succeeded
+                    if current_host_state == HOST_STATE_LOCKED:  # 1 = Locked
+                        new_host_state = HOST_STATE_OCCUPIED  # 2 = Occupied
                         updated = True
                         logger.info(
-                            "VNC连接成功，主机状态从已锁定(1)更新为已占用(2)",
+                            "VNC connection succeeded, host state updated from locked(1) to occupied(2)",
                             extra={
                                 "host_id": host_id,
                                 "old_host_state": old_host_state,
@@ -143,9 +141,10 @@ class AgentVncOtaReportService:
                             },
                         )
                     else:
-                        # 当 vnc_state = 1（连接成功）但 host_state 不等于 HOST_STATE_LOCKED 时，返回明确的异常
+                        # When vnc_state = 1 (connection succeeded) but host_state != HOST_STATE_LOCKED,
+                        # return explicit exception
                         logger.warning(
-                            "VNC连接成功，但主机状态不匹配",
+                            "VNC connection succeeded but host state mismatch",
                             extra={
                                 "host_id": host_id,
                                 "current_host_state": current_host_state,
@@ -154,7 +153,10 @@ class AgentVncOtaReportService:
                             },
                         )
                         raise BusinessError(
-                            message=f"VNC连接成功，但主机状态不匹配。当前状态：{current_host_state}，需要状态：{HOST_STATE_LOCKED}（已锁定）",
+                            message=(
+                                f"VNC connection succeeded but host state mismatch. "
+                                f"Current state: {current_host_state}, required state: {HOST_STATE_LOCKED} (locked)"
+                            ),
                             error_code="VNC_STATE_MISMATCH",
                             code=ServiceErrorCodes.HOST_VNC_STATE_MISMATCH,
                             http_status_code=400,
@@ -166,13 +168,14 @@ class AgentVncOtaReportService:
                             },
                         )
 
-                elif vnc_state == 2:  # 连接断开/失败
-                    # 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
+                elif vnc_state == 2:  # Connection disconnected/failed
+                    # Only hosts with business state (< 5) will be reset to free,
+                    # avoid affecting hosts in pending/registration state
                     if current_host_state is not None and current_host_state < 5:
-                        new_host_state = HOST_STATE_FREE  # 0 = 空闲
+                        new_host_state = HOST_STATE_FREE  # 0 = Free
                         updated = True
                         logger.info(
-                            "VNC连接断开/失败，主机状态更新为空闲(0)",
+                            "VNC connection disconnected/failed, host state updated to free(0)",
                             extra={
                                 "host_id": host_id,
                                 "old_host_state": old_host_state,
@@ -182,7 +185,10 @@ class AgentVncOtaReportService:
                         )
                     else:
                         logger.info(
-                            "VNC连接断开/失败，但主机处于非业务状态(>=5)，保持原状态",
+                            (
+                                "VNC connection disconnected/failed but host in non-business state (>=5), "
+                                "keeping original state"
+                            ),
                             extra={
                                 "host_id": host_id,
                                 "current_host_state": current_host_state,
@@ -190,7 +196,7 @@ class AgentVncOtaReportService:
                             },
                         )
 
-                # 4. 如果需要更新，执行更新操作
+                # 4. If update needed, execute update operation
                 if updated and new_host_state is not None:
                     update_stmt = (
                         update(HostRec)
@@ -206,15 +212,15 @@ class AgentVncOtaReportService:
                     await session.execute(update_stmt)
                     await session.commit()
 
-                    # 5. 刷新对象以获取最新状态
+                    # 5. Refresh object to get latest state
                     await session.refresh(host_rec)
                     final_host_state = host_rec.host_state
                 else:
-                    # 不需要更新，使用当前状态
+                    # No update needed, use current state
                     final_host_state = current_host_state
 
                 logger.info(
-                    "Agent VNC 连接状态上报处理完成",
+                    "Agent VNC connection state report processing completed",
                     extra={
                         "host_id": host_id,
                         "vnc_state": vnc_state,
@@ -235,7 +241,7 @@ class AgentVncOtaReportService:
             raise
         except Exception as e:
             logger.error(
-                "Agent VNC 连接状态上报处理失败",
+                "Agent VNC connection state report processing failed",
                 extra={
                     "host_id": host_id,
                     "vnc_state": vnc_state,
@@ -245,7 +251,7 @@ class AgentVncOtaReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="Agent VNC 连接状态上报处理失败",
+                message="Agent VNC connection state report processing failed",
                 error_code="VNC_CONNECTION_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_VNC_CONNECTION_REPORT_FAILED,
                 http_status_code=500,
@@ -259,33 +265,34 @@ class AgentVncOtaReportService:
         biz_state: int,
         agent_ver: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """上报 OTA 更新状态
+        """Report OTA update status
 
-        业务逻辑：
-        1. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
-        2. 如果未找到记录，创建新记录（在创建前，逻辑删除其他有效记录，保证有效数据只有一条）
-        3. 更新 app_state 字段（1=更新中，2=成功，3=失败）
-        4. 如果 biz_state=2（成功）：
-           - 更新 host_rec 表的 host_state=0（free）
-           - 更新 host_rec 表的 agent_ver（新版本，如果提供）
-           - 逻辑删除 host_upd 表的当前记录（del_flag=1）
+        Business logic:
+        1. Query host_upd table for latest valid record (del_flag=0) based on host_id, app_name, app_ver
+        2. If record not found, create new record (before creating, logically delete other
+           valid records to ensure only one valid record)
+        3. Update app_state field (1=updating, 2=success, 3=failed)
+        4. If biz_state=2 (success):
+           - Update host_rec table host_state=0 (free)
+           - Update host_rec table agent_ver (new version, if provided)
+           - Logically delete current record in host_upd table (del_flag=1)
 
         Args:
-            host_id: 主机ID（从token中获取）
-            app_name: 应用名称
-            app_ver: 应用版本
-            biz_state: 业务状态（1=更新中，2=成功，3=失败）
-            agent_ver: Agent 版本（可选，用于更新成功时更新 host_rec.agent_ver）
+            host_id: Host ID (obtained from token)
+            app_name: Application name
+            app_ver: Application version
+            biz_state: Business state (1=updating, 2=success, 3=failed)
+            agent_ver: Agent version (optional, used to update host_rec.agent_ver when update succeeds)
 
         Returns:
-            更新结果
+            Update result
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
             logger.info(
-                "开始处理 OTA 更新状态上报",
+                "Starting to process OTA update status report",
                 extra={
                     "host_id": host_id,
                     "app_name": app_name,
@@ -297,7 +304,7 @@ class AgentVncOtaReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询最新的有效记录
+                # 1. Query latest valid record
                 stmt = (
                     select(HostUpd)
                     .where(
@@ -316,7 +323,7 @@ class AgentVncOtaReportService:
                 host_upd = result.scalar_one_or_none()
 
                 if not host_upd:
-                    # 2. 如果未找到记录，先逻辑删除其他有效记录
+                    # 2. If record not found, first logically delete other valid records
                     delete_stmt = (
                         update(HostUpd)
                         .where(
@@ -329,7 +336,7 @@ class AgentVncOtaReportService:
                     )
                     await session.execute(delete_stmt)
 
-                    # 3. 创建新记录
+                    # 3. Create new record
                     new_record_id = generate_snowflake_id()
                     host_upd = HostUpd(
                         id=new_record_id,
@@ -343,7 +350,7 @@ class AgentVncOtaReportService:
                     session.add(host_upd)
 
                     logger.info(
-                        "创建新的 OTA 更新记录",
+                        "Created new OTA update record",
                         extra={
                             "record_id": new_record_id,
                             "host_id": host_id,
@@ -353,16 +360,12 @@ class AgentVncOtaReportService:
                         },
                     )
                 else:
-                    # 4. 更新现有记录
-                    update_stmt = (
-                        update(HostUpd)
-                        .where(HostUpd.id == host_upd.id)
-                        .values(app_state=biz_state)
-                    )
+                    # 4. Update existing record
+                    update_stmt = update(HostUpd).where(HostUpd.id == host_upd.id).values(app_state=biz_state)
                     await session.execute(update_stmt)
 
                     logger.info(
-                        "更新 OTA 更新记录",
+                        "Updated OTA update record",
                         extra={
                             "record_id": host_upd.id,
                             "host_id": host_id,
@@ -373,12 +376,12 @@ class AgentVncOtaReportService:
                         },
                     )
 
-                # 5. 如果更新成功，执行额外操作
-                if biz_state == 2:  # 成功
-                    # 更新主机状态为空闲
+                # 5. If update succeeded, perform additional operations
+                if biz_state == 2:  # Success
+                    # Update host state to free
                     host_update_values: Dict[str, Any] = {"host_state": HOST_STATE_FREE}
 
-                    # 如果提供了新版本号，也更新 agent_ver
+                    # If new version provided, also update agent_ver
                     if agent_ver:
                         host_update_values["agent_ver"] = agent_ver
 
@@ -394,16 +397,12 @@ class AgentVncOtaReportService:
                     )
                     await session.execute(host_update_stmt)
 
-                    # 逻辑删除当前 OTA 记录
-                    del_stmt = (
-                        update(HostUpd)
-                        .where(HostUpd.id == host_upd.id)
-                        .values(del_flag=1)
-                    )
+                    # Logically delete current OTA record
+                    del_stmt = update(HostUpd).where(HostUpd.id == host_upd.id).values(del_flag=1)
                     await session.execute(del_stmt)
 
                     logger.info(
-                        "OTA 更新成功，已更新主机状态并删除 OTA 记录",
+                        "OTA update succeeded, host state updated and OTA record deleted",
                         extra={
                             "host_id": host_id,
                             "app_name": app_name,
@@ -427,7 +426,7 @@ class AgentVncOtaReportService:
             raise
         except Exception as e:
             logger.error(
-                "OTA 更新状态上报失败",
+                "OTA update status report failed",
                 extra={
                     "host_id": host_id,
                     "app_name": app_name,
@@ -437,23 +436,23 @@ class AgentVncOtaReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="OTA 更新状态上报处理失败",
+                message="OTA update status report processing failed",
                 error_code="OTA_UPDATE_STATUS_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_OTA_UPDATE_STATUS_REPORT_FAILED,
                 http_status_code=500,
             )
 
     async def get_latest_ota_configs(self) -> List[Dict[str, Optional[str]]]:
-        """获取最新的 OTA 配置列表
+        """Get latest OTA configuration list
 
         Returns:
-            OTA 配置列表，每个配置包含 app_name 和 app_ver
+            OTA configuration list, each configuration contains app_name and app_ver
 
         Note:
-            查询 sys_conf 表中 conf_key='agent_ota' 的记录
+            Query records in sys_conf table where conf_key='agent_ota'
         """
         try:
-            logger.info("开始获取最新 OTA 配置")
+            logger.info("Starting to get latest OTA configuration")
 
             session_factory = self.session_factory
             async with session_factory() as session:
@@ -472,21 +471,24 @@ class AgentVncOtaReportService:
                 for conf in configs:
                     if conf.conf_val:
                         import json
+
                         try:
                             config_data = json.loads(conf.conf_val)
                             if isinstance(config_data, dict):
-                                ota_list.append({
-                                    "app_name": config_data.get("app_name"),
-                                    "app_ver": config_data.get("app_ver"),
-                                })
+                                ota_list.append(
+                                    {
+                                        "app_name": config_data.get("app_name"),
+                                        "app_ver": config_data.get("app_ver"),
+                                    }
+                                )
                         except json.JSONDecodeError:
                             logger.warning(
-                                "解析 OTA 配置失败",
+                                "Failed to parse OTA configuration",
                                 extra={"conf_id": conf.id, "conf_val": conf.conf_val},
                             )
 
                 logger.info(
-                    "获取 OTA 配置完成",
+                    "OTA configuration retrieval completed",
                     extra={"count": len(ota_list)},
                 )
 
@@ -494,22 +496,22 @@ class AgentVncOtaReportService:
 
         except Exception as e:
             logger.error(
-                "获取 OTA 配置失败",
+                "Failed to get OTA configuration",
                 extra={"error": str(e)},
                 exc_info=True,
             )
             return []
 
 
-# 模块级实例
+# Module-level instance
 _vnc_ota_report_service_instance: Optional[AgentVncOtaReportService] = None
 
 
 def get_vnc_ota_report_service() -> AgentVncOtaReportService:
-    """获取 VNC/OTA 上报服务实例（单例模式）
+    """Get VNC/OTA report service instance (singleton pattern)
 
     Returns:
-        AgentVncOtaReportService: VNC/OTA 上报服务实例
+        AgentVncOtaReportService: VNC/OTA report service instance
     """
     global _vnc_ota_report_service_instance
     if _vnc_ota_report_service_instance is None:

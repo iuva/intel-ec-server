@@ -171,15 +171,15 @@ ignore = [
 # Allow asserts in conftest.py
 "conftest.py" = ["S101"]
 
-# Allow Chinese punctuation in comments and docstrings (全角标点在中文注释中是合理的)
+# Allow Chinese punctuation in comments and docstrings (Allowing full-width punctuation in Chinese comments is reasonable)
 "**/*.py" = ["RUF001", "RUF002", "RUF003"]
 
 # Allow Depends() calls in FastAPI endpoints and lazy imports
 "**/endpoints/**/*.py" = ["B008", "PLC0415"]
 "**/api/**/*.py" = ["B008", "PLC0415"]
-# Allow print statements in example files (保留通用规则)
+# Allow print statements in example files (Keep general rules)
 
-# Auth Service specific ignores (合并自 services/auth-service/ruff.toml)
+# Auth Service specific ignores (Merged from services/auth-service/ruff.toml)
 # These rules are relaxed for auth-service to maintain compatibility with existing code
 "**/auth-service/**/*.py" = ["B904", "N805"]  # raise from err, Pydantic validator cls naming
 

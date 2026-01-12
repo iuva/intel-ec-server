@@ -1,1 +1,1 @@
-"""API v1 端点模块"""
+"""API v1 endpoints module"""

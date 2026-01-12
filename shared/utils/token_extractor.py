@@ -1,14 +1,14 @@
 """
-Token 提取和验证工具类
+Token Extraction and Verification Utility Class
 
-提供统一的 HTTP/WebSocket token 提取和验证功能。
+Provides unified HTTP/WebSocket token extraction and verification functionality.
 """
 
 import os
 import sys
 from typing import Any, Dict, Optional, Tuple
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     import httpx
     from fastapi import Request
@@ -25,9 +25,9 @@ logger = get_logger(__name__)
 
 
 class TokenExtractor:
-    """Token 提取和验证工具类
+    """Token Extraction and Verification Utility Class
 
-    提供从 HTTP Request 中提取 token 并调用 auth-service 验证的功能。
+    Provides functionality to extract tokens from HTTP Requests and verify them with auth-service.
 
     Example:
         >>> extractor = TokenExtractor()
@@ -38,54 +38,56 @@ class TokenExtractor:
     """
 
     def __init__(self, auth_service_url: str = "http://auth-service:8001", service_discovery=None):
-        """初始化 Token 提取器
+        """Initialize Token Extractor
 
         Args:
-            auth_service_url: 认证服务 URL（静态配置，当 service_discovery 未提供时使用）
-            service_discovery: ServiceDiscovery 实例（可选），用于动态获取服务地址
+            auth_service_url: Authentication service URL (static configuration,
+                              used when service_discovery is not provided)
+            service_discovery: ServiceDiscovery instance (optional),
+                               used to dynamically get service addresses
         """
         self.auth_service_url = auth_service_url
         self.service_discovery = service_discovery
 
     def extract_token_from_request(self, request: Request) -> Optional[str]:
-        """从 HTTP Request 中提取 token
+        """Extract token from HTTP Request
 
-        支持以下方式：
-        1. Authorization 头：Bearer token
-        2. 查询参数：?token=xxx
-        3. 自定义头：X-Token: xxx
+        Supports the following methods:
+        1. Authorization header: Bearer token
+        2. Query parameter: ?token=xxx
+        3. Custom header: X-Token: xxx
 
         Args:
-            request: FastAPI Request 对象
+            request: FastAPI Request object
 
         Returns:
-            token 字符串或 None
+            token string or None
 
         Example:
             >>> extractor = TokenExtractor()
             >>> token = extractor.extract_token_from_request(request)
         """
-        # 1. 从 Authorization 头中提取（推荐方式）
+        # 1. Extract from Authorization header (recommended method)
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            token = auth_header[7:]  # 移除 "Bearer " 前缀
-            logger.debug("从 Authorization 头中提取 token", extra={"method": "bearer_header"})
+            token = auth_header[7:]  # Remove "Bearer " prefix
+            logger.debug("Extracted token from Authorization header", extra={"method": "bearer_header"})
             return token
 
-        # 2. 从查询参数中提取（兼容性）
+        # 2. Extract from query parameters (compatibility)
         token = request.query_params.get("token")
         if token:
-            logger.debug("从查询参数中提取 token", extra={"method": "query_param"})
+            logger.debug("Extracted token from query parameters", extra={"method": "query_param"})
             return token
 
-        # 3. 从自定义 X-Token 头中提取（兼容性）
+        # 3. Extract from custom X-Token header (compatibility)
         token = request.headers.get("X-Token")
         if token:
-            logger.debug("从 X-Token 头中提取 token", extra={"method": "custom_header"})
+            logger.debug("Extracted token from X-Token header", extra={"method": "custom_header"})
             return token
 
         logger.warning(
-            "没有找到 token",
+            "No token found",
             extra={
                 "path": request.url.path,
                 "query_params": dict(request.query_params),
@@ -94,16 +96,16 @@ class TokenExtractor:
         return None
 
     async def verify_token(self, token: str, timeout: float = 10.0) -> Tuple[bool, Optional[Dict[str, Any]]]:
-        """验证 token 有效性
+        """Verify token validity
 
-        调用 auth-service 的 introspect 接口验证 token。
+        Calls auth-service's introspect endpoint to verify the token.
 
         Args:
-            token: JWT token 字符串
-            timeout: 请求超时时间（秒）
+            token: JWT token string
+            timeout: Request timeout (seconds)
 
         Returns:
-            (是否有效, 用户信息字典或None)
+            (is_valid, user information dictionary or None)
 
         Example:
             >>> extractor = TokenExtractor()
@@ -112,11 +114,11 @@ class TokenExtractor:
             >>>     print(payload["user_id"])
         """
         if not token:
-            logger.warning("Token 为空")
+            logger.warning("Token is empty")
             return False, None
 
         try:
-            # 获取 auth-service 地址（动态或静态）
+            # Get auth-service address (dynamic or static)
             if self.service_discovery:
                 auth_service_url = await self.service_discovery.get_service_url("auth-service")
             else:
@@ -134,38 +136,38 @@ class TokenExtractor:
                     data = result.get("data", {})
 
                     logger.debug(
-                        "收到 introspect 响应",
+                        "Received introspect response",
                         extra={
                             "active": data.get("active"),
                             "id": data.get("id"),
                         },
                     )
 
-                    # 检查 token 是否有效
+                    # Check if token is valid
                     if data.get("active", False):
-                        # ✅ 统一使用 id 字段，没有则返回 False
+                        # ✅ Use id field uniformly, return False if not present
                         user_id = data.get("id")
                         if not user_id:
                             logger.warning(
-                                "Token 验证成功但 id 为空",
+                                "Token verification successful but id is empty",
                                 extra={
                                     "data_keys": list(data.keys()),
                                     "active": data.get("active"),
                                 },
                             )
                             return False, None
-                        # 构建用户信息
+                        # Build user information
                         user_info = {
                             "id": user_id,
                             "username": data.get("username"),
                             "user_type": data.get("user_type"),
                             "permissions": data.get("permissions", []),
                             "roles": data.get("roles", []),
-                            "mg_id": data.get("mg_id"),  # 管理组ID（如果有）
+                            "mg_id": data.get("mg_id"),  # Management group ID (if available)
                         }
 
                         logger.info(
-                            "Token 验证成功",
+                            "Token verification successful",
                             extra={
                                 "id": user_info["id"],
                                 "username": user_info["username"],
@@ -173,32 +175,32 @@ class TokenExtractor:
                             },
                         )
                         return True, user_info
-                    logger.warning("Token 已失效或无效")
+                    logger.warning("Token is expired or invalid")
                     return False, None
                 logger.warning(
-                    f"Token 验证请求失败: {response.status_code}",
+                    f"Token verification request failed: {response.status_code}",
                     extra={"status_code": response.status_code},
                 )
                 return False, None
 
         except httpx.TimeoutException:
-            logger.error("Token 验证超时: auth-service 无响应")
+            logger.error("Token verification timeout: auth-service not responding")
             return False, None
 
         except Exception as e:
-            logger.error(f"Token 验证异常: {e!s}", exc_info=True)
+            logger.error(f"Token verification exception: {e!s}", exc_info=True)
             return False, None
 
     async def extract_and_verify(self, request: Request) -> Tuple[bool, Optional[Dict[str, Any]]]:
-        """一步到位：提取并验证 token
+        """One-stop: extract and verify token
 
-        从 Request 中提取 token 并调用 auth-service 验证。
+        Extract token from Request and verify with auth-service.
 
         Args:
-            request: FastAPI Request 对象
+            request: FastAPI Request object
 
         Returns:
-            (是否有效, 用户信息字典或None)
+            (is_valid, user information dictionary or None)
 
         Example:
             >>> extractor = TokenExtractor()
@@ -206,26 +208,26 @@ class TokenExtractor:
             >>> if is_valid:
             >>>     id = user_info["id"]
         """
-        # 提取 token
+        # Extract token
         token = self.extract_token_from_request(request)
 
         if not token:
-            logger.warning("请求中未找到 token")
+            logger.warning("No token found in request")
             return False, None
 
-        # 验证 token
+        # Verify token
         return await self.verify_token(token)
 
 
-# 全局单例实例
+# Global singleton instance
 _token_extractor_instance: Optional[TokenExtractor] = None
 
 
 def get_token_extractor() -> TokenExtractor:
-    """获取 Token 提取器单例实例
+    """Get Token Extractor singleton instance
 
     Returns:
-        TokenExtractor: Token 提取器实例
+        TokenExtractor: Token Extractor instance
 
     Example:
         >>> extractor = get_token_extractor()

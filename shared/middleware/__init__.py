@@ -1,11 +1,11 @@
 """
-共享中间件模块
+Shared Middleware Module
 
-提供所有微服务可使用的中间件，包括：
-- 异常处理中间件
-- 指标收集中间件
-- HTTP 请求/响应日志中间件
-- 请求上下文中间件
+Provides middleware available for all microservices, including:
+- Exception handling middleware
+- Metrics collection middleware
+- HTTP request/response logging middleware
+- Request context middleware
 """
 
 from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
@@ -24,9 +24,9 @@ from shared.middleware.request_context_middleware import (
 )
 
 __all__ = [
-    # HTTP 日志中间件
+    # HTTP logging middleware
     "HTTPLoggingMiddleware",
-    # 请求上下文中间件
+    # Request context middleware
     "RequestContextMiddleware",
     "get_request_id",
     "get_user_id",

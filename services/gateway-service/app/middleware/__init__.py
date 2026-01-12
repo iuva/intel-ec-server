@@ -1,8 +1,8 @@
 """
-Gateway Service 中间件模块
+Gateway Service middleware module
 
-提供网关服务的中间件功能，包括：
-- 认证中间件
-- 请求预处理
-- 响应后处理
+Provides middleware functionality for gateway service, including:
+- Authentication middleware
+- Request preprocessing
+- Response post-processing
 """

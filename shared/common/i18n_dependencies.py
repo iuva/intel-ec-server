@@ -1,7 +1,7 @@
 """
-国际化依赖注入模块
+Internationalization Dependency Injection Module
 
-提供 FastAPI 依赖注入函数，用于从请求头获取语言偏好。
+Provides FastAPI dependency injection functions to get language preferences from request headers.
 """
 
 import os
@@ -19,16 +19,16 @@ except ImportError:
 
 def get_locale(
     request: Request,
-    accept_language: Optional[str] = Header(None, description="Accept-Language 请求头"),
+    accept_language: Optional[str] = Header(None, description="Accept-Language header")
 ) -> str:
-    """从请求头获取语言偏好
+    """Get language preference from request header
 
     Args:
-        request: FastAPI 请求对象
-        accept_language: Accept-Language 请求头值
+        request: FastAPI request object
+        accept_language: Accept-Language header value
 
     Returns:
-        语言代码（如 "zh_CN", "en_US"）
+        Language code (e.g. "zh_CN", "en_US")
 
     Example:
         ```python
@@ -38,29 +38,29 @@ def get_locale(
             return SuccessResponse(message=message, data=users)
         ```
     """
-    # 优先从请求头获取
+    # Prioritize getting from request header
     if accept_language:
         return parse_accept_language(accept_language)
 
-    # 从请求对象获取（如果中间件已经解析过）
+    # Get from request object (if middleware has already parsed)
     if hasattr(request.state, "locale"):
         return request.state.locale
 
-    # 默认语言
+    # Default language
     return "zh_CN"
 
 
 def translate(key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs):
-    """翻译函数（用于依赖注入）
+    """Translation function (for dependency injection)
 
     Args:
-        key: 翻译键
-        locale: 语言代码（如果为 None 则从请求中获取）
-        default: 默认消息
-        **kwargs: 格式化变量
+        key: Translation key
+        locale: Language code (if None, get from request)
+        default: Default message
+        **kwargs: Formatting variables
 
     Returns:
-        翻译后的消息
+        Translated message
 
     Example:
         ```python
@@ -74,7 +74,7 @@ def translate(key: str, locale: Optional[str] = None, default: Optional[str] = N
         ```
     """
 
-    # 这里返回一个闭包函数，实际使用时需要传入 locale
+    # Here return a closure function, locale needs to be ***REMOVED***ed in when actually used
     def _translate(k: str, loc: Optional[str] = locale, **kw):
         return t(k, locale=loc, default=default, **kw)
 

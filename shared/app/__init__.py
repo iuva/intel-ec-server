@@ -1,7 +1,7 @@
 """
-Shared App 模块
+Shared App Module
 
-提供微服务应用的统一初始化、生命周期管理和异常处理。
+Provides unified initialization, lifecycle management, and exception handling for microservice applications.
 """
 
 from shared.app.application import create_exception_handlers

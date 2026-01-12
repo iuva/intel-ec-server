@@ -1,6 +1,6 @@
 """
-Host Service API 接口模块
+Host Service API interface module
 
-组织和管理Host Service的所有API版本，
-包含了不同版本的API接口定义。
+Organizes and manages all API versions for Host Service,
+contains API interface definitions for different versions.
 """

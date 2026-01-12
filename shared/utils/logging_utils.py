@@ -1,14 +1,14 @@
-"""共享日志工具模块
+"""Shared Logging Utilities Module
 
-提供统一的日志记录工具函数，支持：
-1. 操作日志（开始/完成）
-2. 请求日志（接收/完成）
-3. 数据库操作日志
-4. 外部 API 调用日志
-5. 请求上下文装饰器
-6. 性能追踪上下文管理器
+Provides unified logging utility functions, supporting:
+1. Operation logs (start/complete)
+2. Request logs (receive/complete)
+3. Database operation logs
+4. External API call logs
+5. Request context decorators
+6. Performance tracking context managers
 
-使用示例:
+Usage example:
     from shared.utils.logging_utils import (
         log_operation_start,
         log_operation_completed,
@@ -17,18 +17,18 @@
         log_external_api_call,
     )
 
-    # 操作日志
-    log_operation_start("创建用户", extra={"username": "admin"})
-    log_operation_completed("创建用户", extra={"user_id": 123})
+    # Operation logs
+    log_operation_start("Create User", extra={"username": "admin"})
+    log_operation_completed("Create User", extra={"user_id": 123})
 
-    # 性能追踪
-    async with timed_operation("数据库查询", logger):
+    # Performance tracking
+    async with timed_operation("Database Query", logger):
         result = await db.execute(query)
 
-    # 数据库操作日志
+    # Database operation logs
     log_db_query("select", "users", 15.5, rows_affected=10)
 
-    # 外部 API 调用日志
+    # External API call logs
     log_external_api_call("GET", "http://api.example.com", 200, 150.0)
 """
 
@@ -40,12 +40,12 @@ from typing import Any, Callable, Dict, Optional, TypeVar, Union
 
 from loguru import logger as default_logger
 
-# 类型变量用于装饰器
+# Type variable for decorators
 F = TypeVar("F", bound=Callable[..., Any])
 
 
 # ============================================================================
-# 基础日志函数
+# Basic logging functions
 # ============================================================================
 
 
@@ -54,16 +54,16 @@ def log_request_received(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录请求接收日志
+    """Record request received log
 
     Args:
-        operation: 操作名称（如 "query_available_hosts", "report_hardware"）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例，如果为 None 则使用默认 logger
+        operation: Operation name (e.g., "query_available_hosts", "report_hardware")
+        extra: Additional log fields
+        logger_instance: Custom logger instance, if None then use default logger
     """
     log = logger_instance or default_logger
     log.info(
-        f"📥 接收请求: {operation}",
+        f"📥 Request Received: {operation}",
         extra=extra or {},
     )
 
@@ -74,13 +74,13 @@ def log_request_completed(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录请求处理完成日志
+    """Record request processing completed log
 
     Args:
-        operation: 操作名称
-        duration_ms: 处理耗时（毫秒）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        operation: Operation name
+        duration_ms: Processing time (milliseconds)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = extra.copy() if extra else {}
@@ -89,7 +89,7 @@ def log_request_completed(
 
     duration_str = f" ({duration_ms:.2f}ms)" if duration_ms is not None else ""
     log.info(
-        f"✅ 请求完成: {operation}{duration_str}",
+        f"✅ Request Completed: {operation}{duration_str}",
         extra=log_extra,
     )
 
@@ -99,16 +99,16 @@ def log_operation_start(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录操作开始日志
+    """Record operation start log
 
     Args:
-        operation: 操作名称
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        operation: Operation name
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log.info(
-        f"▶ 开始: {operation}",
+        f"▶ Started: {operation}",
         extra=extra or {},
     )
 
@@ -119,13 +119,13 @@ def log_operation_completed(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录操作完成日志
+    """Record operation completed log
 
     Args:
-        operation: 操作名称
-        duration_ms: 操作耗时（毫秒）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        operation: Operation name
+        duration_ms: Operation time (milliseconds)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = extra.copy() if extra else {}
@@ -134,7 +134,7 @@ def log_operation_completed(
 
     duration_str = f" ({duration_ms:.2f}ms)" if duration_ms is not None else ""
     log.info(
-        f"✓ 完成: {operation}{duration_str}",
+        f"✓ Completed: {operation}{duration_str}",
         extra=log_extra,
     )
 
@@ -147,15 +147,15 @@ def log_operation_failed(
     logger_instance: Optional[Any] = None,
     include_traceback: bool = True,
 ) -> None:
-    """记录操作失败日志
+    """Record operation failed log
 
     Args:
-        operation: 操作名称
-        error: 错误信息或异常对象
-        duration_ms: 操作耗时（毫秒）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
-        include_traceback: 是否包含完整堆栈信息（默认 True）
+        operation: Operation name
+        error: Error message or exception object
+        duration_ms: Operation time (milliseconds)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
+        include_traceback: Whether to include full stack trace (default True)
     """
     log = logger_instance or default_logger
     log_extra = extra.copy() if extra else {}
@@ -169,9 +169,9 @@ def log_operation_failed(
         log_extra["error_message"] = error_msg
 
     duration_str = f" ({duration_ms:.2f}ms)" if duration_ms is not None else ""
-    message = f"✗ 失败: {operation}{duration_str} - {error_msg}"
+    message = f"✗ Failed: {operation}{duration_str} - {error_msg}"
 
-    # 如果是异常且需要打印堆栈，使用 opt(exception=True)
+    # If it's an exception and needs to print the stack, use opt(exception=True)
     if is_exception and include_traceback:
         log.opt(exception=error).error(message, extra=log_extra)
     else:
@@ -185,23 +185,23 @@ def log_error(
     logger_instance: Optional[Any] = None,
     include_traceback: bool = True,
 ) -> None:
-    """记录通用错误日志（带完整堆栈信息）
+    """Record general error log (with full stack trace)
 
-    这是一个通用的错误日志函数，适用于任何需要记录错误的场景。
-    默认会打印完整的堆栈信息。
+    This is a general error logging function, suitable for any scenario requiring error logging.
+    By default, it will print the full stack trace.
 
     Args:
-        message: 错误描述消息
-        error: 错误信息或异常对象（可选）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
-        include_traceback: 是否包含完整堆栈信息（默认 True）
+        message: Error description message
+        error: Error message or exception object (optional)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
+        include_traceback: Whether to include full stack trace (default True)
 
     Usage:
         try:
             risky_operation()
         except Exception as e:
-            log_error("执行风险操作失败", error=e, extra={"user_id": 123})
+            log_error("Failed to execute risky operation", error=e, extra={"user_id": 123})
     """
     log = logger_instance or default_logger
     log_extra = extra.copy() if extra else {}
@@ -215,7 +215,7 @@ def log_error(
     if error:
         full_message = f"{full_message}: {error}"
 
-    # 如果是异常且需要打印堆栈，使用 opt(exception=True)
+    # If it's an exception and needs to print the stack, use opt(exception=True)
     if is_exception and include_traceback:
         log.opt(exception=error).error(full_message, extra=log_extra)
     else:
@@ -227,22 +227,22 @@ def log_warning(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录警告日志
+    """Record warning log
 
     Args:
-        message: 警告消息
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        message: Warning message
+        extra: Additional log fields
+        logger_instance: Custom logger instance
 
     Usage:
-        log_warning("配置值过大", extra={"config_key": "max_connections", "value": 10000})
+        log_warning("Configuration value too large", extra={"config_key": "max_connections", "value": 10000})
     """
     log = logger_instance or default_logger
     log.warning(f"⚠ {message}", extra=extra)
 
 
 # ============================================================================
-# 数据库操作日志
+# Database operation logs
 # ============================================================================
 
 
@@ -254,15 +254,15 @@ def log_db_query(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录数据库查询日志
+    """Record database query log
 
     Args:
-        operation: 操作类型（select, insert, update, delete）
-        table: 表名
-        duration_ms: 查询耗时（毫秒）
-        rows_affected: 影响的行数
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        operation: Operation type (select, insert, update, delete)
+        table: Table name
+        duration_ms: Query time (milliseconds)
+        rows_affected: Number of affected rows
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {
@@ -275,15 +275,15 @@ def log_db_query(
     if extra:
         log_extra.update(extra)
 
-    # 根据耗时选择日志级别
-    if duration_ms > 1000:  # 超过1秒，警告
+    # Choose log level based on duration
+    if duration_ms > 1000:  # Over 1 second, warning
         log.warning(
-            f"🐢 慢查询: {operation.upper()} {table} ({duration_ms:.2f}ms, {rows_affected} rows)",
+            f"🐢 Slow Query: {operation.upper()} {table} ({duration_ms:.2f}ms, {rows_affected} rows)",
             extra=log_extra,
         )
-    elif duration_ms > 500:  # 超过500ms，信息级别但标记
+    elif duration_ms > 500:  # Over 500ms, info level but marked
         log.info(
-            f"⚠ 较慢查询: {operation.upper()} {table} ({duration_ms:.2f}ms, {rows_affected} rows)",
+            f"⚠ Slower Query: {operation.upper()} {table} ({duration_ms:.2f}ms, {rows_affected} rows)",
             extra=log_extra,
         )
     else:
@@ -301,15 +301,15 @@ def log_db_error(
     logger_instance: Optional[Any] = None,
     include_traceback: bool = True,
 ) -> None:
-    """记录数据库错误日志
+    """Record database error log
 
     Args:
-        operation: 操作类型
-        table: 表名
-        error: 错误信息或异常对象
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
-        include_traceback: 是否包含完整堆栈信息（默认 True）
+        operation: Operation type
+        table: Table name
+        error: Error message or exception object
+        extra: Additional log fields
+        logger_instance: Custom logger instance
+        include_traceback: Whether to include full stack trace (default True)
     """
     log = logger_instance or default_logger
     log_extra = {
@@ -323,9 +323,9 @@ def log_db_error(
     if extra:
         log_extra.update(extra)
 
-    message = f"❌ DB错误: {operation.upper()} {table} - {error}"
+    message = f"❌ DB Error: {operation.upper()} {table} - {error}"
 
-    # 如果是异常且需要打印堆栈，使用 opt(exception=True)
+    # If it's an exception and needs to print the stack, use opt(exception=True)
     if is_exception and include_traceback:
         log.opt(exception=error).error(message, extra=log_extra)
     else:
@@ -333,7 +333,7 @@ def log_db_error(
 
 
 # ============================================================================
-# 外部 API 调用日志
+# External API call logs
 # ============================================================================
 
 
@@ -345,15 +345,15 @@ def log_external_api_call(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录外部 API 调用日志
+    """Record external API call log
 
     Args:
-        method: HTTP 方法（GET, POST, PUT, DELETE）
-        url: 请求 URL
-        status_code: HTTP 响应状态码
-        duration_ms: 请求耗时（毫秒）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        method: HTTP method (GET, POST, PUT, DELETE)
+        url: Request URL
+        status_code: HTTP response status code
+        duration_ms: Request time (milliseconds)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra: Dict[str, Any] = {
@@ -367,28 +367,28 @@ def log_external_api_call(
     if extra:
         log_extra.update(extra)
 
-    # 根据状态码选择日志级别
+    # Choose log level based on status code
     duration_str = f" ({duration_ms:.2f}ms)" if duration_ms else ""
     status_str = f" [{status_code}]" if status_code else ""
 
     if status_code is None:
         log.debug(
-            f"🌐 API调用: {method.upper()} {url}",
+            f"🌐 API Call: {method.upper()} {url}",
             extra=log_extra,
         )
     elif 200 <= status_code < 300:
         log.debug(
-            f"🌐 API成功: {method.upper()} {url}{status_str}{duration_str}",
+            f"🌐 API Success: {method.upper()} {url}{status_str}{duration_str}",
             extra=log_extra,
         )
     elif 400 <= status_code < 500:
         log.warning(
-            f"⚠ API客户端错误: {method.upper()} {url}{status_str}{duration_str}",
+            f"⚠ API Client Error: {method.upper()} {url}{status_str}{duration_str}",
             extra=log_extra,
         )
     else:
         log.error(
-            f"❌ API服务端错误: {method.upper()} {url}{status_str}{duration_str}",
+            f"❌ API Server Error: {method.upper()} {url}{status_str}{duration_str}",
             extra=log_extra,
         )
 
@@ -402,16 +402,16 @@ def log_external_api_error(
     logger_instance: Optional[Any] = None,
     include_traceback: bool = True,
 ) -> None:
-    """记录外部 API 调用错误日志
+    """Record external API call error log
 
     Args:
-        method: HTTP 方法
-        url: 请求 URL
-        error: 错误信息或异常对象
-        duration_ms: 请求耗时（毫秒）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
-        include_traceback: 是否包含完整堆栈信息（默认 True）
+        method: HTTP method
+        url: Request URL
+        error: Error message or exception object
+        duration_ms: Request time (milliseconds)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
+        include_traceback: Whether to include full stack trace (default True)
     """
     log = logger_instance or default_logger
     log_extra: Dict[str, Any] = {
@@ -428,9 +428,9 @@ def log_external_api_error(
         log_extra.update(extra)
 
     duration_str = f" ({duration_ms:.2f}ms)" if duration_ms else ""
-    message = f"❌ API异常: {method.upper()} {url}{duration_str} - {error}"
+    message = f"❌ API Exception: {method.upper()} {url}{duration_str} - {error}"
 
-    # 如果是异常且需要打印堆栈，使用 opt(exception=True)
+    # If it's an exception and needs to print the stack, use opt(exception=True)
     if is_exception and include_traceback:
         log.opt(exception=error).error(message, extra=log_extra)
     else:
@@ -438,7 +438,7 @@ def log_external_api_error(
 
 
 # ============================================================================
-# 性能追踪上下文管理器
+# Performance tracking context managers
 # ============================================================================
 
 
@@ -449,23 +449,23 @@ def timed_operation_sync(
     log_start: bool = True,
     extra: Optional[Dict[str, Any]] = None,
 ):
-    """同步性能追踪上下文管理器
+    """Synchronous performance tracking context manager
 
-    用于测量代码块的执行时间，自动记录开始和完成日志。
+    Used to measure execution time of code blocks, automatically recording start and completion logs.
 
     Args:
-        operation: 操作名称
-        logger_instance: 自定义 logger 实例
-        log_start: 是否记录开始日志
-        extra: 额外的日志字段
+        operation: Operation name
+        logger_instance: Custom logger instance
+        log_start: Whether to record start log
+        extra: Additional log fields
 
     Yields:
-        TimingContext: 包含 elapsed_ms 属性的上下文对象
+        TimingContext: Context object containing elapsed_ms property
 
     Usage:
-        with timed_operation_sync("处理数据", logger) as ctx:
+        with timed_operation_sync("Processing Data", logger) as ctx:
             process_data()
-        print(f"耗时: {ctx.elapsed_ms}ms")
+        print(f"Duration: {ctx.elapsed_ms}ms")
     """
     log = logger_instance or default_logger
 
@@ -496,23 +496,23 @@ async def timed_operation(
     log_start: bool = True,
     extra: Optional[Dict[str, Any]] = None,
 ):
-    """异步性能追踪上下文管理器
+    """Asynchronous performance tracking context manager
 
-    用于测量异步代码块的执行时间，自动记录开始和完成日志。
+    Used to measure execution time of asynchronous code blocks, automatically recording start and completion logs.
 
     Args:
-        operation: 操作名称
-        logger_instance: 自定义 logger 实例
-        log_start: 是否记录开始日志
-        extra: 额外的日志字段
+        operation: Operation name
+        logger_instance: Custom logger instance
+        log_start: Whether to record start log
+        extra: Additional log fields
 
     Yields:
-        TimingContext: 包含 elapsed_ms 属性的上下文对象
+        TimingContext: Context object containing elapsed_ms property
 
     Usage:
-        async with timed_operation("数据库查询", logger) as ctx:
+        async with timed_operation("Database Query", logger) as ctx:
             result = await db.execute(query)
-        print(f"耗时: {ctx.elapsed_ms}ms")
+        print(f"Duration: {ctx.elapsed_ms}ms")
     """
     log = logger_instance or default_logger
 
@@ -537,7 +537,7 @@ async def timed_operation(
 
 
 # ============================================================================
-# 请求上下文装饰器
+# Request context decorators
 # ============================================================================
 
 
@@ -546,17 +546,17 @@ def with_request_logging(
     log_args: bool = False,
     log_result: bool = False,
 ) -> Callable[[F], F]:
-    """请求日志装饰器
+    """Request logging decorator
 
-    自动记录函数调用的开始、完成和异常。
+    Automatically records function call start, completion and exceptions.
 
     Args:
-        operation: 操作名称（默认使用函数名）
-        log_args: 是否记录函数参数
-        log_result: 是否记录返回结果
+        operation: Operation name (defaults to function name)
+        log_args: Whether to log function arguments
+        log_result: Whether to log return result
 
     Usage:
-        @with_request_logging("创建用户", log_args=True)
+        @with_request_logging("Create User", log_args=True)
         async def create_user(username: str, email: str):
             ...
     """
@@ -568,7 +568,7 @@ def with_request_logging(
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             extra: Dict[str, Any] = {}
             if log_args:
-                extra["args"] = str(args)[:200]  # 限制长度
+                extra["args"] = str(args)[:200]  # Limit length
                 extra["kwargs"] = str(kwargs)[:200]
 
             start_time = time.perf_counter()
@@ -622,7 +622,7 @@ def with_request_logging(
 
 
 # ============================================================================
-# WebSocket 日志
+# WebSocket logs
 # ============================================================================
 
 
@@ -632,13 +632,13 @@ def log_websocket_connect(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录 WebSocket 连接日志
+    """Record WebSocket connection log
 
     Args:
-        client_id: 客户端标识
-        remote_addr: 客户端地址
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        client_id: Client identifier
+        remote_addr: Client address
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {"client_id": client_id}
@@ -648,7 +648,7 @@ def log_websocket_connect(
         log_extra.update(extra)
 
     log.info(
-        f"🔌 WebSocket连接: {client_id}",
+        f"🔌 WebSocket Connected: {client_id}",
         extra=log_extra,
     )
 
@@ -659,13 +659,13 @@ def log_websocket_disconnect(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录 WebSocket 断开日志
+    """Record WebSocket disconnection log
 
     Args:
-        client_id: 客户端标识
-        reason: 断开原因
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        client_id: Client identifier
+        reason: Disconnection reason
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {"client_id": client_id}
@@ -676,7 +676,7 @@ def log_websocket_disconnect(
 
     reason_str = f" - {reason}" if reason else ""
     log.info(
-        f"🔌 WebSocket断开: {client_id}{reason_str}",
+        f"🔌 WebSocket Disconnected: {client_id}{reason_str}",
         extra=log_extra,
     )
 
@@ -688,14 +688,14 @@ def log_websocket_message(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录 WebSocket 消息日志
+    """Record WebSocket message log
 
     Args:
-        client_id: 客户端标识
-        message_type: 消息类型
-        direction: 消息方向 ("recv" 或 "send")
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        client_id: Client identifier
+        message_type: Message type
+        direction: Message direction ("recv" or "send")
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {
@@ -708,13 +708,13 @@ def log_websocket_message(
 
     arrow = "⬅" if direction == "recv" else "➡"
     log.debug(
-        f"{arrow} WS消息: {client_id} [{message_type}]",
+        f"{arrow} WS Message: {client_id} [{message_type}]",
         extra=log_extra,
     )
 
 
 # ============================================================================
-# 认证日志
+# Authentication logs
 # ============================================================================
 
 
@@ -725,14 +725,14 @@ def log_auth_success(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录认证成功日志
+    """Record authentication success log
 
     Args:
-        user_id: 用户ID
-        username: 用户名
-        auth_type: 认证类型（login, token_refresh, oauth）
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        user_id: User ID
+        username: Username
+        auth_type: Authentication type (login, token_refresh, oauth)
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {
@@ -746,7 +746,7 @@ def log_auth_success(
 
     user_str = f"{username}({user_id})" if username else user_id
     log.info(
-        f"🔓 认证成功: {user_str} [{auth_type}]",
+        f"🔓 Authentication Success: {user_str} [{auth_type}]",
         extra=log_extra,
     )
 
@@ -758,14 +758,14 @@ def log_auth_failure(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录认证失败日志
+    """Record authentication failure log
 
     Args:
-        reason: 失败原因
-        username: 用户名
-        auth_type: 认证类型
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        reason: Failure reason
+        username: Username
+        auth_type: Authentication type
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {
@@ -779,13 +779,13 @@ def log_auth_failure(
 
     user_str = f" ({username})" if username else ""
     log.warning(
-        f"🔒 认证失败{user_str}: {reason} [{auth_type}]",
+        f"🔒 Authentication Failed{user_str}: {reason} [{auth_type}]",
         extra=log_extra,
     )
 
 
 # ============================================================================
-# 服务启动日志
+# Service startup logs
 # ============================================================================
 
 
@@ -797,15 +797,15 @@ def log_service_startup(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录服务启动日志
+    """Record service startup log
 
     Args:
-        service_name: 服务名称
-        version: 服务版本
-        host: 监听地址
-        port: 监听端口
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        service_name: Service name
+        version: Service version
+        host: Listening address
+        port: Listening port
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra: Dict[str, Any] = {"service_name": service_name}
@@ -821,7 +821,7 @@ def log_service_startup(
     addr_str = f" @ {host}:{port}" if host and port else ""
     version_str = f" v{version}" if version else ""
     log.info(
-        f"🚀 服务启动: {service_name}{version_str}{addr_str}",
+        f"🚀 Service Started: {service_name}{version_str}{addr_str}",
         extra=log_extra,
     )
 
@@ -832,13 +832,13 @@ def log_service_shutdown(
     extra: Optional[Dict[str, Any]] = None,
     logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录服务关闭日志
+    """Record service shutdown log
 
     Args:
-        service_name: 服务名称
-        reason: 关闭原因
-        extra: 额外的日志字段
-        logger_instance: 自定义 logger 实例
+        service_name: Service name
+        reason: Shutdown reason
+        extra: Additional log fields
+        logger_instance: Custom logger instance
     """
     log = logger_instance or default_logger
     log_extra = {"service_name": service_name}
@@ -849,17 +849,17 @@ def log_service_shutdown(
 
     reason_str = f" - {reason}" if reason else ""
     log.info(
-        f"🛑 服务关闭: {service_name}{reason_str}",
+        f"🛑 Service Shutdown: {service_name}{reason_str}",
         extra=log_extra,
     )
 
 
 # ============================================================================
-# 导出
+# Export
 # ============================================================================
 
 __all__ = [
-    # 基础日志
+    # Basic logs
     "log_request_received",
     "log_request_completed",
     "log_operation_start",
@@ -867,25 +867,25 @@ __all__ = [
     "log_operation_failed",
     "log_error",
     "log_warning",
-    # 数据库日志
+    # Database logs
     "log_db_query",
     "log_db_error",
-    # 外部 API 日志
+    # External API logs
     "log_external_api_call",
     "log_external_api_error",
-    # 性能追踪
+    # Performance tracking
     "timed_operation",
     "timed_operation_sync",
-    # 装饰器
+    # Decorators
     "with_request_logging",
-    # WebSocket 日志
+    # WebSocket logs
     "log_websocket_connect",
     "log_websocket_disconnect",
     "log_websocket_message",
-    # 认证日志
+    # Authentication logs
     "log_auth_success",
     "log_auth_failure",
-    # 服务日志
+    # Service logs
     "log_service_startup",
     "log_service_shutdown",
 ]

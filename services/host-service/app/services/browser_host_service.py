@@ -1,6 +1,6 @@
-"""浏览器插件主机管理服务
+"""Browser Plugin Host Management Service
 
-提供浏览器插件使用的主机查询、状态更新等核心业务逻辑。
+Provides core business logic for browser plugin host querying, status updates, etc.
 """
 
 from datetime import datetime, timezone
@@ -20,7 +20,7 @@ from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import HostStatusUpdate, RetryVNCHostInfo
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     # from app.services.agent_websocket_manager import get_agent_websocket_manager  # Moved to local import
     from app.schemas.websocket_message import MessageType
@@ -46,51 +46,52 @@ logger = get_logger(__name__)
 
 
 class BrowserHostService:
-    """浏览器插件主机管理服务类
+    """Browser Plugin Host Management Service Class
 
-    负责浏览器插件的主机管理操作，包括查询、状态更新、心跳更新等。
+    Responsible for browser plugin host management operations, including querying,
+    status updates, heartbeat updates, etc.
 
-    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+    ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
     """
 
     def __init__(self):
-        """初始化服务"""
-        # ✅ 优化：缓存会话工厂
+        """Initialize service"""
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
-        - 第一次调用时初始化
-        - 后续调用复用缓存的工厂实例
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
+        - Initialize on first call
+        - Reuse cached factory instance on subsequent calls
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
     @handle_service_errors(
-        error_message="查询主机信息失败",
+        error_message="Failed to query host information",
         error_code="GET_HOST_FAILED",
     )
     async def get_host_by_id(self, host_id: str) -> dict:
-        """根据ID查询主机信息
+        """Query host information by ID
 
         Args:
-            host_id: 主机ID
+            host_id: Host ID
 
         Returns:
-            主机信息字典
+            Host information dictionary
 
         Raises:
-            BusinessError: 主机不存在时
+            BusinessError: When host does not exist
         """
         try:
             host_id_int = int(host_id)
         except (ValueError, TypeError):
             raise BusinessError(
-                message="主机ID格式无效",
+                message="Invalid host ID format",
                 error_code="INVALID_HOST_ID",
                 code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                 http_status_code=400,
@@ -98,11 +99,11 @@ class BrowserHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 使用工具函数验证主机存在
+            # Use utility function to validate host exists
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
             logger.info(
-                "查询主机信息成功",
+                "Query host information succeeded",
                 extra={
                     "host_id": host_id,
                     "hardware_id": host.hardware_id,
@@ -120,30 +121,26 @@ class BrowserHostService:
             }
 
     @handle_service_errors(
-        error_message="更新主机状态失败",
+        error_message="Failed to update host status",
         error_code="UPDATE_HOST_STATUS_FAILED",
     )
     async def update_host_status(self, host_id: str, status_update: HostStatusUpdate) -> dict:
-        """更新主机状态
+        """Update host status
 
         Args:
-            host_id: 主机ID
-            status_update: 状态更新数据
+            host_id: Host ID
+            status_update: Status update data
 
         Returns:
-            更新后的主机信息
+            Updated host information
 
         Raises:
-            BusinessError: 主机不存在或更新失败时
+            BusinessError: When host does not exist or update fails
         """
-        # ✅ 记录方法调用开始（用于调试）
-        status_update_str = (
-            status_update.model_dump()
-            if hasattr(status_update, "model_dump")
-            else str(status_update)
-        )
+        # ✅ Record method call start (for debugging)
+        status_update_str = status_update.model_dump() if hasattr(status_update, "model_dump") else str(status_update)
         logger.debug(
-            f"开始更新主机状态: {host_id}",
+            f"Starting to update host status: {host_id}",
             extra={
                 "host_id": host_id,
                 "status_update": status_update_str,
@@ -154,7 +151,7 @@ class BrowserHostService:
             host_id_int = int(host_id)
         except (ValueError, TypeError) as e:
             logger.error(
-                f"主机ID格式无效: {host_id}",
+                f"Invalid host ID format: {host_id}",
                 extra={
                     "host_id": host_id,
                     "error_type": type(e).__name__,
@@ -162,7 +159,7 @@ class BrowserHostService:
                 },
             )
             raise BusinessError(
-                message="主机ID格式无效",
+                message="Invalid host ID format",
                 error_code="INVALID_HOST_ID",
                 code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                 http_status_code=400,
@@ -171,11 +168,11 @@ class BrowserHostService:
         session_factory = self.session_factory
         async with session_factory() as session:
             try:
-                # 使用工具函数验证主机存在
-                logger.debug("验证主机存在", extra={"host_id": host_id, "host_id_int": host_id_int})
+                # Use utility function to validate host exists
+                logger.debug("Validating host exists", extra={"host_id": host_id, "host_id_int": host_id_int})
                 host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
                 logger.debug(
-                    f"主机验证成功: {host_id}",
+                    f"Host validation succeeded: {host_id}",
                     extra={
                         "host_id": host_id,
                         "host_found": host is not None,
@@ -184,9 +181,9 @@ class BrowserHostService:
                     },
                 )
             except BusinessError as validate_error:
-                # BusinessError 直接重新抛出，但记录详细信息
+                # BusinessError directly re-raised, but log detailed information
                 logger.error(
-                    f"验证主机存在失败（业务异常）: {host_id}",
+                    f"Host validation failed (business exception): {host_id}",
                     extra={
                         "host_id": host_id,
                         "host_id_int": host_id_int,
@@ -199,9 +196,9 @@ class BrowserHostService:
                 )
                 raise
             except Exception as validate_error:
-                # 验证主机存在失败，记录详细错误信息
+                # Host validation failed, log detailed error information
                 logger.error(
-                    f"验证主机存在失败（系统异常）: {host_id}",
+                    f"Host validation failed (system exception): {host_id}",
                     extra={
                         "host_id": host_id,
                         "host_id_int": host_id_int,
@@ -212,25 +209,25 @@ class BrowserHostService:
                 )
                 raise
 
-            # 记录当前状态（用于调试）
+            # Record current status (for debugging)
             old_host_state = host.host_state
             old_appr_state = host.appr_state
 
-            # ✅ 更新主机状态
-            # 支持两种方式：
-            # 1. 直接使用 host_state 和 appr_state（整数）
-            # 2. 使用 status 字符串（转换为对应的 host_state）
+            # ✅ Update host status
+            # Support two methods:
+            # 1. Directly use host_state and appr_state (integers)
+            # 2. Use status string (convert to corresponding host_state)
             state_changed = False
             if status_update.host_state is not None:
                 if host.host_state != status_update.host_state:
                     host.host_state = status_update.host_state
                     state_changed = True
             elif hasattr(status_update, "status") and status_update.status:
-                # 将字符串状态转换为 host_state
+                # Convert string status to host_state
                 status_map = {
-                    "online": None,  # 在线状态不需要更新 host_state
-                    "offline": 4,    # 4 = 离线状态
-                    "error": None,   # 错误状态暂不处理
+                    "online": None,  # Online status does not need to update host_state
+                    "offline": 4,  # 4 = Offline status
+                    "error": None,  # Error status temporarily not handled
                 }
                 mapped_state = status_map.get(status_update.status.lower())
                 if mapped_state is not None and host.host_state != mapped_state:
@@ -242,9 +239,9 @@ class BrowserHostService:
                     host.appr_state = status_update.appr_state
                     state_changed = True
 
-            # 记录状态变更信息（用于调试）
+            # Record status change information (for debugging)
             logger.debug(
-                f"主机状态更新检查: {host_id}",
+                f"Host status update check: {host_id}",
                 extra={
                     "host_id": host_id,
                     "old_host_state": old_host_state,
@@ -256,13 +253,13 @@ class BrowserHostService:
                 },
             )
 
-            # ✅ 只有在状态确实改变时才提交
+            # ✅ Only commit if status actually changed
             if state_changed:
                 try:
                     await session.commit()
                     await session.refresh(host)
                     logger.info(
-                        "主机状态更新成功",
+                        "Host status updated successfully",
                         extra={
                             "host_id": host_id,
                             "new_host_state": host.host_state,
@@ -270,10 +267,10 @@ class BrowserHostService:
                         },
                     )
                 except Exception as commit_error:
-                    # 提交失败，回滚事务
+                    # Commit failed, rollback transaction
                     await session.rollback()
                     logger.error(
-                        f"主机状态更新提交失败: {host_id}",
+                        f"Host status update commit failed: {host_id}",
                         extra={
                             "host_id": host_id,
                             "error_type": type(commit_error).__name__,
@@ -283,26 +280,22 @@ class BrowserHostService:
                     )
                     raise
             else:
-                # 状态没有改变，直接返回当前状态
+                # Status did not change, directly return current status
                 logger.debug(
-                    f"主机状态未改变，跳过更新: {host_id}",
+                    f"Host status unchanged, skipping update: {host_id}",
                     extra={
                         "host_id": host_id,
                         "current_host_state": host.host_state,
                         "current_appr_state": host.appr_state,
                     },
                 )
-                # ✅ 在会话关闭前保存需要返回的数据
+                # ✅ Save data to return before session closes
                 try:
-                    updated_time_str = (
-                        cast(datetime, host.updated_time).isoformat()
-                        if host.updated_time
-                        else None
-                    )
+                    updated_time_str = cast(datetime, host.updated_time).isoformat() if host.updated_time else None
                 except Exception as attr_error:
-                    # 如果访问 updated_time 失败，记录警告但不抛出异常
+                    # If accessing updated_time fails, log warning but don't raise exception
                     logger.warning(
-                        f"访问 host.updated_time 失败: {host_id}",
+                        f"Failed to access host.updated_time: {host_id}",
                         extra={
                             "host_id": host_id,
                             "error_type": type(attr_error).__name__,
@@ -318,27 +311,23 @@ class BrowserHostService:
                     "updated_time": updated_time_str,
                 }
                 logger.info(
-                    "主机状态更新成功（状态未改变）",
+                    "Host status updated successfully (status unchanged)",
                     extra={
                         "host_id": host_id,
                         "current_host_state": host.host_state,
                         "current_appr_state": host.appr_state,
                     },
                 )
-                # ✅ 在会话关闭前返回，避免访问已关闭的会话对象
+                # ✅ Return before session closes to avoid accessing closed session object
                 return result
 
-            # ✅ 状态已改变，在会话关闭前返回结果
+            # ✅ Status has changed, return result before session closes
             try:
-                updated_time_str = (
-                    cast(datetime, host.updated_time).isoformat()
-                    if host.updated_time
-                    else None
-                )
+                updated_time_str = cast(datetime, host.updated_time).isoformat() if host.updated_time else None
             except Exception as attr_error:
-                # 如果访问 updated_time 失败，记录警告但不抛出异常
+                # If accessing updated_time fails, log warning but don't raise exception
                 logger.warning(
-                    f"访问 host.updated_time 失败: {host_id}",
+                    f"Failed to access host.updated_time: {host_id}",
                     extra={
                         "host_id": host_id,
                         "error_type": type(attr_error).__name__,
@@ -356,26 +345,26 @@ class BrowserHostService:
             return result
 
     @handle_service_errors(
-        error_message="更新主机心跳失败",
+        error_message="Failed to update host heartbeat",
         error_code="UPDATE_HEARTBEAT_FAILED",
     )
     async def update_heartbeat(self, host_id: str) -> dict:
-        """更新主机心跳时间
+        """Update host heartbeat time
 
         Args:
-            host_id: 主机ID
+            host_id: Host ID
 
         Returns:
-            更新后的心跳信息
+            Updated heartbeat information
 
         Raises:
-            BusinessError: 主机不存在或更新失败时
+            BusinessError: When host does not exist or update fails
         """
         try:
             host_id_int = int(host_id)
         except (ValueError, TypeError):
             raise BusinessError(
-                message="主机ID格式无效",
+                message="Invalid host ID format",
                 error_code="INVALID_HOST_ID",
                 code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                 http_status_code=400,
@@ -383,18 +372,18 @@ class BrowserHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 使用工具函数验证主机存在
+            # Use utility function to validate host exists
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
-            # ✅ WebSocket 更新数据时无需设置 updated_by 更新人
-            # ✅ 不手动设置 updated_time，让数据库自动更新（通过 onupdate=func.now()）
-            # 只需要提交事务，数据库会自动更新 updated_time
+            # ✅ WebSocket update data does not need to set updated_by updater
+            # ✅ Do not manually set updated_time, let database auto-update (via onupdate=func.now())
+            # Only need to commit transaction, database will automatically update updated_time
 
             await session.commit()
             await session.refresh(host)
 
             logger.info(
-                "主机心跳更新成功",
+                "Host heartbeat updated successfully",
                 extra={
                     "host_id": host_id,
                     "updated_time": cast(datetime, host.updated_time).isoformat(),
@@ -407,28 +396,29 @@ class BrowserHostService:
             }
 
     async def update_heartbeat_silent(self, host_id: str) -> bool:
-        """静默更新主机心跳时间（用于WebSocket）
+        """Silently update host heartbeat time (for WebSocket)
 
-        此方法专为 WebSocket 心跳监控设计，失败时不记录 ERROR 日志。
-        适用于 host_id 可能不在数据库中的场景。
+        This method is designed specifically for WebSocket heartbeat monitoring,
+        does not log ERROR logs on failure.
+        Suitable for scenarios where host_id may not exist in database.
 
         Args:
-            host_id: 主机ID
+            host_id: Host ID
 
         Returns:
-            True: 更新成功
-            False: 更新失败（主机不存在或ID格式无效）
+            True: Update succeeded
+            False: Update failed (host does not exist or ID format invalid)
 
         Note:
-            - 不抛出异常，仅返回成功/失败状态
-            - 不记录 ERROR 日志
-            - 失败是预期行为，不影响 WebSocket 心跳监控
+            - Does not raise exceptions, only returns success/failure status
+            - Does not log ERROR logs
+            - Failure is expected behavior, does not affect WebSocket heartbeat monitoring
         """
         try:
-            # 验证 ID 格式
+            # Validate ID format
             host_id_int = int(host_id)
         except (ValueError, TypeError):
-            # ID 格式无效，静默失败
+            # ID format invalid, silently fail
             return False
 
         try:
@@ -445,52 +435,52 @@ class BrowserHostService:
                 host = result.scalar_one_or_none()
 
                 if not host:
-                    # 主机不存在，静默失败
+                    # Host does not exist, silently fail
                     return False
 
-                # ✅ WebSocket 更新数据时无需设置 updated_by 更新人
-                # ✅ 不手动设置 updated_time，让数据库自动更新（通过 onupdate=func.now()）
-                # 只需要提交事务，数据库会自动更新 updated_time
+                # ✅ WebSocket update data does not need to set updated_by updater
+                # ✅ Do not manually set updated_time, let database auto-update (via onupdate=func.now())
+                # Only need to commit transaction, database will automatically update updated_time
                 await session.commit()
 
                 return True
 
         except Exception:
-            # 数据库操作失败，静默失败
+            # Database operation failed, silently fail
             return False
 
     async def update_tcp_state(self, host_id: str, tcp_state: int) -> bool:
-        """更新主机TCP连接状态
+        """Update host TCP connection state
 
         Args:
-            host_id: 主机ID (对应 HostRec.id 或 mg_id)
-            tcp_state: TCP状态码
-                - 0: 关闭 (连接断开)
-                - 1: 等待 (心跳超时)
-                - 2: 监听 (连接建立成功)
+            host_id: Host ID (corresponds to HostRec.id or mg_id)
+            tcp_state: TCP state code
+                - 0: Closed (connection disconnected)
+                - 1: Waiting (heartbeat timeout)
+                - 2: Listening (connection established successfully)
 
         Returns:
-            True: 更新成功
-            False: 更新失败（主机不存在或ID格式无效）
+            True: Update succeeded
+            False: Update failed (host does not exist or ID format invalid)
 
         Note:
-            - 用于 WebSocket 连接生命周期管理
-            - 静默失败，不记录 ERROR 日志
+            - Used for WebSocket connection lifecycle management
+            - Silent failure, does not log ERROR logs
         """
         try:
-            # 验证 tcp_state 取值范围
+            # Validate tcp_state value range
             if tcp_state not in (0, 1, 2):
                 logger.warning(
-                    f"无效的 tcp_state 值: {tcp_state}",
+                    f"Invalid tcp_state value: {tcp_state}",
                     extra={"host_id": host_id, "valid_values": [0, 1, 2]},
                 )
                 return False
 
-            # 尝试将 host_id 转为整数
+            # Try to convert host_id to integer
             try:
                 host_id_int = int(host_id)
             except (ValueError, TypeError):
-                # 如果 host_id 不是整数，尝试通过 mg_id 查询
+                # If host_id is not integer, try to query through mg_id
                 session_factory = self.session_factory
                 async with session_factory() as session:
                     stmt = select(HostRec).where(
@@ -507,10 +497,10 @@ class BrowserHostService:
 
                     host_id_int = host.id
 
-            # 更新 tcp_state
+            # Update tcp_state
             session_factory = self.session_factory
             async with session_factory() as session:
-                # ✅ 修复：不手动设置 updated_time，让 onupdate=func.now() 自动更新
+                # ✅ Fix: Do not manually set updated_time, let onupdate=func.now() auto-update
                 stmt = (
                     update(HostRec)
                     .where(
@@ -519,7 +509,7 @@ class BrowserHostService:
                             HostRec.del_flag == 0,
                         )
                     )
-                    .values(tcp_state=tcp_state)  # 移除手动设置的 updated_time
+                    .values(tcp_state=tcp_state)  # Removed manually set updated_time
                 )
 
                 result = await session.execute(stmt)
@@ -527,62 +517,65 @@ class BrowserHostService:
 
                 if result.rowcount > 0:
                     logger.info(
-                        f"TCP状态已更新: host_id={host_id}, tcp_state={tcp_state}",
+                        f"TCP state updated: host_id={host_id}, tcp_state={tcp_state}",
                         extra={
                             "host_id": host_id,
                             "tcp_state": tcp_state,
-                            "tcp_state_name": {0: "关闭", 1: "等待", 2: "监听"}.get(tcp_state),
+                            "tcp_state_name": {0: "Closed", 1: "Waiting", 2: "Listening"}.get(tcp_state),
                         },
                     )
                     return True
                 logger.warning(
-                    f"TCP状态更新无匹配行: host_id={host_id}, tcp_state={tcp_state}",
+                    f"TCP state update no matching rows: host_id={host_id}, tcp_state={tcp_state}",
                     extra={
                         "host_id": host_id,
                         "host_id_int": host_id_int,
                         "tcp_state": tcp_state,
-                        "reason": "记录不存在或已删除",
+                        "reason": "Record does not exist or has been deleted",
                     },
                 )
                 return False
 
         except Exception as e:
             logger.error(
-                f"更新TCP状态失败: host_id={host_id}, tcp_state={tcp_state}, 错误: {e!s}",
+                f"Failed to update TCP state: host_id={host_id}, tcp_state={tcp_state}, error: {e!s}",
                 exc_info=True,
             )
             return False
 
     async def update_agent_version(self, host_id: str, agent_version: str) -> bool:
-        """更新 Agent 版本号
+        """Update Agent version number
 
         Args:
-            host_id: 主机ID（字符串，转换为整数）
-            agent_version: Agent 版本号（最大长度10）
+            host_id: Host ID (string, converted to integer)
+            agent_version: Agent version number (maximum length 10)
 
         Returns:
-            是否更新成功
+            Whether update succeeded
         """
         try:
-            # 验证版本号长度
+            # Validate version number length
             if len(agent_version) > 10:
                 logger.warning(
-                    f"Agent版本号长度超过限制: host_id={host_id}, version={agent_version}, length={len(agent_version)}",
+                    (
+                        f"Agent version length exceeds limit: host_id={host_id}, "
+                        f"version={agent_version}, length={len(agent_version)}"
+                    ),
                     extra={
                         "host_id": host_id,
                         "agent_version": agent_version,
                         "version_length": len(agent_version),
                     },
                 )
-                # 截断到10个字符
+                # Truncate to 10 characters
                 agent_version = agent_version[:10]
 
-            # 转换 host_id 为整数
+            # Convert host_id to integer
             try:
                 host_id_int = int(host_id)
             except (ValueError, TypeError):
                 logger.error(
-                    f"Host ID 格式错误: host_id={host_id}",
+                    f"Host ID format error: host_id={host_id}",
                     extra={
                         "host_id": host_id,
                         "error": "not a valid integer",
@@ -590,7 +583,7 @@ class BrowserHostService:
                 )
                 return False
 
-            # 更新 agent_ver
+            # Update agent_ver
             session_factory = self.session_factory
             async with session_factory() as session:
                 stmt = (
@@ -609,7 +602,7 @@ class BrowserHostService:
 
                 if result.rowcount > 0:
                     logger.info(
-                        f"Agent版本号已更新: host_id={host_id}, agent_version={agent_version}",
+                        f"Agent version number updated: host_id={host_id}, agent_version={agent_version}",
                         extra={
                             "host_id": host_id,
                             "agent_version": agent_version,
@@ -617,47 +610,47 @@ class BrowserHostService:
                     )
                     return True
                 logger.warning(
-                    f"Agent版本号更新无匹配行: host_id={host_id}, agent_version={agent_version}",
+                    f"Agent version number update no matching rows: host_id={host_id}, agent_version={agent_version}",
                     extra={
                         "host_id": host_id,
                         "host_id_int": host_id_int,
                         "agent_version": agent_version,
-                        "reason": "记录不存在或已删除",
+                        "reason": "Record does not exist or has been deleted",
                     },
                 )
                 return False
 
         except Exception as e:
             logger.error(
-                f"更新Agent版本号失败: host_id={host_id}, agent_version={agent_version}, 错误: {e!s}",
+                (f"Failed to update Agent version: host_id={host_id}, agent_version={agent_version}, error: {e!s}"),
                 exc_info=True,
             )
             return False
 
     @handle_service_errors(
-        error_message="查询重试 VNC 列表失败",
+        error_message="Failed to query retry VNC list",
         error_code="GET_RETRY_VNC_LIST_FAILED",
     )
     async def get_retry_vnc_list(self, user_id: str) -> List[RetryVNCHostInfo]:
-        """查询需要重试的 VNC 连接列表
+        """Query VNC connection list that needs retry
 
-        业务逻辑：
-        1. 查询 host_exec_log 表，条件：
-           - user_id = 入参的user_id
-           - case_state != 2（非成功状态）
-           - del_flag = 0（未删除）
-        2. 获取这些记录的 host_id
-        3. 查询 host_rec 表对应的主机信息
-        4. 返回 host_id（主机ID）和 host_acct（重命名为 user_name）
+        Business logic:
+        1. Query host_exec_log table with conditions:
+           - user_id = input user_id
+           - case_state != 2 (non-success state)
+           - del_flag = 0 (not deleted)
+        2. Get host_id from these records
+        3. Query corresponding host information from host_rec table
+        4. Return host_id (host ID) and host_no (renamed as user_name)
 
         Args:
-            user_id: 用户ID
+            user_id: User ID
 
         Returns:
-            重试 VNC 主机信息列表
+            Retry VNC host information list
         """
         logger.info(
-            "查询重试 VNC 列表",
+            "Querying retry VNC list",
             extra={
                 "user_id": user_id,
             },
@@ -665,8 +658,8 @@ class BrowserHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # ✅ 优化：使用 JOIN 查询，一次查询获取所有数据，减少数据库往返
-            # 合并原来的两次查询为一次 JOIN 查询
+            # ✅ Optimization: Use JOIN query to get all data in one query, reduce database round trips
+            # Merge original two queries into one JOIN query
             stmt = (
                 select(HostRec.id, HostRec.host_ip, HostRec.host_no)
                 .select_from(
@@ -678,7 +671,7 @@ class BrowserHostService:
                 .where(
                     and_(
                         HostExecLog.user_id == user_id,
-                        HostExecLog.case_state != CASE_STATE_SUCCESS,  # 非成功状态
+                        HostExecLog.case_state != CASE_STATE_SUCCESS,  # Non-success state
                         HostExecLog.del_flag == DEL_FLAG_USING,
                         HostRec.del_flag == DEL_FLAG_USING,
                         HostRec.tcp_state == TCP_STATE_LISTEN,
@@ -686,16 +679,16 @@ class BrowserHostService:
                         HostRec.appr_state == APPR_STATE_ENABLE,
                     )
                 )
-                .distinct()  # 去重，同一个 host_id 可能有多条失败记录
+                .distinct()  # Deduplicate, same host_id may have multiple failure records
             )
 
             result = await session.execute(stmt)
             hosts = result.fetchall()
 
-            # 如果没有需要重试的主机，直接返回空列表
+            # If no hosts need retry, directly return empty list
             if not hosts:
                 logger.info(
-                    "没有需要重试的 VNC 连接",
+                    "No VNC connections need retry",
                     extra={
                         "user_id": user_id,
                     },
@@ -703,25 +696,25 @@ class BrowserHostService:
                 return []
 
             logger.info(
-                "查询到需要重试的主机列表（JOIN 查询优化）",
+                "Found host list that needs retry (JOIN query optimization)",
                 extra={
                     "user_id": user_id,
                     "host_count": len(hosts),
                 },
             )
 
-            # 构建返回结果
+            # Build return result
             retry_vnc_list = [
                 RetryVNCHostInfo(
-                    host_id=str(host[0]),  # ✅ 转换为字符串避免精度丢失
-                    host_ip=host[1] or "",  # 防止 None 值
-                    user_name=host[2] or "",  # host_no 重命名为 user_name
+                    host_id=str(host[0]),  # ✅ Convert to string to avoid precision loss
+                    host_ip=host[1] or "",  # Prevent None value
+                    user_name=host[2] or "",  # host_no renamed as user_name
                 )
                 for host in hosts
             ]
 
             logger.info(
-                "查询重试 VNC 列表成功",
+                "Query retry VNC list succeeded",
                 extra={
                     "user_id": user_id,
                     "total": len(retry_vnc_list),
@@ -731,26 +724,26 @@ class BrowserHostService:
             return retry_vnc_list
 
     @handle_service_errors(
-        error_message="释放主机失败",
+        error_message="Failed to release hosts",
         error_code="RELEASE_HOSTS_FAILED",
     )
     async def release_hosts(self, user_id: str, host_list: List[str]) -> int:
-        """释放主机 - 逻辑删除执行日志记录并更新主机状态
+        """Release hosts - logically delete execution log records and update host status
 
-        业务逻辑：
-        1. 逻辑删除 host_exec_log 表中符合条件的记录（设置 del_flag = 1）
-        2. 更新 host_rec 表中对应主机的 host_state = 0（空闲状态）
-        3. 通过 WebSocket 通知指定的 agent
+        Business logic:
+        1. Logically delete records in host_exec_log table that meet conditions (set del_flag = 1)
+        2. Update host_state = 0 (free state) for corresponding hosts in host_rec table
+        3. Notify specified agent through WebSocket
 
         Args:
-            user_id: 用户ID
-            host_list: 主机ID列表
+            user_id: User ID
+            host_list: Host ID list
 
         Returns:
-            更新的记录数
+            Number of updated records
         """
         logger.info(
-            "开始释放主机（逻辑删除）",
+            "Starting to release hosts (logical delete)",
             extra={
                 "user_id": user_id,
                 "host_count": len(host_list),
@@ -758,12 +751,12 @@ class BrowserHostService:
             },
         )
 
-        # 将 host_list 中的字符串转换为整数
+        # Convert strings in host_list to integers
         try:
             host_ids = [int(host_id) for host_id in host_list]
         except (ValueError, TypeError) as e:
             logger.error(
-                "主机ID格式转换失败",
+                "Host ID format conversion failed",
                 extra={
                     "user_id": user_id,
                     "host_list": host_list,
@@ -771,14 +764,14 @@ class BrowserHostService:
                 },
             )
             raise BusinessError(
-                message="主机ID格式无效",
+                message="Invalid host ID format",
                 error_code="INVALID_HOST_ID",
                 code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                 http_status_code=400,
             )
 
         logger.info(
-            "主机ID转换完成",
+            "Host ID conversion completed",
             extra={
                 "user_id": user_id,
                 "host_ids": host_ids,
@@ -787,22 +780,23 @@ class BrowserHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 先更新 host_rec 表的 host_state = 0（空闲状态）
-            # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
+            # 1. First update host_rec table host_state = 0 (free state)
+            # ✅ Only hosts with business state (< 5) will be reset to free,
+            # avoid affecting hosts in pending/registration state
             update_host_rec_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id.in_(host_ids),
-                        HostRec.del_flag == 0,  # 只更新未删除的记录
-                        HostRec.host_state < 5,  # 保护非业务状态
+                        HostRec.del_flag == 0,  # Only update non-deleted records
+                        HostRec.host_state < 5,  # Protect non-business states
                     )
                 )
-                .values(host_state=HOST_STATE_FREE)  # 0 = 空闲状态
+                .values(host_state=HOST_STATE_FREE)  # 0 = Free state
             )
 
             logger.info(
-                "执行 host_rec 表状态更新操作",
+                "Executing host_rec table status update operation",
                 extra={
                     "user_id": user_id,
                     "host_ids": host_ids,
@@ -814,7 +808,7 @@ class BrowserHostService:
             host_rec_updated_count = host_rec_result.rowcount
 
             logger.info(
-                "host_rec 表状态更新完成",
+                "host_rec table status update completed",
                 extra={
                     "user_id": user_id,
                     "host_ids": host_ids,
@@ -822,21 +816,21 @@ class BrowserHostService:
                 },
             )
 
-            # 2. 逻辑删除 host_exec_log 记录
+            # 2. Logically delete host_exec_log records
             stmt = (
                 update(HostExecLog)
                 .where(
                     and_(
                         HostExecLog.user_id == user_id,
                         HostExecLog.host_id.in_(host_ids),
-                        HostExecLog.del_flag == 0,  # 只更新未删除的记录
+                        HostExecLog.del_flag == 0,  # Only update non-deleted records
                     )
                 )
-                .values(del_flag=1)  # 设置为已删除
+                .values(del_flag=1)  # Set as deleted
             )
 
             logger.info(
-                "执行逻辑删除操作",
+                "Executing logical delete operation",
                 extra={
                     "user_id": user_id,
                     "host_ids": host_ids,
@@ -844,14 +838,14 @@ class BrowserHostService:
                 },
             )
 
-            # 执行更新
+            # Execute update
             result = await session.execute(stmt)
             await session.commit()
 
             updated_count = result.rowcount
 
             logger.info(
-                "释放主机完成（逻辑删除）",
+                "Host release completed (logical delete)",
                 extra={
                     "user_id": user_id,
                     "host_count": len(host_list),
@@ -860,29 +854,30 @@ class BrowserHostService:
                 },
             )
 
-            # 3. 通过 WebSocket 通知每个 agent
+            # 3. Notify each agent through WebSocket
             try:
                 # Local import to avoid circular dependency
                 from app.services.agent_websocket_manager import get_agent_websocket_manager
+
                 ws_manager = get_agent_websocket_manager()
 
                 for host_id in host_ids:
                     host_id_str = str(host_id)
 
-                    # 构建通知消息（使用 HOST_OFFLINE_NOTIFICATION 类型）
+                    # Build notification message (using HOST_OFFLINE_NOTIFICATION type)
                     notification_message = {
                         "type": MessageType.HOST_OFFLINE_NOTIFICATION,
                         "host_id": host_id_str,
-                        "message": f"主机 {host_id_str} 已被释放，状态已更新为空闲",
+                        "message": f"Host {host_id_str} has been released, status updated to free",
                         "reason": "host_released",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
 
-                    # 发送通知（如果 agent 未连接，会返回 False，但不影响主流程）
+                    # Send notification (if agent not connected, returns False but does not affect main flow)
                     success = await ws_manager.send_to_host(host_id_str, notification_message)
                     if success:
                         logger.info(
-                            "主机释放通知已发送给 Agent",
+                            "Host release notification sent to Agent",
                             extra={
                                 "host_id": host_id_str,
                                 "user_id": user_id,
@@ -890,16 +885,16 @@ class BrowserHostService:
                         )
                     else:
                         logger.debug(
-                            "主机释放通知发送失败（Agent 可能未连接）",
+                            "Host release notification send failed (Agent may not be connected)",
                             extra={
                                 "host_id": host_id_str,
                                 "user_id": user_id,
                             },
                         )
             except Exception as e:
-                # WebSocket 通知失败不影响主流程，只记录警告
+                # WebSocket notification failure does not affect main flow, only log warning
                 logger.warning(
-                    "发送主机释放通知异常",
+                    "Exception sending host release notification",
                     extra={
                         "user_id": user_id,
                         "host_ids": host_ids,
@@ -912,33 +907,33 @@ class BrowserHostService:
             return updated_count
 
     @handle_service_errors(
-        error_message="测试重置主机失败",
+        error_message="Failed to reset host for test",
         error_code="RESET_HOST_FOR_TEST_FAILED",
     )
     async def reset_host_for_test(self, host_id: str) -> dict:
-        """测试重置主机 - 重置主机状态并删除执行日志
+        """Test reset host - reset host status and delete execution logs
 
-        将主机重置为有效状态：
-        1. 更新 host_rec 表：
-           - appr_state = 1（启用）
-           - host_state = 0（空闲）
+        Reset host to valid state:
+        1. Update host_rec table:
+           - appr_state = 1 (enabled)
+           - host_state = 0 (free)
            - subm_time = null
-        2. 逻辑删除 host_exec_log 表中对应的记录（del_flag = 1）
+        2. Logically delete corresponding records in host_exec_log table (del_flag = 1)
 
         Args:
-            host_id: 主机ID
+            host_id: Host ID
 
         Returns:
-            重置结果字典，包含主机ID、状态信息和删除的日志记录数
+            Reset result dictionary, containing host ID, status information and deleted log record count
 
         Raises:
-            BusinessError: 主机不存在或重置失败时
+            BusinessError: When host does not exist or reset fails
         """
         try:
             host_id_int = int(host_id)
         except (ValueError, TypeError):
             raise BusinessError(
-                message="主机ID格式无效",
+                message="Invalid host ID format",
                 error_code="INVALID_HOST_ID",
                 code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                 http_status_code=400,
@@ -946,16 +941,16 @@ class BrowserHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 验证主机存在
+            # Validate host exists
             host = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
-            # 记录重置前的状态
+            # Record status before reset
             old_appr_state = host.appr_state
             old_host_state = host.host_state
             old_subm_time = host.subm_time
 
             logger.info(
-                "开始测试重置主机",
+                "Starting to reset host for test",
                 extra={
                     "host_id": host_id,
                     "old_appr_state": old_appr_state,
@@ -964,33 +959,33 @@ class BrowserHostService:
                 },
             )
 
-            # 1. 更新 host_rec 表
-            host.appr_state = APPR_STATE_ENABLE  # 1 = 启用
-            host.host_state = HOST_STATE_FREE  # 0 = 空闲
-            host.subm_time = None  # 设置为 null
+            # 1. Update host_rec table
+            host.appr_state = APPR_STATE_ENABLE  # 1 = Enabled
+            host.host_state = HOST_STATE_FREE  # 0 = Free
+            host.subm_time = None  # Set to null
 
-            # 2. 逻辑删除 host_exec_log 表中对应的记录
+            # 2. Logically delete corresponding records in host_exec_log table
             delete_log_stmt = (
                 update(HostExecLog)
                 .where(
                     and_(
                         HostExecLog.host_id == host_id_int,
-                        HostExecLog.del_flag == 0,  # 只删除未删除的记录
+                        HostExecLog.del_flag == 0,  # Only delete non-deleted records
                     )
                 )
-                .values(del_flag=1)  # 逻辑删除
+                .values(del_flag=1)  # Logical delete
             )
 
-            # 执行删除操作
+            # Execute delete operation
             delete_log_result = await session.execute(delete_log_stmt)
             deleted_log_count = delete_log_result.rowcount
 
-            # 提交事务
+            # Commit transaction
             await session.commit()
             await session.refresh(host)
 
             logger.info(
-                "测试重置主机成功",
+                "Test reset host succeeded",
                 extra={
                     "host_id": host_id,
                     "old_appr_state": old_appr_state,

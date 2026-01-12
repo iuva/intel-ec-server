@@ -1,6 +1,6 @@
-"""浏览器插件主机管理 API 端点
+"""Browser extension host management API endpoints
 
-提供浏览器插件使用的主机查询相关的 API 端点。
+Provides API endpoints for host querying used by browser extensions.
 """
 
 import os
@@ -19,7 +19,7 @@ from app.schemas.host import (
 from app.services.browser_host_service import BrowserHostService
 from fastapi import APIRouter, Body, Depends, Request
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.utils.logging_helpers import log_request_completed, log_request_received
     from app.utils.response_helpers import create_success_result
@@ -48,44 +48,44 @@ router = APIRouter()
 @router.post(
     "/available",
     response_model=Result[AvailableHostsListResponse],
-    summary="查询可用主机列表",
-    description="查询可用的主机列表，支持游标分页",
+    summary="Query available host list",
+    description="Query available host list, supports cursor pagination",
     responses={
         200: {
-            "description": "查询成功",
+            "description": "Query succeeded",
             "model": Result[AvailableHostsListResponse],
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 400,
-                        "message": "请求参数无效",
+                        "message": "Request parameters invalid",
                         "error_code": "INVALID_PARAMS",
                     }
                 }
             },
         },
         405: {
-            "description": "HTTP 方法不允许",
+            "description": "HTTP method not allowed",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 405,
-                        "message": "此接口仅支持 POST 方法，请使用 POST 请求",
+                        "message": "This interface only supports POST method, please use POST request",
                         "error_code": "METHOD_NOT_ALLOWED",
                     }
                 }
             },
         },
         503: {
-            "description": "外部服务不可用",
+            "description": "External service unavailable",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 503,
-                        "message": "硬件接口调用失败，请稍后重试",
+                        "message": "Hardware interface call failed, please try again later",
                         "error_code": "HARDWARE_API_ERROR",
                     }
                 }
@@ -95,59 +95,65 @@ router = APIRouter()
 )
 @handle_api_errors
 async def query_available_hosts(
-    request: QueryAvailableHostsRequest = Body(..., description="查询可用主机列表请求参数"),
-    fastapi_request: Request = ...,  # FastAPI Request 对象（用于获取 user_id）
+    request: QueryAvailableHostsRequest = Body(..., description="Query available host list request parameters"),
+    fastapi_request: Request = ...,  # FastAPI Request object (used to get user_id)
     host_discovery_service: HostDiscoveryService = Depends(get_host_discovery_service),
-    locale: str = Depends(get_locale)
+    locale: str = Depends(get_locale),
 ) -> Result[AvailableHostsListResponse]:
-    """查询可用的主机列表 - 游标分页
+    """Query available host list - cursor pagination
 
-    ## 请求参数说明
-    - `tc_id`: 测试用例 ID（必填）
-    - `cycle_name`: 测试周期名称（必填）
-    - `user_name`: 用户名（必填）
-    - `page_size`: 每页大小，1-100（可选，默认 20）
-    - `last_id`: 上一页最后一条记录的 id（可选）
-    - `email`: 用户邮箱（可选）。如果提供，将直接使用该 email 进行外部接口认证，不查询数据库，提高性能
+    ## Request parameter description
+    - `tc_id`: Test case ID (required)
+    - `cycle_name`: Test cycle name (required)
+    - `user_name`: User name (required)
+    - `page_size`: Page size, 1-100 (optional, default 20)
+    - `last_id`: ID of last record from previous page (optional)
+    - `email`: User email (optional). If provided, will directly use this email for external
+      interface authentication, skip database query, improve performance
 
-    ## 游标分页说明
-    1. **首次请求**: 不提供 last_id 或传入 null，从头开始查询
-    2. **后续请求**: 从响应中获取 last_id，传入下一次请求
-    3. **避免并发污染**: 每个用户的请求独立处理
-    4. **性能优化**: 使用游标比基于 page 的分页更高效
+    ## Cursor pagination description
+    1. **First request**: Do not provide last_id or ***REMOVED*** null, start query from beginning
+    2. **Subsequent requests**: Get last_id from response, ***REMOVED*** to next request
+    3. **Avoid concurrency pollution**: Each user's request is processed independently
+    4. **Performance optimization**: Using cursor is more efficient than page-based pagination
 
-    ## 业务逻辑
-    1. 调用外部硬件接口获取主机列表（分页获取）
-       - 如果提供了 `email` 参数，直接使用该 email 进行外部接口认证，不查询数据库
-       - 如果未提供 `email`，系统会根据 `user_id`（从请求头获取）查询数据库获取 email
-    2. 根据 hardware_id 查询本地 host_rec 表
-    3. 过滤条件：
-       - appr_state = 1（启用状态）
-       - host_state = 0（空闲状态）
-       - tcp_state = 2（监听/连接正常）
-       - del_flag = 0（未删除）
-    4. 根据 last_id 跳过已处理的记录
-    5. 收集满足 page_size 数量的结果后返回
+    ## Business logic
+    1. Call external hardware interface to get host list (paginated)
+       - If `email` parameter is provided, directly use this email for external interface authentication,
+         skip database query
+       - If `email` is not provided, system will query database to get email based on `user_id`
+         (obtained from request header)
+    2. Query local host_rec table based on hardware_id
+    3. Filter conditions:
+       - appr_state = 1 (enabled status)
+       - host_state = 0 (idle status)
+       - tcp_state = 2 (listening/connection normal)
+       - del_flag = 0 (not deleted)
+    4. Skip processed records based on last_id
+    5. Collect results that meet page_size and return
 
-    ## 认证说明
-    - **方式1（推荐）**: 提供 `email` 参数，系统直接使用该 email 获取外部接口 token，跳过数据库查询，性能更优
-    - **方式2**: 不提供 `email` 参数，系统从请求头 `X-User-Info` 中获取 `user_id`，然后查询数据库获取 email
+    ## Authentication description
+    - **Method 1 (recommended)**: Provide `email` parameter, system directly uses this email to get
+      external interface token, skip database query, better performance
+    - **Method 2**: Do not provide `email` parameter, system gets `user_id` from request header
+      `X-User-Info`, then queries database to get email
 
-    ## 返回数据说明
-    - `hosts`: 可用主机列表
-    - `total`: 本次查询发现的可用主机总数
-    - `page_size`: 每页大小
-    - `has_next`: 是否有下一页
-    - `last_id`: 当前页最后一条记录的 id，用于请求下一页
+    ## Return data description
+    - `hosts`: Available host list
+    - `total`: Total number of available hosts discovered in this query
+    - `page_size`: Page size
+    - `has_next`: Whether there is next page
+    - `last_id`: ID of last record on current page, used for requesting next page
 
     Args:
-        request: 查询请求（游标分页），包含 tc_id、cycle_name、user_name、page_size、last_id、email 等字段
-        fastapi_request: FastAPI Request 对象（用于从请求头获取 user_id）
-        host_discovery_service: 主机发现服务实例
-        locale: 语言偏好设置
+        request: Query request (cursor pagination), contains fields like tc_id, cycle_name, user_name,
+          page_size, last_id, email
+        fastapi_request: FastAPI Request object (used to get user_id from request header)
+        host_discovery_service: Host discovery service instance
+        locale: Language preference settings
 
     Returns:
-        可用主机列表（包含 has_next 和 last_id 用于下一页请求）
+        Available host list (contains has_next and last_id for next page request)
 
     Example:
         ```json
@@ -156,7 +162,7 @@ async def query_available_hosts(
             "cycle_name": "cycle_1",
             "user_name": "test_user",
             "page_size": 20,
-            "email": "user@example.com"  // 可选，提供后不查询数据库
+            "email": "user@example.com"  // Optional, skip database query if provided
         }
         ```
     """
@@ -168,12 +174,12 @@ async def query_available_hosts(
             "user_name": request.user_name,
             "page_size": request.page_size,
             "last_id": request.last_id,
-            "email": request.email,  # ✅ 记录 email（如果提供）
+            "email": request.email,  # ✅ Record email (if provided)
         },
         logger_instance=logger,
     )
 
-    # ✅ 传递 FastAPI Request 对象，用于获取 user_id 并调用带认证的外部接口
+    # ✅ Pass FastAPI Request object, used to get user_id and call authenticated external interface
     result = await host_discovery_service.query_available_hosts(
         request=request,
         fastapi_request=fastapi_request,
@@ -196,27 +202,27 @@ async def query_available_hosts(
         data=result,
         message_key="success.host.available_list_query",
         locale=locale,
-        default_message="查询可用主机列表成功",
+        default_message="Query available host list succeeded",
     )
 
 
 @router.post(
     "/retry-vnc",
     response_model=Result[RetryVNCListResponse],
-    summary="获取重试 VNC 列表",
-    description="查询需要重试的 VNC 连接列表（case_state != 2 的主机）",
+    summary="Get retry VNC list",
+    description="Query VNC connection list that needs retry (hosts with case_state != 2)",
     responses={
         200: {
-            "description": "查询成功",
+            "description": "Query succeeded",
             "model": Result[RetryVNCListResponse],
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 400,
-                        "message": "请求参数无效",
+                        "message": "Request parameters invalid",
                         "error_code": "INVALID_PARAMS",
                     }
                 }
@@ -226,40 +232,40 @@ async def query_available_hosts(
 )
 @handle_api_errors
 async def get_retry_vnc_list(
-    user_id: str = Body(..., embed=True, description="用户ID"),
+    user_id: str = Body(..., embed=True, description="User ID"),
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
 ) -> Result[RetryVNCListResponse]:
-    """获取需要重试的 VNC 连接列表
+    """Get VNC connection list that needs retry
 
-    ## 业务逻辑
-    1. 查询 `host_exec_log` 表:
-       - 条件: `user_id = 入参的user_id`
-       - `case_state != 2` (非成功状态)
-       - `del_flag = 0` (未删除)
-    2. 获取这些记录的 `host_id`
-    3. 查询 `host_rec` 表对应的主机信息
-    4. 返回主机信息列表
+    ## Business logic
+    1. Query `host_exec_log` table:
+       - Condition: `user_id = input user_id`
+       - `case_state != 2` (non-success status)
+       - `del_flag = 0` (not deleted)
+    2. Get `host_id` from these records
+    3. Query corresponding host information from `host_rec` table
+    4. Return host information list
 
-    ## 请求参数
-    - `user_id`: 用户ID
+    ## Request parameters
+    - `user_id`: User ID
 
-    ## 返回数据
-    - `hosts`: 需要重试的主机列表
-      - `host_id`: 主机ID
-      - `host_ip`: 主机IP
-      - `user_name`: 主机账号 (host_acct)
-    - `total`: 主机总数
+    ## Return data
+    - `hosts`: Host list that needs retry
+      - `host_id`: Host ID
+      - `host_ip`: Host IP
+      - `user_name`: Host account (host_acct)
+    - `total`: Total number of hosts
 
     Args:
-        user_id: 用户ID
-        host_service: 主机服务实例
+        user_id: User ID
+        host_service: Host service instance
 
     Returns:
-        RetryVNCListSuccessResponse: 重试 VNC 列表响应
+        RetryVNCListSuccessResponse: Retry VNC list response
     """
     logger.info(
-        "接收获取重试 VNC 列表请求",
+        "Received get retry VNC list request",
         extra={
             "user_id": user_id,
         },
@@ -268,14 +274,14 @@ async def get_retry_vnc_list(
     retry_vnc_list = await host_service.get_retry_vnc_list(user_id)
 
     logger.info(
-        "获取重试 VNC 列表完成",
+        "Get retry VNC list completed",
         extra={
             "user_id": user_id,
             "total": len(retry_vnc_list),
         },
     )
 
-    # 构建响应数据
+    # Build response data
     response_data = RetryVNCListResponse(
         hosts=retry_vnc_list,
         total=len(retry_vnc_list),
@@ -285,23 +291,26 @@ async def get_retry_vnc_list(
         data=response_data,
         message_key="success.host.retry_vnc_list_query",
         locale=locale,
-        default_message="查询重试 VNC 列表成功",
+        default_message="Query retry VNC list succeeded",
     )
 
 
 @router.post(
     "/release",
     response_model=Result[ReleaseHostsResponse],
-    summary="释放主机",
-    description="逻辑删除指定用户的主机执行日志记录并更新主机状态（设置 del_flag = 1，host_state = 0）",
+    summary="Release hosts",
+    description=(
+        "Logically delete host execution log records for specified user and update host status "
+        "(set del_flag = 1, host_state = 0)"
+    ),
     responses={
         200: {
-            "description": "释放成功",
+            "description": "Release succeeded",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "message": "主机释放成功",
+                        "message": "Host release succeeded",
                         "data": {
                             "updated_count": 3,
                             "user_id": "user123",
@@ -312,12 +321,12 @@ async def get_retry_vnc_list(
             },
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 400,
-                        "message": "主机ID格式无效",
+                        "message": "Host ID format invalid",
                         "error_code": "INVALID_HOST_ID",
                     }
                 }
@@ -327,40 +336,40 @@ async def get_retry_vnc_list(
 )
 @handle_api_errors
 async def release_hosts(
-    request: ReleaseHostsRequest = Body(..., description="释放主机请求数据"),
+    request: ReleaseHostsRequest = Body(..., description="Release hosts request data"),
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
 ) -> Result[ReleaseHostsResponse]:
-    """释放主机 - 逻辑删除执行日志记录并更新主机状态
+    """Release hosts - logically delete execution log records and update host status
 
-    ## 业务逻辑
-    1. 逻辑删除 `host_exec_log` 表中的记录（设置 del_flag = 1）
-    2. 更新 `host_rec` 表中对应主机的 `host_state = 0`（空闲状态）
-    3. 通过 WebSocket 通知指定的 agent
-    4. 条件：
-       - `user_id = 入参的 user_id`
+    ## Business logic
+    1. Logically delete records in `host_exec_log` table (set del_flag = 1)
+    2. Update `host_state = 0` (idle status) for corresponding hosts in `host_rec` table
+    3. Notify specified agent via WebSocket
+    4. Conditions:
+       - `user_id = input user_id`
        - `host_id IN (host_list)`
-       - `del_flag = 0`（只删除未删除的记录）
+       - `del_flag = 0` (only delete non-deleted records)
 
-    ## 请求参数
-    - `user_id`: 用户ID
-    - `host_list`: 主机ID列表
+    ## Request parameters
+    - `user_id`: User ID
+    - `host_list`: Host ID list
 
-    ## 返回数据
-    - `updated_count`: 更新的记录数（逻辑删除）
-    - `user_id`: 用户ID
-    - `host_list`: 主机ID列表
+    ## Return data
+    - `updated_count`: Number of updated records (logically deleted)
+    - `user_id`: User ID
+    - `host_list`: Host ID list
 
     Args:
-        request: 释放主机请求
-        host_service: 主机服务实例
-        locale: 语言偏好
+        request: Release hosts request
+        host_service: Host service instance
+        locale: Language preference
 
     Returns:
-        SuccessResponse: 统一格式的成功响应，包含释放结果数据
+        SuccessResponse: Unified format success response, contains release result data
     """
     logger.info(
-        "接收释放主机请求",
+        "Received release hosts request",
         extra={
             "user_id": request.user_id,
             "host_count": len(request.host_list),
@@ -373,7 +382,7 @@ async def release_hosts(
     )
 
     logger.info(
-        "释放主机完成",
+        "Release hosts completed",
         extra={
             "user_id": request.user_id,
             "host_count": len(request.host_list),
@@ -391,39 +400,39 @@ async def release_hosts(
         data=response_data,
         message_key="success.host.release",
         locale=locale,
-        default_message="释放主机成功",
+        default_message="Host release succeeded",
     )
 
 
 @router.post(
     "/reset",
     response_model=Result[ResetHostForTestResponse],
-    summary="测试重置主机",
-    description="重置主机状态为有效状态并删除执行日志（测试用）",
+    summary="Reset host for test",
+    description="Reset host status to valid status and delete execution logs (for testing)",
     responses={
         200: {
-            "description": "重置成功",
+            "description": "Reset succeeded",
             "model": Result[ResetHostForTestResponse],
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 400,
-                        "message": "主机ID格式无效",
+                        "message": "Host ID format invalid",
                         "error_code": "INVALID_HOST_ID",
                     }
                 }
             },
         },
         404: {
-            "description": "主机不存在",
+            "description": "Host does not exist",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53001,
-                        "message": "主机不存在: 123",
+                        "message": "Host does not exist: 123",
                         "error_code": "HOST_NOT_FOUND",
                     }
                 }
@@ -433,46 +442,46 @@ async def release_hosts(
 )
 @handle_api_errors
 async def reset_host_for_test(
-    request: ResetHostForTestRequest = Body(..., description="测试重置主机请求参数"),
+    request: ResetHostForTestRequest = Body(..., description="Reset host for test request parameters"),
     host_service: BrowserHostService = Depends(get_host_service),
     locale: str = Depends(get_locale),
 ) -> Result[ResetHostForTestResponse]:
-    """测试重置主机 - 重置主机状态并删除执行日志
+    """Reset host for test - reset host status and delete execution logs
 
-    ## 业务逻辑
-    1. 验证主机ID格式和存在性
-    2. 更新 host_rec 表：
-       - `appr_state = 1`（启用状态）
-       - `host_state = 0`（空闲状态）
-       - `subm_time = null`（清空申报时间）
-    3. 逻辑删除 host_exec_log 表中对应的记录（`del_flag = 1`）
-    4. 在同一个事务中执行所有操作
+    ## Business logic
+    1. Verify host ID format and existence
+    2. Update host_rec table:
+       - `appr_state = 1` (enabled status)
+       - `host_state = 0` (idle status)
+       - `subm_time = null` (clear submission time)
+    3. Logically delete corresponding records in host_exec_log table (`del_flag = 1`)
+    4. Execute all operations in the same transaction
 
-    ## 请求参数
-    - `host_id`: 主机ID（必填）
+    ## Request parameters
+    - `host_id`: Host ID (required)
 
-    ## 返回数据
-    - `host_id`: 主机ID
-    - `appr_state`: 审批状态（1=启用）
-    - `host_state`: 主机状态（0=空闲）
-    - `subm_time`: 申报时间（重置后为 null）
-    - `deleted_log_count`: 删除的执行日志记录数
+    ## Return data
+    - `host_id`: Host ID
+    - `appr_state`: Approval status (1=enabled)
+    - `host_state`: Host status (0=idle)
+    - `subm_time`: Submission time (null after reset)
+    - `deleted_log_count`: Number of deleted execution log records
 
-    ## 注意事项
-    - 此接口用于测试环境，重置主机状态为初始状态
-    - 会逻辑删除该主机的所有执行日志记录
-    - 所有操作在同一个事务中执行，保证数据一致性
+    ## Notes
+    - This interface is for test environment, resets host status to initial state
+    - Will logically delete all execution log records for this host
+    - All operations are executed in the same transaction to ensure data consistency
 
     Args:
-        request: 测试重置主机请求
-        host_service: 主机服务实例
-        locale: 语言偏好
+        request: Reset host for test request
+        host_service: Host service instance
+        locale: Language preference
 
     Returns:
-        Result[ResetHostForTestResponse]: 统一格式的成功响应，包含重置结果数据
+        Result[ResetHostForTestResponse]: Unified format success response, contains reset result data
     """
     logger.info(
-        "接收测试重置主机请求",
+        "Received reset host for test request",
         extra={
             "host_id": request.host_id,
         },
@@ -481,7 +490,7 @@ async def reset_host_for_test(
     result = await host_service.reset_host_for_test(request.host_id)
 
     logger.info(
-        "测试重置主机完成",
+        "Reset host for test completed",
         extra={
             "host_id": request.host_id,
             "appr_state": result["appr_state"],
@@ -502,5 +511,5 @@ async def reset_host_for_test(
         data=response_data,
         message_key="success.host.reset_for_test",
         locale=locale,
-        default_message="测试重置主机成功",
+        default_message="Reset host for test succeeded",
     )

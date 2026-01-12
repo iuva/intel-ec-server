@@ -1,7 +1,7 @@
 """
-Auth Service Pydantic 数据模式
+Auth Service Pydantic Data Schemas
 
-导出所有数据模式
+Export all data schemas
 """
 
 from app.schemas.auth import (

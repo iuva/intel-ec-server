@@ -1,6 +1,6 @@
 """
-Gateway Service 核心模块
+Gateway Service core module
 
-包含核心配置和公共组件，
-如配置管理、异常处理等。
+Contains core configuration and common components,
+such as configuration management, exception handling, etc.
 """

@@ -1,23 +1,23 @@
-# Pre-commit 钩子配置
-# 安装: pip install pre-commit
-# 启用: pre-commit install
-# 运行: pre-commit run --all-files
+# Pre-commit hook configuration
+# Install: pip install pre-commit
+# Enable: pre-commit install
+# Run: pre-commit run --all-files
 
 repos:
-  # Ruff - 快速Python代码检查器（替代 Black + isort + Flake8）
+  # Ruff - Fast Python code checker (alternative to Black + isort + Flake8)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
-      # 运行 Ruff 检查
+      # Run Ruff check
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
         types_or: [python, pyi]
       
-      # 运行 Ruff 格式化（替代 Black）
+      # Run Ruff formatting (alternative to Black)
       - id: ruff-format
         types_or: [python, pyi]
 
-  # MyPy - 静态类型检查
+  # MyPy - Static type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:
@@ -28,48 +28,48 @@ repos:
         args: [--config-file=mypy.ini]
         exclude: ^(tests/|migrations/)
 
-  # 通用检查
+  # General checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
-      # 检查文件末尾是否有空行
+      # Check if there is a blank line at the end of file
       - id: end-of-file-fixer
         exclude: ^(\.idea/|\.vscode/)
       
-      # 检查行尾空白字符
+      # Check trailing whitespace
       - id: trailing-whitespace
         exclude: ^(\.idea/|\.vscode/)
       
-      # 检查YAML文件语法
+      # Check YAML file syntax
       - id: check-yaml
         args: [--unsafe]
       
-      # 检查JSON文件语法
+      # Check JSON file syntax
       - id: check-json
       
-      # 检查TOML文件语法
+      # Check TOML file syntax
       - id: check-toml
       
-      # 检查是否有合并冲突标记
+      # Check for merge conflict markers
       - id: check-merge-conflict
       
-      # 检查是否有调试语句
+      # Check for debug statements
       - id: debug-statements
       
-      # 检查大文件
+      # Check large files
       - id: check-added-large-files
         args: [--maxkb=1000]
       
-      # 检查Python文件语法
+      # Check Python file syntax
       - id: check-ast
       
-      # 检查文件名是否包含非ASCII字符
+      # Check if filename contains non-ASCII characters
       - id: check-case-conflict
       
-      # 检查是否有私钥
+      # Check for private keys
       - id: detect-private-key
 
-  # 安全检查 - Bandit
+  # Security check - Bandit
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.10
     hooks:
@@ -78,11 +78,11 @@ repos:
         additional_dependencies: ["bandit[toml]"]
         exclude: ^tests/
 
-# 全局配置
+# Global configuration
 default_language_version:
   python: python3.8
 
-# 排除的文件和目录
+# Excluded files and directories
 exclude: |
   (?x)^(
       \.git/|
@@ -98,5 +98,5 @@ exclude: |
       .*\.egg-info/
   )$
 
-# 失败时不自动修复
+# Do not auto-fix when failing
 fail_fast: false

@@ -1,7 +1,7 @@
 """
-API 模块
+API Module
 
-导出 API 路由
+Export API routes
 """
 
 from app.api.v1 import api_router

@@ -1,10 +1,10 @@
-"""Agent 信息上报服务
+"""Agent information reporting service
 
-处理 Agent 上报的信息，包括：
-1. 硬件模板验证
-2. 版本号对比
-3. 硬件内容深度对比
-4. 数据库记录更新
+Processes information reported by Agent, including:
+1. Hardware template validation
+2. Version number comparison
+3. Hardware content deep comparison
+4. Database record updates
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import (
         HOST_STATE_FREE,
@@ -58,42 +58,42 @@ logger = get_logger(__name__)
 
 
 class AgentReportService:
-    """Agent 信息上报服务"""
+    """Agent information reporting service"""
 
-    # 硬件差异状态
-    DIFF_STATE_VERSION = 1  # 版本号变化
-    DIFF_STATE_CONTENT = 2  # 内容更改
-    DIFF_STATE_FAILED = 3  # 异常
+    # Hardware difference states
+    DIFF_STATE_VERSION = 1  # Version number changed
+    DIFF_STATE_CONTENT = 2  # Content changed
+    DIFF_STATE_FAILED = 3  # Exception
 
-    # 同步状态
-    SYNC_STATE_EMPTY = 0  # 空状态
-    SYNC_STATE_WAIT = 1  # 待同步
-    SYNC_STATE_SUCCESS = 2  # 通过
-    SYNC_STATE_FAILED = 3  # 异常
+    # Sync states
+    SYNC_STATE_EMPTY = 0  # Empty state
+    SYNC_STATE_WAIT = 1  # Pending sync
+    SYNC_STATE_SUCCESS = 2  # Passed
+    SYNC_STATE_FAILED = 3  # Exception
 
-    # 审批状态
-    APPR_STATE_ENABLE = 1  # 启用
-    APPR_STATE_CHANGE = 2  # 存在改动
+    # Approval states
+    APPR_STATE_ENABLE = 1  # Enabled
+    APPR_STATE_CHANGE = 2  # Has changes
 
-    # 主机状态
-    HOST_STATE_HW_CHANGE = 6  # 存在潜在的硬件改动
+    # Host states
+    HOST_STATE_HW_CHANGE = 6  # Has potential hardware changes
 
     def __init__(self):
-        """初始化服务"""
-        # 初始化JSON对比工具
+        """Initialize service"""
+        # Initialize JSON comparator tool
         self.json_comparator = JSONComparator()
-        # 初始化模板验证器
+        # Initialize template validator
         self.template_validator = TemplateValidator()
-        # ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+        # ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
-        - 第一次调用时初始化
-        - 后续调用复用缓存的工厂实例
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
+        - Initialize on first call
+        - Reuse cached factory instance on subsequent calls
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
@@ -105,22 +105,22 @@ class AgentReportService:
         hardware_data: Dict[str, Any],
         report_type: int = 0,
     ) -> Dict[str, Any]:
-        """上报硬件信息
+        """Report hardware information
 
         Args:
-            host_id: 主机ID（从token中获取）
-            hardware_data: 硬件信息（动态JSON）
-            report_type: 上报类型（0-成功，1-异常）
+            host_id: Host ID (obtained from token)
+            hardware_data: Hardware information (dynamic JSON)
+            report_type: Report type (0-success, 1-exception)
 
         Returns:
-            处理结果
+            Processing result
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
             logger.info(
-                "开始处理硬件信息上报",
+                "Start processing hardware information report",
                 extra={
                     "host_id": host_id,
                     "hardware_keys": list(hardware_data.keys()),
@@ -128,34 +128,34 @@ class AgentReportService:
                 },
             )
 
-            # 1. 提取 dmr_config（必传）
+            # 1. Extract dmr_config (required)
             dmr_config = hardware_data.get("dmr_config")
             if not dmr_config:
                 raise BusinessError(
-                    message="dmr_config 是必传字段",
+                    message="dmr_config is a required field",
                     error_code="MISSING_DMR_CONFIG",
                     code=ServiceErrorCodes.HOST_MISSING_DMR_CONFIG,
                     http_status_code=400,
                 )
 
-            # 2. 提取版本号（必传）
+            # 2. Extract revision number (required)
             current_revision = dmr_config.get("revision")
             if current_revision is None:
                 raise BusinessError(
-                    message="dmr_config.revision 是必传字段",
+                    message="dmr_config.revision is a required field",
                     error_code="MISSING_REVISION",
                     code=ServiceErrorCodes.HOST_MISSING_REVISION,
                     http_status_code=400,
                 )
 
-            # 3. 获取当前生效的硬件记录
+            # 3. Get current effective hardware record
             current_hw_rec = await self._get_current_hardware_record(host_id)
 
-            # 4. 根据 report_type 决定处理逻辑
+            # 4. Determine processing logic based on report_type
             if report_type == 1:
-                # 异常类型：直接设置 diff_state=3，跳过对比逻辑
+                # Exception type: directly set diff_state=3, skip comparison logic
                 logger.info(
-                    "硬件信息上报类型为异常，直接设置 diff_state=3",
+                    "Hardware information report type is exception, directly set diff_state=3",
                     extra={
                         "host_id": host_id,
                         "report_type": report_type,
@@ -163,9 +163,9 @@ class AgentReportService:
                 )
 
                 diff_state = self.DIFF_STATE_FAILED  # 3
-                diff_details = {"report_type": "异常", "reason": "Agent 上报异常类型"}
+                diff_details = {"report_type": "exception", "reason": "Agent reported exception type"}
 
-                # 更新数据库记录
+                # Update database record
                 result = await self._update_hardware_records(
                     host_id=host_id,
                     hardware_data=hardware_data,
@@ -177,7 +177,7 @@ class AgentReportService:
                 )
 
                 logger.info(
-                    "硬件信息异常上报处理完成",
+                    "Hardware information exception report processing completed",
                     extra={
                         "host_id": host_id,
                         "diff_state": diff_state,
@@ -187,21 +187,21 @@ class AgentReportService:
 
                 return result
 
-            # 5. 正常类型（report_type=0）：走原来的对比逻辑
-            # 获取硬件模板
+            # 5. Normal type (report_type=0): follow original comparison logic
+            # Get hardware template
             hw_template = await self._get_hardware_template()
             if not hw_template:
                 raise BusinessError(
-                    message="未找到硬件模板配置",
+                    message="Hardware template configuration not found",
                     error_code="HARDWARE_TEMPLATE_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_HARDWARE_TEMPLATE_NOT_FOUND,
                     http_status_code=500,
                 )
 
-            # 6. 验证硬件信息必填字段
+            # 6. Validate hardware information required fields
             self._validate_required_fields(dmr_config, hw_template)
 
-            # 7. 对比硬件信息
+            # 7. Compare hardware information
             diff_state, diff_details = await self._compare_hardware(
                 current_revision=current_revision,
                 current_dmr_config=dmr_config,
@@ -209,7 +209,7 @@ class AgentReportService:
                 hw_template=hw_template,
             )
 
-            # 8. 更新数据库记录
+            # 8. Update database records
             result = await self._update_hardware_records(
                 host_id=host_id,
                 hardware_data=hardware_data,
@@ -221,7 +221,7 @@ class AgentReportService:
             )
 
             logger.info(
-                "硬件信息上报处理完成",
+                "Hardware information report processing completed",
                 extra={
                     "host_id": host_id,
                     "diff_state": diff_state,
@@ -235,31 +235,31 @@ class AgentReportService:
             raise
         except Exception as e:
             logger.error(
-                "硬件信息上报异常",
+                "Hardware information report exception",
                 extra={"error": str(e)},
                 exc_info=True,
             )
             raise BusinessError(
-                message="硬件信息上报处理失败",
+                message="Hardware information report processing failed",
                 error_code="HARDWARE_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_HARDWARE_REPORT_FAILED,
                 http_status_code=500,
             )
 
     async def get_latest_ota_configs(self) -> List[Dict[str, Optional[str]]]:
-        """获取最新 OTA 配置信息列表（带缓存）
+        """Get latest OTA configuration information list (with cache)
 
-        使用 Redis 缓存 OTA 配置，缓存时间 5 分钟，减少数据库查询压力。
+        Uses Redis to cache OTA configurations, cache time 5 minutes, reduces database query pressure.
         """
-        # 缓存键
+        # Cache key
         cache_key = "ota_configs:latest"
 
-        # 尝试从缓存获取
+        # Try to get from cache
         try:
             cached_configs = await redis_manager.get(cache_key)
             if cached_configs is not None:
                 logger.debug(
-                    "从缓存获取 OTA 配置",
+                    "Retrieved OTA configuration from cache",
                     extra={
                         "cache_key": cache_key,
                         "count": len(cached_configs) if isinstance(cached_configs, list) else 0,
@@ -268,11 +268,11 @@ class AgentReportService:
                 return cached_configs
         except Exception as e:
             logger.warning(
-                "从缓存获取 OTA 配置失败，将查询数据库",
+                "Failed to retrieve OTA configuration from cache, will query database",
                 extra={"cache_key": cache_key, "error": str(e)},
             )
 
-        # 缓存未命中，查询数据库
+        # Cache miss, query database
         session_factory = self.session_factory
         async with session_factory() as session:
             stmt = (
@@ -290,19 +290,19 @@ class AgentReportService:
             records = result.scalars().all()
 
             if not records:
-                logger.info("未查询到 OTA 配置，返回空列表")
-                # 缓存空结果，避免频繁查询（缓存时间缩短为 1 分钟）
+                logger.info("No OTA configuration found, returning empty list")
+                # Cache empty result to avoid frequent queries (cache time shortened to 1 minute)
                 try:
                     await redis_manager.set(cache_key, [], expire=60)
                 except Exception as e:
                     logger.warning(
-                        "缓存空结果失败",
+                        "Failed to cache empty result",
                         extra={"cache_key": cache_key, "error": str(e)},
                     )
                 return []
 
             logger.info(
-                "获取 OTA 配置成功",
+                "Retrieved OTA configuration successfully",
                 extra={
                     "count": len(records),
                 },
@@ -320,49 +320,106 @@ class AgentReportService:
                     }
                 )
 
-            # 存入缓存，5 分钟过期
+            # Store in cache, expires in 5 minutes
             try:
                 await redis_manager.set(cache_key, ota_configs, expire=300)
                 logger.debug(
-                    "OTA 配置已缓存",
+                    "OTA configuration cached",
                     extra={"cache_key": cache_key, "count": len(ota_configs), "expire_seconds": 300},
                 )
             except Exception as e:
                 logger.warning(
-                    "缓存 OTA 配置失败",
+                    "Failed to cache OTA configuration",
                     extra={"cache_key": cache_key, "error": str(e)},
                 )
 
             return ota_configs
 
-    async def _get_hardware_template(self) -> Optional[Dict[str, Any]]:
-        """获取硬件模板配置（带缓存）
+    async def get_agent_init_configs(self) -> List[Dict[str, Any]]:
+        """Get agent initialization configurations
 
-        从 sys_conf 表查询 conf_key='hw_temp', state_flag=0, del_flag=0 的配置。
-        使用 Redis 缓存模板数据，缓存时间 5 分钟，减少数据库查询压力。
+        Query sys_conf table for records where:
+        - conf_key starts with 'agent_init_'
+        - state_flag = 0 (enabled)
+        - del_flag = 0 (not deleted)
 
         Returns:
-            硬件模板配置（conf_json 字段）
+            List of initialization configurations, each containing:
+            - conf_key: Configuration key
+            - conf_val: Configuration value
+            - conf_ver: Configuration version
+            - conf_name: Configuration name
+            - conf_json: Configuration JSON
         """
-        # 缓存键
+        session_factory = self.session_factory
+        async with session_factory() as session:
+            stmt = (
+                select(SysConf)
+                .where(
+                    and_(
+                        SysConf.conf_key.like("agent_init_%"),
+                        SysConf.state_flag == 0,
+                        SysConf.del_flag == 0,
+                    )
+                )
+                .order_by(SysConf.updated_time.desc(), SysConf.id.desc())
+            )
+            result = await session.execute(stmt)
+            records = result.scalars().all()
+
+            if not records:
+                logger.info("No agent initialization configuration found, returning empty list")
+                return []
+
+            logger.info(
+                "Retrieved agent initialization configuration successfully",
+                extra={
+                    "count": len(records),
+                },
+            )
+
+            init_configs = []
+            for record in records:
+                init_configs.append(
+                    {
+                        "conf_key": record.conf_key,
+                        "conf_val": record.conf_val,
+                        "conf_ver": record.conf_ver,
+                        "conf_name": record.conf_name,
+                        "conf_json": record.conf_json,
+                    }
+                )
+
+            return init_configs
+
+    async def _get_hardware_template(self) -> Optional[Dict[str, Any]]:
+        """Get hardware template configuration (with cache)
+
+        Query configuration from sys_conf table where conf_key='hw_temp', state_flag=0, del_flag=0.
+        Uses Redis to cache template data, cache time 5 minutes, reduces database query pressure.
+
+        Returns:
+            Hardware template configuration (conf_json field)
+        """
+        # Cache key
         cache_key = "hardware_template"
 
-        # 尝试从缓存获取
+        # Try to get from cache
         try:
             cached_template = await redis_manager.get(cache_key)
             if cached_template is not None:
                 logger.debug(
-                    "从缓存获取硬件模板",
+                    "Retrieved hardware template from cache",
                     extra={"cache_key": cache_key},
                 )
                 return cached_template
         except Exception as e:
             logger.warning(
-                "从缓存获取硬件模板失败，将查询数据库",
+                "Failed to retrieve hardware template from cache, will query database",
                 extra={"cache_key": cache_key, "error": str(e)},
             )
 
-        # 缓存未命中，查询数据库
+        # Cache miss, query database
         try:
             session_factory = self.session_factory
             async with session_factory() as session:
@@ -378,29 +435,29 @@ class AgentReportService:
                 conf = result.scalar_one_or_none()
 
                 if not conf:
-                    logger.warning("未找到硬件模板配置（conf_key='hw_temp'）")
-                    # 缓存 None 结果，避免频繁查询（缓存时间缩短为 1 分钟）
+                    logger.warning("Hardware template configuration not found (conf_key='hw_temp')")
+                    # Cache None result to avoid frequent queries (cache time shortened to 1 minute)
                     try:
                         await redis_manager.set(cache_key, None, expire=60)
                     except Exception as e:
                         logger.warning(
-                            "缓存空结果失败",
+                            "Failed to cache empty result",
                             extra={"cache_key": cache_key, "error": str(e)},
                         )
                     return None
 
                 template = conf.conf_json
 
-                # 存入缓存，5 分钟过期
+                # Store in cache, expires in 5 minutes
                 try:
                     await redis_manager.set(cache_key, template, expire=300)
                     logger.debug(
-                        "硬件模板已缓存",
+                        "Hardware template cached",
                         extra={"cache_key": cache_key, "expire_seconds": 300},
                     )
                 except Exception as e:
                     logger.warning(
-                        "缓存硬件模板失败",
+                        "Failed to cache hardware template",
                         extra={"cache_key": cache_key, "error": str(e)},
                     )
 
@@ -408,43 +465,41 @@ class AgentReportService:
 
         except Exception as e:
             logger.error(
-                "获取硬件模板配置失败",
+                "Failed to get hardware template configuration",
                 extra={"error": str(e)},
                 exc_info=True,
             )
             return None
 
     def _validate_required_fields(self, dmr_config: Dict[str, Any], hw_template: Dict[str, Any]) -> None:
-        """验证硬件信息必填字段
+        """Validate hardware information required fields
 
-        遍历硬件模板，检查值为 'required' 的字段是否在上报数据中存在
+        Iterate through hardware template, check if fields with value 'required' exist in reported data
 
         Args:
-            dmr_config: Agent 上报的硬件配置
-            hw_template: 硬件模板配置
+            dmr_config: Hardware configuration reported by Agent
+            hw_template: Hardware template configuration
 
         Raises:
-            BusinessError: 缺少必填字段时抛出
+            BusinessError: Raises when required fields are missing
         """
-        # 使用模板验证器工具类进行验证
+        # Use template validator utility class for validation
         self.template_validator.validate_required_fields(dmr_config, hw_template)
-        logger.info("硬件信息必填字段验证通过")
+        logger.info("Hardware information required fields validation ***REMOVED***ed")
 
-    async def _get_current_hardware_record(
-        self, host_id: int, session: Optional[Any] = None
-    ) -> Optional[HostHwRec]:
-        """获取当前生效的硬件记录
+    async def _get_current_hardware_record(self, host_id: int, session: Optional[Any] = None) -> Optional[HostHwRec]:
+        """Get current effective hardware record
 
-        查询 host_hw_rec 表中最新的硬件记录
+        Query the latest hardware record from host_hw_rec table
 
-        ✅ 优化：支持传入外部会话，避免创建新会话
+        ✅ Optimization: Support ***REMOVED***ing external session to avoid creating new session
 
         Args:
-            host_id: 主机ID
-            session: 可选的外部会话（如果不传则创建新会话）
+            host_id: Host ID
+            session: Optional external session (if not provided, create new session)
 
         Returns:
-            最新的硬件记录，如果不存在则返回None
+            Latest hardware record, returns None if not exists
         """
         try:
             stmt = (
@@ -459,7 +514,7 @@ class AgentReportService:
                 .limit(1)
             )
 
-            # ✅ 优化：如果传入了会话则直接使用，否则创建新会话
+            # ✅ Optimization: If session is ***REMOVED***ed, use it directly, otherwise create new session
             if session:
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
@@ -471,7 +526,7 @@ class AgentReportService:
 
         except Exception as e:
             logger.error(
-                "获取当前硬件记录失败",
+                "Failed to get current hardware record",
                 extra={"host_id": host_id, "error": str(e)},
                 exc_info=True,
             )
@@ -484,32 +539,32 @@ class AgentReportService:
         current_hw_rec: Optional[HostHwRec],
         hw_template: Dict[str, Any],
     ) -> Tuple[Optional[int], Dict[str, Any]]:
-        """对比硬件信息
+        """Compare hardware information
 
         Args:
-            current_revision: 当前上报的版本号
-            current_dmr_config: 当前上报的硬件配置
-            current_hw_rec: 当前生效的硬件记录
-            hw_template: 硬件模板
+            current_revision: Currently reported revision number
+            current_dmr_config: Currently reported hardware configuration
+            current_hw_rec: Current effective hardware record
+            hw_template: Hardware template
 
         Returns:
-            (差异状态, 差异详情)
-            - 差异状态: DIFF_STATE_VERSION | DIFF_STATE_CONTENT | None
-            - 差异详情: 差异信息字典
+            (Difference state, difference details)
+            - Difference state: DIFF_STATE_VERSION | DIFF_STATE_CONTENT | None
+            - Difference details: Difference information dictionary
         """
         try:
-            # 如果没有历史记录，说明是第一次上报（不需要对比）
+            # If no historical record, this is the first report (no need to compare)
             if not current_hw_rec or not current_hw_rec.hw_info:
-                logger.info("主机首次上报硬件信息，无需对比")
+                logger.info("Host first hardware information report, no need to compare")
                 return None, {}
 
             previous_hw_info = current_hw_rec.hw_info
             previous_revision = previous_hw_info.get("dmr_config", {}).get("revision")
 
-            # 1. 对比版本号
+            # 1. Compare revision numbers
             if previous_revision is not None and current_revision != previous_revision:
                 logger.info(
-                    "硬件版本号变化",
+                    "Hardware revision number changed",
                     extra={
                         "previous": previous_revision,
                         "current": current_revision,
@@ -520,7 +575,7 @@ class AgentReportService:
                     "current_revision": current_revision,
                 }
 
-            # 2. 对比内容（深度JSON对比，使用工具类）
+            # 2. Compare content (deep JSON comparison, using utility class)
             content_diff = self.json_comparator.compare(
                 previous_hw_info.get("dmr_config", {}),
                 current_dmr_config,
@@ -528,7 +583,7 @@ class AgentReportService:
 
             if content_diff:
                 logger.info(
-                    "硬件内容发生变化",
+                    "Hardware content changed",
                     extra={
                         "diff_count": len(content_diff),
                         "changed_fields": list(content_diff.keys()),
@@ -536,13 +591,13 @@ class AgentReportService:
                 )
                 return self.DIFF_STATE_CONTENT, content_diff
 
-            # 3. 无变化
-            logger.info("硬件信息无变化")
+            # 3. No changes
+            logger.info("Hardware information unchanged")
             return None, {}
 
         except Exception as e:
             logger.error(
-                "硬件信息对比异常",
+                "Exception comparing hardware information",
                 extra={"error": str(e)},
                 exc_info=True,
             )
@@ -558,28 +613,28 @@ class AgentReportService:
         diff_details: Dict[str, Any],
         current_hw_rec: Optional[HostHwRec],
     ) -> Dict[str, Any]:
-        """更新硬件记录
+        """Update hardware records
 
-        根据对比结果更新 host_rec 和 host_hw_rec 表
+        Update host_rec and host_hw_rec tables based on comparison results
 
         Args:
-            host_id: 主机ID
-            hardware_data: 完整硬件数据
-            dmr_config: DMR配置
-            current_revision: 当前版本号
-            diff_state: 差异状态
-            diff_details: 差异详情
-            current_hw_rec: 当前硬件记录
+            host_id: Host ID
+            hardware_data: Complete hardware data
+            dmr_config: DMR configuration
+            current_revision: Current revision number
+            diff_state: Difference state
+            diff_details: Difference details
+            current_hw_rec: Current hardware record
 
         Returns:
-            更新结果
+            Update result
         """
         try:
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 如果有差异，需要更新 host_rec 和插入新的 host_hw_rec
+                # If there are differences, need to update host_rec and insert new host_hw_rec
                 if diff_state:
-                    # 1. 查询 host_rec 获取 hardware_id 和 host_ip（用于邮件通知）
+                    # 1. Query host_rec to get hardware_id and host_ip (for email notification)
                     host_rec_stmt = select(HostRec).where(
                         and_(
                             HostRec.id == host_id,
@@ -589,10 +644,10 @@ class AgentReportService:
                     host_rec_result = await session.execute(host_rec_stmt)
                     host_rec = host_rec_result.scalar_one_or_none()
 
-                    # 2. 更新 host_rec 表
+                    # 2. Update host_rec table
                     await self._update_host_rec(session, host_id)
 
-                    # 3. 插入新的 host_hw_rec 记录
+                    # 3. Insert new host_hw_rec record
                     new_hw_rec = await self._insert_hardware_record(
                         session=session,
                         host_id=host_id,
@@ -603,13 +658,13 @@ class AgentReportService:
 
                     await session.commit()
 
-                    # 4. 发送硬件变更邮件通知（异步，不阻塞主流程）
+                    # 4. Send hardware change email notification (async, non-blocking main flow)
                     if host_rec:
                         asyncio.create_task(
                             self._send_hardware_change_notification(
                                 host_id=host_id,
-                                hardware_id=host_rec.hardware_id or "未知",
-                                host_ip=host_rec.host_ip or "未知",
+                                hardware_id=host_rec.hardware_id or "Unknown",
+                                host_ip=host_rec.host_ip or "Unknown",
                                 diff_state=diff_state,
                                 hw_rec_id=new_hw_rec.id,
                             )
@@ -620,19 +675,19 @@ class AgentReportService:
                         "diff_state": diff_state,
                         "diff_details": diff_details,
                         "hw_rec_id": new_hw_rec.id,
-                        "message": "硬件信息已更新，等待审批",
+                        "message": "Hardware information updated, awaiting approval",
                     }
 
-                # 如果是首次上报（无历史记录）
+                # If this is the first report (no historical record)
                 if not current_hw_rec:
-                    # 插入第一条硬件记录（appr_state=1, 等待审批）
+                    # Insert first hardware record (appr_state=1, awaiting approval)
                     new_hw_rec = await self._insert_hardware_record(
                         session=session,
                         host_id=host_id,
                         hardware_data=hardware_data,
                         hw_ver=str(current_revision),
                         diff_state=None,
-                        sync_state=self.SYNC_STATE_WAIT,  # 等待审批
+                        sync_state=self.SYNC_STATE_WAIT,  # Awaiting approval
                     )
 
                     await session.commit()
@@ -640,36 +695,36 @@ class AgentReportService:
                     return {
                         "status": "first_report",
                         "hw_rec_id": new_hw_rec.id,
-                        "message": "硬件信息首次上报成功",
+                        "message": "Hardware information first report succeeded",
                     }
 
-                # 无变化
+                # No changes
                 return {
                     "status": "no_change",
-                    "message": "硬件信息无变化",
+                    "message": "Hardware information unchanged",
                 }
 
         except Exception as e:
             logger.error(
-                "更新硬件记录失败",
+                "Failed to update hardware record",
                 extra={"host_id": host_id, "error": str(e)},
                 exc_info=True,
             )
             raise BusinessError(
-                message="更新硬件记录失败",
+                message="Failed to update hardware record",
                 error_code="UPDATE_HARDWARE_FAILED",
                 code=ServiceErrorCodes.HOST_UPDATE_HARDWARE_FAILED,
                 http_status_code=500,
             )
 
     async def _update_host_rec(self, session, host_id: int) -> None:
-        """更新 host_rec 表
+        """Update host_rec table
 
-        设置 appr_state=2（存在改动），host_state=6（存在潜在的硬件改动）
+        Set appr_state=2 (has changes), host_state=6 (has potential hardware changes)
 
         Args:
-            session: 数据库会话
-            host_id: 主机ID
+            session: Database session
+            host_id: Host ID
         """
         try:
             stmt = (
@@ -689,13 +744,13 @@ class AgentReportService:
             await session.execute(stmt)
 
             logger.info(
-                "更新 host_rec 成功",
+                "Updated host_rec successfully",
                 extra={"host_id": host_id},
             )
 
         except Exception as e:
             logger.error(
-                "更新 host_rec 失败",
+                "Failed to update host_rec",
                 extra={"host_id": host_id, "error": str(e)},
                 exc_info=True,
             )
@@ -710,37 +765,37 @@ class AgentReportService:
         diff_state: Optional[int],
         sync_state: int = SYNC_STATE_WAIT,
     ) -> HostHwRec:
-        """插入新的硬件记录
+        """Insert new hardware record
 
         Args:
-            session: 数据库会话
-            host_id: 主机ID
-            hardware_data: 完整硬件数据
-            hw_ver: 硬件版本号
-            diff_state: 差异状态
-            sync_state: 同步状态
+            session: Database session
+            host_id: Host ID
+            hardware_data: Complete hardware data
+            hw_ver: Hardware version number
+            diff_state: Difference state
+            sync_state: Sync state
 
         Returns:
-            新创建的硬件记录
+            Newly created hardware record
         """
         try:
-            # 生成雪花ID
+            # Generate snowflake ID
             new_id = generate_snowflake_id()
 
             new_hw_rec = HostHwRec(
-                id=new_id,  # 显式设置雪花ID
+                id=new_id,  # Explicitly set snowflake ID
                 host_id=host_id,
-                hw_info=hardware_data,  # 存储完整的硬件数据
+                hw_info=hardware_data,  # Store complete hardware data
                 hw_ver=hw_ver,
                 diff_state=diff_state,
                 sync_state=sync_state,
             )
 
             session.add(new_hw_rec)
-            await session.flush()  # 确保数据已写入
+            await session.flush()  # Ensure data is written
 
             logger.info(
-                "插入新硬件记录成功",
+                "Inserted new hardware record successfully",
                 extra={
                     "hw_rec_id": new_hw_rec.id,
                     "host_id": host_id,
@@ -751,7 +806,7 @@ class AgentReportService:
 
         except Exception as e:
             logger.error(
-                "插入硬件记录失败",
+                "Failed to insert hardware record",
                 extra={"host_id": host_id, "error": str(e)},
                 exc_info=True,
             )
@@ -765,24 +820,24 @@ class AgentReportService:
         result_msg: Optional[str] = None,
         log_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """上报测试用例执行结果
+        """Report test case execution result
 
         Args:
-            host_id: 主机ID（从token中获取）
-            tc_id: 测试用例ID
-            state: 执行状态（0-空闲 1-启动 2-成功 3-失败）
-            result_msg: 结果消息
-            log_url: 日志文件URL
+            host_id: Host ID (obtained from token)
+            tc_id: Test case ID
+            state: Execution state (0-free 1-started 2-success 3-failed)
+            result_msg: Result message
+            log_url: Log file URL
 
         Returns:
-            更新结果
+            Update result
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
             logger.info(
-                "开始处理测试用例结果上报",
+                "Start processing test case result report",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -792,7 +847,7 @@ class AgentReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询最新的执行日志记录
+                # 1. Query latest execution log record
                 stmt = (
                     select(HostExecLog)
                     .where(
@@ -811,7 +866,7 @@ class AgentReportService:
 
                 if not exec_log:
                     raise BusinessError(
-                        message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
+                        message=f"Execution record not found for host {host_id} test case {tc_id}",
                         message_key="error.host.exec_log_not_found",
                         error_code="EXEC_LOG_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -820,7 +875,7 @@ class AgentReportService:
                     )
 
                 logger.info(
-                    "找到执行日志记录",
+                    "Found execution log record",
                     extra={
                         "log_id": exec_log.id,
                         "host_id": host_id,
@@ -829,7 +884,7 @@ class AgentReportService:
                     },
                 )
 
-                # 2. 更新执行状态和结果
+                # 2. Update execution state and result
                 update_stmt = (
                     update(HostExecLog)
                     .where(HostExecLog.id == exec_log.id)
@@ -844,7 +899,7 @@ class AgentReportService:
                 await session.commit()
 
                 logger.info(
-                    "测试用例结果上报成功",
+                    "Test case result report succeeded",
                     extra={
                         "log_id": exec_log.id,
                         "host_id": host_id,
@@ -855,7 +910,7 @@ class AgentReportService:
                 )
 
                 return {
-                    "host_id": str(host_id),  # ✅ 转换为字符串避免精度丢失
+                    "host_id": str(host_id),  # ✅ Convert to string to avoid precision loss
                     "tc_id": tc_id,
                     "case_state": state,
                     "result_msg": result_msg,
@@ -867,7 +922,7 @@ class AgentReportService:
             raise
         except Exception as e:
             logger.error(
-                "测试用例结果上报失败",
+                "Test case result report failed",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -876,7 +931,7 @@ class AgentReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="测试用例结果上报处理失败",
+                message="Test case result report processing failed",
                 error_code="TESTCASE_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_TESTCASE_REPORT_FAILED,
                 http_status_code=500,
@@ -888,26 +943,26 @@ class AgentReportService:
         tc_id: str,
         due_time_minutes: int,
     ) -> Dict[str, Any]:
-        """更新测试用例预期结束时间
+        """Update test case expected end time
 
         Args:
-            host_id: 主机ID（从token中获取）
-            tc_id: 测试用例ID
-            due_time_minutes: 预期结束时间（分钟时间差，整数）
+            host_id: Host ID (obtained from token)
+            tc_id: Test case ID
+            due_time_minutes: Expected end time (minutes difference, integer)
 
         Returns:
-            更新结果
+            Update result
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
-            # 计算实际的预期结束时间（当前时间 + 分钟数）
+            # Calculate actual expected end time (current time + minutes)
             now = datetime.now(timezone.utc)
             due_time = now + timedelta(minutes=due_time_minutes)
 
             logger.info(
-                "开始处理预期结束时间上报",
+                "Start processing expected end time report",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -919,15 +974,15 @@ class AgentReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询执行中的最新执行日志记录
-                # 查询条件：host_id, tc_id, case_state=1（启动状态）, del_flag=0
+                # 1. Query latest execution log record that is executing
+                # Query conditions: host_id, tc_id, case_state=1 (started state), del_flag=0
                 stmt = (
                     select(HostExecLog)
                     .where(
                         and_(
                             HostExecLog.host_id == host_id,
                             HostExecLog.tc_id == tc_id,
-                            HostExecLog.case_state == 1,  # 启动状态（执行中）
+                            HostExecLog.case_state == 1,  # Started state (executing)
                             HostExecLog.del_flag == 0,
                         )
                     )
@@ -940,7 +995,7 @@ class AgentReportService:
 
                 if not exec_log:
                     raise BusinessError(
-                        message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行中的记录",
+                        message=f"Execution record not found for host {host_id} test case {tc_id}",
                         message_key="error.host.exec_log_not_found",
                         error_code="EXEC_LOG_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -949,7 +1004,7 @@ class AgentReportService:
                     )
 
                 logger.info(
-                    "找到执行中的日志记录",
+                    "Found executing log record",
                     extra={
                         "host_id": host_id,
                         "tc_id": tc_id,
@@ -958,18 +1013,14 @@ class AgentReportService:
                     },
                 )
 
-                # 2. 更新 due_time
-                update_stmt = (
-                    update(HostExecLog)
-                    .where(HostExecLog.id == exec_log.id)
-                    .values(due_time=due_time)
-                )
+                # 2. Update due_time
+                update_stmt = update(HostExecLog).where(HostExecLog.id == exec_log.id).values(due_time=due_time)
 
                 await session.execute(update_stmt)
                 await session.commit()
 
                 logger.info(
-                    "预期结束时间更新完成",
+                    "Expected end time update completed",
                     extra={
                         "host_id": host_id,
                         "tc_id": tc_id,
@@ -989,7 +1040,7 @@ class AgentReportService:
             raise
         except Exception as e:
             logger.error(
-                "预期结束时间上报处理异常",
+                "Exception processing expected end time report",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -999,38 +1050,36 @@ class AgentReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="预期结束时间上报处理失败",
+                message="Expected end time report processing failed",
                 error_code="DUE_TIME_UPDATE_FAILED",
                 code=ServiceErrorCodes.HOST_DUE_TIME_UPDATE_FAILED,
                 http_status_code=500,
             )
 
-    async def report_vnc_connection_state(
-        self, host_id: int, vnc_state: int
-    ) -> Dict[str, Any]:
-        """Agent 上报 VNC 连接状态
+    async def report_vnc_connection_state(self, host_id: int, vnc_state: int) -> Dict[str, Any]:
+        """Agent reports VNC connection state
 
-        业务逻辑：
-        1. 从 token 中解析 host_id（已在依赖注入中完成）
-        2. 根据 vnc_state 和当前 host_state 更新主机状态：
-            - 当 `vnc_state = 1`（连接成功）时：
-                - 如果 `host_state = 1`（已锁定），则修改为 `host_state = 2`（已占用）
-            - 当 `vnc_state = 2`（连接断开）时：
-                - 如果 `host_state = 2`（已占用），则修改为 `host_state = 0`（空闲）
+        Business logic:
+        1. Parse host_id from token (already completed in dependency injection)
+        2. Update host state based on vnc_state and current host_state:
+            - When `vnc_state = 1` (connection succeeded):
+                - If `host_state = 1` (locked), change to `host_state = 2` (occupied)
+            - When `vnc_state = 2` (connection disconnected):
+                - If `host_state = 2` (occupied), change to `host_state = 0` (free)
 
         Args:
-            host_id: 主机ID（从token中获取）
-            vnc_state: VNC连接状态（1=连接成功，2=连接断开）
+            host_id: Host ID (obtained from token)
+            vnc_state: VNC connection state (1=connection succeeded, 2=connection disconnected)
 
         Returns:
-            更新结果，包含 host_id、host_state、vnc_state 和 updated 字段
+            Update result, containing host_id, host_state, vnc_state, and updated fields
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
             logger.info(
-                "开始处理 Agent VNC 连接状态上报",
+                "Start processing Agent VNC connection state report",
                 extra={
                     "host_id": host_id,
                     "vnc_state": vnc_state,
@@ -1039,7 +1088,7 @@ class AgentReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询 host_rec 表，验证主机是否存在
+                # 1. Query host_rec table to verify host exists
                 stmt = select(HostRec).where(
                     and_(
                         HostRec.id == host_id,
@@ -1051,33 +1100,33 @@ class AgentReportService:
 
                 if not host_rec:
                     logger.warning(
-                        "主机不存在或已删除",
+                        "Host does not exist or has been deleted",
                         extra={
                             "host_id": host_id,
                             "vnc_state": vnc_state,
                         },
                     )
                     raise BusinessError(
-                        message=f"主机不存在: {host_id}",
+                        message=f"Host does not exist: {host_id}",
                         error_code="HOST_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_NOT_FOUND,
                         http_status_code=404,
                     )
 
-                # 2. 记录更新前的状态
+                # 2. Record state before update
                 old_host_state = host_rec.host_state
                 current_host_state = host_rec.host_state
 
-                # 3. 根据 vnc_state 和当前 host_state 确定新状态
+                # 3. Determine new state based on vnc_state and current host_state
                 new_host_state = None
                 updated = False
 
-                if vnc_state == 1:  # 连接成功
-                    if current_host_state == HOST_STATE_LOCKED:  # 1 = 已锁定
-                        new_host_state = HOST_STATE_OCCUPIED  # 2 = 已占用
+                if vnc_state == 1:  # Connection succeeded
+                    if current_host_state == HOST_STATE_LOCKED:  # 1 = Locked
+                        new_host_state = HOST_STATE_OCCUPIED  # 2 = Occupied
                         updated = True
                         logger.info(
-                            "VNC连接成功，主机状态从已锁定(1)更新为已占用(2)",
+                            "VNC connection succeeded, host state updated from locked(1) to occupied(2)",
                             extra={
                                 "host_id": host_id,
                                 "old_host_state": old_host_state,
@@ -1086,9 +1135,10 @@ class AgentReportService:
                             },
                         )
                     else:
-                        # ✅ 当 vnc_state = 1（连接成功）但 host_state 不等于 HOST_STATE_LOCKED 时，返回明确的异常
+                        # ✅ When vnc_state = 1 (connection succeeded) but host_state is not "
+                        # HOST_STATE_LOCKED, return explicit exception
                         logger.warning(
-                            "VNC连接成功，但主机状态不匹配",
+                            "VNC connection succeeded, but host state does not match",
                             extra={
                                 "host_id": host_id,
                                 "current_host_state": current_host_state,
@@ -1097,7 +1147,11 @@ class AgentReportService:
                             },
                         )
                         raise BusinessError(
-                            message=f"VNC连接成功，但主机状态不匹配。当前状态：{current_host_state}，需要状态：{HOST_STATE_LOCKED}（已锁定）",
+                            message=(
+                                f"VNC connection succeeded, but host state does not match. "
+                                f"Current state: {current_host_state}, "
+                                f"required state: {HOST_STATE_LOCKED} (locked)"
+                            ),
                             error_code="VNC_STATE_MISMATCH",
                             code=ServiceErrorCodes.HOST_VNC_STATE_MISMATCH,
                             http_status_code=400,
@@ -1109,13 +1163,14 @@ class AgentReportService:
                             },
                         )
 
-                elif vnc_state == 2:  # 连接断开/失败
-                    # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
+                elif vnc_state == 2:  # Connection disconnected/failed
+                    # ✅ Only hosts in business state (< 5) will be reset to free, "
+                    # avoid affecting hosts in pending/registration state
                     if current_host_state is not None and current_host_state < 5:
-                        new_host_state = HOST_STATE_FREE  # 0 = 空闲
+                        new_host_state = HOST_STATE_FREE  # 0 = Free
                         updated = True
                         logger.info(
-                            "VNC连接断开/失败，主机状态更新为空闲(0)",
+                            "VNC connection disconnected/failed, host state updated to free(0)",
                             extra={
                                 "host_id": host_id,
                                 "old_host_state": old_host_state,
@@ -1125,7 +1180,10 @@ class AgentReportService:
                         )
                     else:
                         logger.info(
-                            "VNC连接断开/失败，但主机处于非业务状态(>=5)，保持原状态",
+                            (
+                                "VNC connection disconnected/failed, "
+                                "but host is in non-business state (>=5), keep original state"
+                            ),
                             extra={
                                 "host_id": host_id,
                                 "current_host_state": current_host_state,
@@ -1133,7 +1191,7 @@ class AgentReportService:
                             },
                         )
 
-                # 4. 如果需要更新，执行更新操作
+                # 4. If update is needed, execute update operation
                 if updated and new_host_state is not None:
                     update_stmt = (
                         update(HostRec)
@@ -1149,15 +1207,15 @@ class AgentReportService:
                     await session.execute(update_stmt)
                     await session.commit()
 
-                    # 5. 刷新对象以获取最新状态
+                    # 5. Refresh object to get latest state
                     await session.refresh(host_rec)
                     final_host_state = host_rec.host_state
                 else:
-                    # 不需要更新，使用当前状态
+                    # No update needed, use current state
                     final_host_state = current_host_state
 
                 logger.info(
-                    "Agent VNC 连接状态上报处理完成",
+                    "Agent VNC connection state report processing completed",
                     extra={
                         "host_id": host_id,
                         "vnc_state": vnc_state,
@@ -1178,7 +1236,7 @@ class AgentReportService:
             raise
         except Exception as e:
             logger.error(
-                "Agent VNC 连接状态上报处理失败",
+                "Agent VNC connection state report processing failed",
                 extra={
                     "host_id": host_id,
                     "vnc_state": vnc_state,
@@ -1188,7 +1246,7 @@ class AgentReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="Agent VNC 连接状态上报处理失败",
+                message="Agent VNC connection state report processing failed",
                 error_code="VNC_CONNECTION_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_VNC_CONNECTION_REPORT_FAILED,
                 http_status_code=500,
@@ -1202,33 +1260,34 @@ class AgentReportService:
         biz_state: int,
         agent_ver: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """上报 OTA 更新状态
+        """Report OTA update status
 
-        业务逻辑：
-        1. 根据 host_id、app_name、app_ver 查询 host_upd 表的最新有效记录（del_flag=0）
-        2. 如果未找到记录，创建新记录（在创建前，逻辑删除其他有效记录，保证有效数据只有一条）
-        3. 更新 app_state 字段（1=更新中，2=成功，3=失败）
-        4. 如果 biz_state=2（成功）：
-           - 更新 host_rec 表的 host_state=0（free）
-           - 更新 host_rec 表的 agent_ver（新版本，如果提供）
-           - 逻辑删除 host_upd 表的当前记录（del_flag=1）
+        Business logic:
+        1. Query latest valid record (del_flag=0) from host_upd table based on host_id, app_name, app_ver
+        2. If record not found, create new record (before creating, logically delete other "
+        "valid records to ensure only one valid record)
+        3. Update app_state field (1=updating, 2=success, 3=failed)
+        4. If biz_state=2 (success):
+           - Update host_rec table host_state=0 (free)
+           - Update host_rec table agent_ver (new version, if provided)
+           - Logically delete current record in host_upd table (del_flag=1)
 
         Args:
-            host_id: 主机ID
-            app_name: 应用名称
-            app_ver: 应用版本号
-            biz_state: 业务状态（1=更新中，2=成功，3=失败）
-            agent_ver: Agent 版本号（更新成功时必填）
+            host_id: Host ID
+            app_name: Application name
+            app_ver: Application version number
+            biz_state: Business state (1=updating, 2=success, 3=failed)
+            agent_ver: Agent version number (required when update succeeds)
 
         Returns:
-            Dict[str, Any]: 包含更新结果的字典
+            Dict[str, Any]: Dictionary containing update result
 
         Raises:
-            BusinessError: 更新失败或业务逻辑错误时抛出
+            BusinessError: Raises when update fails or business logic error
         """
         try:
             logger.info(
-                "开始处理 OTA 更新状态上报",
+                "Start processing OTA update status report",
                 extra={
                     "host_id": host_id,
                     "app_name": app_name,
@@ -1238,21 +1297,21 @@ class AgentReportService:
                 },
             )
 
-            # 验证 biz_state=2 时 agent_ver 必填
+            # Validate agent_ver is required when biz_state=2
             if biz_state == 2 and not agent_ver:
                 raise BusinessError(
-                    message="更新成功时，agent_ver 字段必填",
+                    message="agent_ver field is required when update succeeds",
                     error_code="AGENT_VER_REQUIRED",
                     code=ServiceErrorCodes.HOST_AGENT_VER_REQUIRED,
                     http_status_code=400,
                 )
 
-            # 映射 biz_state 到 app_state（1=更新中，2=成功，3=失败）
+            # Map biz_state to app_state (1=updating, 2=success, 3=failed)
             app_state = biz_state
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询 host_upd 表的最新有效记录
+                # 1. Query latest valid record from host_upd table
                 stmt = (
                     select(HostUpd)
                     .where(
@@ -1272,9 +1331,9 @@ class AgentReportService:
 
                 is_new_record = False
                 if not host_upd:
-                    # 2. 如果未找到记录，先逻辑删除其他有效记录（保证有效数据只有一条）
+                    # 2. If record not found, first logically delete other valid records (ensure only one valid record)
                     logger.info(
-                        "未找到 OTA 更新记录，准备创建新记录",
+                        "OTA update record not found, preparing to create new record",
                         extra={
                             "host_id": host_id,
                             "app_name": app_name,
@@ -1282,7 +1341,7 @@ class AgentReportService:
                         },
                     )
 
-                    # 逻辑删除该 host_id 的所有有效记录（保证有效数据只有一条）
+                    # Logically delete all valid records for this host_id (ensure only one valid record)
                     delete_other_stmt = (
                         update(HostUpd)
                         .where(
@@ -1299,7 +1358,7 @@ class AgentReportService:
 
                     if deleted_count > 0:
                         logger.info(
-                            "已逻辑删除其他有效记录，保证有效数据只有一条",
+                            "Logically deleted other valid records to ensure only one valid record",
                             extra={
                                 "host_id": host_id,
                                 "app_name": app_name,
@@ -1307,7 +1366,7 @@ class AgentReportService:
                             },
                         )
 
-                    # 创建新记录
+                    # Create new record
                     host_upd = HostUpd(
                         host_id=host_id,
                         app_name=app_name,
@@ -1317,11 +1376,11 @@ class AgentReportService:
                         updated_by=None,
                     )
                     session.add(host_upd)
-                    await session.flush()  # 刷新以获取生成的 ID
+                    await session.flush()  # Flush to get generated ID
                     is_new_record = True
 
                     logger.info(
-                        "已创建新的 OTA 更新记录",
+                        "Created new OTA update record",
                         extra={
                             "host_upd_id": host_upd.id,
                             "host_id": host_id,
@@ -1331,17 +1390,13 @@ class AgentReportService:
                         },
                     )
                 else:
-                    # 3. 如果找到记录，更新 app_state
+                    # 3. If record found, update app_state
                     old_app_state = host_upd.app_state
-                    update_host_upd_stmt = (
-                        update(HostUpd)
-                        .where(HostUpd.id == host_upd.id)
-                        .values(app_state=app_state)
-                    )
+                    update_host_upd_stmt = update(HostUpd).where(HostUpd.id == host_upd.id).values(app_state=app_state)
                     await session.execute(update_host_upd_stmt)
 
                     logger.info(
-                        "host_upd 表状态已更新",
+                        "host_upd table state updated",
                         extra={
                             "host_upd_id": host_upd.id,
                             "host_id": host_id,
@@ -1350,10 +1405,10 @@ class AgentReportService:
                         },
                     )
 
-                # 4. 如果 biz_state=2（成功），更新 host_rec 表并逻辑删除 host_upd 记录
+                # 4. If biz_state=2 (success), update host_rec table and logically delete host_upd record
                 new_host_state = None
                 if biz_state == 2:
-                    # 4.1 查询并更新 host_rec 表
+                    # 4.1 Query and update host_rec table
                     host_rec_stmt = select(HostRec).where(
                         and_(
                             HostRec.id == host_id,
@@ -1365,45 +1420,45 @@ class AgentReportService:
 
                     if not host_rec:
                         logger.warning(
-                            "未找到主机记录，跳过 host_rec 表更新",
+                            "Host record not found, skipping host_rec table update",
                             extra={
                                 "host_id": host_id,
                                 "host_upd_id": host_upd.id,
                             },
                         )
                     else:
-                        # 更新 host_state=0（free）和 agent_ver
+                        # Update host_state=0 (free) and agent_ver
                         old_host_state = host_rec.host_state
                         old_agent_ver = host_rec.agent_ver
 
                         update_values: Dict[str, Any] = {}
 
-                        # ✅ 只有业务状态 (< 5) 的主机才会被重置为空闲，避免影响 pending/registration 状态的主机
+                        # ✅ Only hosts in business state (< 5) will be reset to free, "
+                        # avoid affecting hosts in pending/registration state
                         if old_host_state < 5:
                             update_values["host_state"] = HOST_STATE_FREE
                         else:
                             logger.info(
-                                "主机处于非业务状态(>=5)，OTA 更新成功后不重置为空闲状态",
+                                (
+                                    "Host is in non-business state (>=5), "
+                                    "do not reset to free state after OTA update succeeds"
+                                ),
                                 extra={
                                     "host_id": host_id,
                                     "host_state": old_host_state,
                                 },
                             )
                         if agent_ver:
-                            # 限制 agent_ver 长度为 10
+                            # Limit agent_ver length to 10
                             update_values["agent_ver"] = agent_ver[:10] if len(agent_ver) > 10 else agent_ver
 
-                        update_host_rec_stmt = (
-                            update(HostRec)
-                            .where(HostRec.id == host_id)
-                            .values(**update_values)
-                        )
+                        update_host_rec_stmt = update(HostRec).where(HostRec.id == host_id).values(**update_values)
                         await session.execute(update_host_rec_stmt)
 
                         new_host_state = HOST_STATE_FREE
 
                         logger.info(
-                            "host_rec 表已更新（OTA 更新成功）",
+                            "host_rec table updated (OTA update succeeded)",
                             extra={
                                 "host_id": host_id,
                                 "old_host_state": old_host_state,
@@ -1413,16 +1468,12 @@ class AgentReportService:
                             },
                         )
 
-                    # 4.2 逻辑删除 host_upd 表的当前记录（更新完成）
-                    delete_host_upd_stmt = (
-                        update(HostUpd)
-                        .where(HostUpd.id == host_upd.id)
-                        .values(del_flag=1)
-                    )
+                    # 4.2 Logically delete current record in host_upd table (update completed)
+                    delete_host_upd_stmt = update(HostUpd).where(HostUpd.id == host_upd.id).values(del_flag=1)
                     await session.execute(delete_host_upd_stmt)
 
                     logger.info(
-                        "host_upd 记录已逻辑删除（OTA 更新成功）",
+                        "host_upd record logically deleted (OTA update succeeded)",
                         extra={
                             "host_upd_id": host_upd.id,
                             "host_id": host_id,
@@ -1431,15 +1482,15 @@ class AgentReportService:
                         },
                     )
 
-                # 提交事务
+                # Commit transaction
                 await session.commit()
 
-                # 刷新 host_upd 对象以获取最新状态（如果记录未被删除）
+                # Refresh host_upd object to get latest state (if record was not deleted)
                 if biz_state != 2:
                     await session.refresh(host_upd)
 
                 logger.info(
-                    "OTA 更新状态上报处理完成",
+                    "OTA update status report processing completed",
                     extra={
                         "host_id": host_id,
                         "host_upd_id": host_upd.id,
@@ -1464,7 +1515,7 @@ class AgentReportService:
             raise
         except Exception as e:
             logger.error(
-                "OTA 更新状态上报处理失败",
+                "OTA update status report processing failed",
                 extra={
                     "host_id": host_id,
                     "app_name": app_name,
@@ -1476,7 +1527,7 @@ class AgentReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="OTA 更新状态上报处理失败",
+                message="OTA update status report processing failed",
                 error_code="OTA_UPDATE_STATUS_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_OTA_UPDATE_STATUS_REPORT_FAILED,
                 http_status_code=500,
@@ -1490,31 +1541,36 @@ class AgentReportService:
         diff_state: int,
         hw_rec_id: int,
     ) -> None:
-        """发送硬件变更邮件通知
+        """Send hardware change email notification
 
         Args:
-            host_id: 主机ID
-            hardware_id: 硬件ID
-            host_ip: 主机IP
-            diff_state: 变更类型（1=版本号变化，2=内容更改）
-            hw_rec_id: 硬件记录ID
+            host_id: Host ID
+            hardware_id: Hardware ID
+            host_ip: Host IP
+            diff_state: Change type (1=revision changed, 2=content changed)
+            hw_rec_id: Hardware record ID
         """
         try:
-            # 1. 获取收件人邮箱列表（从系统配置中获取）
+            # 1. Get recipient email list (from system configuration)
             maintain_emails = await self._get_maintain_emails()
             if not maintain_emails:
-                logger.warning("未配置维护人员邮箱，跳过硬件变更邮件通知")
+                logger.warning(
+                    (
+                        "Maintenance personnel email not configured, "
+                        "skipping hardware change email notification"
+                    )
+                )
                 return
 
-            # 2. 确定变更类型
+            # 2. Determine change type
             change_type_map = {
-                self.DIFF_STATE_VERSION: "版本号变化",
-                self.DIFF_STATE_CONTENT: "内容更改",
+                self.DIFF_STATE_VERSION: "Revision changed",
+                self.DIFF_STATE_CONTENT: "Content changed",
             }
-            change_type = change_type_map.get(diff_state, "未知变更")
+            change_type = change_type_map.get(diff_state, "Unknown change")
 
-            # 3. 构建邮件主题和内容
-            subject = f"硬件变更通知 - Host ID: {host_id}"
+            # 3. Build email subject and content
+            subject = f"Hardware change notification - Host ID: {host_id}"
             content = self._build_hardware_change_email_content(
                 host_id=host_id,
                 hardware_id=hardware_id,
@@ -1523,7 +1579,7 @@ class AgentReportService:
                 hw_rec_id=hw_rec_id,
             )
 
-            # 4. 发送邮件
+            # 4. Send email
             result = await send_email(
                 to_emails=maintain_emails,
                 subject=subject,
@@ -1533,7 +1589,7 @@ class AgentReportService:
 
             if result.get("success"):
                 logger.info(
-                    "硬件变更邮件通知发送成功",
+                    "Hardware change email notification sent successfully",
                     extra={
                         "host_id": host_id,
                         "hardware_id": hardware_id,
@@ -1544,7 +1600,7 @@ class AgentReportService:
                 )
             else:
                 logger.warning(
-                    "硬件变更邮件通知发送失败",
+                    "Hardware change email notification failed",
                     extra={
                         "host_id": host_id,
                         "hardware_id": hardware_id,
@@ -1555,9 +1611,9 @@ class AgentReportService:
                 )
 
         except Exception as e:
-            # 邮件发送失败不影响主流程，只记录日志
+            # Email sending failure does not affect main flow, only log
             logger.error(
-                f"发送硬件变更邮件通知异常: {e!s}",
+                f"Exception sending hardware change email notification: {e!s}",
                 extra={
                     "host_id": host_id,
                     "hardware_id": hardware_id,
@@ -1568,12 +1624,12 @@ class AgentReportService:
             )
 
     async def _get_maintain_emails(self) -> List[str]:
-        """获取维护人员邮箱列表
+        """Get maintenance personnel email list
 
-        从 sys_conf 表查询 conf_key='maintain_email' 的配置
+        Query configuration from sys_conf table where conf_key='maintain_email'
 
         Returns:
-            维护人员邮箱列表
+            Maintenance personnel email list
         """
         try:
             session_factory = self.session_factory
@@ -1590,20 +1646,20 @@ class AgentReportService:
                 conf = result.scalar_one_or_none()
 
                 if not conf or not conf.conf_json:
-                    logger.warning("未找到维护人员邮箱配置（conf_key='maintain_email'）")
+                    logger.warning("Maintenance personnel email configuration not found (conf_key='maintain_email')")
                     return []
 
-                # conf_json 可能是字符串列表或逗号分隔的字符串
+                # conf_json may be a string list or comma-separated string
                 emails = conf.conf_json
                 if isinstance(emails, str):
-                    # 如果是字符串，按逗号分割
+                    # If it's a string, split by comma
                     emails = [email.strip() for email in emails.split(",") if email.strip()]
                 elif isinstance(emails, list):
-                    # 如果是列表，直接使用
+                    # If it's a list, use directly
                     emails = [str(email).strip() for email in emails if email]
                 else:
                     logger.warning(
-                        "维护人员邮箱配置格式不正确",
+                        "Maintenance personnel email configuration format is incorrect",
                         extra={"email_type": type(emails).__name__},
                     )
                     return []
@@ -1612,7 +1668,7 @@ class AgentReportService:
 
         except Exception as e:
             logger.error(
-                "获取维护人员邮箱列表失败",
+                "Failed to get maintenance personnel email list",
                 extra={"error": str(e)},
                 exc_info=True,
             )
@@ -1626,17 +1682,17 @@ class AgentReportService:
         change_type: str,
         hw_rec_id: int,
     ) -> str:
-        """构建硬件变更邮件内容（HTML格式）
+        """Build hardware change email content (HTML format)
 
         Args:
-            host_id: 主机ID
-            hardware_id: 硬件ID
-            host_ip: 主机IP
-            change_type: 变更类型
-            hw_rec_id: 硬件记录ID
+            host_id: Host ID
+            hardware_id: Hardware ID
+            host_ip: Host IP
+            change_type: Change type
+            hw_rec_id: Hardware record ID
 
         Returns:
-            HTML格式的邮件内容
+            HTML formatted email content
         """
         return f"""<!DOCTYPE html>
 <html>
@@ -1706,45 +1762,45 @@ class AgentReportService:
 </head>
 <body>
     <div class="header">
-        <h2 style="margin: 0;">硬件变更通知</h2>
+        <h2 style="margin: 0;">Hardware Change Notification</h2>
     </div>
     <div class="content">
-        <p style="font-size: 16px; margin-top: 0;">尊敬的维护人员：</p>
+        <p style="font-size: 16px; margin-top: 0;">Dear Maintenance Staff:</p>
 
         <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
-            检测到主机硬件信息发生变化，请及时关注。
+            Host hardware information changes detected, please pay attention.
         </p>
 
         <div class="section">
-            <div class="section-title">变更信息</div>
+            <div class="section-title">Change Information</div>
             <div class="info-item">
-                <span class="info-label">主机ID：</span>
+                <span class="info-label">Host ID:</span>
                 <span class="info-value">{host_id}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">硬件ID：</span>
+                <span class="info-label">Hardware ID:</span>
                 <span class="info-value">{hardware_id}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">主机IP：</span>
+                <span class="info-label">Host IP:</span>
                 <span class="info-value">{host_ip}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">变更类型：</span>
+                <span class="info-label">Change Type:</span>
                 <span class="info-value">{change_type}</span>
             </div>
             <div class="info-item">
-                <span class="info-label">硬件记录ID：</span>
+                <span class="info-label">Hardware Record ID:</span>
                 <span class="info-value">{hw_rec_id}</span>
             </div>
         </div>
 
         <p style="margin-top: 25px; color: #555;">
-            请登录系统查看详细信息并进行审批。
+            Please log in to the system to view details and approve.
         </p>
 
         <div class="footer">
-            此邮件由系统自动发送，请勿回复。
+            This email is automatically sent by the system, please do not reply.
         </div>
     </div>
 </body>
@@ -1752,12 +1808,12 @@ class AgentReportService:
 """
 
 
-# 全局服务实例（单例模式）
+# Global service instance (singleton pattern)
 _agent_report_service_instance: Optional[AgentReportService] = None
 
 
 def get_agent_report_service() -> AgentReportService:
-    """获取Agent硬件服务实例（单例模式）"""
+    """Get Agent hardware service instance (singleton pattern)"""
     global _agent_report_service_instance
 
     if _agent_report_service_instance is None:

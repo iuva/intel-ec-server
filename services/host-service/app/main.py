@@ -1,7 +1,7 @@
 """
-Host Service 主应用入口
+Host Service main application entry point
 
-提供主机管理和 WebSocket 实时通信功能
+Provides host management and WebSocket real-time communication functionality
 """
 
 import os
@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.services.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
@@ -23,7 +23,7 @@ try:
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from app.services.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
@@ -34,50 +34,50 @@ except ImportError:
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
 
-# 加载 .env 文件（如果存在）
+# Load .env file (if exists)
 try:
     from shared.utils.env_loader import ensure_env_loaded
 
     ensure_env_loaded()
 except ImportError:
-    # 如果无法导入，跳过（可能在 Docker 环境中）
+    # If cannot import, skip (may be in Docker environment)
     ***REMOVED***
 
-# 配置日志（在应用启动前配置）
-# 日志级别会自动从环境变量 LOG_LEVEL 或 DEBUG 读取
+# Configure logger (before application startup)
+# Log level is automatically read from environment variable LOG_LEVEL or DEBUG
 service_name = os.getenv("HOST_SERVICE_NAME", "host-service")
 configure_logger(service_name=service_name)
 
 logger = get_logger(__name__)
 
-# 创建服务配置
+# Create service configuration
 config = ServiceConfig.from_env(
     service_name=service_name,
     service_port_key="HOST_SERVICE_PORT",
 )
 
 
-# 定时任务启动和关闭处理器
+# Scheduled task startup and shutdown handlers
 async def startup_case_timeout_task(app):
-    """启动 Case 超时检测定时任务
+    """Start Case timeout detection scheduled task
 
-    通过环境变量 ENABLE_CASE_TIMEOUT_TASK 控制是否启动，默认关闭。
+    Controlled by environment variable ENABLE_CASE_TIMEOUT_TASK, disabled by default.
 
     Args:
-        app: FastAPI 应用实例（生命周期处理器必须接受此参数）
+        app: FastAPI application instance (lifespan handler must accept this parameter)
     """
-    # ✅ 检查环境变量开关，默认关闭
+    # ✅ Check environment variable switch, disabled by default
     enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
 
     if not enable_task:
         logger.info(
-            "Case 超时检测定时任务已禁用（通过环境变量 ENABLE_CASE_TIMEOUT_TASK=false）",
+            "Case timeout detection scheduled task is disabled (via ENABLE_CASE_TIMEOUT_TASK=false)",
             extra={"enable_case_timeout_task": enable_task},
         )
         return
 
     logger.info(
-        "Case 超时检测定时任务已启用（通过环境变量 ENABLE_CASE_TIMEOUT_TASK=true）",
+        "Case timeout detection scheduled task is enabled (via ENABLE_CASE_TIMEOUT_TASK=true)",
         extra={"enable_case_timeout_task": enable_task},
     )
 
@@ -86,12 +86,12 @@ async def startup_case_timeout_task(app):
 
 
 async def shutdown_case_timeout_task(app):
-    """停止 Case 超时检测定时任务
+    """Stop Case timeout detection scheduled task
 
     Args:
-        app: FastAPI 应用实例（生命周期处理器必须接受此参数）
+        app: FastAPI application instance (lifespan handler must accept this parameter)
     """
-    # ✅ 检查环境变量开关，如果已禁用则无需停止
+    # ✅ Check environment variable switch, if disabled then no need to stop
     enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
 
     if not enable_task:
@@ -101,10 +101,10 @@ async def shutdown_case_timeout_task(app):
     await case_timeout_task.stop()
 
 
-# 创建 FastAPI 应用（集成定时任务生命周期）
+# Create FastAPI application (integrated with scheduled task lifecycle)
 app = FastAPI(
     title="Host Service",
-    description="主机管理和WebSocket实时通信服务",
+    description="Host management and WebSocket real-time communication service",
     version="1.0.0",
     lifespan=create_service_lifespan(
         config,
@@ -113,13 +113,13 @@ app = FastAPI(
     ),
 )
 
-# ✅ 在这里立即添加所有中间件（在 lifespan 之前）
-# 添加 CORS 中间件
-# ⚠️ 注意：当 allow_origins=["*"] 时，allow_credentials 必须为 False
-# 如果需要 allow_credentials=True，必须指定具体的域名（如 ["http://localhost:3000"]）
+# ✅ Add all middleware here immediately (before lifespan)
+# Add CORS middleware
+# ⚠️ Note: When allow_origins=["*"], allow_credentials must be False
+# If allow_credentials=True is needed, must specify specific domains (e.g., ["http://localhost:3000"])
 cors_allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", "*")
 if cors_allowed_origins == "*":
-    # 允许所有来源，但不允许 credentials
+    # Allow all origins, but do not allow credentials
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -128,7 +128,7 @@ if cors_allowed_origins == "*":
         allow_headers=["*"],
     )
 else:
-    # 指定具体域名，允许 credentials
+    # Specify specific domains, allow credentials
     origins_list = [origin.strip() for origin in cors_allowed_origins.split(",")]
     app.add_middleware(
         CORSMiddleware,
@@ -138,42 +138,42 @@ else:
         allow_headers=["*"],
     )
 
-# ✅ 添加 HTTP 请求/响应日志中间件（记录请求和响应的详细信息）
+# ✅ Add HTTP request/response logging middleware (records detailed request and response information)
 app.add_middleware(HTTPLoggingMiddleware)
-logger.info("✅ HTTP 请求/响应日志中间件已启用")
+logger.info("✅ HTTP request/response logging middleware enabled")
 
-# 添加 Prometheus 指标收集中间件（根据配置开关）
+# Add Prometheus metrics collection middleware (based on configuration switch)
 if config.enable_prometheus:
     app.add_middleware(PrometheusMetricsMiddleware, service_name=service_name)
-    logger.info("✅ Prometheus 指标收集中间件已启用")
+    logger.info("✅ Prometheus metrics collection middleware enabled")
 
-# ✅ 立即添加统一异常处理中间件（必须在应用启动前添加）
+# ✅ Add unified exception handling middleware immediately (must be added before application startup)
 app.add_middleware(UnifiedExceptionMiddleware)
 
-# ✅ 添加请求上下文中间件（为每个请求生成 request_id，用于日志追踪）
+# ✅ Add request context middleware (generates request_id for each request, used for log tracing)
 app.add_middleware(RequestContextMiddleware)
-logger.info("✅ 请求上下文中间件已启用")
+logger.info("✅ Request context middleware enabled")
 
-# ❌ 不要在这里调用 jaeger_manager.instrument_app(app)
-# 应用在此时已经启动，无法再添加 Jaeger 中间件
+# ❌ Do not call jaeger_manager.instrument_app(app) here
+# Application has already started at this point, cannot add Jaeger middleware anymore
 
-# 注意：异常处理器已经在 lifespan 的 startup() 中注册（shared/app/service_factory.py:243-245）
-# 所以这里不需要再调用 setup_exception_handling
-# 如果调用会导致异常处理器被注册两次，可能产生冲突
+# Note: Exception handlers are already registered in lifespan startup() (shared/app/service_factory.py:243-245)
+# So no need to call setup_exception_handling here
+# Calling it would cause exception handlers to be registered twice, potentially causing conflicts
 
-# 添加健康检查路由
+# Add health check routes
 include_health_routes(app)
 
-# 添加公共 metrics 路由（用于 Prometheus 采集指标，仅在启用时）
+# Add public metrics route (for Prometheus metrics collection, only when enabled)
 if config.enable_prometheus:
     app.include_router(metrics_router)
-    logger.info("✅ Prometheus metrics 路由已启用")
+    logger.info("✅ Prometheus metrics route enabled")
 
-# 注册 API 路由（✅ 添加 /host 前缀以匹配 Gateway 转发规则）
+# Register API routes (✅ Add /host prefix to match Gateway forwarding rules)
 app.include_router(api_router, prefix="/api/v1/host")
 
 
 @app.get("/")
 async def root():
-    """根路径"""
+    """Root path"""
     return {"message": "Host Service is running"}

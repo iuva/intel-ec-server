@@ -1,7 +1,7 @@
 """
-API 依赖注入
+API Dependency Injection
 
-提供服务实例的依赖注入函数
+Provide dependency injection functions for service instances
 """
 
 import os
@@ -12,7 +12,7 @@ from fastapi import Request
 
 from app.services.auth_service import AuthService
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
@@ -21,15 +21,15 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 全局服务实例缓存
+# Global service instance cache
 _auth_service_instance: Optional[AuthService] = None
 
 
 def get_auth_service() -> AuthService:
-    """获取认证服务实例（单例模式）
+    """Get authentication service instance (singleton pattern)
 
     Returns:
-        AuthService: 认证服务实例
+        AuthService: Authentication service instance
     """
     global _auth_service_instance
 
@@ -40,30 +40,30 @@ def get_auth_service() -> AuthService:
 
 
 async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
-    """获取当前用户信息（从 Gateway 传递的 X-User-Info header 获取）
+    """Get current user information (from X-User-Info header ***REMOVED***ed by Gateway)
 
-    ✅ 架构说明：
-    - 所有 token 验证都在 Gateway 中完成，Gateway 调用 auth-service 验证 token
-    - Gateway 验证成功后，将用户信息通过 X-User-Info header 传递给后端服务
-    - 后端服务不再验证 token，只从 X-User-Info header 中读取用户信息
-    - 如果没有 X-User-Info header，返回 None（允许可选认证场景）
+    ✅ Architecture Notes:
+    - All token validation is completed in Gateway, Gateway calls auth-service to validate token
+    - After Gateway validation succeeds, user information is ***REMOVED***ed to backend services via X-User-Info header
+    - Backend services no longer validate token, only read user information from X-User-Info header
+    - If no X-User-Info header, return None (allowing optional authentication scenarios)
 
-    ✅ 注意：
-    - 统一使用 `id` 字段
-    - 支持可选认证（某些端点允许未认证访问，如 device_login 用于审计）
-    - 如果缺少 X-User-Info header，返回 None 而不是报错（可选认证）
+    ✅ Notes:
+    - Use `id` field consistently
+    - Support optional authentication (some endpoints allow unauthenticated access, such as device_login for auditing)
+    - If X-User-Info header is missing, return None instead of error (optional authentication)
 
     Args:
-        request: FastAPI 请求对象
+        request: FastAPI request object
 
     Returns:
-        Optional[Dict[str, Any]]: 用户信息字典，包含：
-            - id: 用户ID（统一字段）
-            - username: 用户名
-            - user_type: 用户类型（admin/device/user）
-            - permissions: 权限列表
-            - roles: 角色列表
-        如果没有 X-User-Info header，返回 None（可选认证）
+        Optional[Dict[str, Any]]: User information dictionary, containing:
+            - id: User ID (consistent field)
+            - username: Username
+            - user_type: User type (admin/device/user)
+            - permissions: Permission list
+            - roles: Role list
+        If no X-User-Info header, return None (optional authentication)
 
     Example:
         >>> @router.post("/device/login")
@@ -76,42 +76,46 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
     try:
         import json
 
-        # ✅ 只从 Gateway 传递的 X-User-Info header 中获取用户信息
-        # Gateway 已经在认证中间件中验证了 token，并将用户信息存储在 X-User-Info header 中
+        # ✅ Get user information only from X-User-Info header ***REMOVED***ed by Gateway
+        # Gateway has already validated the token in the authentication middleware
+        # and stored user information in the X-User-Info header
         user_info_header = request.headers.get("X-User-Info")
 
         if not user_info_header:
-            # ✅ 如果没有 X-User-Info header，返回 None（允许可选认证）
+            # ✅ If no X-User-Info header, return None (allowing optional authentication)
             logger.debug(
-                "请求未包含 X-User-Info header（可选认证）",
+                "Request does not contain X-User-Info header (optional authentication)",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": "请求应该通过 Gateway 转发，Gateway 会在认证后传递 X-User-Info header",
+                    "hint": (
+                        "Request should be forwarded through Gateway, "
+                        "Gateway will ***REMOVED*** X-User-Info header after authentication"
+                    ),
                 },
             )
             return None
 
-        # 解析用户信息 JSON
+        # Parse user information JSON
         try:
             user_info = json.loads(user_info_header)
 
-            # ✅ 统一使用 id 字段
+            # ✅ Use id field consistently
             user_id = user_info.get("id")
             if not user_id:
                 logger.warning(
-                    "X-User-Info header 中缺少 id 字段",
+                    "Missing id field in X-User-Info header",
                     extra={
                         "path": request.url.path,
                         "method": request.method,
                         "user_info_keys": list(user_info.keys()),
-                        "hint": "Gateway 应该确保 X-User-Info header 包含 id 字段",
+                        "hint": "Gateway should ensure X-User-Info header contains id field",
                     },
                 )
-                # 即使缺少 id，也返回用户信息（可选认证）
-                # 让业务层决定如何处理
+                # Even if id is missing, return user information (optional authentication)
+                # Let business layer decide how to handle
 
-            # ✅ 构建统一的用户信息字典
+            # ✅ Build unified user information dictionary
             result: Dict[str, Any] = {
                 "id": str(user_id) if user_id else None,
                 "username": user_info.get("username"),
@@ -120,12 +124,12 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
                 "roles": user_info.get("roles", []),
             }
 
-            # ✅ 保留 sub 字段以兼容旧代码（向后兼容）
+            # ✅ Keep sub field for backward compatibility with old code
             if user_info.get("sub"):
                 result["sub"] = user_info["sub"]
 
             logger.debug(
-                "从 Gateway 获取用户信息成功",
+                "Successfully obtained user information from Gateway",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
@@ -139,27 +143,25 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
 
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(
-                "解析 X-User-Info header 失败",
+                "Failed to parse X-User-Info header",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
                     "error": str(e),
                     "error_type": type(e).__name__,
                     "header_preview": (
-                        user_info_header[:100] + "..."
-                        if len(user_info_header) > 100
-                        else user_info_header
+                        user_info_header[:100] + "..." if len(user_info_header) > 100 else user_info_header
                     ),
-                    "hint": "Gateway 传递的 X-User-Info header 格式错误",
+                    "hint": "Format error in X-User-Info header ***REMOVED***ed by Gateway",
                 },
                 exc_info=True,
             )
-            # 解析失败，返回 None（可选认证）
+            # Parsing failed, return None (optional authentication)
             return None
 
     except Exception as e:
         logger.error(
-            "获取当前用户失败",
+            "Failed to get current user",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -169,5 +171,5 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
             },
             exc_info=True,
         )
-        # 异常时返回 None，允许可选认证的端点继续处理
+        # Return None on exception, allowing optional authentication endpoints to continue processing
         return None

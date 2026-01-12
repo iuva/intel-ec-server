@@ -1,15 +1,15 @@
-"""代理服务错误处理模块
+"""Proxy service error handling module
 
-提供代理请求的错误处理和异常转换功能。
+Provides error handling and exception conversion functionality for proxy requests.
 
-从 proxy_service.py 拆分出来，提高代码可维护性。
-ProxyService 应该直接使用此模块中的函数，避免重复代码。
+Extracted from proxy_service.py to improve code maintainability.
+ProxyService should directly use functions from this module to avoid code duplication.
 """
 
 import os
 import sys
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n import t
@@ -31,18 +31,18 @@ def log_backend_error(
     error: str,
     exc_info: bool = True,
 ) -> None:
-    """记录后端服务错误日志
+    """Log backend service error
 
     Args:
-        service_name: 服务名称
-        method: HTTP 方法
-        path: 请求路径
-        error_type: 错误类型
-        error: 错误信息
-        exc_info: 是否包含异常堆栈信息
+        service_name: Service name
+        method: HTTP method
+        path: Request path
+        error_type: Error type
+        error: Error message
+        exc_info: Whether to include exception stack information
     """
     logger.error(
-        f"后端服务错误: {service_name} - {error_type}",
+        f"Backend service error: {service_name} - {error_type}",
         extra={
             "service_name": service_name,
             "method": method,
@@ -54,18 +54,16 @@ def log_backend_error(
     )
 
 
-def raise_connection_error(
-    service_name: str, error: Exception, locale: str = "zh_CN"
-) -> None:
-    """抛出连接错误
+def raise_connection_error(service_name: str, error: Exception, locale: str = "zh_CN") -> None:
+    """Raise connection error
 
     Args:
-        service_name: 服务名称
-        error: 原始异常
-        locale: 语言偏好
+        service_name: Service name
+        error: Original exception
+        locale: Language preference
 
     Raises:
-        BusinessError: 连接错误
+        BusinessError: Connection error
     """
     log_backend_error(service_name, "", "", "CONNECTION_ERROR", str(error))
     raise BusinessError(
@@ -79,18 +77,16 @@ def raise_connection_error(
     )
 
 
-def raise_timeout_error(
-    service_name: str, error: Exception, locale: str = "zh_CN"
-) -> None:
-    """抛出超时错误
+def raise_timeout_error(service_name: str, error: Exception, locale: str = "zh_CN") -> None:
+    """Raise timeout error
 
     Args:
-        service_name: 服务名称
-        error: 原始异常
-        locale: 语言偏好
+        service_name: Service name
+        error: Original exception
+        locale: Language preference
 
     Raises:
-        BusinessError: 超时错误
+        BusinessError: Timeout error
     """
     log_backend_error(service_name, "", "", "TIMEOUT_ERROR", str(error))
     raise BusinessError(
@@ -104,18 +100,16 @@ def raise_timeout_error(
     )
 
 
-def raise_network_error(
-    service_name: str, error: Exception, locale: str = "zh_CN"
-) -> None:
-    """抛出网络错误
+def raise_network_error(service_name: str, error: Exception, locale: str = "zh_CN") -> None:
+    """Raise network error
 
     Args:
-        service_name: 服务名称
-        error: 原始异常
-        locale: 语言偏好
+        service_name: Service name
+        error: Original exception
+        locale: Language preference
 
     Raises:
-        BusinessError: 网络错误
+        BusinessError: Network error
     """
     log_backend_error(service_name, "", "", "NETWORK_ERROR", str(error))
     raise BusinessError(
@@ -129,18 +123,16 @@ def raise_network_error(
     )
 
 
-def raise_protocol_error(
-    service_name: str, error: Exception, locale: str = "zh_CN"
-) -> None:
-    """抛出协议错误
+def raise_protocol_error(service_name: str, error: Exception, locale: str = "zh_CN") -> None:
+    """Raise protocol error
 
     Args:
-        service_name: 服务名称
-        error: 原始异常
-        locale: 语言偏好
+        service_name: Service name
+        error: Original exception
+        locale: Language preference
 
     Raises:
-        BusinessError: 协议错误
+        BusinessError: Protocol error
     """
     error_type = type(error).__name__
     log_backend_error(service_name, "", "", "PROTOCOL_ERROR", str(error))
@@ -155,17 +147,15 @@ def raise_protocol_error(
     )
 
 
-def raise_service_not_found_error(
-    service_name: str, locale: str = "zh_CN"
-) -> None:
-    """抛出服务不存在错误
+def raise_service_not_found_error(service_name: str, locale: str = "zh_CN") -> None:
+    """Raise service not found error
 
     Args:
-        service_name: 服务名称
-        locale: 语言偏好
+        service_name: Service name
+        locale: Language preference
 
     Raises:
-        BusinessError: 服务不存在错误
+        BusinessError: Service not found error
     """
     raise BusinessError(
         message=t("error.proxy.service_not_found", locale=locale, service_name=service_name),
@@ -183,15 +173,15 @@ def raise_websocket_connection_limit_error(
     max_connections: int,
     locale: str = "zh_CN",
 ) -> None:
-    """抛出 WebSocket 连接数限制错误
+    """Raise WebSocket connection limit error
 
     Args:
-        current_connections: 当前连接数
-        max_connections: 最大连接数
-        locale: 语言偏好
+        current_connections: Current connection count
+        max_connections: Maximum connection count
+        locale: Language preference
 
     Raises:
-        BusinessError: 连接数限制错误
+        BusinessError: Connection limit error
     """
     raise BusinessError(
         message=t("error.websocket.connection_limit_reached", locale=locale),
@@ -213,16 +203,16 @@ def raise_websocket_error(
     error: Exception,
     locale: str = "zh_CN",
 ) -> None:
-    """抛出 WebSocket 错误
+    """Raise WebSocket error
 
     Args:
-        service_name: 服务名称
-        path: 请求路径
-        error: 原始异常
-        locale: 语言偏好
+        service_name: Service name
+        path: Request path
+        error: Original exception
+        locale: Language preference
 
     Raises:
-        BusinessError: WebSocket 错误
+        BusinessError: WebSocket error
     """
     raise BusinessError(
         message=t("error.websocket.forward_failed", locale=locale, service_name=service_name),
@@ -241,16 +231,16 @@ def parse_backend_error_response(
     service_name: str,
     locale: str = "zh_CN",
 ) -> dict:
-    """解析后端错误响应
+    """Parse backend error response
 
     Args:
-        status_code: HTTP 状态码
-        response_body: 响应体
-        service_name: 服务名称
-        locale: 语言偏好
+        status_code: HTTP status code
+        response_body: Response body
+        service_name: Service name
+        locale: Language preference
 
     Returns:
-        dict: 解析后的错误信息
+        dict: Parsed error information
     """
     import json
 
@@ -258,29 +248,29 @@ def parse_backend_error_response(
         error_data = json.loads(response_body.decode("utf-8"))
         return {
             "status_code": status_code,
-            "message": error_data.get("message", "未知错误"),
+            "message": error_data.get("message", "Unknown error"),
             "error_code": error_data.get("error_code", "UNKNOWN_ERROR"),
             "details": error_data.get("details"),
         }
     except (json.JSONDecodeError, UnicodeDecodeError):
         return {
             "status_code": status_code,
-            "message": f"服务 {service_name} 返回错误 ({status_code})",
+            "message": f"Service {service_name} returned error ({status_code})",
             "error_code": "BACKEND_ERROR",
             "details": None,
         }
 
 
 def is_retryable_error(error: Exception) -> bool:
-    """判断错误是否可重试
+    """Determine if error is retryable
 
     Args:
-        error: 异常对象
+        error: Exception object
 
     Returns:
-        bool: 是否可重试
+        bool: Whether error is retryable
     """
-    # 连接错误和超时错误通常可以重试
+    # Connection errors and timeout errors are usually retryable
     error_type = type(error).__name__
     retryable_errors = {
         "ConnectError",

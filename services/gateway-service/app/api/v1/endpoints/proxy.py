@@ -1,7 +1,7 @@
 """
-代理转发端点
+Proxy forwarding endpoints
 
-提供通用的请求代理功能，将请求转发到后端微服务
+Provides generic request proxy functionality, forwarding requests to backend microservices
 """
 
 import json
@@ -9,7 +9,7 @@ import os
 import sys
 from typing import Any, Dict, Optional, Union
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
@@ -22,7 +22,7 @@ try:
     from shared.common.response import ErrorResponse, SuccessResponse
     from shared.common.websocket_auth import verify_token_string
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
@@ -53,29 +53,30 @@ HOP_BY_HOP_RESPONSE_HEADERS = {
 }
 
 
-# ==================== 辅助函数 ====================
+# ==================== Helper Functions ====================
+
 
 def _get_locale_from_request(request: Request) -> str:
-    """从请求中获取语言偏好
+    """Get language preference from request
 
     Args:
-        request: FastAPI 请求对象
+        request: FastAPI request object
 
     Returns:
-        语言代码（如 "zh_CN", "en_US"）
+        Language code (e.g., "zh_CN", "en_US")
     """
     accept_language = request.headers.get("Accept-Language")
     return parse_accept_language(accept_language)
 
 
 def _get_locale_from_websocket(websocket: WebSocket) -> str:
-    """从 WebSocket 中获取语言偏好
+    """Get language preference from WebSocket
 
     Args:
-        websocket: WebSocket 连接对象
+        websocket: WebSocket connection object
 
     Returns:
-        语言代码（如 "zh_CN", "en_US"）
+        Language code (e.g., "zh_CN", "en_US")
     """
     accept_language = websocket.headers.get("Accept-Language")
     return parse_accept_language(accept_language)
@@ -89,18 +90,18 @@ def _create_error_response(
     message_key: Optional[str] = None,
     details: Optional[Dict[str, Any]] = None,
 ) -> JSONResponse:
-    """创建统一的错误响应
+    """Create unified error response
 
     Args:
-        request: FastAPI 请求对象
-        code: HTTP 状态码
-        message: 错误消息
-        error_code: 错误代码
-        message_key: 翻译键（可选）
-        details: 错误详情（可选）
+        request: FastAPI request object
+        code: HTTP status code
+        message: Error message
+        error_code: Error code
+        message_key: Translation key (optional)
+        details: Error details (optional)
 
     Returns:
-        JSON 响应
+        JSON response
     """
     locale = _get_locale_from_request(request)
     error_response = ErrorResponse(
@@ -122,15 +123,15 @@ async def _send_websocket_error(
     close_code: int = 1008,
     close_reason: str = "",
 ) -> None:
-    """发送 WebSocket 错误消息并关闭连接
+    """Send WebSocket error message and close connection
 
     Args:
-        websocket: WebSocket 连接对象
-        code: 错误代码
-        message: 错误消息
-        error_code: 错误类型标识
-        close_code: WebSocket 关闭码
-        close_reason: 关闭原因
+        websocket: WebSocket connection object
+        code: Error code
+        message: Error message
+        error_code: Error type identifier
+        close_code: WebSocket close code
+        close_reason: Close reason
     """
     locale = _get_locale_from_websocket(websocket)
     await websocket.send_json(
@@ -147,51 +148,51 @@ async def _send_websocket_error(
 @router.websocket("/ws/{hostname}/{apiurl:path}")
 async def websocket_proxy(
     websocket: WebSocket = ...,
-    hostname: str = Path(..., description="主机名或服务标识符（如 host-service）"),
-    apiurl: str = Path(..., description="WebSocket API 路径（转发到后端服务的完整路径）"),
+    hostname: str = Path(..., description="Hostname or service identifier (e.g., host-service)"),
+    apiurl: str = Path(..., description="WebSocket API path (full path forwarded to backend service)"),
     proxy_service: ProxyService = Depends(get_proxy_service_ws),
 ) -> None:
-    """WebSocket 转发端点
+    """WebSocket forwarding endpoint
 
-    新格式: /ws/{hostname}/{apiurl}
-    例如: /ws/host-service/agent/agent-123
+    New format: /ws/{hostname}/{apiurl}
+    Example: /ws/host-service/agent/agent-123
 
-    将客户端 WebSocket 连接转发到后端微服务
-    需要提供有效的认证令牌
+    Forwards client WebSocket connection to backend microservice
+    Requires valid authentication token
 
     Args:
-        websocket: 客户端 WebSocket 连接
-        hostname: 服务主机名（如 host-service, auth-service）
-        apiurl: API 路径（如 agent/agent-123）
-        proxy_service: 代理服务实例
+        websocket: Client WebSocket connection
+        hostname: Service hostname (e.g., host-service, auth-service)
+        apiurl: API path (e.g., agent/agent-123)
+        proxy_service: Proxy service instance
     """
     try:
-        # ✅ 第一步：提取并验证 token（在接受连接前）
+        # ✅ Step 1: Extract and verify token (before accepting connection)
         token = None
 
-        # 尝试从查询参数提取 token
+        # Try to extract token from query parameters
         token = websocket.query_params.get("token")
 
-        # 如果没有，尝试从 Authorization 头提取
+        # If not found, try to extract from Authorization header
         if not token:
             auth_header = websocket.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]
 
-        # 如果仍然没有，尝试读取常见自定义头
+        # If still not found, try reading common custom headers
         if not token:
             token = websocket.headers.get("X-Token") or websocket.headers.get("token")
 
         if not token:
             logger.warning(
-                "WebSocket 连接缺少认证令牌",
+                "WebSocket connection missing authentication token",
                 extra={
                     "hostname": hostname,
                     "apiurl": apiurl,
                     "client": websocket.client.host if websocket.client else "unknown",
                 },
             )
-            # ✅ 必须先 accept 才能发送错误消息
+            # ✅ Must accept before sending error message
             await websocket.accept()
 
             locale = _get_locale_from_websocket(websocket)
@@ -200,16 +201,16 @@ async def websocket_proxy(
                 code=401,
                 message=t("error.auth.missing_token", locale=locale),
                 error_code="WEBSOCKET_MISSING_TOKEN",
-                close_reason="缺少认证令牌",
+                close_reason="Missing authentication token",
             )
             return
 
-        # ✅ 验证 token 有效性（网关在此处验证）
+        # ✅ Verify token validity (gateway verifies here)
         try:
             user_id = await verify_token_string(token)
             if not user_id:
                 logger.warning(
-                    "WebSocket 连接 token 验证失败",
+                    "WebSocket connection token verification failed",
                     extra={
                         "hostname": hostname,
                         "apiurl": apiurl,
@@ -217,7 +218,7 @@ async def websocket_proxy(
                         "token_preview": token[:20] + "..." if len(token) > 20 else token,
                     },
                 )
-                # ✅ 必须先 accept 才能发送错误消息
+                # ✅ Must accept before sending error message
                 await websocket.accept()
 
                 locale = _get_locale_from_websocket(websocket)
@@ -226,27 +227,27 @@ async def websocket_proxy(
                     code=403,
                     message=t("error.auth.token_invalid_or_expired", locale=locale),
                     error_code="WEBSOCKET_AUTH_FAILED",
-                    close_reason="认证令牌无效或已过期",
+                    close_reason="Authentication token invalid or expired",
                 )
                 return
 
             logger.info(
-                "WebSocket 连接认证成功",
+                "WebSocket connection authentication successful",
                 extra={
                     "hostname": hostname,
                     "apiurl": apiurl,
-                    "id": user_id,  # ✅ 统一字段名为 id
+                    "id": user_id,  # ✅ Unified field name is id
                     "client": websocket.client.host if websocket.client else "unknown",
                 },
             )
 
-            # ✅ 网关已验证 token，提取 host_id 以传递给后端服务
-            # 这样后端服务（host-service）就不需要重复验证 token
+            # ✅ Gateway has verified token, extract host_id to ***REMOVED*** to backend service
+            # This way backend service (host-service) doesn't need to verify token again
             host_id_param = f"host_id={user_id}"
 
         except Exception as e:
             logger.error(
-                "WebSocket 连接 token 验证异常",
+                "WebSocket connection token verification exception",
                 extra={
                     "hostname": hostname,
                     "apiurl": apiurl,
@@ -254,14 +255,14 @@ async def websocket_proxy(
                 },
                 exc_info=True,
             )
-            await websocket.close(code=1011, reason="服务器内部错误")
+            await websocket.close(code=1011, reason="Internal server error")
             return
 
-        # ✅ 第二步：接受连接
+        # ✅ Step 2: Accept connection
         await websocket.accept()
 
         logger.info(
-            f"WebSocket 连接已建立: {hostname}/{apiurl}",
+            f"WebSocket connection established: {hostname}/{apiurl}",
             extra={
                 "hostname": hostname,
                 "apiurl": apiurl,
@@ -270,12 +271,12 @@ async def websocket_proxy(
             },
         )
 
-        # 映射完整服务名称到短名称
-        # 例如: host-service -> host, auth-service -> auth
+        # Map full service name to short name
+        # Example: host-service -> host, auth-service -> auth
         service_short_name = hostname.replace("-service", "")
 
         logger.info(
-            f"服务名称映射: {hostname} -> {service_short_name}",
+            f"Service name mapping: {hostname} -> {service_short_name}",
             extra={
                 "hostname": hostname,
                 "service_short_name": service_short_name,
@@ -283,58 +284,58 @@ async def websocket_proxy(
             },
         )
 
-        # 构建后端路径（添加 /api/v1/ws/ 前缀）
-        # 获取后端服务地址
+        # Build backend path (add /api/v1/ws/ prefix)
+        # Get backend service address
         service_url = await proxy_service.get_service_url(hostname)
 
         backend_path = f"/ws/{apiurl}"
 
-        # ✅ 优化：传递网关已验证的 host_id 和 token
-        # 后端服务无需重复验证 token，直接使用 host_id
+        # ✅ Optimization: ***REMOVED*** gateway-verified host_id and token
+        # Backend service doesn't need to verify token again, directly use host_id
         query_params = f"token={token}&{host_id_param}"
         if not backend_path.startswith("?"):
             backend_path = f"{backend_path}?{query_params}"
 
-        # ✅ 提取 host_id 作为会话键（用于会话粘性）
+        # ✅ Extract host_id as session key (for session stickiness)
         session_key = None
         try:
-            # 优先从查询参数获取 host_id
+            # Prefer getting host_id from query parameters
             host_id_from_query = websocket.query_params.get("host_id")
             if host_id_from_query:
                 session_key = str(host_id_from_query)
             elif user_id:
-                # 如果没有查询参数，使用 user_id（实际是 host_rec.id）
+                # If no query parameter, use user_id (actually host_rec.id)
                 session_key = str(user_id)
         except Exception as e:
             logger.debug(
-                "提取会话键失败，将使用默认负载均衡",
+                "Failed to extract session key, will use default load balancing",
                 extra={"error": str(e)},
             )
 
         logger.info(
-            "WebSocket 代理参数准备",
+            "WebSocket proxy parameters prepared",
             extra={
                 "hostname": hostname,
                 "apiurl": apiurl,
-                "id": user_id,  # ✅ 统一字段名为 id
+                "id": user_id,  # ✅ Unified field name is id
                 "session_key": session_key,
-                "backend_path": backend_path[:100],  # 避免日志过长
+                "backend_path": backend_path[:100],  # Avoid log being too long
                 "has_host_id": bool(user_id),
                 "has_session_key": bool(session_key),
             },
         )
 
-        # 转发到后端服务（传递 session_key 实现会话粘性）
+        # Forward to backend service (***REMOVED*** session_key for session stickiness)
         await proxy_service.forward_websocket(
             service_name=service_short_name,
             path=backend_path,
             client_websocket=websocket,
             service_url=service_url,
-            session_key=session_key,  # ✅ 传递会话键实现会话粘性
+            session_key=session_key,  # ✅ Pass session key for session stickiness
         )
 
     except Exception as e:
-        # ✅ 检查是否为 BusinessError（包含准确的错误信息）
+        # ✅ Check if it's BusinessError (contains accurate error information)
 
         if isinstance(e, BusinessError):
             error_code = e.http_status_code or 500
@@ -342,7 +343,7 @@ async def websocket_proxy(
             error_type = e.error_code
 
             logger.warning(
-                f"WebSocket 业务异常: {hostname}/{apiurl}",
+                f"WebSocket business exception: {hostname}/{apiurl}",
                 extra={
                     "error_code": error_code,
                     "error_message": error_message,
@@ -351,13 +352,13 @@ async def websocket_proxy(
                 },
             )
         else:
-            # ✅ 其他未知异常
+            # ✅ Other unknown exceptions
             error_code = 500
-            error_message = "WebSocket 转发异常"
+            error_message = "WebSocket forwarding exception"
             error_type = "WEBSOCKET_PROXY_ERROR"
 
             logger.error(
-                f"WebSocket 转发失败: {hostname}/{apiurl}",
+                f"WebSocket forwarding failed: {hostname}/{apiurl}",
                 extra={
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -367,7 +368,7 @@ async def websocket_proxy(
                 exc_info=True,
             )
 
-        # ✅ 尝试发送准确的错误消息
+        # ✅ Try to send accurate error message
         if websocket.client_state.name != "DISCONNECTED":
             try:
                 await websocket.send_json(
@@ -378,7 +379,7 @@ async def websocket_proxy(
                     }
                 )
 
-                # ✅ 根据错误码设置正确的关闭码
+                # ✅ Set correct close code based on error code
                 if error_code == 403:
                     close_code = 1008  # Policy Violation
                     close_reason = "Authentication failed"
@@ -391,20 +392,20 @@ async def websocket_proxy(
 
                 await websocket.close(code=close_code, reason=close_reason)
             except Exception as close_error:
-                logger.debug("关闭 WebSocket 时出错", extra={"error": str(close_error)})
+                logger.debug("Error closing WebSocket", extra={"error": str(close_error)})
 
 
-# ✅ 新增：支持简化格式的 WebSocket 代理路由
-# 支持格式: /host/ws/agent/agent-123 -> ws://host-service:8003/api/v1/ws/agent/agent-123
+# ✅ New: Support simplified format WebSocket proxy routes
+# Supported format: /host/ws/agent/agent-123 -> ws://host-service:8003/api/v1/ws/agent/agent-123
 SERVICE_SHORT_NAMES = {
     "auth": "auth-service",
     "host": "host-service",
 }
 
 
-# ❌ 已删除：新格式 WebSocket 路由与 HTTP 路由冲突，仅在 /api/v1 下使用旧格式
+# ❌ Removed: New format WebSocket routes conflict with HTTP routes, only use old format under /api/v1
 # @router.websocket("/{service_short_name}/{path:path}")
-# 请使用: /api/v1/ws/host-service/ws/agent/agent-123 (旧格式)
+# Please use: /api/v1/ws/host-service/ws/agent/agent-123 (old format)
 
 
 @router.api_route(
@@ -413,110 +414,112 @@ SERVICE_SHORT_NAMES = {
     operation_id="proxy_service_request",
 )
 async def proxy_request(
-    service_name: str = Path(..., description="服务名称（如 auth、host、admin）"),
-    subpath: str = Path(..., description="子路径（转发到后端服务的完整路径）"),
+    service_name: str = Path(..., description="Service name (e.g., auth, host, admin)"),
+    subpath: str = Path(..., description="Subpath (full path forwarded to backend service)"),
     request: Request = ...,
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Any:
-    """通用代理端点
+    """Generic proxy endpoint
 
-    将请求转发到指定的后端微服务
+    Forwards request to specified backend microservice
 
     Args:
-        service_name: 服务名称（如 auth-service, host-service）
-        subpath: 子路径
-        request: 请求对象
-        proxy_service: 代理服务实例
+        service_name: Service name (e.g., auth-service, host-service)
+        subpath: Subpath
+        request: Request object
+        proxy_service: Proxy service instance
 
     Returns:
-        后端服务响应
+        Backend service response
 
     Raises:
-        HTTPException: 服务不存在或不可用
+        HTTPException: Service not found or unavailable
     """
     try:
-        # 获取请求方法
+        # Get request method
         method = request.method
 
-        # 获取查询参数
+        # Get query parameters
         query_params = dict(request.query_params)
 
-        # 获取请求体
+        # Get request body
         body = None
         raw_body = None
         if method in ["POST", "PUT", "PATCH"]:
             try:
-                # 尝试读取原始请求体
+                # Try to read raw request body
                 raw_body = await request.body()
 
-                # 如果有请求体内容，尝试解析为JSON
+                # If request body has content, try to parse as JSON
                 if raw_body:
                     try:
                         body = json.loads(raw_body.decode("utf-8"))
-                        logger.debug("解析请求体成功", extra={"body_size_bytes": len(raw_body)})
+                        logger.debug("Request body parsed successfully", extra={"body_size_bytes": len(raw_body)})
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                        logger.warning("请求体不是有效JSON，将作为原始数据转发", extra={"error": str(e)})
-                        # 如果不是JSON，保持为None，使用原始数据
+                        logger.warning(
+                            "Request body is not valid JSON, will forward as raw data",
+                            extra={"error": str(e)}
+                        )
+                        # If not JSON, keep as None, use raw data
                         body = None
                 else:
-                    logger.debug("请求体为空")
+                    logger.debug("Request body is empty")
 
             except Exception as e:
-                logger.error("读取请求体失败", extra={"error": str(e)}, exc_info=True)
-                # 如果读取失败，抛出适当的错误
-                raise ValidationError(f"无法读取请求体: {e!s}")
+                logger.error("Failed to read request body", extra={"error": str(e)}, exc_info=True)
+                # If read fails, raise appropriate error
+                raise ValidationError(f"Unable to read request body: {e!s}")
 
-        # 获取请求头（在请求体处理之后）
+        # Get request headers (after request body processing)
         headers = dict(request.headers)
 
-        # ✅ 安全措施：删除客户端传入的 X-User-Info header（防止伪造）
-        # Gateway 会在验证 token 后添加自己的 X-User-Info header
+        # ✅ Security measure: remove X-User-Info header from client (prevent forgery)
+        # Gateway will add its own X-User-Info header after verifying token
         x_user_info_keys = [k for k in headers if k.lower() == "x-user-info"]
         if x_user_info_keys:
             for key in x_user_info_keys:
                 logger.warning(
-                    "删除客户端传入的 X-User-Info header（安全措施）",
+                    "Removed X-User-Info header from client (security measure)",
                     extra={
                         "header_key": key,
                         "service_name": service_name,
                         "subpath": subpath,
                         "method": method,
-                        "hint": "X-User-Info header 只能由 Gateway 在验证 token 后添加，客户端传入的将被删除",
+                        "hint": (
+                            "X-User-Info header can only be added by Gateway after token verification, "
+                            "client-sent headers will be removed"
+                        ),
                     },
                 )
                 del headers[key]
 
-        # 移除可能导致冲突的头部
+        # Remove headers that may cause conflicts
         headers.pop("host", None)
 
-        # 处理Content-Type头
+        # Handle Content-Type header
         if raw_body is not None:
-            # 如果使用原始请求体，确保Content-Type为application/json
+            # If using raw request body, ensure Content-Type is application/json
             if "content-type" not in [k.lower() for k in headers]:
                 headers["Content-Type"] = "application/json"
-                logger.debug("为原始请求体添加Content-Type: application/json")
-            # 移除Content-Length头部
+                logger.debug("Added Content-Type for raw request body: application/json")
+            # Remove Content-Length header
             content_length_keys = [k for k in headers if k.lower() == "content-length"]
             for key in content_length_keys:
                 del headers[key]
-                logger.debug("移除Content-Length头部", extra={"header_key": key})
+                logger.debug("Removed Content-Length header", extra={"header_key": key})
 
-        # ✅ 添加用户信息到请求头（从request.state.user获取）
+        # ✅ Add user information to request headers (get from request.state.user)
         user_info = getattr(request.state, "user", None)
 
-        # ✅ 增强日志：记录用户信息状态（用于诊断）
+        # ✅ Enhanced logging: record user information status (for diagnosis)
         logger.debug(
-            "检查用户信息状态",
+            "Checking user information status",
             extra={
                 "has_user_info": user_info is not None,
                 "user_info_type": type(user_info).__name__ if user_info else None,
                 "user_info_keys": list(user_info.keys()) if user_info else None,
                 "id": user_info.get("id") if user_info else None,
-                "id_type": (
-                    type(user_info.get("id")).__name__
-                    if user_info and user_info.get("id")
-                    else None
-                ),
+                "id_type": (type(user_info.get("id")).__name__ if user_info and user_info.get("id") else None),
                 "service_name": service_name,
                 "subpath": subpath,
                 "method": method,
@@ -524,11 +527,11 @@ async def proxy_request(
         )
 
         if user_info:
-            # ✅ 统一使用 id 字段，没有则返回 401 错误
+            # ✅ Use id field uniformly, return 401 error if missing
             user_id = user_info.get("id")
             if not user_id or (isinstance(user_id, str) and not user_id.strip()):
                 logger.error(
-                    "用户信息中缺少 id，拒绝转发请求",
+                    "User information missing id, refusing to forward request",
                     extra={
                         "user_info_keys": list(user_info.keys()),
                         "id_value": user_id,
@@ -536,11 +539,14 @@ async def proxy_request(
                         "service_name": service_name,
                         "subpath": subpath,
                         "method": method,
-                        "hint": "请检查 Gateway 认证中间件日志，确认 token 验证是否成功",
+                        "hint": (
+                            "Please check Gateway authentication middleware logs "
+                            "to confirm if token verification succeeded"
+                        ),
                     },
                 )
 
-                # ✅ 返回 401 错误，而不是跳过设置 header
+                # ✅ Return 401 error instead of skipping header setting
                 locale = _get_locale_from_request(request)
                 return _create_error_response(
                     request=request,
@@ -549,19 +555,19 @@ async def proxy_request(
                     error_code="MISSING_ID",
                     message_key="error.auth.missing_id",
                     details={
-                        "hint": "用户信息中缺少必需的 id 字段，请重新登录获取有效令牌",
+                        "hint": "User information missing required id field, please login again to get valid token",
                         "user_info_keys": list(user_info.keys()),
                     },
                 )
 
-            # ✅ 确保 user_info 包含统一的 id 字段
+            # ✅ Ensure user_info contains unified id field
             if "id" not in user_info:
                 user_info = user_info.copy()
                 user_info["id"] = user_id
-            # 将用户信息序列化为JSON并添加到请求头
+            # Serialize user information to JSON and add to request headers
             headers["X-User-Info"] = json.dumps(user_info, ensure_ascii=False)
             logger.info(
-                "✅ 添加用户信息到请求头",
+                "✅ Added user information to request headers",
                 extra={
                     "id": user_id,
                     "username": user_info.get("username"),
@@ -573,18 +579,18 @@ async def proxy_request(
             )
         else:
             logger.warning(
-                "request.state.user 不存在，跳过设置 X-User-Info header",
+                "request.state.user does not exist, skipping X-User-Info header setting",
                 extra={
                     "service_name": service_name,
                     "subpath": subpath,
                     "method": method,
-                    "hint": "请求可能未通过认证中间件，或路径被设为公开路径",
-                    },
-                )
+                    "hint": "Request may not have ***REMOVED***ed authentication middleware, or path is set as public",
+                },
+            )
 
-        # 记录请求日志
+        # Log request
         logger.info(
-            "代理请求",
+            "Proxying request",
             extra={
                 "service_name": service_name,
                 "method": method,
@@ -594,9 +600,9 @@ async def proxy_request(
             },
         )
 
-        # 准备调用forward_request
+        # Prepare to call forward_request
         logger.info(
-            "准备转发请求",
+            "Preparing to forward request",
             extra={
                 "service_name": service_name,
                 "subpath": subpath,
@@ -604,7 +610,7 @@ async def proxy_request(
             },
         )
 
-        # 转发请求
+        # Forward request
         response = await proxy_service.forward_request(
             service_name=service_name,
             path=subpath,
@@ -643,20 +649,20 @@ async def proxy_request(
                 continue
             proxy_response.headers[header_name] = header_value
 
-        logger.info("转发成功，返回响应", extra={"status_code": status_code})
+        logger.info("Forwarding successful, returning response", extra={"status_code": status_code})
         return proxy_response
 
     except ServiceNotFoundError as e:
         logger.warning(
-            "服务不存在",
+            "Service not found",
             extra={"service_name": service_name, "error": str(e)},
         )
         raise e
 
     except BusinessError as e:
-        # 透传后端服务的业务错误（4xx状态码）
+        # Pass through backend service business errors (4xx status codes)
         logger.warning(
-            "透传后端服务业务错误",
+            "Passing through backend service business error",
             extra={
                 "service_name": service_name,
                 "error_message": e.message,
@@ -669,7 +675,7 @@ async def proxy_request(
 
     except Exception as e:
         logger.error(
-            "代理请求异常",
+            "Proxy request exception",
             extra={
                 "service_name": service_name,
                 "error": str(e),
@@ -692,10 +698,10 @@ async def proxy_request(
 async def list_services(
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> SuccessResponse:
-    """获取可用服务列表
+    """Get available service list
 
     Returns:
-        服务列表
+        Service list
     """
     services = list(proxy_service.service_routes.keys())
 
@@ -704,26 +710,26 @@ async def list_services(
             "services": services,
             "count": len(services),
         },
-        message="获取服务列表成功",
+        message="Service list retrieved successfully",
     )
 
 
 @router.get("/services/{service_name}/health", response_model=SuccessResponse)
 async def check_service_health(
-    service_name: str = Path(..., description="服务名称（如 auth、host、admin）"),
+    service_name: str = Path(..., description="Service name (e.g., auth, host, admin)"),
     proxy_service: ProxyService = Depends(get_proxy_service),
 ) -> Union[SuccessResponse, JSONResponse]:
-    """检查服务健康状态
+    """Check service health status
 
     Args:
-        service_name: 服务名称
-        proxy_service: 代理服务实例
+        service_name: Service name
+        proxy_service: Proxy service instance
 
     Returns:
-        健康状态
+        Health status
 
     Raises:
-        HTTPException: 服务不存在
+        HTTPException: Service not found
     """
     try:
         is_healthy = await proxy_service.health_check_service(service_name)
@@ -734,20 +740,20 @@ async def check_service_health(
                 "healthy": is_healthy,
                 "status": "healthy" if is_healthy else "unhealthy",
             },
-            message="健康检查完成",
+            message="Health check completed",
         )
 
     except ServiceNotFoundError as e:
-        # 直接返回JSONResponse，避免HTTPException的detail包装
+        # Return JSONResponse directly to avoid HTTPException's detail wrapping
         error_response = ErrorResponse(
-            code=e.code,  # 使用业务错误码
+            code=e.code,  # Use business error code
             message=e.message,
             error_code=e.error_code,
             details=e.details,
         )
 
         return JSONResponse(
-            status_code=e.http_status_code,  # 使用异常定义的HTTP状态码（400）
+            status_code=e.http_status_code,  # Use exception-defined HTTP status code (400)
             content=error_response.model_dump(),
         )
 
@@ -759,16 +765,16 @@ async def check_service_health(
 )
 async def catch_all_handler(
     request: Request = ...,
-    path: str = Path(..., description="请求路径"),
+    path: str = Path(..., description="Request path"),
 ):
-    """捕获所有未匹配的请求，返回统一格式的404错误
+    """Catch all unmatched requests, return unified format 404 error
 
-    这个路由处理器会捕获所有没有被其他路由匹配的请求，
-    统一返回符合项目规范的404错误响应格式。
+    This route handler catches all requests that are not matched by other routes,
+    and returns a unified 404 error response format that conforms to project specifications.
     """
 
     logger.warning(
-        "未找到路由",
+        "Route not found",
         extra={
             "method": request.method,
             "path": path,

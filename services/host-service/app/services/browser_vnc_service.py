@@ -1,8 +1,8 @@
-"""浏览器插件 VNC 连接管理服务
+"""Browser Plugin VNC Connection Management Service
 
-提供浏览器插件使用的 VNC 连接相关的业务逻辑服务，包括：
-- 处理 VNC 连接结果上报
-- 获取主机 VNC 连接信息
+Provides VNC connection related business logic services for browser plugins, including:
+- Process VNC connection result reporting
+- Get host VNC connection information
 """
 
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
 from app.schemas.host import VNCConnectionReport
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.schemas.websocket_message import MessageType
     from app.services.agent_websocket_manager import get_agent_websocket_manager
@@ -40,7 +40,7 @@ except ImportError:
     from shared.common.security import aes_decrypt
     from shared.utils.host_validators import validate_host_exists
 
-# RealVNC 加密依赖
+# RealVNC encryption dependency
 try:
     from Crypto.Cipher import DES
 except ImportError:
@@ -50,13 +50,13 @@ logger = get_logger(__name__)
 
 
 def _reverse_bits(byte_val: int) -> int:
-    """翻转字节中的位顺序
+    """Reverse bit order in byte
 
     Args:
-        byte_val: 要翻转的字节值 (0-255)
+        byte_val: Byte value to reverse (0-255)
 
     Returns:
-        位翻转后的字节值
+        Byte value after bit reversal
     """
     result = 0
     for i in range(8):
@@ -66,132 +66,133 @@ def _reverse_bits(byte_val: int) -> int:
 
 
 def _realvnc_encrypt_***REMOVED***word(***REMOVED***word: str) -> str:
-    """RealVNC密码加密算法
+    """RealVNC ***REMOVED***word encryption algorithm
 
-    该算法使用固定的DES密钥对密码进行加密，密码被分成多个8字节块：
-    1. 第一个块：密码的前8个字符（不足8个用null字节填充）
-    2. 第二个块：密码的第9-16个字符（不足8个用null字节填充）
-    3. 第三个块：密码的第17-24个字符（不足8个用null字节填充）
+    This algorithm uses a fixed DES key to encrypt the ***REMOVED***word, ***REMOVED***word is divided into multiple 8-byte blocks:
+    1. First block: First 8 characters of ***REMOVED***word (pad with null bytes if less than 8)
+    2. Second block: Characters 9-16 of ***REMOVED***word (pad with null bytes if less than 8)
+    3. Third block: Characters 17-24 of ***REMOVED***word (pad with null bytes if less than 8)
 
     Args:
-        ***REMOVED***word: 要加密的密码
+        ***REMOVED***word: Password to encrypt
 
     Returns:
-        十六进制字符串（长度取决于密码长度）
+        Hexadecimal string (length depends on ***REMOVED***word length)
 
     Raises:
-        BusinessError: 当 DES 加密库未安装时
+        BusinessError: When DES encryption library is not installed
     """
     if DES is None:
         raise BusinessError(
-            message="RealVNC 加密功能需要 pycryptodome 库，请安装: pip install pycryptodome",
+            message="RealVNC encryption requires pycryptodome library, please install: pip install pycryptodome",
             error_code="REALVNC_ENCRYPTION_LIBRARY_MISSING",
             code=ServiceErrorCodes.HOST_REALVNC_ENCRYPTION_LIBRARY_MISSING,
             http_status_code=500,
         )
 
-    # RealVNC使用的固定DES密钥
+    # Fixed DES key used by RealVNC
     REALVNC_DES_KEY = bytes([0x17, 0x52, 0x6B, 0x06, 0x23, 0x4E, 0x58, 0x07])
 
-    # 对固定密钥进行位翻转处理（VNC协议的特殊要求）
+    # Bit reverse the fixed key (special requirement of VNC protocol)
     reversed_key = bytes([_reverse_bits(b) for b in REALVNC_DES_KEY])
 
-    # 创建DES加密器
+    # Create DES encryptor
     cipher = DES.new(reversed_key, DES.MODE_ECB)
 
-    # 将密码分成8字节块进行加密
+    # Divide ***REMOVED***word into 8-byte blocks for encryption
     encrypted_blocks = []
 
-    # 计算需要的块数（至少2个块，最多3个块）
+    # Calculate number of blocks needed (at least 2 blocks, at most 3 blocks)
     block_count = max(2, min(3, (len(***REMOVED***word) + 7) // 8))
 
     for i in range(block_count):
         start_pos = i * 8
         end_pos = start_pos + 8
 
-        # 获取当前块的密码片段
+        # Get ***REMOVED***word chunk for current block
         ***REMOVED***word_chunk = ***REMOVED***word[start_pos:end_pos]
 
-        # 填充到8字节
+        # Pad to 8 bytes
         block = ***REMOVED***word_chunk.ljust(8, "\x00").encode("ascii")
 
-        # 加密当前块
+        # Encrypt current block
         encrypted_block = cipher.encrypt(block)
         encrypted_blocks.append(encrypted_block)
 
-    # 连接所有加密结果并转换为十六进制字符串
+    # Concatenate all encryption results and convert to hexadecimal string
     result = b"".join(encrypted_blocks).hex().lower()
 
     return result
 
 
 class BrowserVNCService:
-    """浏览器插件 VNC 连接管理服务类
+    """Browser Plugin VNC Connection Management Service Class
 
-    负责处理浏览器插件的 VNC 连接相关的业务逻辑，包括连接结果上报和连接信息获取。
+    Responsible for handling VNC connection related business logic for browser plugins,
+    including connection result reporting and connection information retrieval.
 
-    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+    ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
     """
 
     def __init__(self):
-        """初始化服务"""
-        # ✅ 优化：缓存会话工厂
+        """Initialize service"""
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
     @handle_service_errors(
-        error_message="上报 VNC 连接结果失败",
+        error_message="Failed to report VNC connection result",
         error_code="REPORT_VNC_FAILED",
     )
     async def report_vnc_connection(self, vnc_report: VNCConnectionReport) -> dict:
-        """处理浏览器插件上报的VNC连接结果
+        """Process VNC connection result reported by browser plugin
 
-        功能描述：
-        1. 根据 host_id 验证主机是否存在
-        2. 如果 connection_status = "success"：
-           - 查询 host_exec_log 表（user_id、tc_id、cycle_name、user_name、host_id、del_flag=0）
-           - 如果存在旧记录：先逻辑删除旧记录（del_flag=1）
-           - 无论是否存在旧记录：都新增一条新记录（host_state=1, case_state=0）
-        3. 更新 host_rec 表：host_state = 1, subm_time = 当前时间
+        Function description:
+        1. Verify host exists based on host_id
+        2. If connection_status = "success":
+           - Query host_exec_log table (user_id, tc_id, cycle_name, user_name, host_id, del_flag=0)
+           - If old record exists: First logically delete old record (del_flag=1)
+           - Whether old record exists or not: Add a new record (host_state=1, case_state=0)
+        3. Update host_rec table: host_state = 1, subm_time = current time
 
         Args:
-            vnc_report: VNC连接结果上报数据
-                - user_id: 用户ID
-                - tc_id: 执行测试ID
-                - cycle_name: 周期名称
-                - user_name: 用户名称
-                - host_id: 主机ID
-                - connection_status: 连接状态 (success/failed)
-                - connection_time: 连接时间
+            vnc_report: VNC connection result report data
+                - user_id: User ID
+                - tc_id: Test execution ID
+                - cycle_name: Cycle name
+                - user_name: User name
+                - host_id: Host ID
+                - connection_status: Connection status (success/failed)
+                - connection_time: Connection time
 
         Returns:
-            处理结果字典，包含主机ID、连接状态和处理消息
+            Processing result dictionary, containing host ID, connection status and processing message
 
         Raises:
-            BusinessError: 主机不存在或处理失败
+            BusinessError: When host does not exist or processing fails
         """
-        # 转换 host_id 为整数
+        # Convert host_id to integer
         try:
             host_id_int = int(vnc_report.host_id)
         except (ValueError, TypeError):
             logger.warning(
-                "主机ID格式错误",
+                "Host ID format error",
                 extra={
                     "host_id": vnc_report.host_id,
                     "error": "not a valid integer",
                 },
             )
             raise BusinessError(
-                message="主机ID格式无效",
+                message="Invalid host ID format",
                 error_code="INVALID_HOST_ID",
                 code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                 http_status_code=400,
@@ -199,17 +200,17 @@ class BrowserVNCService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 使用工具函数验证主机存在且未删除
+            # 1. Use utility function to validate host exists and not deleted
             host_rec = await validate_host_exists(session, HostRec, host_id_int, locale="zh_CN")
 
-            # 记录更新前的状态
+            # Record state before update
             old_host_state = host_rec.host_state
             old_subm_time = host_rec.subm_time
 
-            # 2. 如果连接状态为 success，处理 host_exec_log 表
-            exec_log_action = None  # 记录操作类型：deleted_and_created/created
+            # 2. If connection status is success, process host_exec_log table
+            exec_log_action = None  # Record operation type: deleted_and_created/created
             if vnc_report.connection_status == "success":
-                # 查询 host_exec_log 表
+                # Query host_exec_log table
                 log_stmt = select(HostExecLog).where(
                     and_(
                         HostExecLog.user_id == vnc_report.user_id,
@@ -225,7 +226,7 @@ class BrowserVNCService:
 
                 if len(logs) > 1:
                     logger.warning(
-                        "找到多条执行日志，无法继续",
+                        "Found multiple execution logs, cannot continue",
                         extra={
                             "user_id": vnc_report.user_id,
                             "host_id": vnc_report.host_id,
@@ -233,7 +234,7 @@ class BrowserVNCService:
                         },
                     )
                     raise BusinessError(
-                        message="存在多条未完成的执行日志，请联系管理员处理",
+                        message="Multiple incomplete execution logs exist, please contact administrator",
                         error_code="MULTIPLE_EXEC_LOGS_FOUND",
                         code=ServiceErrorCodes.HOST_MULTIPLE_EXEC_LOGS_FOUND,
                         http_status_code=409,
@@ -242,9 +243,9 @@ class BrowserVNCService:
                 existing_log = logs[0] if logs else None
 
                 if existing_log:
-                    # 存在记录：先逻辑删除
+                    # Record exists: First logically delete
                     logger.info(
-                        "找到已存在的执行日志，先进行逻辑删除",
+                        "Found existing execution log, performing logical delete first",
                         extra={
                             "log_id": existing_log.id,
                             "user_id": vnc_report.user_id,
@@ -257,7 +258,7 @@ class BrowserVNCService:
                     exec_log_action = "deleted_and_created"
                 else:
                     logger.info(
-                        "未找到已存在的执行日志",
+                        "No existing execution log found",
                         extra={
                             "user_id": vnc_report.user_id,
                             "host_id": vnc_report.host_id,
@@ -265,9 +266,9 @@ class BrowserVNCService:
                     )
                     exec_log_action = "created"
 
-                # 无论是否存在旧记录，都新增一条新记录
+                # Whether old record exists or not, add a new record
                 logger.info(
-                    "创建新的执行日志记录",
+                    "Creating new execution log record",
                     extra={
                         "user_id": vnc_report.user_id,
                         "host_id": vnc_report.host_id,
@@ -280,29 +281,29 @@ class BrowserVNCService:
                     tc_id=vnc_report.tc_id,
                     cycle_name=vnc_report.cycle_name,
                     user_name=vnc_report.user_name,
-                    host_state=1,  # 已锁定
-                    case_state=0,  # 空闲
+                    host_state=1,  # Locked
+                    case_state=0,  # Free
                     begin_time=datetime.now(timezone.utc),
                     del_flag=0,
                 )
                 session.add(new_log)
 
-            # 3. 更新 host_rec 表
-            host_rec.host_state = 1  # 已锁定状态
+            # 3. Update host_rec table
+            host_rec.host_state = 1  # Locked state
             host_rec.subm_time = datetime.now(timezone.utc)
 
-            # 提交所有更改
+            # Commit all changes
             await session.commit()
             await session.refresh(host_rec)
 
-            # ✅ 优化：如果连接状态为 success，清除可用主机列表缓存
-            # 因为主机状态已变为已锁定，不应再出现在可用主机列表中
+            # ✅ Optimization: If connection status is success, clear available host list cache
+            # Because host state has changed to locked, it should no longer appear in available host list
             if vnc_report.connection_status == "success":
                 try:
                     deleted_count = await invalidate_available_hosts_cache()
                     if deleted_count > 0:
                         logger.info(
-                            "可用主机列表缓存已清除（VNC连接成功）",
+                            "Available host list cache cleared (VNC connection succeeded)",
                             extra={
                                 "host_id": vnc_report.host_id,
                                 "deleted_cache_count": deleted_count,
@@ -310,19 +311,19 @@ class BrowserVNCService:
                         )
                     else:
                         logger.debug(
-                            "未找到需要清除的可用主机列表缓存",
+                            "No available host list cache found to clear",
                             extra={"host_id": vnc_report.host_id},
                         )
                 except Exception as e:
                     logger.warning(
-                        "清除可用主机列表缓存失败",
+                        "Failed to clear available host list cache",
                         extra={
                             "host_id": vnc_report.host_id,
                             "error": str(e),
                         },
                     )
 
-            # 格式化时间戳用于日志记录
+            # Format timestamps for logging
             new_subm_time_str: Optional[str] = None
             if host_rec.subm_time is not None:
                 new_subm_time_str = cast(datetime, host_rec.subm_time).isoformat()
@@ -336,7 +337,7 @@ class BrowserVNCService:
                 connection_time_str = cast(datetime, vnc_report.connection_time).isoformat()
 
             logger.info(
-                "VNC连接结果上报处理成功",
+                "VNC connection result report processing succeeded",
                 extra={
                     "operation": "report_vnc_connection",
                     "user_id": vnc_report.user_id,
@@ -354,12 +355,12 @@ class BrowserVNCService:
                 },
             )
 
-            # ✅ 如果连接状态为 success，通过 WebSocket 通知 Agent 进行日志监控
-            # 使用大小写不敏感的比较，确保 "success"、"Success"、"SUCCESS" 都能匹配
+            # ✅ If connection status is success, notify Agent via WebSocket to start log monitoring
+            # Use case-insensitive comparison to ensure "success", "Success", "SUCCESS" all match
             connection_status_lower = vnc_report.connection_status.lower() if vnc_report.connection_status else ""
             if connection_status_lower == "success":
                 logger.info(
-                    "准备发送 WebSocket 通知给 Agent",
+                    "Preparing to send WebSocket notification to Agent",
                     extra={
                         "host_id": vnc_report.host_id,
                         "connection_status": vnc_report.connection_status,
@@ -371,10 +372,10 @@ class BrowserVNCService:
                     ws_manager = get_agent_websocket_manager()
                     host_id_str = str(vnc_report.host_id)
 
-                    # 检查 Agent 是否已连接
+                    # Check if Agent is connected
                     if not ws_manager.is_connected(host_id_str):
                         logger.warning(
-                            "Agent 未连接，无法发送 WebSocket 通知",
+                            "Agent not connected, cannot send WebSocket notification",
                             extra={
                                 "host_id": host_id_str,
                                 "user_id": vnc_report.user_id,
@@ -383,11 +384,11 @@ class BrowserVNCService:
                             },
                         )
                     else:
-                        # 构建连接通知消息
+                        # Build connection notification message
                         connection_notification = {
                             "type": MessageType.CONNECTION_NOTIFICATION,
                             "host_id": host_id_str,
-                            "message": "VNC连接成功，请开始日志监控",
+                            "message": "VNC connection succeeded, please start log monitoring",
                             "action": "start_log_monitoring",
                             "details": {
                                 "user_id": vnc_report.user_id,
@@ -400,7 +401,7 @@ class BrowserVNCService:
                         }
 
                         logger.debug(
-                            "准备发送 WebSocket 通知消息",
+                            "Preparing to send WebSocket notification message",
                             extra={
                                 "host_id": host_id_str,
                                 "message_type": MessageType.CONNECTION_NOTIFICATION,
@@ -408,11 +409,11 @@ class BrowserVNCService:
                             },
                         )
 
-                        # 发送通知
+                        # Send notification
                         success = await ws_manager.send_to_host(host_id_str, connection_notification)
                         if success:
                             logger.info(
-                                "连接通知已发送给 Agent",
+                                "Connection notification sent to Agent",
                                 extra={
                                     "host_id": host_id_str,
                                     "user_id": vnc_report.user_id,
@@ -422,7 +423,7 @@ class BrowserVNCService:
                             )
                         else:
                             logger.warning(
-                                "连接通知发送失败（Agent 可能未连接或发送失败）",
+                                "Connection notification send failed (Agent may not be connected or send failed)",
                                 extra={
                                     "host_id": host_id_str,
                                     "user_id": vnc_report.user_id,
@@ -432,9 +433,9 @@ class BrowserVNCService:
                                 },
                             )
                 except Exception as e:
-                    # 通知发送失败不影响主流程，只记录警告
+                    # Notification send failure does not affect main flow, only log warning
                     logger.error(
-                        "发送连接通知异常",
+                        "Exception sending connection notification",
                         extra={
                             "host_id": vnc_report.host_id,
                             "error_type": type(e).__name__,
@@ -445,13 +446,13 @@ class BrowserVNCService:
                     )
             else:
                 logger.debug(
-                    "连接状态不是 success，跳过 WebSocket 通知",
+                    "Connection status is not success, skipping WebSocket notification",
                     extra={
                         "host_id": vnc_report.host_id,
                         "connection_status": vnc_report.connection_status,
                         "connection_status_lower": connection_status_lower,
                     },
-                    )
+                )
 
             return {
                 "host_id": vnc_report.host_id,
@@ -460,24 +461,24 @@ class BrowserVNCService:
             }
 
     @handle_service_errors(
-        error_message="获取 VNC 连接信息失败",
+        error_message="Failed to get VNC connection information",
         error_code="GET_VNC_CONNECTION_FAILED",
     )
     async def get_vnc_connection_info(self, host_rec_id: str) -> dict:
-        """获取指定主机的 VNC 连接信息
+        """Get VNC connection information for specified host
 
-        业务逻辑：
-        1. 如果 host_rec_id = "1111111"，返回模拟数据（不查数据库）
-        2. 否则，根据 host_rec_id 查询 host_rec 表
-        3. 检查数据有效性（del_flag=0, appr_state=1）
-        4. 更新主机状态为已锁定（host_state = 1）
-        5. 返回 VNC 连接所需的字段
+        Business logic:
+        1. If host_rec_id = "1111111", return mock data (don't query database)
+        2. Otherwise, query host_rec table based on host_rec_id
+        3. Check data validity (del_flag=0, appr_state=1)
+        4. Update host state to locked (host_state = 1)
+        5. Return fields required for VNC connection
 
         Args:
-            host_rec_id: 主机记录 ID
+            host_rec_id: Host record ID
 
         Returns:
-            包含 VNC 连接信息的字典
+            Dictionary containing VNC connection information
             {
                 "ip": "192.168.101.118",
                 "port": "5900",
@@ -486,20 +487,20 @@ class BrowserVNCService:
             }
 
         Raises:
-            BusinessError: 当主机不存在或数据无效时
+            BusinessError: When host does not exist or data is invalid
         """
         logger.info(
-            "开始获取 VNC 连接信息",
+            "Starting to get VNC connection information",
             extra={
                 "operation": "get_vnc_connection_info",
                 "host_rec_id": host_rec_id,
             },
         )
 
-        # ✅ 如果 host_rec_id = "1111111"，返回模拟数据（不查数据库）
+        # ✅ If host_rec_id = "1111111", return mock data (don't query database)
         if host_rec_id == "1111111":
             logger.info(
-                "使用模拟数据（测试主机ID: 1111111）",
+                "Using mock data (test host ID: 1111111)",
                 extra={
                     "operation": "get_vnc_connection_info",
                     "host_rec_id": host_rec_id,
@@ -514,34 +515,34 @@ class BrowserVNCService:
             }
 
         try:
-            # 将字符串 ID 转换为整数
+            # Convert string ID to integer
             try:
                 host_id = int(host_rec_id)
             except (ValueError, TypeError):
                 logger.warning(
-                    "主机ID格式错误",
+                    "Host ID format error",
                     extra={
                         "host_rec_id": host_rec_id,
                         "error": "not a valid integer",
                     },
                 )
                 raise BusinessError(
-                    message="主机ID格式无效",
+                    message="Invalid host ID format",
                     error_code="INVALID_HOST_ID",
                     code=ServiceErrorCodes.HOST_INVALID_HOST_ID,
                     http_status_code=400,
                 )
 
-            # 查询主机记录（使用缓存的会话工厂）
+            # Query host record (using cached session factory)
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 使用工具函数验证主机存在且未删除
+                # Use utility function to validate host exists and not deleted
                 host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
-                # 检查主机是否已启用（appr_state == 1）
+                # Check if host is enabled (appr_state == 1)
                 if host_rec.appr_state != 1:
                     logger.warning(
-                        "主机未启用",
+                        "Host not enabled",
                         extra={
                             "host_rec_id": host_rec_id,
                             "appr_state": host_rec.appr_state,
@@ -549,33 +550,33 @@ class BrowserVNCService:
                         },
                     )
                     raise BusinessError(
-                        message="主机未启用",
+                        message="Host not enabled",
                         message_key="error.host.not_enabled",
                         error_code="HOST_NOT_ENABLED",
                         code=ServiceErrorCodes.HOST_NOT_FOUND,
                         http_status_code=400,
                     )
 
-                # ✅ 检查主机状态：只有业务状态 (< 4) 允许 VNC 连接
+                # ✅ Check host state: Only business states (< 4) allow VNC connection
                 if host_rec.host_state is not None and host_rec.host_state >= 4:
                     logger.warning(
-                        "主机处于非业务状态，禁止 VNC 连接",
+                        "Host in non-business state, VNC connection prohibited",
                         extra={
                             "host_rec_id": host_rec_id,
                             "host_state": host_rec.host_state,
                         },
                     )
                     raise BusinessError(
-                        message="当前主机状态不支持 VNC 连接",
+                        message="Current host state does not support VNC connection",
                         error_code="HOST_STATE_NOT_ALLOWED",
                         code=ServiceErrorCodes.HOST_NOT_Enabled,  # Reuse or similar code
                         http_status_code=400,
                     )
 
-                # 检查 VNC 连接信息是否完整
+                # Check if VNC connection information is complete
                 if not host_rec.host_ip or not host_rec.host_port:
                     logger.warning(
-                        "VNC 连接信息不完整",
+                        "VNC connection information incomplete",
                         extra={
                             "host_rec_id": host_rec_id,
                             "has_ip": bool(host_rec.host_ip),
@@ -583,31 +584,31 @@ class BrowserVNCService:
                         },
                     )
                     raise BusinessError(
-                        message="VNC 连接信息不完整，缺少 IP 地址或端口",
+                        message="VNC connection information incomplete, missing IP address or port",
                         message_key="error.vnc.info_incomplete",
                         error_code="VNC_INFO_INCOMPLETE",
                         code=ServiceErrorCodes.HOST_VNC_INFO_INCOMPLETE,
                         http_status_code=400,
                     )
 
-                # 处理密码：AES 解密 -> RealVNC 加密
+                # Process ***REMOVED***word: AES decrypt -> RealVNC encrypt
                 vnc_***REMOVED***word = ""
                 if host_rec.host_pwd:
                     try:
-                        # 1. 使用 AES 解密数据库中的密码
+                        # 1. Use AES to decrypt ***REMOVED***word in database
                         ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
                         if ***REMOVED***:
                             logger.debug(
-                                "密码 AES 解密成功",
+                                "Password AES decryption succeeded",
                                 extra={
                                     "host_rec_id": host_rec_id,
                                 },
                             )
 
-                            # 2. 使用 RealVNC 加密算法加密密码
+                            # 2. Use RealVNC encryption algorithm to encrypt ***REMOVED***word
                             vnc_***REMOVED***word = _realvnc_encrypt_***REMOVED***word(***REMOVED***)
                             logger.debug(
-                                "密码 RealVNC 加密成功",
+                                "Password RealVNC encryption succeeded",
                                 extra={
                                     "host_rec_id": host_rec_id,
                                     "***REMOVED***word_length": len(***REMOVED***),
@@ -616,15 +617,15 @@ class BrowserVNCService:
                             )
                         else:
                             logger.warning(
-                                "密码 AES 解密返回 None",
+                                "Password AES decryption returned None",
                                 extra={
                                     "host_rec_id": host_rec_id,
-                                    "note": "可能是密码格式不正确或加密方式不匹配",
+                                    "note": "Password format may be incorrect or encryption method mismatch",
                                 },
                             )
                     except Exception as e:
                         logger.warning(
-                            "密码处理异常（AES 解密或 RealVNC 加密）",
+                            "Password processing exception (AES decryption or RealVNC encryption)",
                             extra={
                                 "host_rec_id": host_rec_id,
                                 "error": str(e),
@@ -632,20 +633,20 @@ class BrowserVNCService:
                             },
                             exc_info=True,
                         )
-                        # 密码处理失败时返回空字符串，而不是抛出异常
+                        # Return empty string when ***REMOVED***word processing fails, instead of raising exception
                         vnc_***REMOVED***word = ""
 
-                # ✅ 更新主机状态为已锁定（host_state = 1）
+                # ✅ Update host state to locked (host_state = 1)
                 old_host_state = host_rec.host_state
-                host_rec.host_state = 1  # 已锁定状态
+                host_rec.host_state = 1  # Locked state
                 host_rec.subm_time = datetime.now(timezone.utc)
 
-                # 提交状态更新
+                # Commit state update
                 await session.commit()
                 await session.refresh(host_rec)
 
                 logger.info(
-                    "主机状态已更新为已锁定",
+                    "Host state updated to locked",
                     extra={
                         "host_rec_id": host_rec_id,
                         "old_host_state": old_host_state,
@@ -653,13 +654,13 @@ class BrowserVNCService:
                     },
                 )
 
-                # ✅ 优化：清除可用主机列表缓存，因为主机状态已变为已锁定
-                # 该主机不应再出现在可用主机列表中，需要清除相关缓存
+                # ✅ Optimization: Clear available host list cache, because host state has changed to locked
+                # This host should no longer appear in available host list, need to clear related cache
                 try:
                     deleted_count = await invalidate_available_hosts_cache()
                     if deleted_count > 0:
                         logger.info(
-                            "可用主机列表缓存已清除（主机状态已锁定）",
+                            "Available host list cache cleared (host state locked)",
                             extra={
                                 "host_rec_id": host_rec_id,
                                 "deleted_cache_count": deleted_count,
@@ -667,28 +668,28 @@ class BrowserVNCService:
                         )
                     else:
                         logger.debug(
-                            "未找到需要清除的可用主机列表缓存",
+                            "No available host list cache found to clear",
                             extra={"host_rec_id": host_rec_id},
                         )
                 except Exception as e:
                     logger.warning(
-                        "清除可用主机列表缓存失败",
+                        "Failed to clear available host list cache",
                         extra={
                             "host_rec_id": host_rec_id,
                             "error": str(e),
                         },
                     )
 
-                # 构建响应数据
+                # Build response data
                 vnc_info = {
                     "ip": cast(str, host_rec.host_ip),
                     "port": (str(cast(int, host_rec.host_port)) if host_rec.host_port else "5900"),
                     "username": cast(str, host_rec.host_acct) or "",
-                    "***REMOVED***word": vnc_***REMOVED***word,  # 返回 RealVNC 加密后的密码
+                    "***REMOVED***word": vnc_***REMOVED***word,  # Return RealVNC encrypted ***REMOVED***word
                 }
 
                 logger.info(
-                    "VNC 连接信息获取成功",
+                    "VNC connection information retrieved successfully",
                     extra={
                         "host_rec_id": host_rec_id,
                         "ip": vnc_info["ip"],
@@ -701,12 +702,12 @@ class BrowserVNCService:
                 return vnc_info
 
         except BusinessError:
-            # 重新抛出业务异常
+            # Re-raise business exception
             raise
 
         except Exception as e:
             logger.error(
-                "获取 VNC 连接信息系统异常",
+                "System exception getting VNC connection information",
                 extra={
                     "host_rec_id": host_rec_id,
                     "error_type": type(e).__name__,
@@ -715,7 +716,7 @@ class BrowserVNCService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="获取 VNC 连接信息失败，请稍后重试",
+                message="Failed to get VNC connection information, please retry later",
                 error_code="VNC_GET_FAILED",
                 code=ServiceErrorCodes.HOST_VNC_GET_FAILED,
                 http_status_code=500,

@@ -1,11 +1,11 @@
 """
-WebSocket 并发测试模块
+WebSocket Concurrent Test Module
 
-测试内容：
-- 多个 Agent 同时连接
-- 并发消息处理
-- 负载测试
-- 并发断开处理
+Test Content:
+- Multiple Agents connecting simultaneously
+- Concurrent message processing
+- Load testing
+- Concurrent disconnection handling
 """
 
 import asyncio
@@ -18,16 +18,16 @@ import websockets
 
 @pytest.mark.asyncio
 class TestWebSocketConcurrent:
-    """WebSocket 并发测试类"""
+    """WebSocket Concurrent Test Class"""
 
     @pytest.mark.asyncio
     async def test_multiple_agents_connection(self, ws_url):
-        """测试多个 Agent 同时连接
+        """Test multiple Agents connecting simultaneously
 
-        验证：
-        - 10 个 Agent 可以同时连接
-        - 所有连接都能成功建立
-        - 连接之间互不影响
+        Verification:
+        - 10 Agents can connect simultaneously
+        - All connections can be successfully established
+        - Connections do not interfere with each other
         """
         agents = [f"agent-{i:03d}" for i in range(10)]
         connections = []
@@ -39,61 +39,61 @@ class TestWebSocketConcurrent:
                 connections.append((agent_id, ws))
                 return True
             except Exception as e:
-                pytest.skip(f"Agent {agent_id} 连接失败: {str(e)}")
+                pytest.skip(f"Agent {agent_id} connection failed: {str(e)}")
 
-        # 并发连接所有 Agent
+        # Concurrently connect all Agents
         tasks = [connect_agent(agent_id) for agent_id in agents]
         results = await asyncio.gather(*tasks)
-        print(f"连接结果: {results}, connections: {connections}")
+        print(f"Connection results: {results}, connections: {connections}")
 
-        # 验证所有连接都打开
-        assert len(connections) == len(agents), "应该连接所有 Agent"
+        # Verify all connections are open
+        assert len(connections) == len(agents), "All Agents should be connected"
         for agent_id, ws in connections:
-            assert ws.open, f"Agent {agent_id} 连接应该打开"
+            assert ws.open, f"Agent {agent_id} connection should be open"
 
-        # 清理
+        # Cleanup
         for agent_id, ws in connections:
             await ws.close()
 
     @pytest.mark.asyncio
     async def test_concurrent_messages(self, ws_url, sample_agent_id):
-        """测试并发消息处理
+        """Test concurrent message processing
 
-        验证：
-        - 可以并发发送多条消息
-        - 消息都能成功发送
-        - 连接保持稳定
+        Verification:
+        - Can concurrently send multiple messages
+        - All messages can be successfully sent
+        - Connection remains stable
         """
         uri = f"{ws_url}/api/v1/ws/agent/{sample_agent_id}"
         num_messages = 50
 
         async with websockets.connect(uri, ping_interval=None) as websocket:
-            # 并发发送多条消息
+            # Concurrently send multiple messages
             tasks = []
             for i in range(num_messages):
                 message = {"type": "concurrent", "id": i}
                 task = websocket.send(json.dumps(message))
                 tasks.append(task)
 
-            # 等待所有消息发送完成
+            # Wait for all messages to finish sending
             await asyncio.gather(*tasks)
 
-            # 连接应该仍然打开
-            assert websocket.open, "发送并发消息后连接应该仍然打开"
+            # Connection should still be open
+            assert websocket.open, "Connection should still be open after sending concurrent messages"
 
-            # 验证可以继续通信
+            # Verify communication can continue
             final_message = {"type": "ping"}
             await websocket.send(json.dumps(final_message))
-            assert websocket.open, "最后的消息应该能正常发送"
+            assert websocket.open, "The final message should be able to send normally"
 
     @pytest.mark.asyncio
     async def test_connection_under_load(self, ws_url):
-        """测试负载下的连接
+        """Test connections under load
 
-        验证：
-        - 50 个并发连接能稳定工作
-        - 每个连接都能独立通信
-        - 负载不会导致连接失败
+        Verification:
+        - 50 concurrent connections can work stably
+        - Each connection can communicate independently
+        - Load does not cause connection failures
         """
         num_connections = 50
         agents = [f"load-agent-{i:03d}" for i in range(num_connections)]
@@ -102,110 +102,110 @@ class TestWebSocketConcurrent:
             uri = f"{ws_url}/api/v1/ws/agent/{agent_id}"
             try:
                 async with websockets.connect(uri, ping_interval=None) as websocket:
-                    # 每个连接发送消息
+                    # Send messages for each connection
                     for msg_idx in range(10):
                         message = {"type": "load_test", "message_id": msg_idx}
                         await websocket.send(json.dumps(message))
-                        await asyncio.sleep(0.01)  # 稍微延迟
+                        await asyncio.sleep(0.01)  # Slight delay
 
-                    assert websocket.open, f"Agent {agent_id} 连接应该保持打开"
+                    assert websocket.open, f"Agent {agent_id} connection should remain open"
                     return True
             except Exception as e:
-                pytest.skip(f"Agent {agent_id} 连接失败: {str(e)}")
+                pytest.skip(f"Agent {agent_id} connection failed: {str(e)}")
                 return False
 
-        # 并发创建所有客户端
+        # Concurrently create all clients
         tasks = [agent_client(agent_id) for agent_id in agents]
         results = await asyncio.gather(*tasks)
 
-        # 验证大多数连接都成功
+        # Verify most connections are successful
         success_count = sum(1 for r in results if r)
-        assert success_count >= num_connections * 0.8, "至少 80% 的连接应该成功"
+        assert success_count >= num_connections * 0.8, "At least 80% of connections should succeed"
 
     @pytest.mark.asyncio
     async def test_concurrent_disconnect(self, ws_url):
-        """测试并发断开
+        """Test concurrent disconnection
 
-        验证：
-        - 多个连接可以同时断开
-        - 断开不会导致资源泄漏
-        - 断开后无法重复操作
+        Verification:
+        - Multiple connections can disconnect simultaneously
+        - Disconnection does not cause resource leaks
+        - Cannot perform duplicate operations after disconnection
         """
         num_connections = 10
         agents = [f"disconnect-agent-{i:03d}" for i in range(num_connections)]
         connections: List = []
 
-        # 创建所有连接
+        # Create all connections
         for agent_id in agents:
             uri = f"{ws_url}/api/v1/ws/agent/{agent_id}"
             try:
                 ws = await websockets.connect(uri, ping_interval=None)
                 connections.append(ws)
             except Exception as e:
-                pytest.skip(f"连接创建失败: {str(e)}")
+                pytest.skip(f"Connection creation failed: {str(e)}")
 
-        # 验证所有连接都打开
-        assert all(ws.open for ws in connections), "所有连接应该打开"
+        # Verify all connections are open
+        assert all(ws.open for ws in connections), "All connections should be open"
 
-        # 并发关闭所有连接
+        # Concurrently close all connections
         async def close_connection(ws):
             await ws.close()
 
         tasks = [close_connection(ws) for ws in connections]
         await asyncio.gather(*tasks)
 
-        # 验证所有连接都已关闭
+        # Verify all connections are closed
         for ws in connections:
-            assert not ws.open, "连接应该已关闭"
+            assert not ws.open, "Connection should be closed"
 
     @pytest.mark.asyncio
     async def test_interleaved_operations(self, ws_url, sample_agent_ids):
-        """测试交错操作
+        """Test interleaved operations
 
-        验证：
-        - 多个连接可以交错操作
-        - 连接之间互不干扰
-        - 消息顺序正确
+        Verification:
+        - Multiple connections can perform interleaved operations
+        - Connections do not interfere with each other
+        - Message order is correct
         """
         connections: dict = {}
 
-        # 创建多个连接
+        # Create multiple connections
         for agent_id in sample_agent_ids:
             uri = f"{ws_url}/api/v1/ws/agent/{agent_id}"
             try:
                 ws = await websockets.connect(uri, ping_interval=None)
                 connections[agent_id] = ws
             except Exception as e:
-                pytest.skip(f"连接创建失败: {str(e)}")
+                pytest.skip(f"Connection creation failed: {str(e)}")
 
-        # 交错发送消息
+        # Interleaved send messages
         async def send_messages(agent_id: str, count: int):
             ws = connections[agent_id]
             for i in range(count):
                 message = {"type": "interleaved", "agent": agent_id, "index": i}
                 await ws.send(json.dumps(message))
-                await asyncio.sleep(0.01)  # 交错延迟
+                await asyncio.sleep(0.01)  # Interleaved delay
 
-        # 并发执行交错操作
+        # Concurrently execute interleaved operations
         tasks = [send_messages(agent_id, 5) for agent_id in sample_agent_ids]
         await asyncio.gather(*tasks)
 
-        # 验证所有连接仍然打开
+        # Verify all connections are still open
         for agent_id, ws in connections.items():
-            assert ws.open, f"Agent {agent_id} 连接应该仍然打开"
+            assert ws.open, f"Agent {agent_id} connection should still be open"
 
-        # 清理
+        # Cleanup
         for ws in connections.values():
             await ws.close()
 
     @pytest.mark.asyncio
     async def test_concurrent_connect_disconnect_cycle(self, ws_url):
-        """测试并发连接-断开循环
+        """Test concurrent connect-disconnect cycles
 
-        验证：
-        - 可以进行多个并发连接-断开周期
-        - 没有资源泄漏
-        - 服务器能正确处理
+        Verification:
+        - Can perform multiple concurrent connect-disconnect cycles
+        - No resource leaks
+        - Server can handle correctly
         """
         num_cycles = 3
         num_agents_per_cycle = 5
@@ -217,63 +217,63 @@ class TestWebSocketConcurrent:
                 uri = f"{ws_url}/api/v1/ws/agent/{agent_id}"
                 try:
                     async with websockets.connect(uri, ping_interval=None) as ws:
-                        # 发送一条消息
+                        # Send a message
                         message = {"type": "cycle"}
                         await ws.send(json.dumps(message))
-                        # 自动关闭
+                        # Auto close
                         return True
                 except Exception as e:
-                    pytest.skip(f"周期操作失败: {str(e)}")
+                    pytest.skip(f"Cycle operation failed: {str(e)}")
                     return False
 
             tasks = [connect_and_disconnect(agent_id) for agent_id in agents]
             results = await asyncio.gather(*tasks)
             return sum(1 for r in results if r)
 
-        # 执行多个周期
+        # Execute multiple cycles
         for cycle_num in range(num_cycles):
             success_count = await cycle_agents()
-            assert success_count > 0, f"第 {cycle_num + 1} 个周期应该有成功的连接"
+            assert success_count > 0, f"Cycle {cycle_num + 1} should have successful connections"
 
     @pytest.mark.asyncio
     async def test_high_frequency_messages(self, ws_url, sample_agent_id):
-        """测试高频消息
+        """Test high-frequency messages
 
-        验证：
-        - 可以发送高频消息（500条/秒）
-        - 不会导致连接断开
-        - 服务器能处理
+        Verification:
+        - Can send high-frequency messages (500 per second)
+        - Does not cause connection disconnection
+        - Server can handle
         """
         uri = f"{ws_url}/api/v1/ws/agent/{sample_agent_id}"
         num_messages = 500
 
         async with websockets.connect(uri, ping_interval=None) as websocket:
-            # 快速发送高频消息
+            # Quickly send high-frequency messages
             for i in range(num_messages):
                 message = {"type": "high_freq", "index": i}
                 await websocket.send(json.dumps(message))
 
-            # 连接应该仍然打开
-            assert websocket.open, "发送高频消息后连接应该仍然打开"
+            # Connection should still be open
+            assert websocket.open, "Connection should still be open after sending high-frequency messages"
 
-            # 验证可以继续通信
+            # Verify communication can continue
             ping_message = {"type": "ping"}
             await websocket.send(json.dumps(ping_message))
-            assert websocket.open, "最后的 ping 应该能发送"
+            assert websocket.open, "The final ping should be able to send"
 
     @pytest.mark.asyncio
     async def test_mixed_message_sizes(self, ws_url, sample_agent_id):
-        """测试混合大小消息
+        """Test mixed-size messages
 
-        验证：
-        - 可以混合发送各种大小的消息
-        - 大小消息可以交错
-        - 不会影响连接稳定性
+        Verification:
+        - Can mix send messages of various sizes
+        - Messages of different sizes can be interleaved
+        - Does not affect connection stability
         """
         uri = f"{ws_url}/api/v1/ws/agent/{sample_agent_id}"
 
         async with websockets.connect(uri, ping_interval=None) as websocket:
-            # 发送混合大小的消息
+            # Send mixed-size messages
             sizes = [100, 10000, 1000, 100000, 500]
             for idx, size in enumerate(sizes):
                 data = "x" * size
@@ -281,10 +281,10 @@ class TestWebSocketConcurrent:
                 message = {"type": "mixed", "size": size, "index": idx}
                 await websocket.send(json.dumps(message))
 
-            # 连接应该仍然打开
-            assert websocket.open, "发送混合大小消息后连接应该仍然打开"
+            # Connection should still be open
+            assert websocket.open, "Connection should still be open after sending mixed-size messages"
 
-            # 验证可以继续通信
+            # Verify communication can continue
             final_message = {"type": "ping"}
             await websocket.send(json.dumps(final_message))
-            assert websocket.open, "最后的消息应该能发送"
+            assert websocket.open, "The final message should be able to send"

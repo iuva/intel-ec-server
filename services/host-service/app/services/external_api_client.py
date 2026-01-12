@@ -1,8 +1,8 @@
-"""外部接口调用客户端
+"""External API call client
 
-提供统一的外部接口调用功能，包括：
-1. Token 获取和缓存管理
-2. 带认证的外部接口调用
+Provides unified external API call functionality, including:
+1. Token acquisition and cache management
+2. External API calls with authentication
 """
 
 import asyncio
@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.models.sys_user import SysUser
     from shared.common.cache import redis_manager
@@ -32,20 +32,20 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# Token 缓存锁（防止并发请求）
+# Token cache lock (prevent concurrent requests)
 _token_lock = asyncio.Lock()
 
-# Token 缓存键前缀
+# Token cache key prefix
 TOKEN_CACHE_KEY_PREFIX = "external_api_token"
 
-# ✅ 优化：模块级会话工厂缓存
+# ✅ Optimization: Module-level session factory cache
 _session_factory_cache = None
 
 
 def _get_session_factory():
-    """获取会话工厂（模块级缓存）
+    """Get session factory (module-level cache)
 
-    ✅ 优化：缓存会话工厂，避免重复获取
+    ✅ Optimization: Cache session factory to avoid repeated retrieval
     """
     global _session_factory_cache
     if _session_factory_cache is None:
@@ -54,68 +54,68 @@ def _get_session_factory():
 
 
 def _sanitize_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """脱敏响应头中的敏感信息
+    """Sanitize sensitive information in response headers
 
     Args:
-        headers: 原始响应头（可能为 None）
+        headers: Original response headers (may be None)
 
     Returns:
-        脱敏后的响应头
+        Sanitized response headers
     """
     if not headers:
         return {}
     safe_headers = headers.copy()
-    # 转换为小写键以便查找
+    # Convert to lowercase keys for lookup
     safe_headers = headers.copy()
 
     sensitive_keys = ["authorization", "set-cookie", "cookie"]
     for key in list(safe_headers.keys()):
         if key.lower() in sensitive_keys:
-            safe_headers[key] = "***（已脱敏）"
+            safe_headers[key] = "*** (sanitized)"
     return safe_headers
 
 
 def get_user_id_from_request(request) -> Optional[int]:
-    """从请求头获取 user_id（Gateway 传递的）
+    """Get user_id from request headers (***REMOVED***ed by Gateway)
 
-    支持两种方式：
-    1. 从 X-User-Info header 解析（JSON格式，包含 user_id 字段）
-    2. 从单独的 id 或 userid header 获取（如果 Gateway 传递了）
+    Supports two methods:
+    1. Parse from X-User-Info header (JSON format, contains user_id field)
+    2. Get from separate id or userid header (if Gateway ***REMOVED***ed it)
 
     Args:
-        request: FastAPI Request 对象
+        request: FastAPI Request object
 
     Returns:
-        int: 用户ID，如果未找到返回 None
+        int: User ID, returns None if not found
     """
-    # 方式1: 尝试从 X-User-Info header 解析
+    # Method 1: Try to parse from X-User-Info header
     user_info_header = request.headers.get("X-User-Info")
     if user_info_header:
         try:
             user_info = json.loads(user_info_header)
             if isinstance(user_info, dict):
-                # ✅ 统一使用 id 字段
+                # ✅ Unified use of id field
                 user_id = user_info.get("id")
                 if user_id:
-                    # 确保返回整数类型
+                    # Ensure integer type is returned
                     return int(user_id) if user_id else None
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             logger.warning(
-                "解析 X-User-Info header 失败",
+                "Failed to parse X-User-Info header",
                 extra={
                     "error": str(e),
                     "error_type": type(e).__name__,
                 },
             )
 
-    # 方式2: 尝试从单独的 id 或 userid header 获取
+    # Method 2: Try to get from separate id or userid header
     user_id = request.headers.get("id") or request.headers.get("userid") or request.headers.get("X-User-Id")
     if user_id:
         try:
             return int(user_id)
         except (ValueError, TypeError):
             logger.warning(
-                "解析 user_id header 失败",
+                "Failed to parse user_id header",
                 extra={
                     "user_id": user_id,
                 },
@@ -129,73 +129,74 @@ async def get_external_api_token(
     email: Optional[str] = None,
     locale: str = "zh_CN",
 ) -> Dict[str, Any]:
-    """获取外部 API 访问令牌（带缓存和并发控制）
+    """Get external API access token (with cache and concurrency control)
 
-    业务逻辑：
-    1. **确定 user_email**：
-       - 如果提供了 `email` 参数，直接使用该 email，不查询数据库（性能优化）
-       - 如果未提供 `email`，根据 `user_id` 查询 sys_user 表获取 email
-    2. 先从 Redis 缓存获取 token（缓存键基于 email）
-    3. 如果缓存为空，使用锁防止并发请求，重新获取 token
-    4. 请求 POST {external_api_url}/api/v1/auth/login，body 为 {"email": user_email}
-    5. 返回参数 {"access_token": "...", "token_type": "bearer", "expires_in": "15552000"}
-    6. 根据 expires_in 的值存入 Redis 缓存
+    Business logic:
+    1. **Determine user_email**:
+       - If `email` parameter is provided, use it directly without querying database (performance optimization)
+       - If `email` is not provided, query sys_user table based on `user_id` to get email
+    2. First get token from Redis cache (cache key based on email)
+    3. If cache is empty, use lock to prevent concurrent requests, re-acquire token
+    4. Request POST {external_api_url}/api/v1/auth/login, body is {"email": user_email}
+    5. Return parameters {"access_token": "...", "token_type": "bearer", "expires_in": "15552000"}
+    6. Store in Redis cache based on expires_in value
 
-    性能优化：
-    - 如果提供了 `email` 参数，跳过数据库查询，直接使用该 email 获取 token
-    - Token 缓存基于 email，避免重复请求外部接口
-    - 使用分布式锁防止并发请求导致重复获取 token
+    Performance optimization:
+    - If `email` parameter is provided, skip database query, directly use that email to get token
+    - Token cache based on email, avoid repeated external API requests
+    - Use distributed lock to prevent concurrent requests causing duplicate token acquisition
 
     Args:
-        user_id: 当前登录管理后台用户的ID（sys_user.id），如果提供了 email 则可以为 None
-        email: 用户邮箱（可选）。如果提供，将直接使用该 email，不查询数据库，提高性能
-        locale: 语言偏好，用于错误消息多语言处理
+        user_id: ID of currently logged-in admin backend user (sys_user.id), can be None if email is provided
+        email: User email (optional). If provided, will directly use this email without querying
+               database, improving performance
+        locale: Language preference for error message internationalization
 
     Returns:
-        dict: Token 信息，包含：
-            - access_token: 访问令牌
-            - token_type: Token 类型（如 "bearer"）
-            - expires_in: 过期时间（秒）
+        dict: Token information, contains:
+            - access_token: Access token
+            - token_type: Token type (e.g., "bearer")
+            - expires_in: Expiration time (seconds)
 
     Raises:
-        BusinessError: 获取 token 失败时，包括：
-            - EMAIL_MISSING: 未提供 email 且 user_id 为空
-            - USER_NOT_FOUND: 用户不存在（当未提供 email 时）
-            - USER_EMAIL_EMPTY: 用户邮箱为空（当未提供 email 时）
-            - 外部接口调用失败
+        BusinessError: When token acquisition fails, including:
+            - EMAIL_MISSING: Email not provided and user_id is empty
+            - USER_NOT_FOUND: User does not exist (when email is not provided)
+            - USER_EMAIL_EMPTY: User email is empty (when email is not provided)
+            - External API call failed
 
     Example:
         ```python
-        # 方式1：提供 email，不查询数据库（推荐）
+        # Method 1: Provide email, no database query (recommended)
         token_info = await get_external_api_token(email="user@example.com")
 
-        # 方式2：提供 user_id，查询数据库获取 email
+        # Method 2: Provide user_id, query database to get email
         token_info = await get_external_api_token(user_id=123)
         ```
     """
-    # 1. 确定 user_email：优先使用提供的 email，否则根据 user_id 查询数据库
+    # 1. Determine user_email: Prefer provided email, otherwise query database based on user_id
     if email:
-        # ✅ 如果提供了 email，直接使用，不查询数据库，不验证用户
+        # ✅ If email is provided, use it directly without querying database or validating user
         user_email = email
         logger.debug(
-            "使用提供的 email 进行外部接口认证（跳过数据库验证）",
+            "Using provided email for external API authentication (skip database validation)",
             extra={
                 "email": email,
                 "user_id": user_id,
             },
         )
     else:
-        # 如果没有提供 email，根据 user_id 查询 sys_user 表获取 email
+        # If email is not provided, query sys_user table based on user_id to get email
         if user_id is None:
             raise BusinessError(
-                message="无法获取用户邮箱：未提供 email 参数且 user_id 为空",
+                message="Unable to get user email: email parameter not provided and user_id is empty",
                 message_key="error.external_api.email_missing",
                 error_code="EMAIL_MISSING",
                 code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                 http_status_code=400,
             )
 
-        # ✅ 只有在未提供 email 时才查询数据库（使用缓存的会话工厂）
+        # ✅ Only query database when email is not provided (use cached session factory)
         session_factory = _get_session_factory()
         async with session_factory() as session:
             user_stmt = select(SysUser).where(
@@ -207,7 +208,7 @@ async def get_external_api_token(
 
             if not sys_user:
                 raise BusinessError(
-                    message=f"用户不存在（ID: {user_id}）",
+                    message=f"User does not exist (ID: {user_id})",
                     message_key="error.user.not_found",
                     error_code="USER_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -217,7 +218,7 @@ async def get_external_api_token(
 
             if not sys_user.email:
                 raise BusinessError(
-                    message=f"用户邮箱为空（ID: {user_id}）",
+                    message=f"User email is empty (ID: {user_id})",
                     message_key="error.user.email_empty",
                     error_code="USER_EMAIL_EMPTY",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -227,36 +228,36 @@ async def get_external_api_token(
 
             user_email = sys_user.email
 
-    # 2. 先从 Redis 缓存获取 token
+    # 2. First get token from Redis cache
     cache_key = f"{TOKEN_CACHE_KEY_PREFIX}:{user_email}"
     cached_token_data = await redis_manager.get(cache_key)
     if cached_token_data and isinstance(cached_token_data, dict):
         access_token = cached_token_data.get("access_token")
         if access_token:
             logger.debug(
-                "从缓存获取外部 API token",
+                "Get external API token from cache",
                 extra={
                     "user_id": user_id,
                     "user_email": user_email,
                     "cache_key": cache_key,
                 },
             )
-            # 返回完整的 token 信息（从缓存中获取）
+            # Return complete token information (from cache)
             return {
                 "access_token": access_token,
                 "token_type": cached_token_data.get("token_type", "bearer"),
                 "expires_in": cached_token_data.get("expires_in"),
             }
 
-    # 3. 缓存为空，使用锁防止并发请求
+    # 3. Cache is empty, use lock to prevent concurrent requests
     async with _token_lock:
-        # 双重检查：在获取锁后再次检查缓存（可能其他协程已经获取了 token）
+        # Double check: Check cache again after acquiring lock (other coroutine may have acquired token)
         cached_token_data = await redis_manager.get(cache_key)
         if cached_token_data and isinstance(cached_token_data, dict):
             access_token = cached_token_data.get("access_token")
             if access_token:
                 logger.debug(
-                    "从缓存获取外部 API token（锁内双重检查）",
+                    "Get external API token from cache (double check within lock)",
                     extra={
                         "user_id": user_id,
                         "user_email": user_email,
@@ -269,30 +270,30 @@ async def get_external_api_token(
                     "expires_in": cached_token_data.get("expires_in"),
                 }
 
-        # 4. 请求登录接口获取 token
+        # 4. Request login API to get token
         external_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
         login_url = f"{external_api_url}/api/v1/auth/login"
         request_body = {"email": user_email}
 
-        # 记录请求参数日志 - 使用 structured logging
+        # Log request parameters - use structured logging
         logger.bind(
             method="POST",
             url=login_url,
             user_id=user_id,
             user_email=user_email,
             request_body=request_body,
-        ).debug("获取外部 API token - 请求参数")
+        ).debug("Get external API token - request parameters")
 
         http_client = get_http_client()
 
-        # 用于异常处理时记录响应信息
+        # For recording response information in exception handling
         response = None
         status_code = None
 
         try:
             response = await http_client.request("POST", login_url, json=request_body)
 
-            # 获取响应信息
+            # Get response information
             response_headers = response.get("headers") or {}
             response_body = response.get("body")
             status_code = response.get("status_code")
@@ -300,22 +301,22 @@ async def get_external_api_token(
 
             safe_response_headers = _sanitize_headers(response_headers)
 
-            # 使用 raw_body 如果 body 为空或处理异常
+            # Use raw_body if body is empty or processing exception
             body_to_log = response_body if response_body is not None else raw_body
 
-            # 记录响应日志 - 使用 structured logging
+            # Log response - use structured logging
             logger.bind(
                 method="POST",
                 url=login_url,
                 status_code=status_code,
                 user_id=user_id,
                 response_headers=safe_response_headers,
-                response_body=body_to_log
-            ).debug("获取外部 API token - 响应结果")
+                response_body=body_to_log,
+            ).debug("Get external API token - response result")
 
             if status_code not in (200, 201):
-                # 提取错误消息
-                error_msg = "未知错误"
+                # Extract error message
+                error_msg = "Unknown error"
                 if response_body and isinstance(response_body, dict):
                     error_msg = response_body.get("message", str(response_body))
                 elif response_body:
@@ -323,10 +324,10 @@ async def get_external_api_token(
                 elif raw_body:
                     error_msg = str(raw_body)
                 else:
-                    error_msg = f"空响应 (status_code: {status_code})"
+                    error_msg = f"Empty response (status_code: {status_code})"
 
                 raise BusinessError(
-                    message=f"获取外部 API token 失败: {error_msg}",
+                    message=f"Failed to get external API token: {error_msg}",
                     message_key="error.external_api.token_failed",
                     error_code="EXTERNAL_API_TOKEN_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -335,14 +336,14 @@ async def get_external_api_token(
                         "login_url": login_url,
                         "status_code": status_code,
                         "response_body": body_to_log,
-                        "detail": error_msg,  # ✅ 添加 detail 字段供 i18n 使用
+                        "detail": error_msg,  # ✅ Add detail field for i18n use
                     },
                 )
 
-            # 5. 解析响应数据
+            # 5. Parse response data
             if not response_body or not isinstance(response_body, dict):
                 raise BusinessError(
-                    message="外部 API token 响应格式错误：响应不是 JSON 格式",
+                    message="External API token response format error: response is not JSON format",
                     message_key="error.external_api.token_invalid_response",
                     error_code="EXTERNAL_API_TOKEN_INVALID_RESPONSE",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -355,14 +356,14 @@ async def get_external_api_token(
 
             if not access_token:
                 raise BusinessError(
-                    message="外部 API token 响应缺少 access_token 字段",
+                    message="External API token response missing access_token field",
                     message_key="error.external_api.token_missing",
                     error_code="EXTERNAL_API_TOKEN_MISSING",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
                 )
 
-            # 6. 根据 expires_in 的值存入 Redis 缓存
+            # 6. Store in Redis cache based on expires_in value
             try:
                 if isinstance(expires_in, (int, float)):
                     expire_seconds = int(expires_in)
@@ -370,12 +371,12 @@ async def get_external_api_token(
                     expire_seconds = int(expires_in)
                 else:
                     expire_seconds = 15552000
-                    logger.warning("无法解析 expires_in，使用默认值", extra={"expires_in": expires_in})
+                    logger.warning("Unable to parse expires_in, using default value", extra={"expires_in": expires_in})
             except Exception:
                 expire_seconds = 15552000
-                logger.warning("解析 expires_in 失败，使用默认值", extra={"expires_in": expires_in})
+                logger.warning("Failed to parse expires_in, using default value", extra={"expires_in": expires_in})
 
-            # 存储 token 数据到缓存
+            # Store token data to cache
             token_data = {
                 "access_token": access_token,
                 "token_type": token_type,
@@ -384,9 +385,9 @@ async def get_external_api_token(
 
             cache_success = await redis_manager.set(cache_key, token_data, expire=expire_seconds)
             if not cache_success:
-                logger.warning("外部 API token 缓存失败", extra={"cache_key": cache_key})
+                logger.warning("External API token cache failed", extra={"cache_key": cache_key})
 
-            # 返回完整的 token 信息
+            # Return complete token information
             return {
                 "access_token": access_token,
                 "token_type": token_type,
@@ -396,7 +397,7 @@ async def get_external_api_token(
         except BusinessError:
             raise
         except Exception as e:
-            # 记录异常详细信息
+            # Record detailed exception information
             error_details = {
                 "user_id": user_id,
                 "user_email": user_email,
@@ -408,27 +409,29 @@ async def get_external_api_token(
             }
 
             if response:
-                # 获取响应信息（如果已有）
+                # Get response information (if available)
                 try:
                     resp_headers = _sanitize_headers(response.get("headers")) or {}
                     resp_body = response.get("body") if response.get("body") is not None else response.get("raw_body")
 
-                    error_details.update({
-                        "status_code": response.get("status_code"),
-                        "response_headers": resp_headers,
-                        "response_body": resp_body,
-                    })
+                    error_details.update(
+                        {
+                            "status_code": response.get("status_code"),
+                            "response_headers": resp_headers,
+                            "response_body": resp_body,
+                        }
+                    )
                 except Exception:
                     ***REMOVED***
 
-            # ✅ 确保 detail 字段存在（供 i18n 使用）
+            # ✅ Ensure detail field exists (for i18n use)
             if "detail" not in error_details:
                 error_details["detail"] = str(e)
 
-            logger.error("获取外部 API token 异常", extra=error_details, exc_info=True)
+            logger.error("Exception getting external API token", extra=error_details, exc_info=True)
 
             raise BusinessError(
-                message=f"获取外部 API token 异常: {str(e)}",
+                message=f"Exception getting external API token: {str(e)}",
                 message_key="error.external_api.token_error",
                 error_code="EXTERNAL_API_TOKEN_ERROR",
                 code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -449,51 +452,53 @@ async def call_external_api(
     locale: str = "zh_CN",
     timeout: float = 30.0,
 ) -> Dict[str, Any]:
-    """调用外部接口（带认证）
+    """Call external API (with authentication)
 
-    业务逻辑：
-    1. **确定认证信息**：
-       - 如果提供了 `email` 参数，直接使用该 email 获取 token，不查询数据库（性能优化）
-       - 如果未提供 `email`，从请求头获取 user_id，然后查询数据库获取 email
-    2. 获取外部 API token（带缓存和并发控制）
-    3. 添加请求头 Authorization: token_type + 空格 + access_token
-    4. 调用外部接口
-    5. 记录请求和响应日志（包含请求参数、响应状态码和响应体）
+    Business logic:
+    1. **Determine authentication information**:
+       - If `email` parameter is provided, directly use that email to get token without querying
+         database (performance optimization)
+       - If `email` is not provided, get user_id from request headers, then query database to get email
+    2. Get external API token (with cache and concurrency control)
+    3. Add request header Authorization: token_type + space + access_token
+    4. Call external API
+    5. Log request and response (including request parameters, response status code and response body)
 
-    性能优化：
-    - 如果提供了 `email` 参数，跳过数据库查询，直接使用该 email 获取 token
-    - Token 缓存基于 email，避免重复请求外部接口
-    - 使用统一的 HTTP 客户端，支持连接池复用和 SSL 配置
+    Performance optimization:
+    - If `email` parameter is provided, skip database query, directly use that email to get token
+    - Token cache based on email, avoid repeated external API requests
+    - Use unified HTTP client, support connection pool reuse and SSL configuration
 
     Args:
-        method: HTTP 方法（GET, POST, PUT, DELETE 等）
-        url_path: 请求路径（相对于 external_api_url，例如 "/api/v1/hardware/hosts"）
-        request: FastAPI Request 对象（用于从请求头获取 user_id）
-        user_id: 当前登录管理后台用户的ID（可选，如果提供了 email 则可以为 None）
-        email: 用户邮箱（可选）。如果提供，将直接使用该 email 获取 token，不查询数据库，提高性能
-        json_data: 请求体 JSON 数据（可选）
-        params: 查询参数（可选）
-        headers: 额外的请求头（可选），会与默认请求头合并
-        locale: 语言偏好，用于错误消息多语言处理
-        timeout: 请求超时时间（秒），默认 30.0 秒
+        method: HTTP method (GET, POST, PUT, DELETE, etc.)
+        url_path: Request path (relative to external_api_url, e.g., "/api/v1/hardware/hosts")
+        request: FastAPI Request object (used to get user_id from request headers)
+        user_id: ID of currently logged-in admin backend user (optional, can be None if email is provided)
+        email: User email (optional). If provided, will directly use this email to get token without
+               querying database, improving performance
+        json_data: Request body JSON data (optional)
+        params: Query parameters (optional)
+        headers: Additional request headers (optional), will be merged with default headers
+        locale: Language preference for error message internationalization
+        timeout: Request timeout (seconds), default 30.0 seconds
 
     Returns:
-        dict: 响应数据，包含：
-            - status_code: HTTP 状态码
-            - body: 响应体（已解析的 JSON 数据）
-            - raw_body: 原始响应体（字符串）
-            - headers: 响应头
+        dict: Response data, contains:
+            - status_code: HTTP status code
+            - body: Response body (parsed JSON data)
+            - raw_body: Raw response body (string)
+            - headers: Response headers
 
     Raises:
-        BusinessError: 接口调用失败时，包括：
-            - USER_ID_MISSING: 未提供 user_id 且 request 对象为空（当未提供 email 时）
-            - USER_ID_NOT_FOUND: 无法从请求头获取用户ID（当未提供 email 时）
-            - 外部接口调用失败（网络错误、超时等）
-            - 外部接口返回非 200 状态码
+        BusinessError: When API call fails, including:
+            - USER_ID_MISSING: user_id not provided and request object is empty (when email is not provided)
+            - USER_ID_NOT_FOUND: Unable to get user ID from request headers (when email is not provided)
+            - External API call failed (network error, timeout, etc.)
+            - External API returned non-200 status code
 
     Example:
         ```python
-        # 方式1：提供 email，不查询数据库（推荐）
+        # Method 1: Provide email, no database query (recommended)
         response = await call_external_api(
             method="GET",
             url_path="/api/v1/hardware/hosts",
@@ -501,7 +506,7 @@ async def call_external_api(
             params={"tc_id": "123", "skip": 0, "limit": 100}
         )
 
-        # 方式2：提供 user_id，查询数据库获取 email
+        # Method 2: Provide user_id, query database to get email
         response = await call_external_api(
             method="GET",
             url_path="/api/v1/hardware/hosts",
@@ -511,12 +516,12 @@ async def call_external_api(
         )
         ```
     """
-    # 1. 获取 user_id（如果未提供 email）
+    # 1. Get user_id (if email is not provided)
     if email is None:
         if user_id is None:
             if request is None:
                 raise BusinessError(
-                    message="无法获取用户ID：未提供 user_id 参数且 request 对象为空",
+                    message="Unable to get user ID: user_id parameter not provided and request object is empty",
                     message_key="error.external_api.user_id_missing",
                     error_code="USER_ID_MISSING",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -525,19 +530,19 @@ async def call_external_api(
             user_id = get_user_id_from_request(request)
             if user_id is None:
                 raise BusinessError(
-                    message="无法从请求头获取用户ID",
+                    message="Unable to get user ID from request headers",
                     message_key="error.external_api.user_id_not_found",
                     error_code="USER_ID_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=400,
                 )
 
-    # 2. 获取外部 API token（如果提供了 email，则不查询数据库）
+    # 2. Get external API token (if email is provided, no database query)
     token_info = await get_external_api_token(user_id=user_id, email=email, locale=locale)
     access_token = token_info["access_token"]
     token_type = token_info.get("token_type", "bearer")
 
-    # 3. 构建请求头
+    # 3. Build request headers
     full_headers = {
         "Authorization": f"{token_type} {access_token}",
         "Content-Type": "application/json",
@@ -545,11 +550,11 @@ async def call_external_api(
     if headers:
         full_headers.update(headers)
 
-    # 4. 构建完整 URL
+    # 4. Build complete URL
     external_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
     full_url = f"{external_api_url}{url_path}"
 
-    # 5. 记录请求参数日志
+    # 5. Log request parameters
     safe_headers = _sanitize_headers(full_headers)
 
     logger.bind(
@@ -560,18 +565,18 @@ async def call_external_api(
         headers=safe_headers,
         params=params,
         json_data=json_data,
-        timeout=timeout
-    ).debug("调用外部接口 - 请求参数")
+        timeout=timeout,
+    ).debug("Call external API - request parameters")
 
     http_client = get_http_client()
 
     try:
-        # 6. 调用外部接口
+        # 6. Call external API
         response = await http_client.request(
             method, full_url, json=json_data, params=params, headers=full_headers, timeout=timeout
         )
 
-        # 7. 记录响应日志
+        # 7. Log response
         response_headers = response.get("headers", {})
         response_body = response.get("body")
         raw_body = response.get("raw_body")
@@ -587,14 +592,14 @@ async def call_external_api(
             status_code=status_code,
             response_headers=safe_response_headers,
             response_body=body_to_log,
-            user_id=user_id
-        ).debug("调用外部接口 - 响应结果")
+            user_id=user_id,
+        ).debug("Call external API - response result")
 
         return response
 
     except Exception as e:
         logger.error(
-            "调用外部接口异常",
+            "Exception calling external API",
             extra={
                 "method": method,
                 "url": full_url,

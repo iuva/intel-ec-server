@@ -1,22 +1,22 @@
-"""请求上下文中间件
+"""Request Context Middleware
 
-为每个请求生成唯一的 request_id，并注入到日志上下文中。
-支持从请求头中读取已有的 request_id（用于分布式追踪）。
+Generates a unique request_id for each request and injects it into the logging context.
+Supports reading an existing request_id from request headers (for distributed tracing).
 
-使用方式：
+Usage:
     from shared.middleware.request_context_middleware import (
         RequestContextMiddleware,
         get_request_id,
         get_request_context,
     )
 
-    # 在 FastAPI 应用中添加中间件
+    # Add middleware to FastAPI app
     app.add_middleware(RequestContextMiddleware)
 
-    # 在任何地方获取当前请求 ID
+    # Get current request ID anywhere
     request_id = get_request_id()
 
-    # 获取完整上下文
+    # Get full context
     context = get_request_context()
 """
 
@@ -39,7 +39,7 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 请求上下文变量
+# Request context variables
 _request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_id", default=None)
 _user_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("user_id", default=None)
 _username_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("username", default=None)
@@ -52,64 +52,64 @@ _request_start_time_var: contextvars.ContextVar[Optional[float]] = contextvars.C
 
 
 def get_request_id() -> Optional[str]:
-    """获取当前请求的 request_id
+    """Get the request_id for the current request
 
     Returns:
-        当前请求的 request_id，如果不在请求上下文中则返回 None
+        The request_id for the current request, or None if not in request context
     """
     return _request_id_var.get()
 
 
 def get_user_id() -> Optional[str]:
-    """获取当前请求的 user_id
+    """Get the user_id for the current request
 
     Returns:
-        当前请求的 user_id，如果未认证则返回 None
+        The user_id for the current request, or None if not authenticated
     """
     return _user_id_var.get()
 
 
 def get_username() -> Optional[str]:
-    """获取当前请求的 username
+    """Get the username for the current request
 
     Returns:
-        当前请求的 username，如果未认证则返回 None
+        The username for the current request, or None if not authenticated
     """
     return _username_var.get()
 
 
 def get_client_ip() -> Optional[str]:
-    """获取当前请求的客户端 IP
+    """Get the client IP for the current request
 
     Returns:
-        当前请求的客户端 IP
+        The client IP for the current request
     """
     return _client_ip_var.get()
 
 
 def get_request_path() -> Optional[str]:
-    """获取当前请求的路径
+    """Get the path for the current request
 
     Returns:
-        当前请求的路径
+        The path for the current request
     """
     return _request_path_var.get()
 
 
 def get_request_method() -> Optional[str]:
-    """获取当前请求的方法
+    """Get the method for the current request
 
     Returns:
-        当前请求的方法
+        The method for the current request
     """
     return _request_method_var.get()
 
 
 def get_request_duration_ms() -> Optional[float]:
-    """获取当前请求的已执行时长（毫秒）
+    """Get the elapsed time for the current request (in milliseconds)
 
     Returns:
-        请求已执行的时长（毫秒），如果不在请求上下文中则返回 None
+        Elapsed time for the request (in milliseconds), or None if not in request context
     """
     start_time = _request_start_time_var.get()
     if start_time is not None:
@@ -118,13 +118,13 @@ def get_request_duration_ms() -> Optional[float]:
 
 
 def get_request_context() -> Dict[str, Any]:
-    """获取当前请求的完整上下文信息
+    """Get the complete context information for the current request
 
-    返回包含 request_id、user_id、username、client_ip 等信息的字典。
-    用于在日志中自动添加上下文信息。
+    Returns a dictionary containing request_id, user_id, username, client_ip, etc.
+    Used to automatically add context information to logs.
 
     Returns:
-        包含请求上下文的字典
+        Dictionary containing request context
     """
     context: Dict[str, Any] = {}
 
@@ -160,11 +160,11 @@ def get_request_context() -> Dict[str, Any]:
 
 
 def set_user_context(user_id: Optional[str] = None, username: Optional[str] = None) -> None:
-    """设置用户上下文（通常在认证后调用）
+    """Set user context (typically called after authentication)
 
     Args:
-        user_id: 用户 ID
-        username: 用户名
+        user_id: User ID
+        username: Username
     """
     if user_id:
         _user_id_var.set(user_id)
@@ -173,7 +173,7 @@ def set_user_context(user_id: Optional[str] = None, username: Optional[str] = No
 
 
 def clear_request_context() -> None:
-    """清除请求上下文"""
+    """Clear request context"""
     _request_id_var.set(None)
     _user_id_var.set(None)
     _username_var.set(None)
@@ -184,18 +184,18 @@ def clear_request_context() -> None:
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """请求上下文中间件
+    """Request Context Middleware
 
-    为每个请求生成唯一的 request_id，并注入到日志上下文中。
-    支持从请求头中读取已有的 request_id（用于分布式追踪）。
+    Generates a unique request_id for each request and injects it into the logging context.
+    Supports reading an existing request_id from request headers (for distributed tracing).
 
-    请求头优先级：
+    Request header priority:
     1. X-Request-ID
     2. X-Trace-ID
-    3. 自动生成 UUID
+    3. Auto-generated UUID
     """
 
-    # 需要跳过的路径（健康检查等）
+    # Paths to skip (health checks, etc.)
     SKIP_PATHS = frozenset(
         {
             "/health",
@@ -208,38 +208,38 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     )
 
     def __init__(self, app: Any, log_requests: bool = True) -> None:
-        """初始化中间件
+        """Initialize the middleware
 
         Args:
-            app: FastAPI 应用实例
-            log_requests: 是否记录请求日志（默认 True）
+            app: FastAPI application instance
+            log_requests: Whether to log requests (default True)
         """
         super().__init__(app)
         self.log_requests = log_requests
 
     def _generate_request_id(self) -> str:
-        """生成唯一的请求 ID
+        """Generate a unique request ID
 
         Returns:
-            32 字符的 UUID（无连字符）
+            32-character UUID (without hyphens)
         """
         return uuid.uuid4().hex
 
     def _extract_request_id(self, request: Request) -> str:
-        """从请求中提取或生成 request_id
+        """Extract or generate request_id from request
 
-        优先从请求头中读取：
+        Priority from request headers:
         1. X-Request-ID
         2. X-Trace-ID
-        3. 自动生成
+        3. Auto-generated
 
         Args:
-            request: FastAPI 请求对象
+            request: FastAPI request object
 
         Returns:
-            request_id 字符串
+            request_id string
         """
-        # 尝试从请求头获取
+        # Try to get from request headers
         request_id = request.headers.get("X-Request-ID") or request.headers.get("X-Trace-ID")
 
         if not request_id:
@@ -248,73 +248,73 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         return request_id
 
     def _extract_client_ip(self, request: Request) -> str:
-        """从请求中提取客户端 IP
+        """Extract client IP from request
 
-        优先从代理头中读取（支持反向代理）。
+        Priority from proxy headers (supports reverse proxy).
 
         Args:
-            request: FastAPI 请求对象
+            request: FastAPI request object
 
         Returns:
-            客户端 IP 地址
+            Client IP address
         """
-        # 尝试从代理头获取真实 IP
+        # Try to get real IP from proxy headers
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            # X-Forwarded-For 可能包含多个 IP，取第一个
+            # X-Forwarded-For may contain multiple IPs, take the first one
             return forwarded_for.split(",")[0].strip()
 
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
             return real_ip
 
-        # 直接连接的客户端 IP
+        # Directly connected client IP
         if request.client:
             return request.client.host
 
         return "unknown"
 
     def _should_skip(self, path: str) -> bool:
-        """判断是否应该跳过处理
+        """Determine whether to skip processing
 
         Args:
-            path: 请求路径
+            path: Request path
 
         Returns:
-            是否跳过
+            Whether to skip
         """
         clean_path = path.split("?")[0]
         return clean_path in self.SKIP_PATHS
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """处理请求
+        """Process request
 
         Args:
-            request: FastAPI 请求对象
-            call_next: 下一个中间件或路由处理器
+            request: FastAPI request object
+            call_next: Next middleware or route handler
 
         Returns:
-            响应对象
+            Response object
         """
-        # 跳过健康检查等路径
+        # Skip health check and other paths
         if self._should_skip(request.url.path):
             return await call_next(request)
 
-        # 设置请求上下文
+        # Set request context
         request_id = self._extract_request_id(request)
         client_ip = self._extract_client_ip(request)
         method = request.method
         path = request.url.path
         start_time = time.perf_counter()
 
-        # 设置上下文变量
+        # Set context variables
         _request_id_var.set(request_id)
         _client_ip_var.set(client_ip)
         _request_path_var.set(path)
         _request_method_var.set(method)
         _request_start_time_var.set(start_time)
 
-        # 尝试从请求头中获取用户信息（由认证中间件设置）
+        # Try to get user information from request headers (set by authentication middleware)
         user_info_header = request.headers.get("X-User-Info")
         if user_info_header:
             try:
@@ -331,20 +331,20 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 ***REMOVED***
 
         try:
-            # 调用下一个处理器
+            # Call the next handler
             response = await call_next(request)
 
-            # 在响应头中添加 request_id
+            # Add request_id to response headers
             response.headers["X-Request-ID"] = request_id
 
             return response
 
         finally:
-            # 清除上下文（确保不会泄露到其他请求）
+            # Clear context (ensure it doesn't leak to other requests)
             clear_request_context()
 
 
-# 导出
+# Export
 __all__ = [
     "RequestContextMiddleware",
     "clear_request_context",

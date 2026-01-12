@@ -1,7 +1,7 @@
 """
-Auth Service 数据模型
+Auth Service Data Models
 
-导出所有数据模型
+Export all data models
 """
 
 from app.models.user_session import UserSession

@@ -1,9 +1,9 @@
 """
-Gateway Service 应用主模块
+Gateway Service application main module
 
-包含了Gateway Service的所有应用代码，包括：
-- API接口层（api）
-- 核心配置（core）
-- 中间件（middleware）
-- 业务服务（services）
+Contains all application code for Gateway Service, including:
+- API interface layer (api)
+- Core configuration (core)
+- Middleware (middleware)
+- Business services (services)
 """

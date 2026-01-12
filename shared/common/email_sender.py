@@ -1,6 +1,6 @@
-"""邮件发送工具模块
+"""Email sending utility module
 
-提供异步邮件发送功能，支持多收件人。
+Provides asynchronous email sending functionality, supporting multiple recipients.
 """
 
 import os
@@ -25,32 +25,32 @@ async def send_email(
     content: str,
     locale: str = "zh_CN",
 ) -> Dict[str, Any]:
-    """发送邮件
+    """Send email
 
     Args:
-        to_emails: 收件人邮箱列表
-        subject: 邮件主题
-        content: 邮件内容
-        locale: 语言代码（用于多语言支持）
+        to_emails: List of recipient email addresses
+        subject: Email subject
+        content: Email content
+        locale: Language code (for multilingual support)
 
     Returns:
-        包含发送结果的字典：
-        - success: 是否成功
-        - sent_count: 成功发送的邮件数量
-        - failed_count: 失败的邮件数量
-        - errors: 错误信息列表
+        Dictionary containing send results:
+        - success: Whether successful
+        - sent_count: Number of emails sent successfully
+        - failed_count: Number of emails that failed to send
+        - errors: List of error messages
 
     Note:
-        当前实现为占位符，实际项目中需要配置 SMTP 服务器
-        邮件发送失败不影响业务流程，只记录日志
+        Current implementation is a placeholder, SMTP server needs to be configured in actual project
+        Email sending failure does not affect business process, only logs
     """
     if not to_emails:
-        logger.warning("收件人列表为空，跳过邮件发送")
+        logger.warning("Recipient list is empty, skipping email sending")
         return {
             "success": False,
             "sent_count": 0,
             "failed_count": 0,
-            "errors": ["收件人列表为空"],
+            "errors": ["Recipient list is empty"],
         }
 
     sent_count = 0
@@ -63,12 +63,12 @@ async def send_email(
             continue
 
         try:
-            # TODO: 实现实际的邮件发送逻辑
-            # 示例：使用 smtplib 或第三方邮件服务
+            # TODO: Implement actual email sending logic
+            # Example: Use smtplib or third-party email service
             msg = MIMEMultipart()
             smtp_from_email = os.getenv("SMTP_FROM_EMAIL")
             if not smtp_from_email:
-                raise ValueError("SMTP_FROM_EMAIL 环境变量未设置")
+                raise ValueError("SMTP_FROM_EMAIL environment variable not set")
             msg["From"] = smtp_from_email
             msg["To"] = email
             msg["Subject"] = subject
@@ -80,7 +80,7 @@ async def send_email(
             smtp_***REMOVED***word = os.getenv("SMTP_PASSWORD")
 
             if not smtp_user or not smtp_***REMOVED***word:
-                raise ValueError("SMTP_USER 或 SMTP_PASSWORD 环境变量未设置")
+                raise ValueError("SMTP_USER or SMTP_PASSWORD environment variable not set")
 
             server = smtplib.SMTP(smtp_server, smtp_port)
             server.starttls()
@@ -89,7 +89,7 @@ async def send_email(
             server.quit()
 
             logger.info(
-                "邮件发送成功（模拟）",
+                "Email sent successfully (simulation)",
                 extra={
                     "to": email,
                     "subject": subject,
@@ -99,9 +99,9 @@ async def send_email(
             sent_count += 1
 
         except Exception as e:
-            error_msg = f"邮件发送失败: {email}, 错误: {str(e)}"
+            error_msg = f"Email sending failed: {email}, Error: {str(e)}"
             logger.warning(
-                "邮件发送失败",
+                "Email sending failed",
                 extra={
                     "to": email,
                     "subject": subject,

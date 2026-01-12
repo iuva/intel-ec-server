@@ -1,8 +1,8 @@
 """
-统一异常处理中间件
+Unified Exception Handling Middleware
 
-捕获路由处理器中的未处理异常，为系统提供最后的防线。
-支持多语言错误消息
+Catches unhandled exceptions in route handlers, providing the last line of defense for the system.
+Supports multilingual error messages
 """
 
 import os
@@ -29,28 +29,28 @@ logger = get_logger(__name__)
 
 
 class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
-    """统一异常处理中间件
+    """Unified Exception Handling Middleware
 
-    捕获路由处理器和其他中间件中的异常，提供最后的防线。
-    大多数异常应该由应用级别的异常处理器处理。
+    Catches exceptions in route handlers and other middleware, providing the last line of defense.
+    Most exceptions should be handled by application-level exception handlers.
     """
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """中间件分发处理
+        """Middleware dispatch handling
 
         Args:
-            request: 请求对象
-            call_next: 下一个中间件或路由处理器
+            request: Request object
+            call_next: Next middleware or route handler
 
         Returns:
-            响应对象
+            Response object
         """
         try:
             return await call_next(request)
         except BusinessError as exc:
-            # 业务异常
+            # Business exception
             logger.warning(
-                f"业务异常: {exc.error_code} - {exc.message}",
+                f"Business exception: {exc.error_code} - {exc.message}",
                 extra={
                     "error_code": exc.error_code,
                     "path": request.url.path,
@@ -58,11 +58,11 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-            # 获取语言偏好（从请求头或异常中的 locale）
+            # Get language preference (from request headers or locale in exception)
             accept_language = request.headers.get("Accept-Language")
             locale = exc.locale or parse_accept_language(accept_language)
 
-            # 如果有 message_key，使用它创建响应；否则使用 message
+            # If there is a message_key, use it to create response; otherwise use message
             if exc.message_key:
                 error_response = ErrorResponse(
                     code=exc.code,
@@ -70,7 +70,7 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
                     error_code=exc.error_code,
                     details=exc.details,
                     locale=locale,
-                    **exc.details,  # 传递格式化变量
+                    **exc.details,  # Pass formatting variables
                 )
             else:
                 error_response = ErrorResponse(
@@ -81,19 +81,19 @@ class UnifiedExceptionMiddleware(BaseHTTPMiddleware):
                     locale=locale,
                 )
 
-            # 使用 http_status_code 作为 HTTP 状态码（必须是有效的 100-599）
-            # 响应体中的 code 是自定义错误码（可能是 53009 这样的值）
+            # Use http_status_code as HTTP status code (must be valid 100-599)
+            # The code in response body is a custom error code (could be a value like 53009)
             return JSONResponse(status_code=exc.http_status_code, content=error_response.model_dump())
         except Exception as exc:
-            # 捕获所有未处理的异常
+            # Catch all unhandled exceptions
             error_message = str(exc)
             logger.error(
-                f"未处理的异常: {type(exc).__name__} - {error_message}",
+                f"Unhandled exception: {type(exc).__name__} - {error_message}",
                 extra={"error": error_message, "path": request.url.path, "method": request.method},
                 exc_info=True,
             )
 
-            # 获取语言偏好
+            # Get language preference
             accept_language = request.headers.get("Accept-Language")
             locale = parse_accept_language(accept_language)
 

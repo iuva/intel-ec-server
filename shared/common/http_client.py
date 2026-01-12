@@ -1,6 +1,7 @@
-"""异步 HTTP 客户端模块
+"""Asynchronous HTTP Client Module
 
-提供统一的异步 HTTP 客户端，支持连接池、超时配置、重试机制和指标收集。
+Provides a unified asynchronous HTTP client supporting connection pooling, timeout configuration,
+retry mechanisms and metrics collection.
 """
 
 import json
@@ -32,7 +33,7 @@ except ImportError:
             http_client_requests_total,
         )
     except ImportError:
-        # 如果监控模块不可用，创建空的指标对象
+        # If monitoring module is unavailable, create empty metrics objects
         http_client_requests_total = None  # type: ignore
         http_client_request_duration_seconds = None  # type: ignore
         http_client_requests_in_progress = None  # type: ignore
@@ -40,16 +41,16 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# 可重试的 HTTP 状态码
+# Retryable HTTP status codes
 RETRYABLE_STATUS_CODES: Set[int] = {408, 429, 500, 502, 503, 504}
 
-# 默认的客户端名称
+# Default client name
 DEFAULT_HTTP_CLIENT_NAME = "default_http_client"
 
 
 @dataclass
 class HTTPClientConfig:
-    """HTTP 客户端配置"""
+    """HTTP Client Configuration"""
 
     timeout: float = 30.0
     connect_timeout: float = 10.0
@@ -58,25 +59,25 @@ class HTTPClientConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
     client_name: str = DEFAULT_HTTP_CLIENT_NAME
-    verify_ssl: bool = True  # SSL 证书验证（默认启用）
+    verify_ssl: bool = True  # SSL certificate verification (enabled by default)
 
 
 class AsyncHTTPClient:
-    """异步 HTTP 客户端管理器
+    """Asynchronous HTTP Client Manager
 
-    提供统一的异步 HTTP 客户端，支持：
-    - 连接池管理和复用
-    - 超时配置
-    - 自动重试机制
-    - 请求/响应日志
-    - 指标收集
+    Provides a unified asynchronous HTTP client supporting:
+    - Connection pool management and reuse
+    - Timeout configuration
+    - Automatic retry mechanism
+    - Request/response logging
+    - Metrics collection
 
     Attributes:
-        _client: httpx.AsyncClient 实例
-        timeout: 超时配置
-        limits: 连接池限制配置
-        max_retries: 最大重试次数
-        retry_delay: 重试延迟（秒）
+        _client: httpx.AsyncClient instance
+        timeout: Timeout configuration
+        limits: Connection pool limit configuration
+        max_retries: Maximum retry attempts
+        retry_delay: Retry delay (seconds)
     """
 
     def __init__(
@@ -91,18 +92,18 @@ class AsyncHTTPClient:
         verify_ssl: Optional[bool] = None,
         config: Optional[HTTPClientConfig] = None,
     ):
-        """初始化 HTTP 客户端
+        """Initialize HTTP Client
 
         Args:
-            timeout: 请求超时时间（秒）
-            connect_timeout: 连接超时时间（秒）
-            max_keepalive_connections: 最大保持连接数
-            max_connections: 最大连接数
-            max_retries: 最大重试次数
-            retry_delay: 重试延迟（秒）
-            client_name: 客户端名称（用于指标标签）
-            verify_ssl: SSL 证书验证（None 时从环境变量读取，默认 True）
-            config: 可选的配置对象（优先级最高）
+            timeout: Request timeout (seconds)
+            connect_timeout: Connection timeout (seconds)
+            max_keepalive_connections: Maximum keep-alive connections
+            max_connections: Maximum connections
+            max_retries: Maximum retry attempts
+            retry_delay: Retry delay (seconds)
+            client_name: Client name (for metrics labels)
+            verify_ssl: SSL certificate verification (reads from environment variable when None, default True)
+            config: Optional configuration object (highest priority)
         """
         if config is not None:
             timeout = config.timeout
@@ -114,7 +115,7 @@ class AsyncHTTPClient:
             client_name = config.client_name or client_name
             verify_ssl = config.verify_ssl if verify_ssl is None else verify_ssl
 
-        # 从环境变量读取 SSL 验证配置（如果未通过参数提供）
+        # Read SSL verification configuration from environment variables (if not provided via parameters)
         if verify_ssl is None:
             verify_ssl_env = os.getenv("HTTP_CLIENT_VERIFY_SSL", "true").lower()
             verify_ssl = verify_ssl_env in ("true", "1", "yes", "on", "enabled")
@@ -128,7 +129,7 @@ class AsyncHTTPClient:
         self.verify_ssl = verify_ssl
 
         logger.info(
-            "HTTP 客户端配置初始化",
+            "HTTP Client configuration initialized",
             extra={
                 "timeout": timeout,
                 "connect_timeout": connect_timeout,
@@ -142,20 +143,20 @@ class AsyncHTTPClient:
 
     @property
     def client(self) -> AsyncClient:
-        """获取客户端实例（懒加载）
+        """Get client instance (lazy loading)
 
         Returns:
-            AsyncClient 实例
+            AsyncClient instance
         """
         if self._client is None:
             self._client = AsyncClient(
                 timeout=self.timeout,
                 limits=self.limits,
                 follow_redirects=True,
-                verify=self.verify_ssl,  # SSL 证书验证配置
+                verify=self.verify_ssl,  # SSL certificate verification configuration
             )
             logger.debug(
-                "创建新的 AsyncClient 实例",
+                "Creating new AsyncClient instance",
                 extra={
                     "client_name": self.client_name,
                     "verify_ssl": self.verify_ssl,
@@ -165,29 +166,29 @@ class AsyncHTTPClient:
         return self._client
 
     async def close(self) -> None:
-        """关闭客户端连接"""
+        """Close client connection"""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
-            logger.info("HTTP 客户端已关闭", extra={"client_name": self.client_name})
+            logger.info("HTTP Client closed", extra={"client_name": self.client_name})
 
     async def request(self, method: str, url: str, retry: bool = True, **kwargs: Any) -> Dict[str, Any]:
-        """发送 HTTP 请求（支持自动重试）
+        """Send HTTP request (supports automatic retry)
 
         Args:
-            method: HTTP 方法（GET, POST, PUT, DELETE 等）
-            url: 请求 URL
-            retry: 是否启用自动重试（默认 True）
-            **kwargs: 其他请求参数（headers, params, json, data 等）
+            method: HTTP method (GET, POST, PUT, DELETE, etc.)
+            url: Request URL
+            retry: Whether to enable automatic retry (default True)
+            **kwargs: Other request parameters (headers, params, json, data, etc.)
 
         Returns:
-            响应数据字典，包含：
-            - status_code: HTTP 状态码
-            - headers: 响应头字典
-            - body: 响应体（JSON 或文本）
+            Response data dictionary containing:
+            - status_code: HTTP status code
+            - headers: Response headers dictionary
+            - body: Response body (JSON or text)
 
         Raises:
-            httpx.HTTPError: HTTP 请求错误
+            httpx.HTTPError: HTTP request error
         """
         method_upper = method.upper()
         if http_client_requests_in_progress is not None:
@@ -195,7 +196,7 @@ class AsyncHTTPClient:
                 http_client_requests_in_progress.labels(self.client_name, method_upper).inc()
             except Exception as gauge_error:
                 logger.debug(
-                    "记录 HTTP 客户端 in-progress 指标失败",
+                    "Failed to record HTTP client in-progress metrics",
                     extra={"error_type": type(gauge_error).__name__, "client_name": self.client_name},
                 )
 
@@ -206,7 +207,7 @@ class AsyncHTTPClient:
 
         try:
             logger.debug(
-                f"发送 HTTP 请求: {method} {url}",
+                f"Sending HTTP request: {method} {url}",
                 extra={
                     "method": method,
                     "url": url,
@@ -221,10 +222,10 @@ class AsyncHTTPClient:
             duration = perf_counter() - start_time
             duration_ms = int(duration * 1000)
 
-            # ✅ 修复：不调用 raise_for_status()，返回所有状态码的响应
-            # 这样网关可以正确处理错误响应并透传给客户端
+            # ✅ Fix: Don't call raise_for_status(), return responses for all status codes
+            # This way gateway can correctly handle error responses and relay to client
 
-            # 解析响应体
+            # Parse response body
             content_type = response.headers.get("content-type", "")
             raw_content = response.content
             is_json = False
@@ -234,9 +235,9 @@ class AsyncHTTPClient:
                         body = response.json()
                         is_json = True
                     except Exception as json_error:
-                        # JSON 解析失败，使用文本
+                        # JSON parsing failed, use text
                         logger.warning(
-                            f"JSON 解析失败，使用文本: {method} {url}",
+                            f"JSON parsing failed, using text: {method} {url}",
                             extra={
                                 "method": method,
                                 "url": url,
@@ -249,9 +250,9 @@ class AsyncHTTPClient:
                 else:
                     body = raw_content
             except Exception as parse_error:
-                # 如果解析失败，使用原始文本
+                # If parsing fails, use raw text
                 logger.warning(
-                    f"响应体解析失败: {method} {url}",
+                    f"Response body parsing failed: {method} {url}",
                     extra={
                         "method": method,
                         "url": url,
@@ -260,11 +261,11 @@ class AsyncHTTPClient:
                         "error": str(parse_error),
                     },
                 )
-                # 尝试获取原始文本
+                # Try to get raw text
                 try:
                     body = raw_content or response.text
                 except Exception:
-                    # 如果连文本都获取不到，使用空字符串
+                    # If even text cannot be obtained, use empty string
                     body = ""
 
             result = {
@@ -279,7 +280,7 @@ class AsyncHTTPClient:
 
             if success:
                 logger.info(
-                    f"HTTP 请求成功: {method} {url}",
+                    f"HTTP request succeeded: {method} {url}",
                     extra={
                         "method": method,
                         "url": url,
@@ -291,7 +292,7 @@ class AsyncHTTPClient:
                 )
             else:
                 logger.warning(
-                    f"HTTP 请求返回错误状态: {method} {url}",
+                    f"HTTP request returned error status: {method} {url}",
                     extra={
                         "method": method,
                         "url": url,
@@ -308,7 +309,7 @@ class AsyncHTTPClient:
             duration = perf_counter() - start_time
 
             logger.error(
-                f"HTTP 请求网络错误: {method} {url}",
+                f"HTTP request network error: {method} {url}",
                 extra={
                     "method": method,
                     "url": url,
@@ -318,22 +319,22 @@ class AsyncHTTPClient:
                     "client_name": self.client_name,
                 },
             )
-            # ✅ 修复：返回错误响应字典而不是抛出异常，让网关可以处理
-            # RequestError 是 httpx 的基础异常类，包括 ConnectError, TimeoutException 等
-            # 检查具体的错误类型
+            # ✅ Fix: Return error response dictionary instead of throwing exception, allowing gateway to handle
+            # RequestError is the base exception class for httpx, including ConnectError, TimeoutException, etc.
+            # Check specific error type
 
             if isinstance(e, ConnectError):
                 status_code = 502
                 error_code = "CONNECTION_ERROR"
-                message = "无法连接到后端服务"
+                message = "Unable to connect to backend service"
             elif isinstance(e, TimeoutException):
                 status_code = 504
                 error_code = "TIMEOUT_ERROR"
-                message = "后端服务响应超时"
+                message = "Backend service response timeout"
             else:
                 status_code = 502
                 error_code = "NETWORK_ERROR"
-                message = "网络错误"
+                message = "Network error"
 
             error_body = {
                 "status_code": status_code,
@@ -361,7 +362,7 @@ class AsyncHTTPClient:
             duration = perf_counter() - start_time
 
             logger.error(
-                f"HTTP 请求异常: {method} {url}",
+                f"HTTP request exception: {method} {url}",
                 extra={
                     "method": method,
                     "url": url,
@@ -385,19 +386,19 @@ class AsyncHTTPClient:
                     http_client_requests_in_progress.labels(self.client_name, method_upper).dec()
                 except Exception as gauge_error:
                     logger.debug(
-                        "减少 HTTP 客户端 in-progress 指标失败",
+                        "Failed to decrease HTTP client in-progress metrics",
                         extra={"error_type": type(gauge_error).__name__, "client_name": self.client_name},
                     )
 
     def _record_metrics(self, method: str, url: str, status_code: int, duration: float, success: bool) -> None:
-        """记录 HTTP 请求指标
+        """Record HTTP request metrics
 
         Args:
-            method: HTTP 方法
-            url: 请求 URL
-            status_code: HTTP 状态码
-            duration: 请求耗时（秒）
-            success: 是否成功
+            method: HTTP method
+            url: Request URL
+            status_code: HTTP status code
+            duration: Request duration (seconds)
+            success: Whether request was successful
         """
         try:
             status_label = str(status_code) if status_code > 0 else ("success" if success else "error")
@@ -409,17 +410,17 @@ class AsyncHTTPClient:
                 http_client_request_duration_seconds.labels(self.client_name, method).observe(duration)
 
         except Exception as e:
-            # 指标记录失败不应影响主流程
+            # Metric recording failure should not affect main process
             logger.debug(
-                "记录 HTTP 指标失败",
+                "Failed to record HTTP metrics",
                 extra={"error_type": type(e).__name__, "client_name": self.client_name},
             )
 
     @asynccontextmanager
     async def session(self) -> AsyncGenerator["AsyncHTTPClient", None]:
-        """上下文管理器，自动管理客户端生命周期
+        """Context manager, automatically manages client lifecycle
 
-        使用示例:
+        Usage example:
             async with http_client.session():
                 response = await http_client.request("GET", "https://api.example.com")
         """
@@ -429,20 +430,20 @@ class AsyncHTTPClient:
             await self.close()
 
 
-# 全局客户端实例
+# Global client instance
 _http_client_instance: Optional[AsyncHTTPClient] = None
 
 
 def get_http_client() -> AsyncHTTPClient:
-    """获取 HTTP 客户端实例（单例模式）
+    """Get HTTP client instance (singleton pattern)
 
     Returns:
-        AsyncHTTPClient 实例
+        AsyncHTTPClient instance
     """
     global _http_client_instance
 
     if _http_client_instance is None:
         _http_client_instance = AsyncHTTPClient()
-        logger.debug("创建全局 HTTP 客户端实例")
+        logger.debug("Creating global HTTP client instance")
 
     return _http_client_instance

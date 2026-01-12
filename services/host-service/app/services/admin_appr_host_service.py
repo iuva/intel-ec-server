@@ -1,10 +1,10 @@
-"""管理后台待审批主机管理服务
+"""Admin backend pending approval host management service
 
-提供管理后台使用的待审批主机查询等核心业务逻辑。
+Provides core business logic for pending approval host querying and other operations used by the admin backend.
 
-注意：工具函数和邮件服务已拆分到独立模块：
-- admin_appr_utils.py: 工具函数（build_host_table, call_hardware_api 等）
-- admin_appr_email_service.py: 邮件服务（ApprovalEmailService）
+Note: Utility functions and email service have been split into separate modules:
+- admin_appr_utils.py: Utility functions (build_host_table, call_hardware_api, etc.)
+- admin_appr_email_service.py: Email service (ApprovalEmailService)
 """
 
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, desc, func, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import (
         APPR_STATE_ENABLE,
@@ -36,7 +36,7 @@ try:
     )
     from app.services.admin_appr_email_service import send_approval_email
 
-    # 从拆分的模块导入
+    # Import from split modules
     from app.services.admin_appr_utils import call_hardware_api
     from app.utils.logging_helpers import log_operation_start
     from shared.common.database import mariadb_manager
@@ -69,7 +69,7 @@ except ImportError:
     )
     from app.services.admin_appr_email_service import send_approval_email
 
-    # 从拆分的模块导入
+    # Import from split modules
     from app.services.admin_appr_utils import call_hardware_api
     from app.utils.logging_helpers import log_operation_start
     from shared.common.database import mariadb_manager
@@ -85,25 +85,25 @@ logger = get_logger(__name__)
 
 
 class AdminApprHostService:
-    """管理后台待审批主机管理服务类
+    """Admin backend pending approval host management service class
 
-    提供待审批主机的查询、搜索等业务逻辑。
+    Provides business logic for querying, searching, and other operations on pending approval hosts.
 
-    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+    ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
     """
 
     def __init__(self):
-        """初始化服务"""
-        # ✅ 优化：缓存会话工厂
+        """Initialize service"""
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
-        - 第一次调用时初始化
-        - 后续调用复用缓存的工厂实例
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
+        - Initialize on first call
+        - Reuse cached factory instance on subsequent calls
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
@@ -114,23 +114,23 @@ class AdminApprHostService:
         request: AdminApprHostApproveRequest,
         locale: str = "zh_CN",
     ) -> List[int]:
-        """验证参数并解析 host_ids
+        """Validate parameters and resolve host_ids
 
         Args:
-            request: 同意启用请求参数
-            locale: 语言偏好
+            request: Approve enable request parameters
+            locale: Language preference
 
         Returns:
-            List[int]: 要处理的主机ID列表，如果未找到则返回空列表
+            List[int]: List of host IDs to process, returns empty list if not found
 
         Raises:
-            BusinessError: 参数验证失败时
+            BusinessError: When parameter validation fails
         """
         if request.diff_type is None or request.diff_type == 2:
-            # diff_type 为空或 2 时，host_ids 为必填
+            # When diff_type is None or 2, host_ids is required
             if not request.host_ids or len(request.host_ids) == 0:
                 raise BusinessError(
-                    message=f"当 diff_type={request.diff_type} 时，host_ids 为必填参数",
+                    message=f"When diff_type={request.diff_type}, host_ids is a required parameter",
                     message_key="error.host.appr_host_ids_required",
                     error_code="HOST_IDS_REQUIRED",
                     code=ServiceErrorCodes.VALIDATION_ERROR,
@@ -139,11 +139,11 @@ class AdminApprHostService:
             return request.host_ids
 
         elif request.diff_type == 1:
-            # diff_type = 1 时，如果传入了 host_ids，直接返回
+            # When diff_type = 1, if host_ids is provided, return directly
             if request.host_ids and len(request.host_ids) > 0:
                 return request.host_ids
 
-            # 如果未传入 host_ids，查询所有符合条件的 host_id
+            # If host_ids is not provided, query all matching host_ids
             session_factory = self.session_factory
             async with session_factory() as temp_session:
                 hw_query_stmt = (
@@ -163,7 +163,7 @@ class AdminApprHostService:
 
                 if not host_ids_to_process:
                     logger.info(
-                        "未找到符合条件的主机（diff_type=1, sync_state=1, diff_state=1）",
+                        "No matching hosts found (diff_type=1, sync_state=1, diff_state=1)",
                         extra={"diff_type": request.diff_type},
                     )
                     return []
@@ -175,7 +175,7 @@ class AdminApprHostService:
                     "error.host.diff_type_not_supported",
                     locale=locale,
                     diff_type=request.diff_type,
-                    default=f"不支持的 diff_type: {request.diff_type}",
+                    default=f"Unsupported diff_type: {request.diff_type}",
                 ),
                 message_key="error.host.diff_type_not_supported",
                 error_code="DIFF_TYPE_NOT_SUPPORTED",
@@ -189,20 +189,20 @@ class AdminApprHostService:
         host_recs_map: Dict[int, HostRec],
         locale: str = "zh_CN",
     ) -> Optional[HostRec]:
-        """验证主机是否存在且未删除
+        """Validate if host exists and is not deleted
 
         Args:
-            host_id: 主机ID
-            host_recs_map: 主机记录映射字典
-            locale: 语言偏好
+            host_id: Host ID
+            host_recs_map: Host record mapping dictionary
+            locale: Language preference
 
         Returns:
-            Optional[HostRec]: 主机记录，如果不存在则返回 None
+            Optional[HostRec]: Host record, returns None if not exists
         """
         host_rec = host_recs_map.get(host_id)
         if not host_rec:
             logger.warning(
-                "主机不存在或已删除",
+                "Host does not exist or has been deleted",
                 extra={"host_id": host_id},
             )
         return host_rec
@@ -214,21 +214,21 @@ class AdminApprHostService:
         sync_state: Optional[int] = SYNC_STATE_WAIT,
         need_latest_only: bool = False,
     ) -> Dict[int, List[HostHwRec]]:
-        """查询硬件记录并按 host_id 分组
+        """Query hardware records and group by host_id
 
         Args:
-            session: 数据库会话
-            host_ids: 主机ID列表
-            sync_state: 同步状态（None 表示不限制）
-            need_latest_only: 是否只需要最新一条（用于 diff_type is None）
+            session: Database session
+            host_ids: List of host IDs
+            sync_state: Sync state (None means no restriction)
+            need_latest_only: Whether to only need the latest one (for diff_type is None)
 
         Returns:
-            Dict[int, List[HostHwRec]]: 按 host_id 分组的硬件记录
+            Dict[int, List[HostHwRec]]: Hardware records grouped by host_id
         """
         if not host_ids:
             return {}
 
-        # 构建查询条件
+        # Build query conditions
         conditions = [
             HostHwRec.host_id.in_(host_ids),
             HostHwRec.del_flag == 0,
@@ -237,7 +237,7 @@ class AdminApprHostService:
         if sync_state is not None:
             conditions.append(HostHwRec.sync_state == sync_state)
 
-        # 查询硬件记录
+        # Query hardware records
         hw_stmt = (
             select(HostHwRec)
             .where(and_(*conditions))
@@ -247,16 +247,16 @@ class AdminApprHostService:
         hw_result = await session.execute(hw_stmt)
         all_hw_recs = hw_result.scalars().all()
 
-        # 按 host_id 分组
+        # Group by host_id
         hw_recs_by_host: Dict[int, List[HostHwRec]] = {}
 
         if need_latest_only:
-            # 只保留每个 host_id 的最新一条
+            # Only keep the latest one for each host_id
             for hw_rec in all_hw_recs:
                 if hw_rec.host_id not in hw_recs_by_host:
                     hw_recs_by_host[hw_rec.host_id] = [hw_rec]
         else:
-            # 保留所有记录
+            # Keep all records
             for hw_rec in all_hw_recs:
                 if hw_rec.host_id not in hw_recs_by_host:
                     hw_recs_by_host[hw_rec.host_id] = []
@@ -273,72 +273,75 @@ class AdminApprHostService:
         http_request: Any,
         locale: str = "zh_CN",
     ) -> Dict[str, Any]:
-        """处理手动启用（diff_type is None）
+        """Process manual enable (diff_type is None)
 
         Args:
-            host_id: 主机ID
-            host_rec: 主机记录
-            hw_recs: 硬件记录列表
-            appr_by: 审批人ID
-            http_request: FastAPI Request 对象
-            locale: 语言偏好
+            host_id: Host ID
+            host_rec: Host record
+            hw_recs: Hardware record list
+            appr_by: Approver ID
+            http_request: FastAPI Request object
+            locale: Language preference
 
         Returns:
-            Dict[str, Any]: 处理结果，包含 success, host_id, message, hardware_id, host_update
+            Dict[str, Any]: Processing result, contains success, host_id, message, hardware_id, host_update
         """
-        # 默认更新值
+        # Default update values
         host_update: Dict[str, Any] = {
             "appr_state": APPR_STATE_ENABLE,
             "host_state": HOST_STATE_FREE,
         }
 
-        # 检查是否需要调用外部接口（host_state 5 or 6）
+        # Check if external API call is needed (host_state 5 or 6)
         if host_rec.host_state in (5, 6):
             latest_hw_rec = hw_recs[0] if hw_recs else None
             if latest_hw_rec and latest_hw_rec.hw_info:
                 try:
-                    # ✅ 根据 host_state 决定调用新增还是修改接口
-                    # host_state = 5（待激活）：新主机，调用新增接口（传递 None）
-                    # host_state = 6（硬件改动）：已存在主机，调用修改接口（传递 hardware_id）
+                    # ✅ Determine whether to call create or update API based on host_state
+                    # host_state = 5 (pending activation): New host, call create API (***REMOVED*** None)
+                    # host_state = 6 (hardware changed): Existing host, call update API (***REMOVED*** hardware_id)
                     api_hardware_id: Optional[str] = None
                     if host_rec.host_state == 6:
-                        # 硬件改动：使用现有的 hardware_id 调用修改接口
-                        # ✅ 检查 hardware_id 是否有效（非 None 且非空字符串）
+                        # Hardware changed: Use existing hardware_id to call update API
+                        # ✅ Check if hardware_id is valid (not None and not empty string)
                         existing_hw_id = host_rec.hardware_id
                         if existing_hw_id and existing_hw_id.strip():
                             api_hardware_id = existing_hw_id
-                            api_type = "修改"
+                            api_type = "update"
                         else:
-                            # hardware_id 为空字符串，视为无效，调用新增接口
+                            # hardware_id is empty string, treat as invalid, call create API
                             api_hardware_id = None
-                            api_type = "新增"
+                            api_type = "create"
                             logger.warning(
-                                "host_state=6 但 hardware_id 为空字符串，强制调用新增接口",
+                                "host_state=6 but hardware_id is empty string, forcing create API call",
                                 extra={
                                     "host_id": host_id,
                                     "host_state": host_rec.host_state,
                                     "existing_hardware_id": existing_hw_id,
-                                    "note": "硬件改动状态但 hardware_id 无效，调用新增接口",
+                                    "note": "Hardware changed state but hardware_id is invalid, calling create API",
                                 },
                             )
                     else:
-                        # host_state = 5（待激活）：强制调用新增接口，即使 hardware_id 不为空
+                        # host_state = 5 (pending activation): Force create API call, even if hardware_id is not empty
                         api_hardware_id = None
-                        api_type = "新增"
+                        api_type = "create"
                         existing_hw_id = host_rec.hardware_id
                         if existing_hw_id and existing_hw_id.strip():
                             logger.warning(
-                                "host_state=5 但 hardware_id 不为空，强制调用新增接口",
+                                "host_state=5 but hardware_id is not empty, forcing create API call",
                                 extra={
                                     "host_id": host_id,
                                     "host_state": host_rec.host_state,
                                     "existing_hardware_id": existing_hw_id,
-                                    "note": "待激活状态应调用新增接口，忽略现有 hardware_id",
+                                    "note": (
+                                        "Pending activation state should call create API, "
+                                        "ignoring existing hardware_id"
+                                    ),
                                 },
                             )
 
                     logger.info(
-                        f"准备调用外部硬件接口（{api_type}）",
+                        f"Preparing to call external hardware API ({api_type})",
                         extra={
                             "host_id": host_id,
                             "host_state": host_rec.host_state,
@@ -361,12 +364,12 @@ class AdminApprHostService:
 
                     if hardware_id:
                         host_update["hardware_id"] = hardware_id
-                    # 如果 host_name 存在且不为空，添加到更新字典
+                    # If host_name exists and is not empty, add to update dictionary
                     if host_name and host_name.strip():
                         host_update["host_no"] = host_name.strip()
 
                     logger.info(
-                        "外部硬件接口调用成功 (Empty Diff Type)",
+                        "External hardware API call succeeded (Empty Diff Type)",
                         extra={
                             "host_id": host_id,
                             "host_state": host_rec.host_state,
@@ -378,18 +381,18 @@ class AdminApprHostService:
                     )
                 except Exception as e:
                     logger.error(
-                        "外部硬件接口调用失败 (Empty Diff Type)",
+                        "External hardware API call failed (Empty Diff Type)",
                         extra={"host_id": host_id, "error": str(e)},
                         exc_info=True,
                     )
                     raise BusinessError(
-                        message=f"外部接口调用失败: {str(e)}",
+                        message=f"External API call failed: {str(e)}",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                         http_status_code=500,
                     )
             else:
                 logger.warning(
-                    "状态为 5/6 但未找到硬件记录或 hw_info 为空，跳过外部接口调用",
+                    "State is 5/6 but hardware record not found or hw_info is empty, skipping external API call",
                     extra={"host_id": host_id, "host_state": host_rec.host_state},
                 )
 
@@ -399,7 +402,7 @@ class AdminApprHostService:
             "message": t(
                 "success.host.manual_enabled",
                 locale=locale,
-                default="主机启用成功",
+                default="Host enabled successfully",
             ),
             "hardware_id": host_update.get("hardware_id"),
             "hw_id": None,
@@ -417,26 +420,27 @@ class AdminApprHostService:
         locale: str = "zh_CN",
         session: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """处理硬件变更审批（diff_type == 1 or 2）
+        """Process hardware change approval (diff_type == 1 or 2)
 
         Args:
-            host_id: 主机ID
-            host_rec: 主机记录
-            hw_recs: 硬件记录列表
-            appr_by: 审批人ID
-            http_request: FastAPI Request 对象
-            locale: 语言偏好
-            session: 数据库会话（用于调试查询）
+            host_id: Host ID
+            host_rec: Host record
+            hw_recs: Hardware record list
+            appr_by: Approver ID
+            http_request: FastAPI Request object
+            locale: Language preference
+            session: Database session (for debug queries)
 
         Returns:
-            Dict[str, Any]: 处理结果，包含 success, host_id, message, hardware_id, hw_id, host_update, hw_updates
+            Dict[str, Any]: Processing result, contains success, host_id, message,
+                           hardware_id, hw_id, host_update, hw_updates
 
         Raises:
-            BusinessError: 硬件记录不存在或处理失败时
+            BusinessError: When hardware record does not exist or processing fails
         """
-        # 验证硬件记录
+        # Validate hardware records
         if not hw_recs:
-            # 调试：查询该主机的所有硬件记录（不限制 sync_state）以帮助排查问题
+            # Debug: Query all hardware records for this host (no sync_state restriction) to help troubleshoot
             if session:
                 debug_hw_stmt = (
                     select(HostHwRec)
@@ -451,7 +455,7 @@ class AdminApprHostService:
                 debug_hw_result = await session.execute(debug_hw_stmt)
                 debug_hw_recs = debug_hw_result.scalars().all()
 
-                # 统计不同 sync_state 的记录数量
+                # Count records with different sync_state
                 sync_state_stats = {}
                 for hw_rec in debug_hw_recs:
                     sync_state = hw_rec.sync_state
@@ -460,7 +464,7 @@ class AdminApprHostService:
                     sync_state_stats[sync_state] += 1
 
                 logger.warning(
-                    "未找到待审批的硬件记录，跳过审批",
+                    "No pending approval hardware records found, skipping approval",
                     extra={
                         "host_id": host_id,
                         "host_exists": True,
@@ -490,7 +494,7 @@ class AdminApprHostService:
                     "error.host.hardware_not_found",
                     locale=locale,
                     host_id=host_id,
-                    default=f"未找到待审批的硬件记录（ID: {host_id}）",
+                    default=f"No pending approval hardware records found (ID: {host_id})",
                 ),
                 message_key="error.host.hardware_not_found",
                 error_code="HARDWARE_NOT_FOUND",
@@ -498,64 +502,73 @@ class AdminApprHostService:
                 http_status_code=404,
             )
 
-        # 获取最新一条硬件记录
+        # Get the latest hardware record
         latest_hw_rec = hw_recs[0]
         latest_hw_id = latest_hw_rec.id
 
-        # 调用外部硬件接口
+        # Call external hardware API
         hardware_id = None
         if latest_hw_rec.hw_info:
             try:
-                # ✅ 根据 host_state 决定调用新增还是修改接口
-                # host_state = 5（待激活）：新主机，调用新增接口（传递 None）
-                # host_state = 6（硬件改动）：已存在主机，调用修改接口（传递 hardware_id）
+                # ✅ Determine whether to call create or update API based on host_state
+                # host_state = 5 (pending activation): New host, call create API (***REMOVED*** None)
+                # host_state = 6 (hardware changed): Existing host, call update API (***REMOVED*** hardware_id)
                 existing_hardware_id = host_rec.hardware_id
                 api_hardware_id: Optional[str] = None
                 if host_rec.host_state == 6:
-                    # 硬件改动：使用现有的 hardware_id 调用修改接口
-                    # ✅ 检查 hardware_id 是否有效（非 None 且非空字符串）
+                    # Hardware changed: Use existing hardware_id to call update API
+                    # ✅ Check if hardware_id is valid (not None and not empty string)
                     if existing_hardware_id and existing_hardware_id.strip():
                         api_hardware_id = existing_hardware_id
-                        api_type = "修改"
+                        api_type = "update"
                     else:
-                        # hardware_id 为空字符串，视为无效，调用新增接口
+                        # hardware_id is empty string, treat as invalid, call create API
                         api_hardware_id = None
-                        api_type = "新增"
+                        api_type = "create"
                         logger.warning(
-                            "host_state=6 但 hardware_id 为空字符串，强制调用新增接口（硬件变更审批）",
+                            (
+                                "host_state=6 but hardware_id is empty string, "
+                                "forcing create API call (hardware change approval)"
+                            ),
                             extra={
                                 "host_id": host_id,
                                 "host_state": host_rec.host_state,
                                 "existing_hardware_id": existing_hardware_id,
-                                "diff_type": "硬件变更审批",
-                                "note": "硬件改动状态但 hardware_id 无效，调用新增接口",
+                                "diff_type": "hardware_change_approval",
+                                "note": "Hardware changed state but hardware_id is invalid, calling create API",
                             },
                         )
                 else:
-                    # host_state = 5（待激活）：强制调用新增接口，即使 hardware_id 不为空
+                    # host_state = 5 (pending activation): Force create API call, even if hardware_id is not empty
                     api_hardware_id = None
-                    api_type = "新增"
+                    api_type = "create"
                     if existing_hardware_id and existing_hardware_id.strip():
                         logger.warning(
-                            "host_state=5 但 hardware_id 不为空，强制调用新增接口（硬件变更审批）",
+                            (
+                                "host_state=5 but hardware_id is not empty, "
+                                "forcing create API call (hardware change approval)"
+                            ),
                             extra={
                                 "host_id": host_id,
                                 "host_state": host_rec.host_state,
                                 "existing_hardware_id": existing_hardware_id,
-                                "diff_type": "硬件变更审批",
-                                "note": "待激活状态应调用新增接口，忽略现有 hardware_id",
+                                "diff_type": "hardware_change_approval",
+                                "note": (
+                                    "Pending activation state should call create API, "
+                                    "ignoring existing hardware_id"
+                                ),
                             },
                         )
 
                 logger.info(
-                    f"准备调用外部硬件接口（{api_type}，硬件变更审批）",
+                    f"Preparing to call external hardware API ({api_type}, hardware change approval)",
                     extra={
                         "host_id": host_id,
                         "host_state": host_rec.host_state,
                         "api_type": api_type,
                         "api_hardware_id": api_hardware_id,
                         "existing_hardware_id": existing_hardware_id,
-                        "diff_type": "硬件变更审批",
+                        "diff_type": "hardware_change_approval",
                     },
                 )
 
@@ -571,7 +584,7 @@ class AdminApprHostService:
                 host_name = api_result.get("host_name")
 
                 logger.info(
-                    "外部硬件接口调用成功（硬件变更审批）",
+                    "External hardware API call succeeded (hardware change approval)",
                     extra={
                         "host_id": host_id,
                         "host_state": host_rec.host_state,
@@ -585,7 +598,7 @@ class AdminApprHostService:
                 raise
             except Exception as e:
                 logger.error(
-                    "调用外部硬件接口失败",
+                    "Failed to call external hardware API",
                     extra={
                         "host_id": host_id,
                         "error": str(e),
@@ -594,7 +607,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"调用外部硬件接口失败: {str(e)}",
+                    message=f"Failed to call external hardware API: {str(e)}",
                     message_key="error.hardware.api_call_failed",
                     error_code="HARDWARE_API_CALL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -606,17 +619,17 @@ class AdminApprHostService:
                 )
         else:
             logger.warning(
-                "硬件记录中缺少 hw_info，跳过外部硬件接口调用",
+                "Hardware record missing hw_info, skipping external hardware API call",
                 extra={
                     "host_id": host_id,
                     "hw_rec_id": latest_hw_id,
                 },
             )
 
-        # 构建更新数据
+        # Build update data
         now = datetime.now(timezone.utc)
 
-        # 主机更新数据
+        # Host update data
         host_update = {
             "appr_state": APPR_STATE_ENABLE,
             "host_state": HOST_STATE_FREE,
@@ -625,11 +638,11 @@ class AdminApprHostService:
         }
         if hardware_id:
             host_update["hardware_id"] = hardware_id
-        # 如果 host_name 存在且不为空，添加到更新字典
+        # If host_name exists and is not empty, add to update dictionary
         if host_name and host_name.strip():
             host_update["host_no"] = host_name.strip()
 
-        # 硬件记录更新数据
+        # Hardware record update data
         hw_updates = {
             latest_hw_id: {
                 "sync_state": 2,
@@ -640,14 +653,14 @@ class AdminApprHostService:
         if hardware_id:
             hw_updates[latest_hw_id]["hardware_id"] = hardware_id
 
-        # 其他硬件记录更新为 sync_state = 4
+        # Update other hardware records to sync_state = 4
         for hw_rec in hw_recs[1:]:
             hw_updates[hw_rec.id] = {"sync_state": 4}
 
         return {
             "success": True,
             "host_id": host_id,
-            "message": t("success.host.approved", locale=locale, default="主机启用成功"),
+            "message": t("success.host.approved", locale=locale, default="Host enabled successfully"),
             "hardware_id": hardware_id,
             "hw_id": latest_hw_id,
             "host_update": host_update,
@@ -659,16 +672,16 @@ class AdminApprHostService:
         session: Any,
         host_updates: Dict[int, Dict[str, Any]],
     ) -> None:
-        """批量更新 host_rec 表（优化：按更新字段分组）
+        """Bulk update host_rec table (optimization: group by update fields)
 
         Args:
-            session: 数据库会话
-            host_updates: 主机更新数据字典 {host_id: {field: value}}
+            session: Database session
+            host_updates: Host update data dictionary {host_id: {field: value}}
         """
         if not host_updates:
             return
 
-        # 分离需要更新 host_no 的记录和只更新其他字段的记录
+        # Separate records that need host_no update and records that only update other fields
         hosts_with_host_no: Dict[int, Dict[str, Any]] = {}
         hosts_without_host_no: Dict[int, Dict[str, Any]] = {}
 
@@ -678,11 +691,10 @@ class AdminApprHostService:
             else:
                 hosts_without_host_no[host_id] = update_values
 
-        # 批量更新（有 host_no）
+        # Bulk update (with host_no)
         if hosts_with_host_no:
             bulk_update_data = [
-                {"id": host_id, **update_values}
-                for host_id, update_values in hosts_with_host_no.items()
+                {"id": host_id, **update_values} for host_id, update_values in hosts_with_host_no.items()
             ]
 
             def _bulk_update_with_host_no(sync_session: Any) -> None:
@@ -691,18 +703,17 @@ class AdminApprHostService:
             await session.run_sync(_bulk_update_with_host_no)
 
             logger.debug(
-                "批量更新主机记录（包含 host_no）",
+                "Bulk update host records (including host_no)",
                 extra={
                     "count": len(hosts_with_host_no),
-                    "host_ids": list(hosts_with_host_no.keys())[:10],  # 只记录前10条
+                    "host_ids": list(hosts_with_host_no.keys())[:10],  # Only log first 10
                 },
             )
 
-        # 批量更新（无 host_no）
+        # Bulk update (without host_no)
         if hosts_without_host_no:
             bulk_update_data = [
-                {"id": host_id, **update_values}
-                for host_id, update_values in hosts_without_host_no.items()
+                {"id": host_id, **update_values} for host_id, update_values in hosts_without_host_no.items()
             ]
 
             def _bulk_update_without_host_no(sync_session: Any) -> None:
@@ -711,7 +722,7 @@ class AdminApprHostService:
             await session.run_sync(_bulk_update_without_host_no)
 
             logger.debug(
-                "批量更新主机记录（不包含 host_no）",
+                "Bulk update host records (excluding host_no)",
                 extra={
                     "count": len(hosts_without_host_no),
                 },
@@ -724,22 +735,22 @@ class AdminApprHostService:
         now: datetime,
         appr_by: int,
     ) -> None:
-        """批量更新 host_hw_rec 表
+        """Bulk update host_hw_rec table
 
-        ✅ 优化：使用 CASE WHEN 批量更新，减少 SQL 执行次数
-        - 优化前：N 条记录需要 N 次 SQL
-        - 优化后：最多 3 次 SQL（有 hardware_id、无 hardware_id、其他）
+        ✅ Optimization: Use CASE WHEN for bulk update to reduce SQL execution count
+        - Before optimization: N records require N SQL executions
+        - After optimization: At most 3 SQL executions (with hardware_id, without hardware_id, others)
 
         Args:
-            session: 数据库会话
-            hw_updates: 硬件记录更新数据字典 {hw_rec_id: {field: value}}
-            now: 当前时间
-            appr_by: 审批人ID
+            session: Database session
+            hw_updates: Hardware record update data dictionary {hw_rec_id: {field: value}}
+            now: Current time
+            appr_by: Approver ID
         """
         if not hw_updates:
             return
 
-        # 分离需要更新 hardware_id 的记录和普通记录
+        # Separate records that need hardware_id update and regular records
         latest_hw_ids_with_hardware_id: List[int] = []
         latest_hw_ids_without_hardware_id: List[int] = []
         other_hw_ids: List[int] = []
@@ -754,12 +765,12 @@ class AdminApprHostService:
             else:
                 other_hw_ids.append(hw_rec_id)
 
-        # ✅ 优化：使用 CASE WHEN 批量更新（有 hardware_id）
-        # 将 N 条 SQL 合并为 1 条 SQL
+        # ✅ Optimization: Use CASE WHEN for bulk update (with hardware_id)
+        # Merge N SQL statements into 1 SQL statement
         if latest_hw_ids_with_hardware_id:
             from sqlalchemy import case
 
-            # 构建 CASE WHEN 表达式：CASE id WHEN 1 THEN 'hw_id_1' WHEN 2 THEN 'hw_id_2' END
+            # Build CASE WHEN expression: CASE id WHEN 1 THEN 'hw_id_1' WHEN 2 THEN 'hw_id_2' END
             hardware_id_case = case(
                 hw_rec_hardware_id_map,
                 value=HostHwRec.id,
@@ -778,14 +789,14 @@ class AdminApprHostService:
             await session.execute(update_stmt)
 
             logger.debug(
-                "批量更新硬件记录（有 hardware_id）",
+                "Bulk update hardware records (with hardware_id)",
                 extra={
                     "count": len(latest_hw_ids_with_hardware_id),
-                    "hw_ids": latest_hw_ids_with_hardware_id[:10],  # 只记录前10条
+                    "hw_ids": latest_hw_ids_with_hardware_id[:10],  # Only log first 10
                 },
             )
 
-        # 批量更新最新硬件记录（无 hardware_id）
+        # Bulk update latest hardware records (without hardware_id)
         if latest_hw_ids_without_hardware_id:
             update_latest_stmt = (
                 update(HostHwRec)
@@ -799,57 +810,55 @@ class AdminApprHostService:
             await session.execute(update_latest_stmt)
 
             logger.debug(
-                "批量更新硬件记录（无 hardware_id）",
+                "Bulk update hardware records (without hardware_id)",
                 extra={
                     "count": len(latest_hw_ids_without_hardware_id),
                 },
             )
 
-        # 批量更新其他硬件记录
+        # Bulk update other hardware records
         if other_hw_ids:
-            update_other_stmt = (
-                update(HostHwRec).where(HostHwRec.id.in_(other_hw_ids)).values(sync_state=4)
-            )
+            update_other_stmt = update(HostHwRec).where(HostHwRec.id.in_(other_hw_ids)).values(sync_state=4)
             await session.execute(update_other_stmt)
 
             logger.debug(
-                "批量更新其他硬件记录",
+                "Bulk update other hardware records",
                 extra={
                     "count": len(other_hw_ids),
                 },
             )
 
     @handle_service_errors(
-        error_message="查询待审批主机列表失败",
+        error_message="Failed to query pending approval host list",
         error_code="QUERY_APPR_HOST_LIST_FAILED",
     )
     async def list_appr_hosts(
         self,
         request: AdminApprHostListRequest,
     ) -> Tuple[List[AdminApprHostInfo], PaginationResponse]:
-        """查询待审批主机列表（分页）
+        """Query pending approval host list (paginated)
 
-        业务逻辑：
-        1. 查询 host_rec 表
-        2. 条件：host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
-        3. 支持按 mac、mg_id、host_state 过滤
-        4. 按 created_time 倒序排序
-        5. 关联 host_hw_rec 表，获取每个 host_id 对应的最新一条记录的 diff_state
-           - 只查询 sync_state = 1（待同步）的记录
-           - 按 created_time 倒序排序，取第一条记录的 diff_state
-           - 与 get_appr_host_detail 接口的 diff_state 获取逻辑保持一致
+        Business logic:
+        1. Query host_rec table
+        2. Conditions: host_state > 4 and host_state < 8, appr_state != 1, del_flag = 0
+        3. Support filtering by mac, mg_id, host_state
+        4. Order by created_time descending
+        5. Join host_hw_rec table to get diff_state of the latest record for each host_id
+           - Only query records with sync_state = 1 (pending sync)
+           - Order by created_time descending, take diff_state of first record
+           - Keep consistent with diff_state retrieval logic of get_appr_host_detail interface
 
         Args:
-            request: 查询请求参数（分页、搜索条件）
+            request: Query request parameters (pagination, search conditions)
 
         Returns:
-            Tuple[List[AdminApprHostInfo], PaginationResponse]: 待审批主机列表和分页信息
+            Tuple[List[AdminApprHostInfo], PaginationResponse]: Pending approval host list and pagination information
 
         Raises:
-            BusinessError: 查询失败时
+            BusinessError: When query fails
         """
         log_operation_start(
-            "查询待审批主机列表",
+            "Query pending approval host list",
             extra={
                 "page": request.page,
                 "page_size": request.page_size,
@@ -862,10 +871,10 @@ class AdminApprHostService:
 
         try:
             session_factory = self.session_factory
-            logger.debug("获取数据库会话工厂成功")
+            logger.debug("Successfully obtained database session factory")
         except Exception as e:
             logger.error(
-                "获取数据库会话工厂失败",
+                "Failed to obtain database session factory",
                 extra={
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -876,10 +885,10 @@ class AdminApprHostService:
 
         try:
             async with session_factory() as session:
-                logger.debug("数据库会话创建成功")
+                logger.debug("Database session created successfully")
 
-                # 构建基础查询条件
-                # host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
+                # Build base query conditions
+                # host_state > 4 and host_state < 8, appr_state != 1, del_flag = 0
                 base_conditions = [
                     HostRec.host_state > 4,
                     HostRec.host_state < 8,
@@ -887,7 +896,7 @@ class AdminApprHostService:
                     HostRec.del_flag == 0,
                 ]
 
-                # 添加搜索条件
+                # Add search conditions
                 if request.mac:
                     base_conditions.append(HostRec.mac_addr.like(f"%{request.mac}%"))
 
@@ -897,13 +906,14 @@ class AdminApprHostService:
                 if request.host_state is not None:
                     base_conditions.append(HostRec.host_state == request.host_state)
 
-                # 1. 查询总数
+                # 1. Query total count
                 count_stmt = select(func.count(HostRec.id)).where(and_(*base_conditions))
                 count_result = await session.execute(count_stmt)
                 total = count_result.scalar() or 0
 
-                # 2. 分页查询：按 created_time 倒序排序，LEFT JOIN 获取 diff_state
-                # 优化：直接关联 host_hw_rec 表，无需子查询（假设每个 host 最多只有一条 sync_state=1 的记录）
+                # 2. Paginated query: Order by created_time descending, LEFT JOIN to get diff_state
+                # Optimization: Directly join host_hw_rec table, no subquery needed
+                # (assuming each host has at most one sync_state=1 record)
                 pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
 
                 stmt = (
@@ -919,7 +929,7 @@ class AdminApprHostService:
                         HostHwRec,
                         and_(
                             HostHwRec.host_id == HostRec.id,
-                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
+                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1 (pending sync)
                             HostHwRec.del_flag == 0,
                         ),
                     )
@@ -934,7 +944,7 @@ class AdminApprHostService:
                     rows = result.all()
                 except Exception as e:
                     logger.error(
-                        "执行查询失败",
+                        "Query execution failed",
                         extra={
                             "error": str(e),
                             "error_type": type(e).__name__,
@@ -944,15 +954,15 @@ class AdminApprHostService:
                     )
                     raise
 
-                # 3. 构建响应数据
+                # 3. Build response data
                 host_info_list: List[AdminApprHostInfo] = []
                 for row in rows:
                     try:
-                        # 安全获取 diff_state，因为 LEFT JOIN 可能返回 None
+                        # Safely get diff_state, as LEFT JOIN may return None
                         diff_state = getattr(row, "diff_state", None)
 
                         host_info = AdminApprHostInfo(
-                            host_id=str(row.host_id),  # ✅ 转换为字符串避免精度丢失
+                            host_id=str(row.host_id),  # ✅ Convert to string to avoid precision loss
                             mg_id=row.mg_id,
                             mac_addr=row.mac_addr,
                             host_state=row.host_state,
@@ -962,7 +972,7 @@ class AdminApprHostService:
                         host_info_list.append(host_info)
                     except Exception as e:
                         logger.error(
-                            "构建 AdminApprHostInfo 对象失败",
+                            "Failed to build AdminApprHostInfo object",
                             extra={
                                 "error": str(e),
                                 "error_type": type(e).__name__,
@@ -974,7 +984,7 @@ class AdminApprHostService:
                         )
                         raise
 
-                # 4. 构建分页响应
+                # 4. Build pagination response
                 pagination_response = PaginationResponse(
                     page=request.page,
                     page_size=request.page_size,
@@ -982,7 +992,7 @@ class AdminApprHostService:
                 )
 
                 logger.info(
-                    "查询待审批主机列表完成",
+                    "Query pending approval host list completed",
                     extra={
                         "total": total,
                         "returned_count": len(host_info_list),
@@ -994,7 +1004,7 @@ class AdminApprHostService:
                 return host_info_list, pagination_response
         except Exception as e:
             logger.error(
-                f"数据库操作失败: {type(e).__name__}: {str(e)}",
+                f"Database operation failed: {type(e).__name__}: {str(e)}",
                 extra={
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -1005,29 +1015,29 @@ class AdminApprHostService:
             raise
 
     @handle_service_errors(
-        error_message="查询待审批主机详情失败",
+        error_message="Failed to query pending approval host detail",
         error_code="QUERY_APPR_HOST_DETAIL_FAILED",
     )
     async def get_appr_host_detail(self, host_id: int, locale: str = "zh_CN") -> AdminApprHostDetailResponse:
-        """查询待审批主机详情
+        """Query pending approval host detail
 
-        业务逻辑：
-        1. 查询 host_rec 表 id = host_id 的数据
-        2. 关联 host_hw_rec 表，查询 sync_state = 1 的数据
-        3. 按 host_hw_rec.created_time 倒序排序
-        4. 密码字段需要 AES 解密
+        Business logic:
+        1. Query host_rec table data where id = host_id
+        2. Join host_hw_rec table, query data with sync_state = 1
+        3. Order by host_hw_rec.created_time descending
+        4. Password field needs AES decryption
 
         Args:
-            host_id: 主机ID（host_rec.id）
+            host_id: Host ID (host_rec.id)
 
         Returns:
-            AdminApprHostDetailResponse: 待审批主机详情信息
+            AdminApprHostDetailResponse: Pending approval host detail information
 
         Raises:
-            BusinessError: 主机不存在时
+            BusinessError: When host does not exist
         """
         logger.info(
-            "开始查询待审批主机详情",
+            "Start querying pending approval host detail",
             extra={
                 "host_id": host_id,
             },
@@ -1035,16 +1045,16 @@ class AdminApprHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 验证主机是否存在且未删除（使用工具函数）
+            # 1. Verify if host exists and is not deleted (using utility function)
             host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
 
-            # 2. 查询 host_hw_rec 表 sync_state=1 的所有记录（按 created_time 倒序）
+            # 2. Query all records from host_hw_rec table with sync_state=1 (ordered by created_time descending)
             hw_stmt = (
                 select(HostHwRec)
                 .where(
                     and_(
                         HostHwRec.host_id == host_id,
-                        HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1（待同步）
+                        HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1 (pending sync)
                         HostHwRec.del_flag == 0,
                     )
                 )
@@ -1053,39 +1063,39 @@ class AdminApprHostService:
             hw_result = await session.execute(hw_stmt)
             hw_recs = hw_result.scalars().all()
 
-            # 3. 解密密码（AES加密）
+            # 3. Decrypt ***REMOVED***word (AES encrypted)
             ***REMOVED*** = None
             if host_rec.host_pwd:
                 try:
                     ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
                     if ***REMOVED***:
                         logger.debug(
-                            "密码解密成功",
+                            "Password decryption succeeded",
                             extra={
                                 "host_id": host_id,
                             },
                         )
                     else:
                         logger.warning(
-                            "密码解密失败（返回None）",
+                            "Password decryption failed (returned None)",
                             extra={
                                 "host_id": host_id,
-                                "note": "可能是密码格式不正确或加密方式不匹配",
+                                "note": "Password format may be incorrect or encryption method mismatch",
                             },
                         )
                 except Exception as e:
                     logger.warning(
-                        "密码解密异常",
+                        "Password decryption exception",
                         extra={
                             "host_id": host_id,
                             "error": str(e),
                             "error_type": type(e).__name__,
                         },
                     )
-                    # 解密失败时返回 None，而不是抛出异常
+                    # Return None when decryption fails, instead of raising exception
                     ***REMOVED*** = None
 
-            # 4. 构建硬件信息列表
+            # 4. Build hardware information list
             hw_list: List[AdminApprHostHwInfo] = []
             diff_state: Optional[int] = None
 
@@ -1096,11 +1106,12 @@ class AdminApprHostService:
                 )
                 hw_list.append(hw_info)
 
-            # 获取最新一条硬件记录的 diff_state（已按 created_time 倒序排序，第一条为最新）
+            # Get diff_state of the latest hardware record
+            # (already ordered by created_time descending, first one is latest)
             if hw_recs:
                 diff_state = hw_recs[0].diff_state
 
-            # 5. 构建响应数据
+            # 5. Build response data
             detail = AdminApprHostDetailResponse(
                 mg_id=host_rec.mg_id,
                 mac=host_rec.mac_addr,
@@ -1114,7 +1125,7 @@ class AdminApprHostService:
             )
 
             logger.info(
-                "查询待审批主机详情完成",
+                "Query pending approval host detail completed",
                 extra={
                     "host_id": host_id,
                     "hw_list_count": len(hw_list),
@@ -1125,32 +1136,32 @@ class AdminApprHostService:
             return detail
 
     @handle_service_errors(
-        error_message="同意启用主机失败",
+        error_message="Failed to approve hosts",
         error_code="APPROVE_HOST_FAILED",
     )
     async def approve_hosts(
         self, request: AdminApprHostApproveRequest, appr_by: int, locale: str = "zh_CN", http_request=None
     ) -> AdminApprHostApproveResponse:
-        """同意启用主机（管理后台）
+        """Approve hosts (admin backend)
 
-        业务逻辑：
-        - diff_type is None: 手动启用，仅更新本地状态（状态 5/6 时调用外部接口）
-        - diff_type == 1 or 2: 硬件变更审批，需要处理硬件记录并调用外部接口
+        Business logic:
+        - diff_type is None: Manual enable, only update local state (call external API when state is 5/6)
+        - diff_type == 1 or 2: Hardware change approval, need to process hardware records and call external API
 
         Args:
-            request: 同意启用请求参数（diff_type, host_ids）
-            appr_by: 审批人ID（从 token 中获取）
-            locale: 语言偏好
-            http_request: FastAPI Request 对象
+            request: Approve enable request parameters (diff_type, host_ids)
+            appr_by: Approver ID (obtained from token)
+            locale: Language preference
+            http_request: FastAPI Request object
 
         Returns:
-            AdminApprHostApproveResponse: 包含处理结果和统计信息
+            AdminApprHostApproveResponse: Contains processing results and statistics
 
         Raises:
-            BusinessError: 参数验证失败或业务逻辑错误时
+            BusinessError: When parameter validation fails or business logic error occurs
         """
         logger.info(
-            "开始同意启用主机",
+            "Start approving hosts",
             extra={
                 "diff_type": request.diff_type,
                 "host_ids": request.host_ids,
@@ -1158,7 +1169,7 @@ class AdminApprHostService:
             },
         )
 
-        # 1. 验证参数并解析 host_ids
+        # 1. Validate parameters and resolve host_ids
         host_ids_to_process = await self._validate_and_resolve_host_ids(request, locale)
 
         if not host_ids_to_process:
@@ -1176,7 +1187,7 @@ class AdminApprHostService:
                 results: List[Dict[str, Any]] = []
                 now = datetime.now(timezone.utc)
 
-                # 2. 批量查询所有主机信息（避免 N+1 查询）
+                # 2. Batch query all host information (avoid N+1 queries)
                 host_stmt = select(HostRec).where(
                     and_(
                         HostRec.id.in_(host_ids_to_process),
@@ -1186,30 +1197,30 @@ class AdminApprHostService:
                 host_result = await session.execute(host_stmt)
                 host_recs_map = {host.id: host for host in host_result.scalars().all()}
 
-                # 3. 根据 diff_type 处理
+                # 3. Process based on diff_type
                 host_updates: Dict[int, Dict[str, Any]] = {}
                 hw_updates: Dict[int, Dict[str, Any]] = {}
 
                 if request.diff_type is None:
-                    # 手动启用：处理每个主机
-                    # 查询需要硬件记录的主机（状态 5/6）
+                    # Manual enable: Process each host
+                    # Query hosts that need hardware records (state 5/6)
                     host_ids_need_hw = [
                         host_id
                         for host_id in host_ids_to_process
                         if host_recs_map.get(host_id) and host_recs_map[host_id].host_state in (5, 6)
                     ]
 
-                    # 批量查询硬件记录（仅最新一条）
+                    # Batch query hardware records (only latest one)
                     hw_recs_by_host = {}
                     if host_ids_need_hw:
                         hw_recs_by_host = await self._query_hardware_records(
                             session, host_ids_need_hw, sync_state=None, need_latest_only=True
                         )
 
-                    # 处理每个主机
+                    # Process each host
                     for host_id in host_ids_to_process:
                         try:
-                            # 验证主机存在
+                            # Validate host exists
                             host_rec = self._validate_host_exists(host_id, host_recs_map, locale)
                             if not host_rec:
                                 error_message = t("error.host.not_found", locale=locale, host_id=host_id)
@@ -1223,7 +1234,7 @@ class AdminApprHostService:
                                 failed_count += 1
                                 continue
 
-                            # 处理手动启用
+                            # Process manual enable
                             hw_recs = hw_recs_by_host.get(host_id, [])
                             process_result = await self._process_manual_enable(
                                 host_id, host_rec, hw_recs, appr_by, http_request, locale
@@ -1241,7 +1252,7 @@ class AdminApprHostService:
 
                         except Exception as e:
                             logger.error(
-                                "处理主机时发生异常",
+                                "Exception occurred while processing host",
                                 extra={
                                     "host_id": host_id,
                                     "error": str(e),
@@ -1253,16 +1264,16 @@ class AdminApprHostService:
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": f"处理失败: {str(e)}",
+                                    "message": f"Processing failed: {str(e)}",
                                 }
                             )
                             failed_count += 1
                             continue
 
-                    # 批量更新 host_rec 表
+                    # Bulk update host_rec table
                     await self._bulk_update_host_records(session, host_updates)
 
-                    # 提交事务
+                    # Commit transaction
                     await session.commit()
 
                     return AdminApprHostApproveResponse(
@@ -1272,24 +1283,24 @@ class AdminApprHostService:
                     )
 
                 else:
-                    # 硬件变更审批（diff_type == 1 or 2）
-                    # 批量查询硬件记录
+                    # Hardware change approval (diff_type == 1 or 2)
+                    # Batch query hardware records
                     hw_recs_by_host = await self._query_hardware_records(
                         session, host_ids_to_process, sync_state=SYNC_STATE_WAIT, need_latest_only=False
                     )
 
                     logger.debug(
-                        "批量查询硬件记录完成",
+                        "Batch query hardware records completed",
                         extra={
                             "host_ids_count": len(host_ids_to_process),
                             "found_hosts_count": len(hw_recs_by_host),
                         },
                     )
 
-                    # 处理每个主机
+                    # Process each host
                     for host_id in host_ids_to_process:
                         try:
-                            # 验证主机存在
+                            # Validate host exists
                             host_rec = self._validate_host_exists(host_id, host_recs_map, locale)
                             if not host_rec:
                                 error_message = t("error.host.not_found", locale=locale, host_id=host_id)
@@ -1303,7 +1314,7 @@ class AdminApprHostService:
                                 failed_count += 1
                                 continue
 
-                            # 处理硬件变更审批
+                            # Process hardware change approval
                             hw_recs = hw_recs_by_host.get(host_id, [])
                             process_result = await self._process_hardware_change_approval(
                                 host_id, host_rec, hw_recs, appr_by, http_request, locale, session
@@ -1323,11 +1334,11 @@ class AdminApprHostService:
                             success_count += 1
 
                         except BusinessError:
-                            # 业务错误直接抛出
+                            # Business errors are raised directly
                             raise
                         except Exception as e:
                             logger.error(
-                                "处理主机时发生异常",
+                                "Exception occurred while processing host",
                                 extra={
                                     "host_id": host_id,
                                     "error": str(e),
@@ -1344,24 +1355,24 @@ class AdminApprHostService:
                                         locale=locale,
                                         host_id=host_id,
                                         error=str(e),
-                                        default=f"处理失败: {str(e)}",
+                                        default=f"Processing failed: {str(e)}",
                                     ),
                                 }
                             )
                             failed_count += 1
                             continue
 
-                    # 批量更新硬件记录
+                    # Bulk update hardware records
                     await self._bulk_update_hardware_records(session, hw_updates, now, appr_by)
 
-                    # 批量更新主机记录
+                    # Bulk update host records
                     await self._bulk_update_host_records(session, host_updates)
 
-                # 提交事务
+                # Commit transaction
                 await session.commit()
 
                 logger.info(
-                    "同意启用主机处理完成",
+                    "Approve hosts processing completed",
                     extra={
                         "diff_type": request.diff_type,
                         "total_count": len(host_ids_to_process),
@@ -1371,19 +1382,19 @@ class AdminApprHostService:
                     },
                 )
 
-                # 邮件通知（仅硬件变更审批时发送）
+                # Email notification (only sent for hardware change approval)
                 email_notification_errors: List[str] = []
                 if request.diff_type in (1, 2):
                     email_notification_errors = await send_approval_email(session, results, appr_by, locale)
 
-                # 构建响应
+                # Build response
                 response_data = AdminApprHostApproveResponse(
                     success_count=success_count,
                     failed_count=failed_count,
                     results=results,
                 )
 
-                # 如果有邮件通知错误，添加到响应中（不影响成功状态）
+                # If there are email notification errors, add to response (does not affect success status)
                 if email_notification_errors:
                     response_data.results.append(
                         {
@@ -1396,10 +1407,10 @@ class AdminApprHostService:
                 return response_data
 
             except Exception as e:
-                # 回滚事务
+                # Rollback transaction
                 await session.rollback()
                 logger.error(
-                    "同意启用主机事务回滚",
+                    "Approve hosts transaction rolled back",
                     extra={
                         "diff_type": request.diff_type,
                         "host_ids": request.host_ids,
@@ -1409,7 +1420,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"同意启用主机失败: {str(e)}",
+                    message=f"Failed to approve hosts: {str(e)}",
                     message_key="error.host.approve_failed",
                     error_code="APPROVE_HOST_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -1417,57 +1428,57 @@ class AdminApprHostService:
                     details={
                         "diff_type": request.diff_type,
                         "host_ids": request.host_ids,
-                        "error": str(e),  # ✅ 添加 error 字段用于翻译格式化
+                        "error": str(e),  # ✅ Add error field for translation formatting
                     },
                 )
 
     @handle_service_errors(
-        error_message="设置维护通知邮箱失败",
+        error_message="Failed to set maintain email",
         error_code="SET_MAINTAIN_EMAIL_FAILED",
     )
     async def set_maintain_email(
         self, request: AdminMaintainEmailRequest, operator_id: int
     ) -> AdminMaintainEmailResponse:
-        """设置维护通知邮箱（管理后台）
+        """Set maintain notification email (admin backend)
 
-        业务逻辑：
-        1. 格式化邮箱：去除空格，全角逗号转为半角逗号
-        2. 查询 sys_conf 表，conf_key = "email"
-        3. 如果不存在则插入，如果存在则更新 conf_val
+        Business logic:
+        1. Format email: Remove spaces, convert full-width comma to half-width comma
+        2. Query sys_conf table, conf_key = "email"
+        3. Insert if not exists, update conf_val if exists
 
         Args:
-            request: 维护通知邮箱设置请求参数
-            operator_id: 操作人ID（从 token 中获取）
+            request: Maintain notification email setting request parameters
+            operator_id: Operator ID (obtained from token)
 
         Returns:
-            AdminMaintainEmailResponse: 包含设置结果
+            AdminMaintainEmailResponse: Contains setting result
 
         Raises:
-            BusinessError: 参数验证失败或数据库操作失败时
+            BusinessError: When parameter validation fails or database operation fails
         """
         logger.info(
-            "开始设置维护通知邮箱",
+            "Start setting maintain notification email",
             extra={
                 "email": request.email,
                 "operator_id": operator_id,
             },
         )
 
-        # 1. 格式化邮箱：去除空格，全角逗号转为半角逗号
+        # 1. Format email: Remove spaces, convert full-width comma to half-width comma
         formatted_email = request.email.strip()
-        # 去除所有空格
+        # Remove all spaces
         formatted_email = "".join(formatted_email.split())
-        # 全角逗号（，）转为半角逗号（,）
+        # Convert full-width comma (，) to half-width comma (,)
         formatted_email = formatted_email.replace("，", ",")
-        # 去除多余逗号（连续逗号）
+        # Remove redundant commas (consecutive commas)
         while ",," in formatted_email:
             formatted_email = formatted_email.replace(",,", ",")
-        # 去除首尾逗号
+        # Remove leading and trailing commas
         formatted_email = formatted_email.strip(",")
 
         if not formatted_email:
             raise BusinessError(
-                message="邮箱地址不能为空",
+                message="Email address cannot be empty",
                 message_key="error.email.empty",
                 error_code="EMAIL_EMPTY",
                 code=ServiceErrorCodes.VALIDATION_ERROR,
@@ -1477,7 +1488,7 @@ class AdminApprHostService:
         session_factory = self.session_factory
         async with session_factory() as session:
             try:
-                # 2. 查询 sys_conf 表，conf_key = "email"
+                # 2. Query sys_conf table, conf_key = "email"
                 stmt = select(SysConf).where(
                     and_(
                         SysConf.conf_key == "email",
@@ -1490,18 +1501,19 @@ class AdminApprHostService:
                 duplicate_ids = [conf.id for conf in sys_conf_rows[1:]]
                 if duplicate_ids:
                     logger.warning(
-                        "检测到重复的维护通知邮箱配置，自动清理多余记录",
+                        (
+                            "Duplicate maintain notification email configurations detected, "
+                            "automatically cleaning up redundant records"
+                        ),
                         extra={"duplicate_ids": duplicate_ids},
                     )
                     cleanup_stmt = (
-                        update(SysConf)
-                        .where(SysConf.id.in_(duplicate_ids))
-                        .values(del_flag=1, updated_by=operator_id)
+                        update(SysConf).where(SysConf.id.in_(duplicate_ids)).values(del_flag=1, updated_by=operator_id)
                     )
                     await session.execute(cleanup_stmt)
 
                 if sys_conf:
-                    # 3. 如果存在则更新
+                    # 3. Update if exists
                     update_stmt = (
                         update(SysConf)
                         .where(SysConf.id == sys_conf.id)
@@ -1512,7 +1524,7 @@ class AdminApprHostService:
                     )
                     await session.execute(update_stmt)
                     logger.info(
-                        "维护通知邮箱已更新",
+                        "Maintain notification email updated",
                         extra={
                             "conf_id": sys_conf.id,
                             "old_email": sys_conf.conf_val,
@@ -1521,18 +1533,18 @@ class AdminApprHostService:
                         },
                     )
                 else:
-                    # 4. 如果不存在则插入
+                    # 4. Insert if not exists
                     new_sys_conf = SysConf(
                         conf_key="email",
                         conf_val=formatted_email,
-                        conf_name="维护通知邮箱",
-                        state_flag=0,  # 启用状态
+                        conf_name="Maintain Notification Email",
+                        state_flag=0,  # Enabled state
                         created_by=operator_id,
                         updated_by=operator_id,
                     )
                     session.add(new_sys_conf)
                     logger.info(
-                        "维护通知邮箱已创建",
+                        "Maintain notification email created",
                         extra={
                             "conf_key": "email",
                             "conf_val": formatted_email,
@@ -1540,11 +1552,11 @@ class AdminApprHostService:
                         },
                     )
 
-                # 提交事务
+                # Commit transaction
                 await session.commit()
 
                 logger.info(
-                    "设置维护通知邮箱完成",
+                    "Set maintain notification email completed",
                     extra={
                         "conf_key": "email",
                         "conf_val": formatted_email,
@@ -1559,10 +1571,10 @@ class AdminApprHostService:
                 )
 
             except Exception as e:
-                # 回滚事务
+                # Rollback transaction
                 await session.rollback()
                 logger.error(
-                    "设置维护通知邮箱事务回滚",
+                    "Set maintain notification email transaction rolled back",
                     extra={
                         "email": formatted_email,
                         "operator_id": operator_id,
@@ -1572,7 +1584,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"设置维护通知邮箱失败: {str(e)}",
+                    message=f"Failed to set maintain notification email: {str(e)}",
                     message_key="error.email.set_failed",
                     error_code="SET_MAINTAIN_EMAIL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -1584,31 +1596,31 @@ class AdminApprHostService:
                 )
 
     @handle_service_errors(
-        error_message="获取维护通知邮箱失败",
+        error_message="Failed to get maintain email",
         error_code="GET_MAINTAIN_EMAIL_FAILED",
     )
     async def get_maintain_email(self) -> AdminMaintainEmailResponse:
-        """获取维护通知邮箱（管理后台）
+        """Get maintain notification email (admin backend)
 
-        业务逻辑：
-        1. 查询 sys_conf 表，conf_key = "email", state_flag = 0, del_flag = 0
-        2. 返回 conf_val 值
+        Business logic:
+        1. Query sys_conf table, conf_key = "email", state_flag = 0, del_flag = 0
+        2. Return conf_val value
 
         Returns:
-            AdminMaintainEmailResponse: 包含邮箱配置信息
+            AdminMaintainEmailResponse: Contains email configuration information
 
         Raises:
-            BusinessError: 数据库操作失败时
+            BusinessError: When database operation fails
         """
         log_operation_start(
-            "获取维护通知邮箱",
+            "Get maintain notification email",
             logger_instance=logger,
         )
 
         session_factory = self.session_factory
         async with session_factory() as session:
             try:
-                # 查询 sys_conf 表
+                # Query sys_conf table
                 stmt = (
                     select(SysConf)
                     .where(
@@ -1625,17 +1637,17 @@ class AdminApprHostService:
                 sys_conf = result.scalar_one_or_none()
 
                 if not sys_conf:
-                    # 如果不存在，返回空字符串
-                    logger.info("维护通知邮箱配置不存在，返回空值")
+                    # If not exists, return empty string
+                    logger.info("Maintain notification email configuration does not exist, returning empty value")
                     return AdminMaintainEmailResponse(
                         conf_key="email",
                         conf_val="",
                     )
 
-                # 返回配置值
+                # Return configuration value
                 conf_val = sys_conf.conf_val or ""
                 logger.info(
-                    "获取维护通知邮箱成功",
+                    "Get maintain notification email succeeded",
                     extra={
                         "conf_key": sys_conf.conf_key,
                         "conf_val_length": len(conf_val),
@@ -1649,7 +1661,7 @@ class AdminApprHostService:
 
             except Exception as e:
                 logger.error(
-                    "获取维护通知邮箱失败",
+                    "Failed to get maintain notification email",
                     extra={
                         "error": str(e),
                         "error_type": type(e).__name__,
@@ -1657,7 +1669,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"获取维护通知邮箱失败: {str(e)}",
+                    message=f"Failed to get maintain notification email: {str(e)}",
                     message_key="error.email.get_failed",
                     error_code="GET_MAINTAIN_EMAIL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,

@@ -1,7 +1,7 @@
 """
-OAuth 2.0设备数据模型
+OAuth 2.0 Device Data Model
 
-将host_rec表改造为OAuth 2.0设备表
+Transform host_rec table into OAuth 2.0 device table
 """
 
 from datetime import datetime
@@ -10,11 +10,11 @@ from typing import Optional
 from sqlalchemy import JSON, Boolean, DateTime, Integer, SmallInteger, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from shared.common.database import Base
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     import os
     import sys
 
@@ -23,56 +23,58 @@ except ImportError:
 
 
 class Device(Base):
-    """OAuth 2.0设备模型（基于host_rec表改造）"""
+    """OAuth 2.0 Device Model (based on transformation of host_rec table)"""
 
     __tablename__ = "devices"
 
-    # 主键（复用host_rec的主键）
-    id: Mapped[int] = mapped_column(primary_key=True, comment="主键（复用host_rec.id）")
+    # Primary key (reuse host_rec's primary key)
+    id: Mapped[int] = mapped_column(primary_key=True, comment="Primary key (reuse host_rec.id)")
 
-    # 设备标识（对应mg_id）
+    # Device identifier (corresponds to mg_id)
     device_id: Mapped[str] = mapped_column(
-        String(128), nullable=False, unique=True, index=True, comment="设备唯一标识（原mg_id）"
+        String(128), nullable=False, unique=True, index=True, comment="Unique device identifier (original mg_id)"
     )
 
-    # 设备密钥（对应host_acct或生成的新密钥）
-    device_secret_hash: Mapped[str] = mapped_column(String(255), nullable=False, comment="设备密钥哈希")
+    # Device secret (corresponds to host_acct or generated new secret)
+    device_secret_hash: Mapped[str] = mapped_column(String(255), nullable=False, comment="Device secret hash")
 
-    # 设备基本信息
-    device_type: Mapped[str] = mapped_column(String(100), nullable=False, default="iot", comment="设备类型")
-    device_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="设备名称")
+    # Basic device information
+    device_type: Mapped[str] = mapped_column(String(100), nullable=False, default="iot", comment="Device type")
+    device_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="Device name")
 
-    # 网络信息（保留原有字段）
-    host_ip: Mapped[str] = mapped_column(String(32), nullable=False, comment="主机IP地址")
-    host_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="主机端口")
+    # Network information (preserve existing fields)
+    host_ip: Mapped[str] = mapped_column(String(32), nullable=False, comment="Host IP address")
+    host_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Host port")
 
-    # 设备状态
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, comment="是否激活")
-    permissions: Mapped[Optional[str]] = mapped_column(JSON, nullable=True, default=["device"], comment="设备权限")
+    # Device status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, comment="Is active")
+    permissions: Mapped[Optional[str]] = mapped_column(
+        JSON, nullable=True, default=["device"], comment="Device permissions"
+    )
     last_seen: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True, comment="最后在线时间"
+        DateTime(timezone=True), nullable=True, comment="Last online time"
     )
 
-    # 扩展信息
-    device_metadata: Mapped[Optional[str]] = mapped_column(JSON, nullable=True, default={}, comment="设备元数据")
+    # Extended information
+    device_metadata: Mapped[Optional[str]] = mapped_column(JSON, nullable=True, default={}, comment="Device metadata")
 
-    # 时间字段（复用原有字段）
+    # Time fields (reuse existing fields)
     created_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=func.now(), nullable=False, comment="创建时间"
+        DateTime(timezone=True), default=func.now(), nullable=False, comment="Creation time"
     )
     updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=func.now(),
         onupdate=func.now(),
         nullable=False,
-        comment="更新时间",
+        comment="Update time",
     )
 
-    # 删除标识（复用原有字段）
+    # Deletion flag (reuse existing field)
     del_flag: Mapped[int] = mapped_column(
-        SmallInteger, default=0, nullable=False, comment="删除标识;{useing: 0, 使用中. del: 1, 删除.}"
+        SmallInteger, default=0, nullable=False, comment="Deletion flag;{useing: 0, in use. del: 1, deleted.}"
     )
 
     def __repr__(self) -> str:
-        """字符串表示"""
+        """String representation"""
         return f"<Device(id={self.id}, device_id={self.device_id}, host_ip={self.host_ip})>"

@@ -1,9 +1,9 @@
 """
-主机验证工具函数
+Host Validation Utility Functions
 
-提供主机相关的验证和查询构建功能，减少代码重复。
+Provides validation and query building functions related to hosts, reducing code duplication.
 
-注意：这些函数需要在服务内部使用，因为它们依赖于服务特定的模型类。
+Note: These functions need to be used internally within services, as they depend on service-specific model classes.
 """
 
 import os
@@ -13,7 +13,7 @@ from typing import Optional, Type, TypeVar
 from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n import t
@@ -26,7 +26,7 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# 类型变量，用于表示主机模型类
+# Type variable, used to represent the host model class
 T = TypeVar("T")
 
 
@@ -37,39 +37,39 @@ async def validate_host_exists(
     locale: str = "zh_CN",
     raise_on_not_found: bool = True,
 ) -> Optional[T]:
-    """验证主机是否存在且未删除
+    """Validate that the host exists and is not deleted
 
     Args:
-        session: 数据库会话
-        host_model: 主机模型类（如 HostRec）
-        host_id: 主机ID
-        locale: 语言代码（用于错误消息）
-        raise_on_not_found: 如果主机不存在是否抛出异常
+        session: Database session
+        host_model: Host model class (e.g., HostRec)
+        host_id: Host ID
+        locale: Language code (for error messages)
+        raise_on_not_found: Whether to raise an exception if the host does not exist
 
     Returns:
-        主机记录，如果不存在且不抛出异常则返回 None
+        Host record, or None if it does not exist and not raising an exception
 
     Raises:
-        BusinessError: 如果主机不存在且 raise_on_not_found=True
+        BusinessError: If the host does not exist and raise_on_not_found=True
 
     Example:
         ```python
         from app.models.host_rec import HostRec
 
-        # 验证主机存在（不存在时抛出异常）
+        # Validate host exists (raises exception if not found)
         host_rec = await validate_host_exists(session, HostRec, host_id=123)
 
-        # 验证主机存在（不存在时返回 None）
+        # Validate host exists (returns None if not found)
         host_rec = await validate_host_exists(session, HostRec, host_id=123, raise_on_not_found=False)
         if not host_rec:
-            # 处理主机不存在的情况
+            # Handle case where host does not exist
             ***REMOVED***
         ```
     """
     stmt = select(host_model).where(
         and_(
             host_model.id == host_id,
-            host_model.del_flag == 0,  # 只检查未删除的记录
+            host_model.del_flag == 0,  # Only check records that are not deleted
         )
     )
     result = await session.execute(stmt)
@@ -78,7 +78,7 @@ async def validate_host_exists(
     if not host_rec:
         if raise_on_not_found:
             logger.warning(
-                "主机不存在或已删除",
+                "Host does not exist or has been deleted",
                 extra={
                     "host_id": host_id,
                 },
@@ -106,30 +106,30 @@ def build_host_query(
     mg_id: Optional[str] = None,
     mac_addr: Optional[str] = None,
 ) -> Select:
-    """构建主机查询语句
+    """Build host query statement
 
     Args:
-        host_model: 主机模型类（如 HostRec）
-        host_id: 主机ID（可选）
-        include_deleted: 是否包含已删除的记录
-        host_state: 主机状态（可选）
-        appr_state: 审批状态（可选）
-        mg_id: 唯一引导ID（可选，支持模糊匹配）
-        mac_addr: MAC地址（可选，支持模糊匹配）
+        host_model: Host model class (e.g., HostRec)
+        host_id: Host ID (optional)
+        include_deleted: Whether to include deleted records
+        host_state: Host state (optional)
+        appr_state: Approval state (optional)
+        mg_id: Unique boot ID (optional, supports fuzzy matching)
+        mac_addr: MAC address (optional, supports fuzzy matching)
 
     Returns:
-        SQLAlchemy Select 语句
+        SQLAlchemy Select statement
 
     Example:
         ```python
         from app.models.host_rec import HostRec
 
-        # 查询单个主机
+        # Query single host
         stmt = build_host_query(HostRec, host_id=123)
         result = await session.execute(stmt)
         host = result.scalar_one_or_none()
 
-        # 查询特定状态的主机
+        # Query hosts with specific state
         stmt = build_host_query(HostRec, host_state=0, appr_state=1)
         result = await session.execute(stmt)
         hosts = result.scalars().all()
@@ -168,32 +168,32 @@ def parse_host_id(
     error_message: Optional[str] = None,
     error_code: str = "INVALID_HOST_ID",
 ) -> int:
-    """解析主机ID字符串为整数
+    """Parse host ID string to integer
 
-    统一处理主机ID格式验证逻辑，减少重复代码。
+    Unified handling of host ID format validation logic, reducing duplicate code.
 
     Args:
-        host_id: 主机ID字符串
-        raise_on_error: 如果格式无效是否抛出异常
-        error_message: 自定义错误消息（如果为 None 则使用默认消息）
-        error_code: 错误代码
+        host_id: Host ID string
+        raise_on_error: Whether to raise an exception if the format is invalid
+        error_message: Custom error message (uses default message if None)
+        error_code: Error code
 
     Returns:
-        解析后的主机ID（整数）
+        Parsed host ID (integer)
 
     Raises:
-        BusinessError: 如果格式无效且 raise_on_error=True
+        BusinessError: If the format is invalid and raise_on_error=True
 
     Example:
         ```python
-        # 解析主机ID（无效时抛出异常）
+        # Parse host ID (raises exception if invalid)
         host_id_int = parse_host_id("123")
 
-        # 解析主机ID（无效时返回 None）
+        # Parse host ID (returns None if invalid)
         try:
             host_id_int = parse_host_id("invalid", raise_on_error=True)
         except BusinessError:
-            # 处理错误
+            # Handle error
             ***REMOVED***
         ```
     """
@@ -202,7 +202,7 @@ def parse_host_id(
     except (ValueError, TypeError) as e:
         if raise_on_error:
             logger.warning(
-                "主机ID格式无效",
+                "Invalid host ID format",
                 extra={
                     "host_id": host_id,
                     "error_type": type(e).__name__,
@@ -210,7 +210,7 @@ def parse_host_id(
                 },
             )
             raise BusinessError(
-                message=error_message or "主机ID格式无效",
+                message=error_message or "Invalid host ID format",
                 error_code=error_code,
                 code=400,
                 details={"host_id": host_id},

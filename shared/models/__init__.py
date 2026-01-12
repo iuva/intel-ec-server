@@ -1,6 +1,6 @@
 """
-共享数据模型模块
+Shared Data Models Module
 
-定义所有微服务共享的数据模型和数据库实体，
-如公共数据结构、基础模型等。
+Defines data models and database entities shared by all microservices,
+such as common data structures, base models, etc.
 """

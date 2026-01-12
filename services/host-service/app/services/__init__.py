@@ -1,6 +1,6 @@
-"""Host Service 业务服务模块
+"""Host Service business services module
 
-包含所有主机相关的业务逻辑服务类。
+Contains all host-related business logic service classes.
 """
 
 from app.services.agent_websocket_manager import AgentWebSocketManager

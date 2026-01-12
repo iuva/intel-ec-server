@@ -1,13 +1,13 @@
 """
-统一的健康检查路由模块
+Unified health check routing module
 
-提供标准化的健康检查端点，用于所有微服务。
+Provides standardized health check endpoints for all microservices.
 
-特性：
-- 统一的 /health 端点
-- 检查数据库、Redis 等依赖服务
-- 返回结构化的健康状态信息
-- 支持降级模式
+Features:
+- Unified /health endpoint
+- Check dependent services such as database and Redis
+- Return structured health status information
+- Support degradation mode
 """
 
 from fastapi import APIRouter, FastAPI
@@ -21,16 +21,16 @@ router = APIRouter()
 @router.get("/health")
 async def health_check() -> SuccessResponse:
     """
-    健康检查端点
+    Health check endpoint
 
-    返回服务和依赖服务的健康状态。
+    Returns the health status of the service and its dependent services.
 
-    返回：
-        SuccessResponse，包含：
+    Returns:
+        SuccessResponse, containing:
         - status: overall/healthy/degraded/unhealthy
-        - components: 各组件（database/redis）的详细状态
+        - components: Detailed status of each component (database/redis)
 
-    示例响应：
+    Example response:
         ```json
         {
           "code": 200,
@@ -41,7 +41,7 @@ async def health_check() -> SuccessResponse:
               "redis": {"status": "healthy", "details": {...}}
             }
           },
-          "message": "服务状态: healthy"
+          "message": "Service status: healthy"
         }
         ```
     """
@@ -50,12 +50,12 @@ async def health_check() -> SuccessResponse:
 
 def include_health_routes(app: FastAPI) -> None:
     """
-    包含健康检查路由到应用
+    Include health check routes to the application
 
     Args:
-        app: FastAPI 应用实例
+        app: FastAPI application instance
 
-    示例：
+    Example:
         ```python
         from shared.app.health_routes import include_health_routes
 

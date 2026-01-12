@@ -1,7 +1,7 @@
 """
-WebSocket 认证中间件
+WebSocket authentication middleware
 
-提供 WebSocket 连接的令牌认证和授权功能
+Provides token authentication and authorization functionality for WebSocket connections
 """
 
 import os
@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi import WebSocket, WebSocketException
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.exceptions import AuthorizationError
     from shared.common.loguru_config import get_logger
@@ -26,75 +26,75 @@ logger = get_logger(__name__)
 
 
 class WebSocketAuthMiddleware:
-    """WebSocket 认证中间件
+    """WebSocket authentication middleware
 
-    提供以下功能：
-    - JWT 令牌验证
-    - 权限检查
-    - 会话管理
-    - 认证失败处理
+    Provides the following functionality:
+    - JWT token verification
+    - Permission checking
+    - Session management
+    - Authentication failure handling
     """
 
     def __init__(self, jwt_manager: Optional[JWTManager] = None):
-        """初始化认证中间件
+        """Initialize authentication middleware
 
         Args:
-            jwt_manager: JWT 管理器实例，如果为 None 则禁用认证
+            jwt_manager: JWT manager instance, if None then authentication is disabled
         """
         self.jwt_manager = jwt_manager
         self.logger = logger
 
     async def authenticate(self, websocket: WebSocket, require_auth: bool = False) -> Optional[Dict[str, Any]]:
-        """认证 WebSocket 连接
+        """Authenticate WebSocket connection
 
         Args:
-            websocket: WebSocket 连接对象
-            require_auth: 是否要求认证（True 则必须提供有效令牌）
+            websocket: WebSocket connection object
+            require_auth: Whether authentication is required (True means must provide valid token)
 
         Returns:
-            认证成功返回用户信息字典，认证失败或可选时返回 None
+            Returns user information dict on successful authentication, None on failure or when optional
 
         Raises:
-            WebSocketException: 认证失败时抛出异常
+            WebSocketException: Raises exception when authentication fails
         """
         try:
-            # 提取令牌
+            # Extract token
             token = self._extract_token(websocket)
 
             if not token:
                 if require_auth:
                     self.logger.warning(
-                        "WebSocket 连接缺少认证令牌",
+                        "WebSocket connection missing authentication token",
                         extra={
                             "client": websocket.client.host if websocket.client else "unknown",
                             "path": websocket.url.path,
                         },
                     )
-                    raise WebSocketException(code=1008, reason="缺少认证令牌")
+                    raise WebSocketException(code=1008, reason="Missing authentication token")
 
-                # 认证可选时返回 None
+                # Return None when authentication is optional
                 self.logger.debug(
-                    "WebSocket 连接未提供令牌，允许继续（认证可选）",
+                    "WebSocket connection did not provide token, allowing continuation (authentication optional)",
                     extra={"client": websocket.client.host if websocket.client else "unknown"},
                 )
                 return None
 
-            # 验证令牌
+            # Verify token
             if not self.jwt_manager:
-                self.logger.warning("JWT 管理器未配置，无法验证令牌")
+                self.logger.warning("JWT manager not configured, cannot verify token")
                 return None
 
             user_info = await self._verify_token(token)
             if not user_info:
                 self.logger.warning(
-                    "WebSocket 连接提供了无效令牌",
+                    "WebSocket connection provided invalid token",
                     extra={"client": websocket.client.host if websocket.client else "unknown"},
                 )
-                raise WebSocketException(code=1008, reason="无效令牌")
+                raise WebSocketException(code=1008, reason="Invalid token")
 
-            # 记录认证成功
+            # Log successful authentication
             self.logger.info(
-                "WebSocket 连接已认证",
+                "WebSocket connection authenticated",
                 extra={
                     "client": websocket.client.host if websocket.client else "unknown",
                     "id": user_info.get("id"),
@@ -108,49 +108,49 @@ class WebSocketAuthMiddleware:
             raise
         except Exception as e:
             self.logger.error(
-                f"WebSocket 认证异常: {e!s}",
+                f"WebSocket authentication exception: {e!s}",
                 extra={"error_type": type(e).__name__},
                 exc_info=True,
             )
-            raise WebSocketException(code=1011, reason="认证服务错误")
+            raise WebSocketException(code=1011, reason="Authentication service error")
 
     def _extract_token(self, websocket: WebSocket) -> Optional[str]:
-        """从 WebSocket 连接中提取令牌
+        """Extract token from WebSocket connection
 
-        支持多种令牌提供方式：
-        1. Authorization 查询参数: ?token=<token>
-        2. Authorization 请求头: Authorization: Bearer <token>
+        Supports multiple token provision methods:
+        1. Authorization query parameter: ?token=<token>
+        2. Authorization request header: Authorization: Bearer <token>
 
         Args:
-            websocket: WebSocket 连接对象
+            websocket: WebSocket connection object
 
         Returns:
-            令牌字符串，未找到返回 None
+            Token string, returns None if not found
         """
-        # 方式 1: 查询参数
+        # Method 1: Query parameter
         query_params = parse_qs(urlparse(str(websocket.url)).query)
         if "token" in query_params:
             token = query_params["token"][0]
-            self.logger.debug("从查询参数中提取令牌")
+            self.logger.debug("Extracted token from query parameter")
             return token
 
-        # 方式 2: Authorization 请求头
+        # Method 2: Authorization request header
         auth_header = websocket.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            token = auth_header[7:]  # 移除 "Bearer " 前缀
-            self.logger.debug("从 Authorization 头中提取令牌")
+            token = auth_header[7:]  # Remove "Bearer " prefix
+            self.logger.debug("Extracted token from Authorization header")
             return token
 
         return None
 
     async def _verify_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """验证 JWT 令牌
+        """Verify JWT token
 
         Args:
-            token: JWT 令牌字符串
+            token: JWT token string
 
         Returns:
-            令牌有效返回用户信息字典，无效返回 None
+            Returns user information dict if token is valid, None if invalid
         """
         if not self.jwt_manager:
             return None
@@ -158,19 +158,22 @@ class WebSocketAuthMiddleware:
         try:
             user_info = self.jwt_manager.verify_token(token)
             if user_info:
-                # ✅ 统一使用 id 字段（如果没有则从 sub 提取，兼容旧 token）
+                # ✅ Use id field uniformly (extract from sub if not present, compatible with old tokens)
                 user_id = user_info.get("id") or user_info.get("sub")
-                # 如果原始 user_info 没有 id 字段，添加它（兼容旧 token）
+                # If original user_info doesn't have id field, add it (compatible with old tokens)
                 if "id" not in user_info and user_id:
                     user_info["id"] = user_id
                 if not user_id:
-                    self.logger.warning("Token 验证成功但 id 为空", extra={"payload_keys": list(user_info.keys())})
+                    self.logger.warning(
+                        "Token verification successful but id is empty",
+                        extra={"payload_keys": list(user_info.keys())}
+                    )
                     return None
-                self.logger.debug("令牌验证成功", extra={"id": user_id})
+                self.logger.debug("Token verification successful", extra={"id": user_id})
             return user_info
 
         except Exception as e:
-            self.logger.debug("令牌验证失败", extra={"error": str(e)})
+            self.logger.debug("Token verification failed", extra={"error": str(e)})
             return None
 
     async def check_permissions(
@@ -178,24 +181,24 @@ class WebSocketAuthMiddleware:
         user_info: Optional[Dict[str, Any]],
         required_permissions: Optional[list] = None,
     ) -> bool:
-        """检查用户权限
+        """Check user permissions
 
         Args:
-            user_info: 用户信息字典
-            required_permissions: 必需的权限列表
+            user_info: User information dict
+            required_permissions: Required permissions list
 
         Returns:
-            权限检查通过返回 True，否则返回 False
+            Returns True if permission check ***REMOVED***es, False otherwise
 
         Raises:
-            AuthorizationError: 权限不足时抛出异常
+            AuthorizationError: Raises exception when permissions are insufficient
         """
         if not required_permissions:
-            # 无权限要求，允许访问
+            # No permission requirements, allow access
             return True
 
         if not user_info:
-            raise AuthorizationError("未认证用户无权访问")
+            raise AuthorizationError("Unauthenticated user has no access")
 
         user_permissions = set(user_info.get("permissions", []))
         required_perms = set(required_permissions)
@@ -203,13 +206,13 @@ class WebSocketAuthMiddleware:
         if not required_perms.issubset(user_permissions):
             missing_perms = required_perms - user_permissions
             self.logger.warning(
-                "用户权限不足",
+                "User has insufficient permissions",
                 extra={
                     "id": user_info.get("id"),
                     "required": list(required_perms),
                     "missing": list(missing_perms),
                 },
             )
-            raise AuthorizationError(f"缺少权限: {', '.join(missing_perms)}")
+            raise AuthorizationError(f"Missing permissions: {', '.join(missing_perms)}")
 
         return True

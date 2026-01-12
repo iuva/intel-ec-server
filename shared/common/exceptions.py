@@ -1,8 +1,8 @@
 """
-异常处理模块
+Exception handling module
 
-提供统一的业务异常类和错误码定义
-支持多语言消息
+Provides unified business exception classes and error code definitions
+Supports multilingual messages
 """
 
 import os
@@ -17,10 +17,10 @@ except ImportError:
 
 
 class BusinessError(Exception):
-    """业务异常基类
+    """Business exception base class
 
-    用于所有业务逻辑相关的异常
-    支持多语言消息（通过 message_key 自动翻译）
+    Used for all business logic related exceptions
+    Supports multilingual messages (automatic translation via message_key)
     """
 
     def __init__(
@@ -33,38 +33,38 @@ class BusinessError(Exception):
         message_key: Optional[str] = None,
         locale: Optional[str] = None,
     ) -> None:
-        """初始化业务异常
+        """Initialize business exception
 
         Args:
-            message: 错误消息（如果 message_key 提供，则 message 作为默认值）
-            error_code: 错误类型标识（自定义错误码，可以是任意整数，如 53009）
-            code: 自定义业务错误码（用于响应体）
-            http_status_code: HTTP状态码（用于HTTP响应，必须是有效的HTTP状态码 100-599）
-                             如果不提供，将使用 code 作为 HTTP 状态码
-            details: 错误详情
-            message_key: 翻译键（如果提供，将自动翻译 message）
-            locale: 语言代码（用于翻译 message_key）
+            message: Error message (if message_key is provided, message serves as default)
+            error_code: Error type identifier (custom error code, can be any integer, e.g., 53009)
+            code: Custom business error code (for response body)
+            http_status_code: HTTP status code (for HTTP response, must be valid HTTP status code 100-599)
+                             If not provided, code will be used as HTTP status code
+            details: Error details
+            message_key: Translation key (if provided, message will be automatically translated)
+            locale: Language code (for translating message_key)
         """
         self.message_key = message_key
         self.locale = locale or "en_US"
 
-        # 如果有 message_key，自动翻译
+        # If message_key exists, translate automatically
         if message_key:
-            # 从 details 中提取格式化变量
+            # Extract formatting variables from details
             message_kwargs = details or {}
             translated_message = t(message_key, locale=self.locale, default=message, **message_kwargs)
             self.message = translated_message
         else:
             self.message = message
 
-        self.error_code = error_code  # 错误码标识
-        self.code = code  # 自定义错误码（在响应体中）
-        # 确保 http_status_code 是有效的 HTTP 状态码
+        self.error_code = error_code  # Error code identifier
+        self.code = code  # Custom error code (in response body)
+        # Ensure http_status_code is a valid HTTP status code
         if http_status_code is None:
-            # 如果 code 是有效的 HTTP 状态码，使用 code；否则默认为 400
+            # If code is a valid HTTP status code, use code; otherwise default to 400
             self.http_status_code = code if 100 <= code < 600 else 400
         else:
-            # 确保提供的状态码是有效的
+            # Ensure the provided status code is valid
             self.http_status_code = http_status_code if 100 <= http_status_code < 600 else 400
         self.details = details or {}
         super().__init__(self.message)
@@ -76,191 +76,191 @@ class BusinessError(Exception):
         return f"BusinessError(code={self.code}, error_code='{self.error_code}', message='{self.message}')"
 
 
-# ==================== 错误码前缀定义 ====================
+# ==================== Error Code Prefix Definitions ====================
 
 
 class ErrorCodePrefix:
-    """服务级错误码前缀定义"""
+    """Service-level error code prefix definitions"""
 
-    GATEWAY = 10000  # 网关服务 (10001-10999)
-    AUTH = 51000  # 认证服务 (51001-51999)
-    ADMIN = 52000  # 管理服务 (52001-52999)
-    HOST = 53000  # 主机服务 (53001-53999)
+    GATEWAY = 10000  # Gateway service (10001-10999)
+    AUTH = 51000  # Authentication service (51001-51999)
+    ADMIN = 52000  # Management service (52001-52999)
+    HOST = 53000  # Host service (53001-53999)
 
 
 class ServiceErrorCodes:
-    """微服务统一错误码生成器"""
+    """Microservice unified error code generator"""
 
-    # 网关服务错误码 (10001-10999)
-    GATEWAY_SERVICE_NOT_FOUND = 10001  # 服务不存在
-    GATEWAY_SERVICE_UNAVAILABLE = 10002  # 服务不可用
-    GATEWAY_CONNECTION_FAILED = 10003  # 后端连接失败
-    GATEWAY_TIMEOUT = 10004  # 后端超时
-    GATEWAY_NETWORK_ERROR = 10005  # 后端网络错误
-    GATEWAY_PROTOCOL_ERROR = 10006  # 后端协议错误（如RemoteProtocolError）
-    GATEWAY_INVALID_RESPONSE = 10007  # 后端响应无效
-    GATEWAY_RATE_LIMITED = 10008  # 请求频率限制
-    GATEWAY_PROXY_ERROR = 10009  # 代理转发错误
-    GATEWAY_INTERNAL_ERROR = 10010  # 网关内部错误
-    GATEWAY_AUTH_FAILED = 10011  # WebSocket 认证失败（403）
-    GATEWAY_UNAUTHORIZED = 10012  # WebSocket 未授权（401）
+    # Gateway service error codes (10001-10999)
+    GATEWAY_SERVICE_NOT_FOUND = 10001  # Service does not exist
+    GATEWAY_SERVICE_UNAVAILABLE = 10002  # Service unavailable
+    GATEWAY_CONNECTION_FAILED = 10003  # Backend connection failed
+    GATEWAY_TIMEOUT = 10004  # Backend timeout
+    GATEWAY_NETWORK_ERROR = 10005  # Backend network error
+    GATEWAY_PROTOCOL_ERROR = 10006  # Backend protocol error (e.g., RemoteProtocolError)
+    GATEWAY_INVALID_RESPONSE = 10007  # Backend response invalid
+    GATEWAY_RATE_LIMITED = 10008  # Request rate limit exceeded
+    GATEWAY_PROXY_ERROR = 10009  # Proxy forwarding error
+    GATEWAY_INTERNAL_ERROR = 10010  # Gateway internal error
+    GATEWAY_AUTH_FAILED = 10011  # WebSocket authentication failed (403)
+    GATEWAY_UNAUTHORIZED = 10012  # WebSocket unauthorized (401)
 
-    # 认证服务错误码 (51001-51999)
-    AUTH_INVALID_CREDENTIALS = 51001  # 无效的认证凭证
-    AUTH_TOKEN_EXPIRED = 51002  # 令牌已过期
-    AUTH_TOKEN_INVALID = 51003  # 无效的令牌
-    AUTH_PERMISSION_DENIED = 51004  # 权限不足
-    AUTH_USER_NOT_FOUND = 51005  # 用户不存在
-    AUTH_USER_INACTIVE = 51006  # 用户未激活
-    AUTH_PASSWORD_INCORRECT = 51007  # 密码错误
-    AUTH_TOKEN_MISSING = 51008  # 缺少令牌
-    AUTH_REFRESH_TOKEN_INVALID = 51009  # 无效的刷新令牌
-    AUTH_SESSION_EXPIRED = 51010  # 会话已过期
-    AUTH_CLIENT_INVALID = 51011  # 无效的客户端
-    AUTH_OPERATION_FAILED = 51012  # 认证操作失败
+    # Authentication service error codes (51001-51999)
+    AUTH_INVALID_CREDENTIALS = 51001  # Invalid credentials
+    AUTH_TOKEN_EXPIRED = 51002  # Token expired
+    AUTH_TOKEN_INVALID = 51003  # Invalid token
+    AUTH_PERMISSION_DENIED = 51004  # Permission denied
+    AUTH_USER_NOT_FOUND = 51005  # User not found
+    AUTH_USER_INACTIVE = 51006  # User inactive
+    AUTH_PASSWORD_INCORRECT = 51007  # Password incorrect
+    AUTH_TOKEN_MISSING = 51008  # Missing token
+    AUTH_REFRESH_TOKEN_INVALID = 51009  # Invalid refresh token
+    AUTH_SESSION_EXPIRED = 51010  # Session expired
+    AUTH_CLIENT_INVALID = 51011  # Invalid client
+    AUTH_OPERATION_FAILED = 51012  # Authentication operation failed
 
-    # 管理服务错误码 (52001-52999)
-    ADMIN_USER_NOT_FOUND = 52001  # 用户不存在
-    ADMIN_USER_ALREADY_EXISTS = 52002  # 用户已存在
-    ADMIN_USER_CREATE_FAILED = 52003  # 用户创建失败
-    ADMIN_USER_UPDATE_FAILED = 52004  # 用户更新失败
-    ADMIN_USER_DELETE_FAILED = 52005  # 用户删除失败
-    ADMIN_USER_INACTIVE = 52006  # 用户未激活
-    ADMIN_PERMISSION_DENIED = 52007  # 权限不足
-    ADMIN_INVALID_ROLE = 52008  # 无效的角色
-    ADMIN_ROLE_NOT_FOUND = 52009  # 角色不存在
-    ADMIN_OPERATION_FAILED = 52010  # 管理操作失败
-    ADMIN_CONFIG_ERROR = 52011  # 配置错误
-    ADMIN_INVALID_REQUEST = 52012  # 无效的请求
+    # Management service error codes (52001-52999)
+    ADMIN_USER_NOT_FOUND = 52001  # User not found
+    ADMIN_USER_ALREADY_EXISTS = 52002  # User already exists
+    ADMIN_USER_CREATE_FAILED = 52003  # User creation failed
+    ADMIN_USER_UPDATE_FAILED = 52004  # User update failed
+    ADMIN_USER_DELETE_FAILED = 52005  # User deletion failed
+    ADMIN_USER_INACTIVE = 52006  # User inactive
+    ADMIN_PERMISSION_DENIED = 52007  # Permission denied
+    ADMIN_INVALID_ROLE = 52008  # Invalid role
+    ADMIN_ROLE_NOT_FOUND = 52009  # Role not found
+    ADMIN_OPERATION_FAILED = 52010  # Management operation failed
+    ADMIN_CONFIG_ERROR = 52011  # Configuration error
+    ADMIN_INVALID_REQUEST = 52012  # Invalid request
 
-    # 主机服务错误码 (53001-53999)
-    HOST_NOT_FOUND = 53001  # 主机不存在
-    HOST_ALREADY_EXISTS = 53002  # 主机已存在
-    HOST_CREATE_FAILED = 53003  # 主机创建失败
-    HOST_UPDATE_FAILED = 53004  # 主机更新失败
-    HOST_DELETE_FAILED = 53005  # 主机删除失败
-    HOST_CONNECTION_FAILED = 53006  # 主机连接失败
-    HOST_OPERATION_TIMEOUT = 53007  # 主机操作超时
-    HOST_INVALID_STATE = 53008  # 主机状态无效
-    HOST_HARDWARE_API_ERROR = 53009  # 硬件API错误
-    HOST_VNC_CONNECTION_FAILED = 53010  # VNC连接失败
-    HOST_VNC_INFO_NOT_FOUND = 53011  # VNC信息不存在
-    HOST_OPERATION_FAILED = 53012  # 主机操作失败
-    HOST_AGENT_OFFLINE = 53013  # Agent离线
-    HOST_INVALID_REQUEST = 53014  # 无效的请求
-    FILE_NOT_FOUND = 53015  # 文件不存在
-    HOST_VNC_STATE_MISMATCH = 53016  # VNC连接成功但主机状态不匹配
-    HOST_OTA_UPDATE_RECORD_NOT_FOUND = 53017  # OTA更新记录不存在
-    HOST_OTA_CONFIG_NOT_FOUND = 53018  # OTA配置不存在
-    HOST_VNC_GET_FAILED = 53019  # 获取VNC连接信息失败
-    HOST_VNC_CONNECTION_REPORT_FAILED = 53020  # VNC连接状态上报处理失败
-    HOST_OTA_UPDATE_STATUS_REPORT_FAILED = 53021  # OTA更新状态上报处理失败
-    HOST_AGENT_VER_REQUIRED = 53022  # Agent版本号必填
-    HOST_INVALID_HOST_ID = 53023  # 主机ID格式无效
-    HOST_MISSING_DMR_CONFIG = 53024  # 缺少DMR配置
-    HOST_MISSING_REVISION = 53025  # 缺少版本号
-    HOST_HARDWARE_TEMPLATE_NOT_FOUND = 53026  # 硬件模板不存在
-    HOST_HARDWARE_REPORT_FAILED = 53027  # 硬件信息上报失败
-    HOST_UPDATE_HARDWARE_FAILED = 53028  # 更新硬件记录失败
-    HOST_TESTCASE_REPORT_FAILED = 53029  # 测试用例结果上报失败
-    HOST_DUE_TIME_UPDATE_FAILED = 53030  # 预期结束时间上报失败
-    HOST_VNC_INFO_INCOMPLETE = 53031  # VNC连接信息不完整
-    HOST_REALVNC_ENCRYPTION_LIBRARY_MISSING = 53032  # RealVNC加密库缺失
-    HOST_MULTIPLE_EXEC_LOGS_FOUND = 53033  # 存在多条执行日志
+    # Host service error codes (53001-53999)
+    HOST_NOT_FOUND = 53001  # Host not found
+    HOST_ALREADY_EXISTS = 53002  # Host already exists
+    HOST_CREATE_FAILED = 53003  # Host creation failed
+    HOST_UPDATE_FAILED = 53004  # Host update failed
+    HOST_DELETE_FAILED = 53005  # Host deletion failed
+    HOST_CONNECTION_FAILED = 53006  # Host connection failed
+    HOST_OPERATION_TIMEOUT = 53007  # Host operation timeout
+    HOST_INVALID_STATE = 53008  # Host state invalid
+    HOST_HARDWARE_API_ERROR = 53009  # Hardware API error
+    HOST_VNC_CONNECTION_FAILED = 53010  # VNC connection failed
+    HOST_VNC_INFO_NOT_FOUND = 53011  # VNC information not found
+    HOST_OPERATION_FAILED = 53012  # Host operation failed
+    HOST_AGENT_OFFLINE = 53013  # Agent offline
+    HOST_INVALID_REQUEST = 53014  # Invalid request
+    FILE_NOT_FOUND = 53015  # File not found
+    HOST_VNC_STATE_MISMATCH = 53016  # VNC connection successful but host state mismatch
+    HOST_OTA_UPDATE_RECORD_NOT_FOUND = 53017  # OTA update record not found
+    HOST_OTA_CONFIG_NOT_FOUND = 53018  # OTA configuration not found
+    HOST_VNC_GET_FAILED = 53019  # Failed to get VNC connection information
+    HOST_VNC_CONNECTION_REPORT_FAILED = 53020  # VNC connection status reporting processing failed
+    HOST_OTA_UPDATE_STATUS_REPORT_FAILED = 53021  # OTA update status reporting processing failed
+    HOST_AGENT_VER_REQUIRED = 53022  # Agent version required
+    HOST_INVALID_HOST_ID = 53023  # Invalid host ID format
+    HOST_MISSING_DMR_CONFIG = 53024  # Missing DMR configuration
+    HOST_MISSING_REVISION = 53025  # Missing revision
+    HOST_HARDWARE_TEMPLATE_NOT_FOUND = 53026  # Hardware template not found
+    HOST_HARDWARE_REPORT_FAILED = 53027  # Hardware information reporting failed
+    HOST_UPDATE_HARDWARE_FAILED = 53028  # Updating hardware record failed
+    HOST_TESTCASE_REPORT_FAILED = 53029  # Test case result reporting failed
+    HOST_DUE_TIME_UPDATE_FAILED = 53030  # Expected end time reporting failed
+    HOST_VNC_INFO_IN_COMPLETE = 53031  # VNC connection information incomplete
+    HOST_REALVNC_ENCRYPTION_LIBRARY_MISSING = 53032  # RealVNC encryption library missing
+    HOST_MULTIPLE_EXEC_LOGS_FOUND = 53033  # Multiple execution logs found
 
 
 class ErrorCode:
-    """业务错误码定义 - 按模块分类 (保留用于向后兼容)"""
+    """Business error code definitions - classified by module (preserved for backward compatibility)"""
 
-    # ==================== 网关相关错误 ====================
+    # ==================== Gateway Related Errors ====================
     SERVICE_NOT_FOUND = "SERVICE_NOT_FOUND"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     GATEWAY_ERROR = "GATEWAY_ERROR"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
 
-    # ==================== 认证授权错误 ====================
+    # ==================== Authentication and Authorization Errors ====================
     UNAUTHORIZED = "UNAUTHORIZED"
     FORBIDDEN = "FORBIDDEN"
     TOKEN_EXPIRED = "TOKEN_EXPIRED"
     TOKEN_INVALID = "TOKEN_INVALID"
     MISSING_TOKEN = "MISSING_TOKEN"
-    AUTH_INVALID_CREDENTIALS = "AUTH_INVALID_CREDENTIALS"  # 无效的认证凭证
-    AUTH_TOKEN_EXPIRED = "AUTH_TOKEN_EXPIRED"  # 令牌已过期
-    AUTH_TOKEN_INVALID = "AUTH_TOKEN_INVALID"  # 无效的令牌
-    AUTH_PERMISSION_DENIED = "AUTH_PERMISSION_DENIED"  # 权限不足
-    AUTH_USER_NOT_FOUND = "AUTH_USER_NOT_FOUND"  # 用户不存在
-    AUTH_USER_INACTIVE = "AUTH_USER_INACTIVE"  # 用户未激活
-    AUTH_PASSWORD_INCORRECT = "AUTH_PASSWORD_INCORRECT"  # 密码错误
-    AUTH_TOKEN_MISSING = "AUTH_TOKEN_MISSING"  # 缺少令牌
-    AUTH_REFRESH_TOKEN_INVALID = "AUTH_REFRESH_TOKEN_INVALID"  # 无效的刷新令牌
+    AUTH_INVALID_CREDENTIALS = "AUTH_INVALID_CREDENTIALS"  # Invalid credentials
+    AUTH_TOKEN_EXPIRED = "AUTH_TOKEN_EXPIRED"  # Token expired
+    AUTH_TOKEN_INVALID = "AUTH_TOKEN_INVALID"  # Invalid token
+    AUTH_PERMISSION_DENIED = "AUTH_PERMISSION_DENIED"  # Permission denied
+    AUTH_USER_NOT_FOUND = "AUTH_USER_NOT_FOUND"  # User not found
+    AUTH_USER_INACTIVE = "AUTH_USER_INACTIVE"  # User inactive
+    AUTH_PASSWORD_INCORRECT = "AUTH_PASSWORD_INCORRECT"  # Password incorrect
+    AUTH_TOKEN_MISSING = "AUTH_TOKEN_MISSING"  # Missing token
+    AUTH_REFRESH_TOKEN_INVALID = "AUTH_REFRESH_TOKEN_INVALID"  # Invalid refresh token
 
-    # ==================== 用户相关错误 ====================
-    USER_NOT_FOUND = "USER_NOT_FOUND"  # 用户不存在
-    USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"  # 用户已存在
-    USER_INACTIVE = "USER_INACTIVE"  # 用户未激活
-    USER_CREATE_FAILED = "USER_CREATE_FAILED"  # 用户创建失败
-    USER_UPDATE_FAILED = "USER_UPDATE_FAILED"  # 用户更新失败
-    USER_DELETE_FAILED = "USER_DELETE_FAILED"  # 用户删除失败
-    USER_EMAIL_EXISTS = "USER_EMAIL_EXISTS"  # 邮箱已存在
-    USER_USERNAME_EXISTS = "USER_USERNAME_EXISTS"  # 用户名已存在
+    # ==================== User Related Errors ====================
+    USER_NOT_FOUND = "USER_NOT_FOUND"  # User not found
+    USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"  # User already exists
+    USER_INACTIVE = "USER_INACTIVE"  # User inactive
+    USER_CREATE_FAILED = "USER_CREATE_FAILED"  # User creation failed
+    USER_UPDATE_FAILED = "USER_UPDATE_FAILED"  # User update failed
+    USER_DELETE_FAILED = "USER_DELETE_FAILED"  # User deletion failed
+    USER_EMAIL_EXISTS = "USER_EMAIL_EXISTS"  # Email already exists
+    USER_USERNAME_EXISTS = "USER_USERNAME_EXISTS"  # Username already exists
 
-    # ==================== 数据验证错误 ====================
-    VALIDATION_ERROR = "VALIDATION_ERROR"  # 数据验证失败
-    VALIDATION_FIELD_REQUIRED = "VALIDATION_FIELD_REQUIRED"  # 必填字段缺失
+    # ==================== Data Validation Errors ====================
+    VALIDATION_ERROR = "VALIDATION_ERROR"  # Data validation failed
+    VALIDATION_FIELD_REQUIRED = "VALIDATION_FIELD_REQUIRED"  # Required field missing
     VALIDATION_FIELD_INVALID = "VALIDATION_FIELD_INVALID"
-    VALIDATION_FIELD_TOO_LONG = "VALIDATION_FIELD_TOO_LONG"  # 字段长度超限
-    VALIDATION_FIELD_TOO_SHORT = "VALIDATION_FIELD_TOO_SHORT"  # 字段长度不足
-    PARAMETER_INVALID = "PARAMETER_INVALID"  # 参数无效
-    REQUEST_BODY_INVALID = "REQUEST_BODY_INVALID"  # 请求体无效
+    VALIDATION_FIELD_TOO_LONG = "VALIDATION_FIELD_TOO_LONG"  # Field length exceeded
+    VALIDATION_FIELD_TOO_SHORT = "VALIDATION_FIELD_TOO_SHORT"  # Field length insufficient
+    PARAMETER_INVALID = "PARAMETER_INVALID"  # Parameter invalid
+    REQUEST_BODY_INVALID = "REQUEST_BODY_INVALID"  # Request body invalid
 
-    # ==================== 资源错误 ====================
-    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"  # 资源不存在
-    RESOURCE_ALREADY_EXISTS = "RESOURCE_ALREADY_EXISTS"  # 资源已存在
-    RESOURCE_CONFLICT = "RESOURCE_CONFLICT"  # 资源冲突
-    RESOURCE_LOCKED = "RESOURCE_LOCKED"  # 资源被锁定
-    RESOURCE_EXPIRED = "RESOURCE_EXPIRED"  # 资源已过期
+    # ==================== Resource Errors ====================
+    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"  # Resource does not exist
+    RESOURCE_ALREADY_EXISTS = "RESOURCE_ALREADY_EXISTS"  # Resource already exists
+    RESOURCE_CONFLICT = "RESOURCE_CONFLICT"  # Resource conflict
+    RESOURCE_LOCKED = "RESOURCE_LOCKED"  # Resource locked
+    RESOURCE_EXPIRED = "RESOURCE_EXPIRED"  # Resource expired
 
-    # =================== 系统错误 ====================
-    INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"  # 系统内部错误
-    DATABASE_ERROR = "DATABASE_ERROR"  # 数据库错误
-    CACHE_ERROR = "CACHE_ERROR"  # 缓存错误
-    NETWORK_ERROR = "NETWORK_ERROR"  # 网络错误
-    TIMEOUT_ERROR = "TIMEOUT_ERROR"  # 超时错误
-    CONFIG_ERROR = "CONFIG_ERROR"  # 配置错误
+    # =================== System Errors ====================
+    INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"  # Internal server error
+    DATABASE_ERROR = "DATABASE_ERROR"  # Database error
+    CACHE_ERROR = "CACHE_ERROR"  # Cache error
+    NETWORK_ERROR = "NETWORK_ERROR"  # Network error
+    TIMEOUT_ERROR = "TIMEOUT_ERROR"  # Timeout error
+    CONFIG_ERROR = "CONFIG_ERROR"  # Configuration error
 
-    # ==================== 业务逻辑错误 ====================
-    BUSINESS_RULE_VIOLATION = "BUSINESS_RULE_VIOLATION"  # 业务规则违反
-    OPERATION_NOT_ALLOWED = "OPERATION_NOT_ALLOWED"  # 操作不允许
-    INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE"  # 余额不足
-    QUOTA_EXCEEDED = "QUOTA_EXCEEDED"  # 配额超限
-    DUPLICATE_OPERATION = "DUPLICATE_OPERATION"  # 重复操作
+    # ==================== Business Logic Errors ====================
+    BUSINESS_RULE_VIOLATION = "BUSINESS_RULE_VIOLATION"  # Business rule violation
+    OPERATION_NOT_ALLOWED = "OPERATION_NOT_ALLOWED"  # Operation not allowed
+    INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE"  # Insufficient balance
+    QUOTA_EXCEEDED = "QUOTA_EXCEEDED"  # Quota exceeded
+    DUPLICATE_OPERATION = "DUPLICATE_OPERATION"  # Duplicate operation
 
-    # ==================== 外部服务错误 ====================
-    EXTERNAL_SERVICE_ERROR = "EXTERNAL_SERVICE_ERROR"  # 外部服务错误
-    EXTERNAL_SERVICE_TIMEOUT = "EXTERNAL_SERVICE_TIMEOUT"  # 外部服务超时
-    EXTERNAL_SERVICE_UNAVAILABLE = "EXTERNAL_SERVICE_UNAVAILABLE"  # 外部服务不可用
+    # ==================== External Service Errors ====================
+    EXTERNAL_SERVICE_ERROR = "EXTERNAL_SERVICE_ERROR"  # External service error
+    EXTERNAL_SERVICE_TIMEOUT = "EXTERNAL_SERVICE_TIMEOUT"  # External service timeout
+    EXTERNAL_SERVICE_UNAVAILABLE = "EXTERNAL_SERVICE_UNAVAILABLE"  # External service unavailable
 
-    # ==================== 文件相关错误 ====================
-    FILE_NOT_FOUND = "FILE_NOT_FOUND"  # 文件不存在
+    # ==================== File Related Errors ====================
+    FILE_NOT_FOUND = "FILE_NOT_FOUND"  # File does not exist
     FILE_TOO_LARGE = "FILE_TOO_LARGE"
-    FILE_TYPE_NOT_ALLOWED = "FILE_TYPE_NOT_ALLOWED"  # 文件类型不允许
-    FILE_UPLOAD_FAILED = "FILE_UPLOAD_FAILED"  # 文件上传失败
-    FILE_DOWNLOAD_FAILED = "FILE_DOWNLOAD_FAILED"  # 文件下载失败
+    FILE_TYPE_NOT_ALLOWED = "FILE_TYPE_NOT_ALLOWED"  # File type not allowed
+    FILE_UPLOAD_FAILED = "FILE_UPLOAD_FAILED"  # File upload failed
+    FILE_DOWNLOAD_FAILED = "FILE_DOWNLOAD_FAILED"  # File download failed
 
 
-# 向后兼容：保留旧的 ErrorType 类名
+# Backward compatibility: Preserve the old ErrorType class name
 ErrorType = ErrorCode
 
 
 class AuthenticationError(BusinessError):
-    """认证异常
+    """Authentication exception
 
-    用于认证相关的错误
+    Used for authentication related errors
     """
 
     def __init__(
         self,
-        message: str = "认证失败",
+        message: str = "Authentication failed",
         code: int = 401,
         error_code: str = ErrorCode.UNAUTHORIZED,
         details: Optional[Dict[str, Any]] = None,
@@ -269,14 +269,14 @@ class AuthenticationError(BusinessError):
 
 
 class AuthorizationError(BusinessError):
-    """授权异常
+    """Authorization exception
 
-    用于权限相关的错误
+    Used for permission related errors
     """
 
     def __init__(
         self,
-        message: str = "权限不足",
+        message: str = "Insufficient permissions",
         code: int = 403,
         error_code: str = ErrorCode.FORBIDDEN,
         details: Optional[Dict[str, Any]] = None,
@@ -285,14 +285,14 @@ class AuthorizationError(BusinessError):
 
 
 class ValidationError(BusinessError):
-    """验证异常
+    """Validation exception
 
-    用于数据验证相关的错误
+    Used for data validation related errors
     """
 
     def __init__(
         self,
-        message: str = "数据验证失败",
+        message: str = "Data validation failed",
         code: int = 422,
         error_code: str = ErrorCode.VALIDATION_ERROR,
         details: Optional[Dict[str, Any]] = None,
@@ -301,14 +301,14 @@ class ValidationError(BusinessError):
 
 
 class ResourceNotFoundError(BusinessError):
-    """资源不存在异常
+    """Resource not found exception
 
-    用于资源查找失败的错误
+    Used for resource lookup failure errors
     """
 
     def __init__(
         self,
-        message: str = "资源不存在",
+        message: str = "Resource does not exist",
         code: int = 404,
         error_code: str = ErrorCode.RESOURCE_NOT_FOUND,
         details: Optional[Dict[str, Any]] = None,
@@ -317,14 +317,14 @@ class ResourceNotFoundError(BusinessError):
 
 
 class ResourceConflictError(BusinessError):
-    """资源冲突异常
+    """Resource conflict exception
 
-    用于资源冲突的错误
+    Used for resource conflict errors
     """
 
     def __init__(
         self,
-        message: str = "资源冲突",
+        message: str = "Resource conflict",
         code: int = 409,
         error_code: str = ErrorCode.RESOURCE_CONFLICT,
         details: Optional[Dict[str, Any]] = None,
@@ -333,14 +333,14 @@ class ResourceConflictError(BusinessError):
 
 
 class DatabaseError(BusinessError):
-    """数据库异常
+    """Database exception
 
-    用于数据库操作相关的错误
+    Used for database operation related errors
     """
 
     def __init__(
         self,
-        message: str = "数据库错误",
+        message: str = "Database error",
         code: int = 500,
         error_code: str = ErrorCode.DATABASE_ERROR,
         details: Optional[Dict[str, Any]] = None,
@@ -349,14 +349,14 @@ class DatabaseError(BusinessError):
 
 
 class ServiceUnavailableError(BusinessError):
-    """服务不可用异常
+    """Service unavailable exception
 
-    用于服务不可用的错误
+    Used for service unavailable errors
     """
 
     def __init__(
         self,
-        message: str = "服务暂时不可用",
+        message: str = "Service temporarily unavailable",
         code: int = 503,
         error_code: str = ErrorCode.SERVICE_UNAVAILABLE,
         details: Optional[Dict[str, Any]] = None,
@@ -364,11 +364,11 @@ class ServiceUnavailableError(BusinessError):
         super().__init__(message, error_code=error_code, code=code, http_status_code=503, details=details)
 
 
-# ==================== 网关专用异常类 ====================
+# ==================== Gateway Specific Exception Classes ====================
 
 
 class GatewayError(BusinessError):
-    """网关异常基类"""
+    """Gateway exception base class"""
 
     def __init__(
         self,
@@ -381,23 +381,23 @@ class GatewayError(BusinessError):
 
 
 class ServiceNotFoundError(GatewayError):
-    """服务不存在异常"""
+    """Service not found exception"""
 
     def __init__(self, service_name: str):
         super().__init__(
-            message=f"服务不存在: {service_name}",
+            message=f"Service does not exist: {service_name}",
             code=ServiceErrorCodes.GATEWAY_SERVICE_NOT_FOUND,
             error_code=ErrorCode.SERVICE_NOT_FOUND,
             details={"service_name": service_name},
         )
-        # 使用业务错误码，HTTP 状态码设为 400（业务逻辑错误而非资源不存在）
+        # Use business error code, set HTTP status code to 400 (business logic error rather than resource not found)
         self.http_status_code = 400
 
 
 class RateLimitExceededError(GatewayError):
-    """限流异常"""
+    """Rate limit exceeded exception"""
 
-    def __init__(self, message: str = "请求频率超过限制"):
+    def __init__(self, message: str = "Request frequency exceeded limit"):
         super().__init__(message=message, code=429, error_code=ErrorCode.RATE_LIMIT_EXCEEDED)
-        # 覆盖 http_status_code 为 429
+        # Override http_status_code to 429
         self.http_status_code = 429

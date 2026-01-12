@@ -1,8 +1,8 @@
 """
-Gateway Service 业务服务模块
+Gateway Service business services module
 
-提供网关服务的核心业务功能，包括：
-- 负载均衡管理
-- 代理请求转发
-- 服务发现和路由
+Provides core business functionality for gateway service, including:
+- Load balancing management
+- Proxy request forwarding
+- Service discovery and routing
 """

@@ -1,6 +1,6 @@
 """
-Prometheus 指标收集模块
-提供统一的指标收集和导出功能
+Prometheus Metrics Collection Module
+Provides unified metrics collection and export functionality
 """
 
 import sys
@@ -12,17 +12,17 @@ from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Info, generat
 from prometheus_client.exposition import CONTENT_TYPE_LATEST
 
 # ==========================================
-# HTTP 请求指标
+# HTTP Request Metrics
 # ==========================================
 
-# HTTP 请求总数
+# HTTP Requests Total
 http_requests_total = Counter(
     "http_requests_total",
     "Total number of HTTP requests",
     ["method", "endpoint", "status", "service"],
 )
 
-# HTTP 请求响应时间
+# HTTP Request Duration
 http_request_duration_seconds = Histogram(
     "http_request_duration_seconds",
     "HTTP request duration in seconds",
@@ -45,21 +45,21 @@ http_request_duration_seconds = Histogram(
     ),
 )
 
-# HTTP 请求大小
+# HTTP Request Size
 http_request_size_bytes = Histogram(
     "http_request_size_bytes",
     "HTTP request size in bytes",
     ["method", "endpoint", "service"],
 )
 
-# HTTP 响应大小
+# HTTP Response Size
 http_response_size_bytes = Histogram(
     "http_response_size_bytes",
     "HTTP response size in bytes",
     ["method", "endpoint", "service"],
 )
 
-# 活跃请求数
+# Active Requests Count
 http_requests_in_progress = Gauge(
     "http_requests_in_progress",
     "Number of HTTP requests in progress",
@@ -68,10 +68,10 @@ http_requests_in_progress = Gauge(
 
 
 # ==========================================
-# 数据库指标
+# Database Metrics
 # ==========================================
 
-# 数据库连接池
+# Database Connection Pool
 db_connections_total = Gauge(
     "db_connections_total",
     "Total number of database connections",
@@ -90,7 +90,7 @@ db_connections_idle = Gauge(
     ["database", "service"],
 )
 
-# 数据库查询
+# Database Queries
 db_queries_total = Counter(
     "db_queries_total",
     "Total number of database queries",
@@ -106,10 +106,10 @@ db_query_duration_seconds = Histogram(
 
 
 # ==========================================
-# 缓存指标
+# Cache Metrics
 # ==========================================
 
-# Redis 操作
+# Redis Operations
 redis_operations_total = Counter(
     "redis_operations_total",
     "Total number of Redis operations",
@@ -123,59 +123,59 @@ redis_operation_duration_seconds = Histogram(
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
 )
 
-# 缓存命中率
+# Cache Hit Rate
 cache_hits_total = Counter("cache_hits_total", "Total number of cache hits", ["cache_name", "service"])
 
 cache_misses_total = Counter("cache_misses_total", "Total number of cache misses", ["cache_name", "service"])
 
 
 # ==========================================
-# 业务指标
+# Business Metrics
 # ==========================================
 
-# 用户操作
+# User Operations
 user_operations_total = Counter(
     "user_operations_total",
     "Total number of user operations",
     ["operation", "status", "service"],
 )
 
-# 认证操作
+# Authentication Operations
 auth_operations_total = Counter(
     "auth_operations_total",
     "Total number of authentication operations",
     ["operation", "status", "service"],
 )
 
-# 活跃用户数
+# Active Users Count
 active_users = Gauge("active_users", "Number of active users", ["service"])
 
-# 活跃会话数
+# Active Sessions Count
 active_sessions = Gauge("active_sessions", "Number of active sessions", ["service"])
 
 
 # ==========================================
-# 系统指标
+# System Metrics
 # ==========================================
 
-# 应用信息
+# Application Information
 app_info = Info("app_info", "Application information")
 
-# 应用启动时间
+# Application Start Time
 app_start_time = Gauge("app_start_time_seconds", "Application start time in unix timestamp", ["service"])
 
-# Python 版本信息（使用懒加载避免重复注册）
+# Python Version Information (using lazy loading to avoid duplicate registration)
 _python_info = None
 
 
 def get_python_info() -> Optional[Info]:
-    """获取 Python 版本信息指标（单例模式）"""
+    """Get Python version information metric (singleton pattern)"""
     global _python_info
     if _python_info is None:
         try:
             _python_info = Info("python_info", "Python version information")
         except ValueError:
-            # 如果已经注册，从注册表获取
+            # If already registered, get from registry
             from prometheus_client import REGISTRY
 
             for collector in list(REGISTRY._collector_to_names.keys()):
@@ -190,7 +190,7 @@ def get_python_info() -> Optional[Info]:
 
 
 # ==========================================
-# 工具函数
+# Utility Functions
 # ==========================================
 
 
@@ -198,32 +198,32 @@ def track_request_metrics(
     service_name: str,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """
-    装饰器：跟踪 HTTP 请求指标
+    Decorator: Track HTTP request metrics
 
     Args:
-        service_name: 服务名称
+        service_name: Service name
     """
 
     def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # 从请求中获取信息
+            # Get information from request
             request = kwargs.get("request") or (args[0] if args else None)
 
             if request:
                 method = getattr(request, "method", "UNKNOWN")
                 endpoint = getattr(getattr(request, "url", None), "path", "/unknown")
 
-                # 增加进行中的请求数
+                # Increase in-progress requests count
                 http_requests_in_progress.labels(method=method, endpoint=endpoint, service=service_name).inc()
 
                 start_time = time.time()
 
                 try:
-                    # 执行请求
+                    # Execute request
                     response = await func(*args, **kwargs)
 
-                    # 记录请求指标
+                    # Record request metrics
                     duration = time.time() - start_time
                     status = getattr(response, "status_code", 200)
 
@@ -241,7 +241,7 @@ def track_request_metrics(
                     return response
 
                 finally:
-                    # 减少进行中的请求数
+                    # Decrease in-progress requests count
                     http_requests_in_progress.labels(method=method, endpoint=endpoint, service=service_name).dec()
             else:
                 return await func(*args, **kwargs)
@@ -255,12 +255,12 @@ def track_db_query(
     database: str, operation: str, service_name: str
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """
-    装饰器：跟踪数据库查询指标
+    Decorator: Track database query metrics
 
     Args:
-        database: 数据库名称
-        operation: 操作类型
-        service_name: 服务名称
+        database: Database name
+        operation: Operation type
+        service_name: Service name
     """
 
     def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
@@ -271,7 +271,7 @@ def track_db_query(
             try:
                 result = await func(*args, **kwargs)
 
-                # 记录查询指标
+                # Record query metrics
                 duration = time.time() - start_time
 
                 db_queries_total.labels(database=database, operation=operation, service=service_name).inc()
@@ -283,7 +283,7 @@ def track_db_query(
                 return result
 
             except Exception:
-                # 记录失败的查询
+                # Record failed query
                 db_queries_total.labels(
                     database=database,
                     operation=f"{operation}_error",
@@ -300,11 +300,11 @@ def track_cache_operation(
     cache_name: str, service_name: str
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """
-    装饰器：跟踪缓存操作指标
+    Decorator: Track cache operation metrics
 
     Args:
-        cache_name: 缓存名称
-        service_name: 服务名称
+        cache_name: Cache name
+        service_name: Service name
     """
 
     def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
@@ -316,14 +316,14 @@ def track_cache_operation(
             try:
                 result = await func(*args, **kwargs)
 
-                # 记录操作指标
+                # Record operation metrics
                 duration = time.time() - start_time
 
                 redis_operations_total.labels(operation=operation, status="success", service=service_name).inc()
 
                 redis_operation_duration_seconds.labels(operation=operation, service=service_name).observe(duration)
 
-                # 记录缓存命中/未命中
+                # Record cache hit/miss
                 if operation == "get":
                     if result is not None:
                         cache_hits_total.labels(cache_name=cache_name, service=service_name).inc()
@@ -343,12 +343,12 @@ def track_cache_operation(
 
 def set_app_info(service_name: str, version: str, environment: str = "development") -> None:
     """
-    设置应用信息
+    Set application information
 
     Args:
-        service_name: 服务名称
-        version: 版本号
-        environment: 环境
+        service_name: Service name
+        version: Version number
+        environment: Environment
     """
     app_info.info({"service": service_name, "version": version, "environment": environment})
 
@@ -356,7 +356,7 @@ def set_app_info(service_name: str, version: str, environment: str = "developmen
 
 
 def set_python_info() -> None:
-    """设置 Python 版本信息"""
+    """Set Python version information"""
 
     info_metric = get_python_info()
     if info_metric is not None:
@@ -365,19 +365,19 @@ def set_python_info() -> None:
 
 def get_metrics() -> bytes:
     """
-    获取 Prometheus 格式的指标数据
+    Get metrics data in Prometheus format
 
     Returns:
-        指标数据（bytes）
+        Metrics data (bytes)
     """
     return generate_latest(REGISTRY)
 
 
 def get_metrics_content_type() -> str:
     """
-    获取指标数据的 Content-Type
+    Get Content-Type for metrics data
 
     Returns:
-        Content-Type 字符串
+        Content-Type string
     """
     return CONTENT_TYPE_LATEST

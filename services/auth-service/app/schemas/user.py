@@ -1,7 +1,7 @@
 """
-用户相关的 Pydantic 数据模式
+User-related Pydantic Data Schemas
 
-定义用户信息的请求和响应模式
+Define request and response schemas for user information
 """
 
 from datetime import datetime
@@ -10,20 +10,20 @@ from pydantic import BaseModel, Field
 
 
 class UserBase(BaseModel):
-    """用户基础信息"""
+    """User Basic Information"""
 
-    username: str = Field(description="用户名")
-    email: str = Field(description="邮箱")
+    username: str = Field(description="Username")
+    email: str = Field(description="Email")
 
 
 class UserResponse(UserBase):
-    """用户响应"""
+    """User Response"""
 
-    id: str = Field(description="用户ID")
-    is_active: bool = Field(description="是否激活")
-    is_superuser: bool = Field(description="是否超级用户")
-    created_time: datetime = Field(description="创建时间")
-    updated_time: datetime = Field(description="更新时间")
+    id: str = Field(description="User ID")
+    is_active: bool = Field(description="Whether activated")
+    is_superuser: bool = Field(description="Whether superuser")
+    created_time: datetime = Field(description="Creation time")
+    updated_time: datetime = Field(description="Update time")
 
     model_config = {
         "from_attributes": True,

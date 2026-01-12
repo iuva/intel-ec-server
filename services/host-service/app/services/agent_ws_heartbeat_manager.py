@@ -1,11 +1,11 @@
-"""Agent WebSocket 心跳管理器模块
+"""Agent WebSocket Heartbeat Manager Module
 
-提供心跳检测相关的工具函数和常量定义。
+Provides heartbeat detection related utility functions and constant definitions.
 
-从 agent_websocket_manager.py 拆分出来，提高代码可维护性。
+Split from agent_websocket_manager.py to improve code maintainability.
 
-注意：核心心跳检测逻辑仍保留在 AgentWebSocketManager 中，
-因为它与连接状态紧密耦合。此模块仅提供独立的工具函数。
+Note: Core heartbeat detection logic remains in AgentWebSocketManager,
+as it is tightly coupled with connection state. This module only provides independent utility functions.
 """
 
 from datetime import datetime, timezone
@@ -13,7 +13,7 @@ import os
 import sys
 from typing import Optional
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
@@ -23,24 +23,24 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# 心跳相关常量
-DEFAULT_HEARTBEAT_TIMEOUT = 60  # 默认心跳超时时间（秒）
-DEFAULT_HEARTBEAT_WARNING_WAIT_TIME = 10  # 心跳警告后等待时间（秒）
-DEFAULT_HEARTBEAT_CHECK_INTERVAL = 10  # 心跳检查间隔（秒）
+# Heartbeat related constants
+DEFAULT_HEARTBEAT_TIMEOUT = 60  # Default heartbeat timeout (seconds)
+DEFAULT_HEARTBEAT_WARNING_WAIT_TIME = 10  # Wait time after heartbeat warning (seconds)
+DEFAULT_HEARTBEAT_CHECK_INTERVAL = 10  # Heartbeat check interval (seconds)
 
 
 def calculate_heartbeat_age(
     last_heartbeat: Optional[datetime],
     current_time: Optional[datetime] = None,
 ) -> float:
-    """计算心跳年龄（距离上次心跳的秒数）
+    """Calculate heartbeat age (seconds since last heartbeat)
 
     Args:
-        last_heartbeat: 上次心跳时间
-        current_time: 当前时间（默认使用 UTC 时间）
+        last_heartbeat: Last heartbeat time
+        current_time: Current time (defaults to UTC time)
 
     Returns:
-        float: 心跳年龄（秒）。如果 last_heartbeat 为 None，返回 float('inf')
+        float: Heartbeat age (seconds). Returns float('inf') if last_heartbeat is None
     """
     if last_heartbeat is None:
         return float("inf")
@@ -48,7 +48,7 @@ def calculate_heartbeat_age(
     if current_time is None:
         current_time = datetime.now(timezone.utc)
 
-    # 确保时区一致
+    # Ensure timezone consistency
     if last_heartbeat.tzinfo is None:
         last_heartbeat = last_heartbeat.replace(tzinfo=timezone.utc)
     if current_time.tzinfo is None:
@@ -62,15 +62,15 @@ def is_heartbeat_timeout(
     timeout_seconds: float = DEFAULT_HEARTBEAT_TIMEOUT,
     current_time: Optional[datetime] = None,
 ) -> bool:
-    """检查心跳是否超时
+    """Check if heartbeat is timeout
 
     Args:
-        last_heartbeat: 上次心跳时间
-        timeout_seconds: 超时时间（秒）
-        current_time: 当前时间（默认使用 UTC 时间）
+        last_heartbeat: Last heartbeat time
+        timeout_seconds: Timeout duration (seconds)
+        current_time: Current time (defaults to UTC time)
 
     Returns:
-        bool: 是否超时
+        bool: Whether timeout
     """
     age = calculate_heartbeat_age(last_heartbeat, current_time)
     return age > timeout_seconds
@@ -81,15 +81,15 @@ def is_warning_timeout(
     wait_time_seconds: float = DEFAULT_HEARTBEAT_WARNING_WAIT_TIME,
     current_time: Optional[datetime] = None,
 ) -> bool:
-    """检查警告后是否超时（需要断开连接）
+    """Check if timeout after warning (need to disconnect)
 
     Args:
-        warning_sent_time: 警告发送时间
-        wait_time_seconds: 警告后等待时间（秒）
-        current_time: 当前时间（默认使用 UTC 时间）
+        warning_sent_time: Warning sent time
+        wait_time_seconds: Wait time after warning (seconds)
+        current_time: Current time (defaults to UTC time)
 
     Returns:
-        bool: 是否超过等待时间
+        bool: Whether exceeded wait time
     """
     if warning_sent_time is None:
         return False
@@ -97,7 +97,7 @@ def is_warning_timeout(
     if current_time is None:
         current_time = datetime.now(timezone.utc)
 
-    # 确保时区一致
+    # Ensure timezone consistency
     if warning_sent_time.tzinfo is None:
         warning_sent_time = warning_sent_time.replace(tzinfo=timezone.utc)
     if current_time.tzinfo is None:
@@ -112,15 +112,15 @@ def get_heartbeat_status_message(
     last_heartbeat: Optional[datetime],
     timeout_seconds: float = DEFAULT_HEARTBEAT_TIMEOUT,
 ) -> dict:
-    """获取心跳状态消息
+    """Get heartbeat status message
 
     Args:
         agent_id: Agent ID
-        last_heartbeat: 上次心跳时间
-        timeout_seconds: 超时时间（秒）
+        last_heartbeat: Last heartbeat time
+        timeout_seconds: Timeout duration (seconds)
 
     Returns:
-        dict: 状态消息，包含 healthy、age、timeout 等信息
+        dict: Status message, containing healthy, age, timeout and other information
     """
     age = calculate_heartbeat_age(last_heartbeat)
     is_timeout = age > timeout_seconds
@@ -141,16 +141,16 @@ def format_heartbeat_log_extra(
     warning_sent: bool = False,
     current_connections: int = 0,
 ) -> dict:
-    """格式化心跳日志的 extra 字段
+    """Format heartbeat log extra field
 
     Args:
         agent_id: Agent ID
-        last_heartbeat: 上次心跳时间
-        warning_sent: 是否已发送警告
-        current_connections: 当前连接数
+        last_heartbeat: Last heartbeat time
+        warning_sent: Whether warning has been sent
+        current_connections: Current connection count
 
     Returns:
-        dict: 日志 extra 字段
+        dict: Log extra field
     """
     age = calculate_heartbeat_age(last_heartbeat)
 

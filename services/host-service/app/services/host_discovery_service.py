@@ -1,9 +1,9 @@
-"""主机发现服务
+"""Host Discovery Service
 
-提供主机发现和查询相关的业务逻辑服务，包括：
-- 查询可用主机列表（游标分页）
-- 调用外部硬件接口获取主机信息
-- 本地数据库过滤和查询
+Provides host discovery and query related business logic services, including:
+- Query available host list (cursor pagination)
+- Call external hardware API to get host information
+- Local database filtering and querying
 """
 
 import asyncio
@@ -26,10 +26,10 @@ from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, Hard
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-# 全局 HTTP 客户端连接池（复用连接，提高性能）
+# Global HTTP client connection pool (reuse connections for better performance)
 _http_client: Optional["httpx.AsyncClient"] = None
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.services.external_api_client import call_external_api
     from shared.common.database import mariadb_manager
@@ -50,107 +50,115 @@ logger = get_logger(__name__)
 
 
 class HostDiscoveryService:
-    """主机发现服务类
+    """Host Discovery Service Class
 
-    负责主机发现、查询和过滤相关的业务逻辑，支持游标分页和外部接口集成。
+    Responsible for host discovery, querying and filtering related business logic,
+    supports cursor pagination and external API integration.
     """
 
     def __init__(self, hardware_api_url: Optional[str] = None):
-        """初始化主机发现服务
+        """Initialize Host Discovery Service
 
         Args:
-            hardware_api_url: 硬件接口基础 URL。如果不提供，将使用默认值
+            hardware_api_url: Hardware API base URL. If not provided, default value will be used
         """
         self.hardware_api_url = hardware_api_url or "http://hardware-service:8000"
         self._http_client: Optional[httpx.AsyncClient] = None
-        # ✅ 优化：缓存会话工厂
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
     async def _get_http_client(self) -> httpx.AsyncClient:
-        """获取或创建 HTTP 客户端连接池（单例模式）
+        """Get or create HTTP client connection pool (singleton pattern)
 
-        ⚠️ 已废弃：请使用 external_api_client.call_external_api 方法，它支持统一的 SSL 配置和认证
+        ⚠️ Deprecated: Please use external_api_client.call_external_api method,
+        which supports unified SSL configuration and authentication
 
         Returns:
-            httpx.AsyncClient: HTTP 客户端实例
+            httpx.AsyncClient: HTTP client instance
         """
         global _http_client
         if _http_client is None:
-            # ✅ 从环境变量读取 SSL 验证配置（与其他外部接口保持一致）
+            # ✅ Read SSL verification configuration from environment variables
+            # (consistent with other external APIs)
             verify_ssl_env = os.getenv("HTTP_CLIENT_VERIFY_SSL", "true").lower()
             verify_ssl = verify_ssl_env in ("true", "1", "yes", "on", "enabled")
 
-            # 创建带连接池的 HTTP 客户端，优化高并发性能
+            # Create HTTP client with connection pool for better high-concurrency performance
             _http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0, connect=5.0),  # 总超时10秒，连接超时5秒
+                timeout=httpx.Timeout(10.0, connect=5.0),  # Total timeout 10s, connection timeout 5s
                 limits=httpx.Limits(
-                    max_keepalive_connections=50,  # 保持连接数
-                    max_connections=200,  # 最大连接数
+                    max_keepalive_connections=50,  # Keep-alive connections
+                    max_connections=200,  # Maximum connections
                 ),
-                verify=verify_ssl,  # ✅ 支持 SSL 配置
+                verify=verify_ssl,  # ✅ Support SSL configuration
             )
         return _http_client
 
     @monitor_operation("query_available_hosts", record_duration=True)
-    @handle_service_errors(error_message="查询可用主机列表失败", error_code="QUERY_HOSTS_FAILED")
+    @handle_service_errors(error_message="Failed to query available host list", error_code="QUERY_HOSTS_FAILED")
     async def query_available_hosts(
         self,
         request: QueryAvailableHostsRequest,
-        fastapi_request=None,  # FastAPI Request 对象（用于获取 user_id）
-        user_id: Optional[int] = None,  # 用户ID（可选，如果提供了 email 则可以为 None）
+        fastapi_request=None,  # FastAPI Request object (used to get user_id)
+        user_id: Optional[int] = None,  # User ID (optional, can be None if email is provided)
     ) -> AvailableHostsListResponse:
-        """查询可用的主机列表，支持游标分页
+        """Query available host list with cursor pagination support
 
-        业务逻辑：
-        1. 根据 last_id 计算初始偏移量（用于从外部接口查询）
-        2. 调用外部硬件接口分页获取主机列表（带认证）
-           - 如果 request.email 存在，直接使用该 email 进行外部接口认证，不查询数据库
-           - 如果 request.email 不存在，根据 user_id 查询数据库获取 email
-        3. 根据 hardware_id 查询 host_rec 表进行过滤
-        4. 过滤条件：appr_state=1（启用）, host_state=0（空闲），tcp_state=2（监听/连接正常），del_flag=0（未删除）
-        5. 收集满足分页大小的结果后返回
-        6. 每个用户独立处理，无全局状态污染
+        Business Logic:
+        1. Calculate initial offset based on last_id (for querying from external API)
+        2. Call external hardware API to get paginated host list (with authentication)
+           - If request.email exists, directly use this email for external API authentication,
+             without querying database
+           - If request.email does not exist, query database to get email based on user_id
+        3. Query host_rec table for filtering based on hardware_id
+        4. Filter conditions: appr_state=1 (enabled), host_state=0 (free),
+           tcp_state=2 (listening/connected), del_flag=0 (not deleted)
+        5. Collect results that meet pagination size and return
+        6. Each user is processed independently, no global state pollution
 
-        游标分页说明：
-        - 首次请求: last_id = None，从 skip=0 开始
-        - 后续请求: 传入上一页的 last_id，系统自动计算 skip
-        - 避免并发用户相互干扰
+        Cursor Pagination:
+        - First request: last_id = None, start from skip=0
+        - Subsequent requests: ***REMOVED*** last_id from previous page, system automatically calculates skip
+        - Avoid concurrent users interfering with each other
 
-        认证优化说明：
-        - 如果提供了 request.email，系统直接使用该 email 获取外部接口 token，跳过数据库查询，提高性能
-        - 如果未提供 request.email，系统会根据 user_id（从 fastapi_request 或参数获取）查询数据库获取 email
+        Authentication Optimization:
+        - If request.email is provided, system directly uses this email to get external API token,
+          skipping database query for better performance
+        - If request.email is not provided, system will query database to get email based on user_id
+          (from fastapi_request or parameter)
 
         Args:
-            request: 查询请求参数，包含：
-                - tc_id: 测试用例 ID
-                - cycle_name: 测试周期名称
-                - user_name: 用户名
-                - page_size: 每页大小（1-100）
-                - last_id: 上一页最后一条记录的 id（可选）
-                - email: 用户邮箱（可选）。如果提供，将直接使用该 email 进行外部接口认证，不查询数据库
-            fastapi_request: FastAPI Request 对象（用于从请求头获取 user_id）
-            user_id: 用户ID（可选，如果提供了 request.email 则可以为 None）
+            request: Query request parameters, including:
+                - tc_id: Test case ID
+                - cycle_name: Test cycle name
+                - user_name: Username
+                - page_size: Page size (1-100)
+                - last_id: ID of last record from previous page (optional)
+                - email: User email (optional). If provided, will directly use this email for
+                  external API authentication without querying database
+            fastapi_request: FastAPI Request object (used to get user_id from request headers)
+            user_id: User ID (optional, can be None if request.email is provided)
 
         Returns:
-            包含可用主机列表的分页响应
+            Paginated response containing available host list
 
         Raises:
-            BusinessError: 当外部接口调用失败或数据查询失败时
+            BusinessError: When external API call fails or data query fails
         """
         operation_start_time = time.time()
 
         logger.info(
-            "开始查询可用主机列表",
+            "Starting to query available host list",
             extra={
                 "operation": "query_available_hosts",
                 "tc_id": request.tc_id,
@@ -158,41 +166,41 @@ class HostDiscoveryService:
                 "user_name": request.user_name,
                 "page_size": request.page_size,
                 "last_id": request.last_id,
-                "email": request.email,  # ✅ 记录 email 参数（如果提供）
+                "email": request.email,  # ✅ Record email parameter (if provided)
             },
         )
 
-        # 步骤 1: 根据 last_id 计算外部接口的初始偏移量
+        # Step 1: Calculate initial offset for external API based on last_id
         initial_skip = 0
         if request.last_id is not None:
-            # 需要从头遍历，但会通过 seen_ids 跳过
+            # Need to traverse from beginning, but will skip through seen_ids
             initial_skip = 0
 
-        # 缓存在本次查询中已处理的 host_rec_id，确保不重复
-        # 这个缓存仅在单次请求中有效，不会跨越请求
+        # Cache processed host_rec_id in this query to ensure no duplicates
+        # This cache is only valid within a single request, does not cross requests
         seen_ids: Set[str] = set()
         all_available_hosts: List[AvailableHostInfo] = []
 
-        # 外部接口分页参数
+        # External API pagination parameters
         skip = initial_skip
-        # limit = 100  # 每次请求 100 条
-        limit = 10  # 每次请求 10 条
-        max_iterations = 100  # 最多迭代 100 次，防止无限循环
+        # limit = 100  # Request 100 records per call
+        limit = 10  # Request 10 records per call
+        max_iterations = 100  # Maximum 100 iterations to prevent infinite loop
 
-        # ✅ 死循环检测：记录连续无进展的迭代次数
-        no_progress_count = 0  # 连续无进展的迭代次数
-        max_no_progress = 5  # 最多允许 5 次无进展迭代
-        last_available_count = 0  # 上一次迭代后的可用主机数量
-        seen_hardware_ids: Set[str] = set()  # 已处理过的 hardware_id 集合（用于检测重复数据）
+        # ✅ Infinite loop detection: record consecutive iterations with no progress
+        no_progress_count = 0  # Consecutive iterations with no progress
+        max_no_progress = 5  # Maximum 5 iterations with no progress allowed
+        last_available_count = 0  # Available host count after previous iteration
+        seen_hardware_ids: Set[str] = set()  # Set of processed hardware_id (for detecting duplicates)
 
-        # 优化：在循环外创建数据库会话，复用连接，减少连接池压力
+        # Optimization: Create database session outside loop, reuse connection, reduce connection pool pressure
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 记录连接池状态（连接获取前）
+            # Record connection pool status (before connection acquisition)
             pool_status_before = mariadb_manager.get_pool_status()
             if pool_status_before["usage_percent"] >= 80:
                 logger.warning(
-                    "数据库连接池使用率较高，开始查询",
+                    "Database connection pool usage is high, starting query",
                     extra={
                         "usage_percent": pool_status_before["usage_percent"],
                         "checked_out": pool_status_before["checked_out"],
@@ -200,12 +208,12 @@ class HostDiscoveryService:
                     },
                 )
 
-            # 循环获取外部接口数据并过滤，直到满足分页要求
+            # Loop to get external API data and filter until pagination requirements are met
             for iteration in range(max_iterations):
-                # 如果已经收集到足够的数据，提前退出循环
+                # If enough data has been collected, exit loop early
                 if len(all_available_hosts) >= request.page_size:
                     logger.info(
-                        "已获得足够的数据用于分页，提前退出循环",
+                        "Enough data obtained for pagination, exiting loop early",
                         extra={
                             "iteration": iteration,
                             "required_size": request.page_size,
@@ -215,12 +223,12 @@ class HostDiscoveryService:
                     )
                     break
 
-                # ✅ 死循环检测：如果连续多次迭代都没有新增任何记录，退出循环
+                # ✅ Infinite loop detection: if consecutive iterations have not added any records, exit loop
                 if iteration > 0 and len(all_available_hosts) == last_available_count:
                     no_progress_count += 1
                     if no_progress_count >= max_no_progress:
                         logger.warning(
-                            "检测到死循环风险，连续多次迭代无进展，退出循环",
+                            "Detected infinite loop risk, consecutive iterations with no progress, exiting loop",
                             extra={
                                 "iteration": iteration,
                                 "no_progress_count": no_progress_count,
@@ -231,13 +239,13 @@ class HostDiscoveryService:
                         )
                         break
                 else:
-                    # 有进展，重置无进展计数
+                    # Has progress, reset no progress count
                     no_progress_count = 0
 
-                # 只在第一次或每10次迭代时记录详细日志，减少日志量
+                # Only log detailed information on first iteration or every 10 iterations to reduce log volume
                 if iteration == 0 or iteration % 10 == 0:
                     logger.debug(
-                        "调用外部接口获取硬件主机列表",
+                        "Calling external API to get hardware host list",
                         extra={
                             "iteration": iteration,
                             "skip": skip,
@@ -247,20 +255,20 @@ class HostDiscoveryService:
                         },
                     )
 
-                # 步骤 2: 调用外部硬件接口获取主机列表（带认证）
+                # Step 2: Call external hardware API to get host list (with authentication)
                 hardware_hosts = await self._fetch_hardware_hosts(
                     tc_id=request.tc_id,
                     skip=skip,
                     limit=limit,
                     request=fastapi_request,
                     user_id=user_id,
-                    email=request.email,  # ✅ 传递 email 参数
+                    email=request.email,  # ✅ Pass email parameter
                 )
 
-                # 如果外部接口返回空，停止循环
+                # If external API returns empty, stop loop
                 if not hardware_hosts:
                     logger.info(
-                        "外部接口返回数据为空或已到达末尾",
+                        "External API returned empty data or reached end",
                         extra={
                             "iteration": iteration,
                             "skip": skip,
@@ -269,11 +277,12 @@ class HostDiscoveryService:
                     )
                     break
 
-                # ✅ 死循环检测：检查是否返回了重复的 hardware_id（说明外部接口不支持真正的分页）
+                # ✅ Infinite loop detection: check if duplicate hardware_id is returned
+                # (indicates external API does not support true pagination)
                 current_hardware_ids = {host.hardware_id for host in hardware_hosts if host.hardware_id}
                 if current_hardware_ids.issubset(seen_hardware_ids):
                     logger.warning(
-                        "检测到外部接口返回重复数据，可能不支持真正的分页，退出循环",
+                        "Detected external API returned duplicate data, may not support true pagination, exiting loop",
                         extra={
                             "iteration": iteration,
                             "skip": skip,
@@ -284,21 +293,22 @@ class HostDiscoveryService:
                     )
                     break
 
-                # 更新已处理的 hardware_id 集合
+                # Update processed hardware_id set
                 seen_hardware_ids.update(current_hardware_ids)
 
-                # 步骤 3: 提取硬件 ID 列表用于查询本地数据库
+                # Step 3: Extract hardware ID list for querying local database
                 hardware_ids = [host.hardware_id for host in hardware_hosts if host.hardware_id]
 
-                # 步骤 4: 查询 host_rec 表，获取可用的主机（优化：复用会话，减少连接占用）
+                # Step 4: Query host_rec table to get available hosts
+                # (Optimization: reuse session, reduce connection usage)
                 query_start_time = time.time()
                 available_hosts = await self._filter_available_hosts_in_session(session, hardware_ids)
                 query_duration = time.time() - query_start_time
 
-                # 记录查询性能（如果查询时间超过阈值）
-                if query_duration > 0.5:  # 超过500ms记录警告
+                # Record query performance (if query time exceeds threshold)
+                if query_duration > 0.5:  # Log warning if exceeds 500ms
                     logger.warning(
-                        "数据库查询耗时较长",
+                        "Database query took too long",
                         extra={
                             "iteration": iteration,
                             "query_duration_ms": round(query_duration * 1000, 2),
@@ -308,7 +318,7 @@ class HostDiscoveryService:
                     )
 
                 logger.debug(
-                    "本轮过滤完成",
+                    "This round of filtering completed",
                     extra={
                         "iteration": iteration,
                         "fetched_hardware_count": len(hardware_hosts),
@@ -318,15 +328,15 @@ class HostDiscoveryService:
                     },
                 )
 
-                # 记录本次迭代前的可用主机数量（用于无进展检测）
+                # Record available host count before this iteration (for no progress detection)
                 last_available_count = len(all_available_hosts)
 
-                # 步骤 5: 添加新数据，同时跳过在 last_id 之后的数据
-                added_count = 0  # 本次迭代新增的记录数
+                # Step 5: Add new data, while skipping data after last_id
+                added_count = 0  # Number of records added in this iteration
                 for host in available_hosts:
-                    # 如果指定了 last_id，跳过所有 ID 小于等于 last_id 的记录
-                    # 注意：由于 ID 是字符串，需要转换为整数进行比较
-                    # ✅ 使用实际的字段名 id（而不是 alias host_rec_id）
+                    # If last_id is specified, skip all records with ID less than or equal to last_id
+                    # Note: Since ID is string, need to convert to integer for comparison
+                    # ✅ Use actual field name id (not alias host_rec_id)
                     if request.last_id is not None:
                         try:
                             host_id_int = int(host.id)
@@ -334,11 +344,11 @@ class HostDiscoveryService:
                             if host_id_int <= last_id_int:
                                 continue
                         except (ValueError, TypeError):
-                            # 如果转换失败，使用字符串比较（降级方案）
+                            # If conversion fails, use string comparison (fallback solution)
                             if host.id <= request.last_id:
                                 continue
 
-                    # 检查是否已经添加过（本次查询中的去重）
+                    # Check if already added (deduplication in this query)
                     if host.id in seen_ids:
                         continue
 
@@ -346,14 +356,14 @@ class HostDiscoveryService:
                     seen_ids.add(host.id)
                     added_count += 1
 
-                    # 如果已经达到要求的数量，可以提前退出内层循环
+                    # If required count has been reached, can exit inner loop early
                     if len(all_available_hosts) >= request.page_size:
                         break
 
-                # ✅ 记录本次迭代新增的记录数（用于调试）
+                # ✅ Record number of records added in this iteration (for debugging)
                 if added_count == 0:
                     logger.debug(
-                        "本轮迭代未新增任何记录",
+                        "This iteration did not add any records",
                         extra={
                             "iteration": iteration,
                             "skip": skip,
@@ -363,14 +373,14 @@ class HostDiscoveryService:
                         },
                     )
 
-                # 准备下一页请求（在检查是否提前退出之前）
+                # Prepare next page request (before checking if to exit early)
                 skip += limit
 
-            # 记录连接池状态（连接释放后）
+            # Record connection pool status (after connection release)
             pool_status_after = mariadb_manager.get_pool_status()
             if pool_status_after["usage_percent"] >= 80:
                 logger.warning(
-                    "数据库连接池使用率较高，查询完成",
+                    "Database connection pool usage is high, query completed",
                     extra={
                         "usage_percent": pool_status_after["usage_percent"],
                         "checked_out": pool_status_after["checked_out"],
@@ -378,21 +388,21 @@ class HostDiscoveryService:
                     },
                 )
 
-        # 步骤 7: 进行分页切片 - 返回前 page_size 条数据
+        # Step 7: Perform pagination slice - return first page_size records
         paginated_hosts = all_available_hosts[: request.page_size]
 
-        # ✅ 如果返回为空，查询数据库里的有效数据
+        # ✅ If return is empty, query valid data from database
         if not paginated_hosts:
             logger.info(
-                "查询结果为空，降级查询数据库有效数据",
+                "Query result is empty, fallback query database valid data",
                 extra={
                     "tc_id": request.tc_id,
                     "cycle_name": request.cycle_name,
                 },
             )
 
-            # 从本地数据库查询有效主机
-            # 条件：host_state=0(空闲), appr_state=1(启用), del_flag=0(未删除), tcp_state=2(监听)
+            # Query valid hosts from local database
+            # Conditions: host_state=0 (free), appr_state=1 (enabled), del_flag=0 (not deleted), tcp_state=2 (listening)
             session_factory = self.session_factory
             async with session_factory() as session:
                 fallback_stmt = (
@@ -405,7 +415,7 @@ class HostDiscoveryService:
                             HostRec.tcp_state == TCP_STATE_LISTEN,
                         )
                     )
-                    .limit(request.page_size)  # 获取一页数据
+                    .limit(request.page_size)  # Get one page of data
                 )
 
                 fallback_result = await session.execute(fallback_stmt)
@@ -414,44 +424,44 @@ class HostDiscoveryService:
                 if fallback_hosts:
                     paginated_hosts = [
                         AvailableHostInfo(
-                            host_rec_id=str(h.id),  # 使用 alias host_rec_id
-                            user_name=h.host_no or "",  # 使用 host_no 替代 host_acct
+                            host_rec_id=str(h.id),  # Use alias host_rec_id
+                            user_name=h.host_no or "",  # Use host_no instead of host_acct
                             host_ip=h.host_ip or "",
                         )
                         for h in fallback_hosts
                     ]
-                    # 更新总数
+                    # Update total count
                     all_available_hosts = paginated_hosts
 
                     logger.info(
-                        "降级查询成功，获取到有效主机",
+                        "Fallback query succeeded, obtained valid hosts",
                         extra={
                             "count": len(paginated_hosts),
-                            "first_host_id": paginated_hosts[0].id if paginated_hosts else None
+                            "first_host_id": paginated_hosts[0].id if paginated_hosts else None,
                         },
                     )
                 else:
                     logger.warning(
-                        "降级查询未找到有效主机",
+                        "Fallback query found no valid hosts",
                         extra={
                             "tc_id": request.tc_id,
                         },
                     )
 
-        # 步骤 8: 确定是否有下一页
+        # Step 8: Determine if there is next page
         has_next = len(all_available_hosts) > request.page_size
 
-        # 确定下一页的 last_id
+        # Determine next page's last_id
         last_id: Optional[str] = None
         if paginated_hosts:
-            # ✅ 使用实际的字段名 id（而不是 alias host_rec_id）
+            # ✅ Use actual field name id (not alias host_rec_id)
             last_id = paginated_hosts[-1].id
 
         operation_duration = time.time() - operation_start_time
 
-        # 记录操作总耗时
+        # Record total operation duration
         logger.info(
-            "查询可用主机列表完成",
+            "Query available host list completed",
             extra={
                 "tc_id": request.tc_id,
                 "total_available_in_query": len(all_available_hosts),
@@ -464,10 +474,10 @@ class HostDiscoveryService:
             },
         )
 
-        # 如果操作耗时超过2秒，记录警告
+        # If operation duration exceeds 2 seconds, log warning
         if operation_duration > 2.0:
             logger.warning(
-                "查询可用主机列表耗时较长",
+                "Query available host list took too long",
                 extra={
                     "operation_duration_ms": round(operation_duration * 1000, 2),
                     "returned_count": len(paginated_hosts),
@@ -475,10 +485,10 @@ class HostDiscoveryService:
                 },
             )
 
-        # 构建响应对象
+        # Build response object
         response = AvailableHostsListResponse(
             hosts=paginated_hosts,
-            total=len(all_available_hosts),  # 本次查询中发现的总数
+            total=len(all_available_hosts),  # Total discovered in this query
             page_size=request.page_size,
             has_next=has_next,
             last_id=last_id,
@@ -491,19 +501,20 @@ class HostDiscoveryService:
         skip: int = 0,
         limit: int = 100,
     ) -> List[HardwareHostData]:
-        """获取 Mock 硬件主机数据
+        """Get Mock hardware host data
 
         Args:
-            skip: 跳过条数
-            limit: 返回数量
+            skip: Number of records to skip
+            limit: Number of records to return
 
         Returns:
-            Mock 硬件主机列表
+            Mock hardware host list
         """
-        # Mock 数据：基于用户提供的格式
-        # 注意：前两条数据对应数据库中的记录，需要确保数据库中的 hardware_id 字段已更新
-        # 第一条：id=1846557388006625421, mg_id='test', host_ip='127.0.0.1', mac_addr='123'
-        # 第二条：id=1847395771312739675, mg_id='test123', host_ip='192.168.1.1', mac_addr='234'
+        # Mock data: Based on user provided format
+        # Note: First two records correspond to database records,
+        # need to ensure hardware_id field in database is updated
+        # First: id=1846557388006625421, mg_id='test', host_ip='127.0.0.1', mac_addr='123'
+        # Second: id=1847395771312739675, mg_id='test123', host_ip='192.168.1.1', mac_addr='234'
         mock_data = [
             {
                 "hardware_id": "test-hardware-1",
@@ -622,8 +633,8 @@ class HostDiscoveryService:
             },
         ]
 
-        # 应用分页
-        paginated_data = mock_data[skip:skip + limit]
+        # Apply pagination
+        paginated_data = mock_data[skip : skip + limit]
         return [HardwareHostData(**item) for item in paginated_data]
 
     async def _fetch_hardware_hosts(
@@ -631,54 +642,57 @@ class HostDiscoveryService:
         tc_id: str,
         skip: int = 0,
         limit: int = 100,
-        request=None,  # FastAPI Request 对象（用于获取 user_id）
-        user_id: Optional[int] = None,  # 用户ID（可选，如果提供了 email 则可以为 None）
-        email: Optional[str] = None,  # 用户邮箱（可选）。如果提供，将直接使用该 email 获取 token，不查询数据库
+        request=None,  # FastAPI Request object (used to get user_id)
+        user_id: Optional[int] = None,  # User ID (optional, can be None if email provided)
+        email: Optional[str] = None,  # User email (optional). If provided, directly use to get token
     ) -> List[HardwareHostData]:
-        """调用外部硬件接口获取主机列表（带认证）
+        """Call external hardware API to get host list (with authentication)
 
-        使用统一的外部接口调用客户端，自动处理认证和 SSL 配置。
+        Uses unified external API client, automatically handles authentication and SSL configuration.
 
-        认证方式：
-        - **方式1（推荐）**: 如果提供了 `email` 参数，直接使用该 email 获取外部接口 token，跳过数据库查询，性能更优
-        - **方式2**: 如果未提供 `email`，系统会根据 `user_id`（从 request 或参数获取）查询数据库获取 email
+        Authentication methods:
+        - **Method 1 (Recommended)**: If `email` parameter is provided, directly use this email
+          to get external API token, skip database query for better performance
+        - **Method 2**: If `email` is not provided, system will query database to get email
+          based on `user_id` (from request or parameter)
 
         Args:
-            tc_id: 测试用例 ID
-            skip: 跳过条数（用于分页）
-            limit: 返回数量（每次请求的最大数量）
-            request: FastAPI Request 对象（用于从请求头获取 user_id）
-            user_id: 当前登录管理后台用户的ID（可选，如果提供了 email 则可以为 None）
-            email: 用户邮箱（可选）。如果提供，将直接使用该 email 获取 token，不查询数据库，提高性能
+            tc_id: Test case ID
+            skip: Number of records to skip (for pagination)
+            limit: Number of records to return (maximum per request)
+            request: FastAPI Request object (used to get user_id from request headers)
+            user_id: ID of currently logged in admin user (optional, can be None if email provided)
+            email: User email (optional). If provided, directly use to get token without querying database
 
         Returns:
-            硬件主机列表（HardwareHostData 对象列表）
+            Hardware host list (list of HardwareHostData objects)
 
         Raises:
-            BusinessError: 当接口调用失败时，包括：
-                - 外部接口调用失败（网络错误、超时等）
-                - 外部接口返回非 200 状态码
-                - 响应数据格式不符合预期
+            BusinessError: When API call fails, including:
+                - External API call failed (network error, timeout, etc.)
+                - External API returned non-200 status code
+                - Response data format does not meet expectations
 
         Note:
-            - 如果 USE_HARDWARE_MOCK 环境变量设置为 true，将返回模拟数据
-            - Token 获取支持 Redis 缓存，避免重复请求
-            - SSL 验证配置通过 HTTP_CLIENT_VERIFY_SSL 环境变量控制
+            - If USE_HARDWARE_MOCK environment variable is set to true, will return mock data
+            - Token acquisition supports Redis cache to avoid duplicate requests
+            - SSL verification configuration controlled through HTTP_CLIENT_VERIFY_SSL env var
         """
-        # ✅ 检查是否使用 Mock 数据（通过环境变量控制）
+        # ✅ Check if use Mock data (controlled through environment variable)
         use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
 
         if use_mock:
-            # 减少Mock日志频率：只在第一次调用或每10次调用时记录
-            # 使用模块级变量跟踪调用次数（简单方案，生产环境可考虑更优雅的实现）
+            # Reduce Mock log frequency: only log on first call or every 10 calls
+            # Use module-level variable to track call count
+            # (simple solution, production can consider more elegant implementation)
             if not hasattr(self, "_mock_call_count"):
                 self._mock_call_count = 0
             self._mock_call_count += 1
 
-            # 只在第一次或每10次调用时记录日志
+            # Only log on first call or every 10 calls
             if self._mock_call_count == 1 or self._mock_call_count % 10 == 0:
                 logger.debug(
-                    "使用 Mock 硬件接口数据",
+                    "Using Mock hardware API data",
                     extra={
                         "tc_id": tc_id,
                         "skip": skip,
@@ -689,7 +703,7 @@ class HostDiscoveryService:
             return self._get_mock_hardware_hosts(skip=skip, limit=limit)
 
         try:
-            # ✅ 使用统一的外部接口调用客户端（支持认证和 SSL 配置）
+            # ✅ Use unified external API client (supports authentication and SSL configuration)
             # url_path = "/api/v1/hardware/hosts"
             url_path = "/api/v1/hardware/mock_hosts"
             params = {
@@ -699,7 +713,7 @@ class HostDiscoveryService:
             }
 
             logger.debug(
-                "调用硬件接口（带认证）",
+                "Calling hardware API (with authentication)",
                 extra={
                     "url_path": url_path,
                     "params": params,
@@ -708,17 +722,17 @@ class HostDiscoveryService:
                 },
             )
 
-            # ✅ 使用统一的外部接口调用方法（自动处理 token 获取和认证）
-            # 如果提供了 email，将直接使用该 email 获取 token，不查询数据库
-            # ✅ 优化：将超时时间从 30s 降低到 10s，快速失败避免阻塞
+            # ✅ Use unified external API call method (automatically handles token acquisition and authentication)
+            # If email is provided, will directly use this email to get token without querying database
+            # ✅ Optimization: Reduce timeout from 30s to 10s, fail fast to avoid blocking
             response = await call_external_api(
                 method="GET",
                 url_path=url_path,
                 request=request,
                 user_id=user_id,
-                email=email,  # ✅ 传递 email 参数
+                email=email,  # ✅ Pass email parameter
                 params=params,
-                timeout=10.0,  # ✅ 优化：从 30.0 降低到 10.0
+                timeout=10.0,  # ✅ Optimization: Reduced from 30.0 to 10.0
             )
 
             status_code = response.get("status_code")
@@ -726,31 +740,31 @@ class HostDiscoveryService:
 
             if status_code != 200:
                 error_msg = (
-                    response_body.get("message", "未知错误")
+                    response_body.get("message", "Unknown error")
                     if isinstance(response_body, dict)
                     else str(response_body)
                 )
                 raise BusinessError(
-                    message=f"硬件接口调用失败: {error_msg}",
+                    message=f"Hardware API call failed: {error_msg}",
                     error_code="HOST_HARDWARE_API_ERROR",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=status_code or 500,
                 )
 
-            # 解析响应数据
+            # Parse response data
             data = response_body if response_body else {}
             hardware_hosts: List[HardwareHostData] = []
-            skipped_count = 0  # 记录跳过的无效记录数
+            skipped_count = 0  # Record count of skipped invalid records
 
             if isinstance(data, list):
-                # 响应格式：直接数组
+                # Response format: direct array
                 for item in data:
-                    # ✅ 过滤掉 hardware_id 为 None 或空字符串的记录
+                    # ✅ Filter out records with hardware_id as None or empty string
                     hardware_id = item.get("hardware_id") if isinstance(item, dict) else None
                     if not hardware_id or (isinstance(hardware_id, str) and not hardware_id.strip()):
                         skipped_count += 1
                         logger.debug(
-                            "跳过无效的硬件记录（hardware_id 为空）",
+                            "Skipping invalid hardware record (hardware_id is empty)",
                             extra={
                                 "tc_id": tc_id,
                                 "item_keys": list(item.keys()) if isinstance(item, dict) else "N/A",
@@ -761,10 +775,10 @@ class HostDiscoveryService:
                     try:
                         hardware_hosts.append(HardwareHostData(**item))
                     except Exception as e:
-                        # ✅ 捕获 Pydantic 验证错误，记录详细信息并跳过该记录
+                        # ✅ Catch Pydantic validation error, log detailed information and skip this record
                         skipped_count += 1
                         logger.warning(
-                            "硬件记录验证失败，跳过该记录",
+                            "Hardware record validation failed, skipping this record",
                             extra={
                                 "tc_id": tc_id,
                                 "hardware_id": hardware_id,
@@ -774,14 +788,14 @@ class HostDiscoveryService:
                             },
                         )
             elif isinstance(data, dict) and "data" in data:
-                # 响应格式：{ "data": [...] }
+                # Response format: { "data": [...] }
                 for item in data["data"]:
-                    # ✅ 过滤掉 hardware_id 为 None 或空字符串的记录
+                    # ✅ Filter out records with hardware_id as None or empty string
                     hardware_id = item.get("hardware_id") if isinstance(item, dict) else None
                     if not hardware_id or (isinstance(hardware_id, str) and not hardware_id.strip()):
                         skipped_count += 1
                         logger.debug(
-                            "跳过无效的硬件记录（hardware_id 为空）",
+                            "Skipping invalid hardware record (hardware_id is empty)",
                             extra={
                                 "tc_id": tc_id,
                                 "item_keys": list(item.keys()) if isinstance(item, dict) else "N/A",
@@ -792,10 +806,10 @@ class HostDiscoveryService:
                     try:
                         hardware_hosts.append(HardwareHostData(**item))
                     except Exception as e:
-                        # ✅ 捕获 Pydantic 验证错误，记录详细信息并跳过该记录
+                        # ✅ Catch Pydantic validation error, log detailed information and skip this record
                         skipped_count += 1
                         logger.warning(
-                            "硬件记录验证失败，跳过该记录",
+                            "Hardware record validation failed, skipping this record",
                             extra={
                                 "tc_id": tc_id,
                                 "hardware_id": hardware_id,
@@ -806,17 +820,17 @@ class HostDiscoveryService:
                         )
             else:
                 logger.warning(
-                    "硬件接口返回数据格式不符合预期",
+                    "Hardware API response data format does not meet expectations",
                     extra={
                         "response_type": type(data).__name__,
                         "response_keys": (list(data.keys()) if isinstance(data, dict) else "N/A"),
                     },
                 )
 
-            # ✅ 记录解析结果统计
+            # ✅ Record parsing result statistics
             if skipped_count > 0:
                 logger.warning(
-                    "硬件接口返回了无效记录，已跳过",
+                    "Hardware API returned invalid records, skipped",
                     extra={
                         "tc_id": tc_id,
                         "skipped_count": skipped_count,
@@ -826,7 +840,7 @@ class HostDiscoveryService:
                 )
             else:
                 logger.debug(
-                    "硬件接口数据解析完成",
+                    "Hardware API data parsing completed",
                     extra={
                         "tc_id": tc_id,
                         "valid_count": len(hardware_hosts),
@@ -836,12 +850,12 @@ class HostDiscoveryService:
             return hardware_hosts
 
         except BusinessError:
-            # ✅ 重新抛出业务异常（call_external_api 已经处理了异常并转换为 BusinessError）
+            # ✅ Re-raise business exception (call_external_api already handled and converted to BusinessError)
             raise
         except Exception as e:
-            # ✅ 捕获其他未预期的异常
+            # ✅ Catch other unexpected exceptions
             logger.error(
-                "硬件接口调用异常",
+                "Hardware API call exception",
                 extra={
                     "tc_id": tc_id,
                     "error": str(e),
@@ -850,7 +864,7 @@ class HostDiscoveryService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="硬件接口调用异常，请稍后重试",
+                message="Hardware API call exception, please try again later",
                 error_code="HOST_HARDWARE_API_ERROR",
                 code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                 http_status_code=500,
@@ -861,54 +875,59 @@ class HostDiscoveryService:
         session: "AsyncSession",
         hardware_ids: List[str],
     ) -> List[AvailableHostInfo]:
-        """根据条件过滤可用的主机（使用已有会话，优化连接池使用）
+        """Filter available hosts based on conditions (using existing session, optimize connection pool usage)
 
-        这是 _filter_available_hosts 的优化版本，接受已有会话参数，
-        避免在循环中重复创建数据库连接。
+        This is an optimized version of _filter_available_hosts that accepts an existing session parameter,
+        avoiding repeated database connection creation in loops.
 
         Args:
-            session: 数据库会话（已创建）
-            hardware_ids: 硬件 ID 列表
+            session: Database session (already created)
+            hardware_ids: Hardware ID list
 
         Returns:
-            可用主机列表
+            Available host list
         """
         if not hardware_ids:
             return []
 
-        # 批量查询优化：如果 hardware_ids 太多，分批查询
+        # Batch query optimization: if hardware_ids is too many, query in batches
         batch_size = 500
         all_available_hosts: List[AvailableHostInfo] = []
 
         try:
             total_query_time = 0.0
 
-            # 分批处理 hardware_ids
+            # Process hardware_ids in batches
             for i in range(0, len(hardware_ids), batch_size):
-                batch_ids = hardware_ids[i:i + batch_size]
+                batch_ids = hardware_ids[i : i + batch_size]
                 batch_start_time = time.time()
 
-                # 构建查询条件（使用索引优化）
-                # 使用复合索引：ix_host_rec_hardware_id_state (hardware_id, host_state, appr_state, tcp_state, del_flag)
-                stmt = select(HostRec).where(
-                    and_(
-                        HostRec.hardware_id.in_(batch_ids),
-                        HostRec.appr_state == 1,  # 启用状态
-                        HostRec.host_state == 0,  # 空闲状态
-                        HostRec.tcp_state == 2,  # 监听/连接正常
-                        HostRec.del_flag == 0,  # 未删除
+                # Build query conditions (using index optimization)
+                # Use composite index: ix_host_rec_hardware_id_state
+                # (hardware_id, host_state, appr_state, tcp_state, del_flag)
+                stmt = (
+                    select(HostRec)
+                    .where(
+                        and_(
+                            HostRec.hardware_id.in_(batch_ids),
+                            HostRec.appr_state == 1,  # Enabled state
+                            HostRec.host_state == 0,  # Free state
+                            HostRec.tcp_state == 2,  # Listening/connected
+                            HostRec.del_flag == 0,  # Not deleted
+                        )
                     )
-                ).limit(1000)  # 限制单次查询结果数量
+                    .limit(1000)
+                )  # Limit single query result count
 
                 result = await session.execute(stmt)
                 host_recs = result.scalars().all()
                 batch_duration = time.time() - batch_start_time
                 total_query_time += batch_duration
 
-                # 记录慢查询（单批次超过200ms）
+                # Record slow query (single batch exceeds 200ms)
                 if batch_duration > 0.2:
                     logger.warning(
-                        "数据库批次查询耗时较长",
+                        "Database batch query took too long",
                         extra={
                             "batch_index": i // batch_size + 1,
                             "batch_size": len(batch_ids),
@@ -917,21 +936,21 @@ class HostDiscoveryService:
                         },
                     )
 
-                # 转换为响应格式
+                # Convert to response format
                 batch_hosts: List[AvailableHostInfo] = [
                     AvailableHostInfo(
                         host_rec_id=str(host_rec.id),
-                        user_name=host_rec.host_no or "",  # 使用 host_no 替代 host_acct
+                        user_name=host_rec.host_no or "",  # Use host_no instead of host_acct
                         host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
                     )
                     for host_rec in host_recs
-                    if host_rec.hardware_id  # 确保 hardware_id 不为空
+                    if host_rec.hardware_id  # Ensure hardware_id is not empty
                 ]
 
                 all_available_hosts.extend(batch_hosts)
 
             logger.debug(
-                "host_rec 表查询完成（复用会话）",
+                "host_rec table query completed (reusing session)",
                 extra={
                     "requested_hardware_ids": len(hardware_ids),
                     "available_hosts": len(all_available_hosts),
@@ -948,7 +967,7 @@ class HostDiscoveryService:
 
         except Exception as e:
             logger.error(
-                "数据库查询失败",
+                "Database query failed",
                 extra={
                     "requested_hardware_ids": len(hardware_ids),
                     "error_type": type(e).__name__,
@@ -962,76 +981,80 @@ class HostDiscoveryService:
         self,
         hardware_ids: List[str],
     ) -> List[AvailableHostInfo]:
-        """根据条件过滤可用的主机（批量查询优化）
+        """Filter available hosts based on conditions (batch query optimization)
 
-        过滤条件：
-        - hardware_id 在指定列表中
-        - appr_state = 1（启用状态）
-        - host_state = 0（空闲状态）
-        - tcp_state = 2（监听/连接正常）
-        - del_flag = 0（未删除）
+        Filter conditions:
+        - hardware_id in specified list
+        - appr_state = 1 (enabled state)
+        - host_state = 0 (free state)
+        - tcp_state = 2 (listening/connected)
+        - del_flag = 0 (not deleted)
 
-        性能优化：
-        - 使用 hardware_id 索引加速查询
-        - 批量查询，减少数据库往返次数
-        - 限制查询结果数量，避免内存溢出
-        - 添加数据库连接重试机制，处理连接丢失问题
+        Performance optimizations:
+        - Use hardware_id index to accelerate query
+        - Batch query to reduce database round trips
+        - Limit query result count to avoid memory overflow
+        - Add database connection retry mechanism to handle connection lost issues
 
         Args:
-            hardware_ids: 硬件 ID 列表
+            hardware_ids: Hardware ID list
 
         Returns:
-            可用主机列表
+            Available host list
         """
         if not hardware_ids:
             return []
 
-        # 批量查询优化：如果 hardware_ids 太多，分批查询
-        # 避免 SQL IN 子句过长（MySQL/MariaDB 限制）
+        # Batch query optimization: if hardware_ids is too many, query in batches
+        # Avoid SQL IN clause being too long (MySQL/MariaDB limitation)
         batch_size = 500
         all_available_hosts: List[AvailableHostInfo] = []
 
-        # 重试配置
+        # Retry configuration
         max_retries = 3
-        retry_delay = 1.0  # 初始重试延迟（秒）
+        retry_delay = 1.0  # Initial retry delay (seconds)
 
         for attempt in range(max_retries):
             try:
                 session_factory = self.session_factory
                 async with session_factory() as session:
-                    # 分批处理 hardware_ids
+                    # Process hardware_ids in batches
                     for i in range(0, len(hardware_ids), batch_size):
-                        batch_ids = hardware_ids[i:i + batch_size]
+                        batch_ids = hardware_ids[i : i + batch_size]
 
-                        # 构建查询条件（使用索引优化）
-                        stmt = select(HostRec).where(
-                            and_(
-                                HostRec.hardware_id.in_(batch_ids),
-                                HostRec.appr_state == 1,  # 启用状态
-                                HostRec.host_state == 0,  # 空闲状态
-                                HostRec.tcp_state == 2,  # 监听/连接正常
-                                HostRec.del_flag == 0,  # 未删除
+                        # Build query conditions (using index optimization)
+                        stmt = (
+                            select(HostRec)
+                            .where(
+                                and_(
+                                    HostRec.hardware_id.in_(batch_ids),
+                                    HostRec.appr_state == 1,  # Enabled state
+                                    HostRec.host_state == 0,  # Free state
+                                    HostRec.tcp_state == 2,  # Listening/connected
+                                    HostRec.del_flag == 0,  # Not deleted
+                                )
                             )
-                        ).limit(1000)  # 限制单次查询结果数量
+                            .limit(1000)
+                        )  # Limit single query result count
 
                         result = await session.execute(stmt)
                         host_recs = result.scalars().all()
 
-                        # 转换为响应格式
+                        # Convert to response format
                         batch_hosts: List[AvailableHostInfo] = [
                             AvailableHostInfo(
-                                host_rec_id=str(host_rec.id),  # ✅ 转换为字符串避免精度丢失
-                                user_name=host_rec.host_no or "",  # 使用 host_no 替代 host_acct
+                                host_rec_id=str(host_rec.id),  # ✅ Convert to string to avoid precision loss
+                                user_name=host_rec.host_no or "",  # Use host_no instead of host_acct
                                 host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
                             )
                             for host_rec in host_recs
-                            if host_rec.hardware_id  # 确保 hardware_id 不为空
+                            if host_rec.hardware_id  # Ensure hardware_id is not empty
                         ]
 
                         all_available_hosts.extend(batch_hosts)
 
                     logger.debug(
-                        "host_rec 表查询完成",
+                        "host_rec table query completed",
                         extra={
                             "requested_hardware_ids": len(hardware_ids),
                             "available_hosts": len(all_available_hosts),
@@ -1043,7 +1066,7 @@ class HostDiscoveryService:
                     return all_available_hosts
 
             except OperationalError as e:
-                # 数据库连接错误，尝试重试
+                # Database connection error, try retry
                 error_code = getattr(e.orig, "args", [None])[0] if hasattr(e, "orig") else None
                 is_connection_lost = (
                     error_code == 2013  # Lost connection to MySQL server during query
@@ -1052,10 +1075,10 @@ class HostDiscoveryService:
                 )
 
                 if is_connection_lost and attempt < max_retries - 1:
-                    # 计算指数退避延迟
-                    delay = retry_delay * (2 ** attempt)
+                    # Calculate exponential backoff delay
+                    delay = retry_delay * (2**attempt)
                     logger.warning(
-                        "数据库连接丢失，准备重试",
+                        "Database connection lost, preparing to retry",
                         extra={
                             "attempt": attempt + 1,
                             "max_retries": max_retries,
@@ -1065,13 +1088,13 @@ class HostDiscoveryService:
                         },
                     )
                     await asyncio.sleep(delay)
-                    # 清空已收集的结果，重新开始查询
+                    # Clear collected results, restart query
                     all_available_hosts = []
                     continue
                 else:
-                    # 重试次数已用完或不是连接丢失错误，重新抛出异常
+                    # Retry count exhausted or not a connection lost error, re-raise exception
                     logger.error(
-                        "数据库查询失败，无法重试",
+                        "Database query failed, cannot retry",
                         extra={
                             "attempt": attempt + 1,
                             "max_retries": max_retries,
@@ -1083,9 +1106,9 @@ class HostDiscoveryService:
                     )
                     raise
 
-        # 如果所有重试都失败，返回空列表（不应该到达这里，因为会抛出异常）
+        # If all retries failed, return empty list (should not reach here as exception will be raised)
         logger.error(
-            "数据库查询失败，所有重试均失败",
+            "Database query failed, all retries failed",
             extra={
                 "requested_hardware_ids": len(hardware_ids),
                 "max_retries": max_retries,

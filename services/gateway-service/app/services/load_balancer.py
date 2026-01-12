@@ -1,7 +1,7 @@
 """
-负载均衡器模块
+Load balancer module
 
-基于 Nacos 服务发现实现负载均衡
+Implements load balancing based on Nacos service discovery
 """
 
 import os
@@ -9,13 +9,13 @@ import random
 import sys
 from typing import Any, Dict, List, Optional
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.exceptions import ServiceUnavailableError
     from shared.common.loguru_config import get_logger
     from shared.config.nacos_config import NacosManager
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from shared.common.exceptions import ServiceUnavailableError
     from shared.common.loguru_config import get_logger
@@ -26,65 +26,65 @@ logger = get_logger(__name__)
 
 
 class LoadBalancer:
-    """负载均衡器类
+    """Load balancer class
 
-    基于 Nacos 服务发现，实现加权随机负载均衡算法
+    Based on Nacos service discovery, implements weighted random load balancing algorithm
     """
 
     def __init__(self, nacos_manager: NacosManager):
-        """初始化负载均衡器
+        """Initialize load balancer
 
         Args:
-            nacos_manager: Nacos 管理器实例
+            nacos_manager: Nacos manager instance
         """
         self.nacos_manager = nacos_manager
-        # 服务实例缓存
+        # Service instance cache
         self.service_instances_cache: Dict[str, List[Dict[str, Any]]] = {}
-        # 缓存过期时间（秒）
+        # Cache expiration time (seconds)
         self.cache_ttl = 30
 
     async def get_service_instance(self, service_name: str) -> Optional[Dict[str, Any]]:
-        """获取服务实例
+        """Get service instance
 
-        使用加权随机算法选择服务实例
+        Use weighted random algorithm to select service instance
 
         Args:
-            service_name: 服务名称
+            service_name: Service name
 
         Returns:
-            服务实例信息，包含 ip、port、weight 等
+            Service instance information, contains ip, port, weight, etc.
 
         Raises:
-            ServiceUnavailableError: 没有可用的服务实例
+            ServiceUnavailableError: No available service instances
         """
         try:
-            # 获取服务实例列表
+            # Get service instance list
             instances = await self._get_instances(service_name)
 
             if not instances:
-                logger.warning("没有找到服务实例", extra={"service_name": service_name})
+                logger.warning("No service instances found", extra={"service_name": service_name})
                 raise ServiceUnavailableError(
-                    message="没有可用的服务实例",
+                    message="No available service instances",
                     code=503,
                     details={"service_name": service_name},
                 )
 
-            # 过滤健康的实例
+            # Filter healthy instances
             healthy_instances = [inst for inst in instances if inst.get("healthy", True)]
 
             if not healthy_instances:
-                logger.warning("没有健康的服务实例", extra={"service_name": service_name})
+                logger.warning("No healthy service instances", extra={"service_name": service_name})
                 raise ServiceUnavailableError(
-                    message="没有健康的服务实例",
+                    message="No healthy service instances",
                     code=503,
                     details={"service_name": service_name},
                 )
 
-            # 使用加权随机算法选择实例
+            # Use weighted random algorithm to select instance
             selected_instance = self._select_instance_weighted(healthy_instances)
 
             logger.info(
-                "选择服务实例",
+                "Selected service instance",
                 extra={
                     "service_name": service_name,
                     "instance_ip": selected_instance.get("ip"),
@@ -99,37 +99,37 @@ class LoadBalancer:
 
         except Exception as e:
             logger.error(
-                "获取服务实例异常",
+                "Exception getting service instance",
                 extra={"service_name": service_name, "error": str(e)},
                 exc_info=True,
             )
             raise ServiceUnavailableError(message=str(e), code=503, details={"service_name": service_name})
 
     async def _get_instances(self, service_name: str) -> List[Dict[str, Any]]:
-        """获取服务实例列表
+        """Get service instance list
 
-        优先从缓存获取，缓存未命中则从 Nacos 获取
+        Get from cache first, if cache miss then get from Nacos
 
         Args:
-            service_name: 服务名称
+            service_name: Service name
 
         Returns:
-            服务实例列表
+            Service instance list
         """
-        # 检查缓存
+        # Check cache
         if service_name in self.service_instances_cache:
-            logger.debug("从缓存获取服务实例", extra={"service_name": service_name})
+            logger.debug("Get service instances from cache", extra={"service_name": service_name})
             return self.service_instances_cache[service_name]
 
-        # 从 Nacos 获取
+        # Get from Nacos
         try:
             instances = await self.nacos_manager.discover_service(service_name)
 
             if instances:
-                # 更新缓存
+                # Update cache
                 self.service_instances_cache[service_name] = instances
                 logger.info(
-                    "从 Nacos 获取服务实例",
+                    "Get service instances from Nacos",
                     extra={
                         "service_name": service_name,
                         "instance_count": len(instances),
@@ -140,80 +140,80 @@ class LoadBalancer:
 
         except Exception as e:
             logger.error(
-                "从 Nacos 获取服务实例失败",
+                "Failed to get service instances from Nacos",
                 extra={"service_name": service_name, "error": str(e)},
             )
             return []
 
     def _select_instance_weighted(self, instances: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """加权随机选择实例
+        """Weighted random selection of instance
 
-        根据实例的权重进行随机选择，权重越高被选中的概率越大
+        Randomly select based on instance weight, higher weight has higher probability of being selected
 
         Args:
-            instances: 服务实例列表
+            instances: Service instance list
 
         Returns:
-            选中的实例
+            Selected instance
         """
         if not instances:
-            raise ValueError("实例列表不能为空")
+            raise ValueError("Instance list cannot be empty")
 
-        # 如果只有一个实例，直接返回
+        # If only one instance, return directly
         if len(instances) == 1:
             return instances[0]
 
-        # 计算总权重
+        # Calculate total weight
         total_weight = sum(inst.get("weight", 1.0) for inst in instances)
 
-        # 生成随机数
+        # Generate random number
         rand = random.uniform(0, total_weight)
 
-        # 加权随机选择
+        # Weighted random selection
         current_weight = 0.0
         for instance in instances:
             current_weight += instance.get("weight", 1.0)
             if rand <= current_weight:
                 return instance
 
-        # 默认返回第一个实例
+        # Default return first instance
         return instances[0]
 
     def clear_cache(self, service_name: Optional[str] = None):
-        """清除缓存
+        """Clear cache
 
         Args:
-            service_name: 服务名称，如果为 None 则清除所有缓存
+            service_name: Service name, if None then clear all cache
         """
         if service_name:
             if service_name in self.service_instances_cache:
                 del self.service_instances_cache[service_name]
-                logger.info("清除服务实例缓存", extra={"service_name": service_name})
+                logger.info("Clear service instance cache", extra={"service_name": service_name})
         else:
             self.service_instances_cache.clear()
-            logger.info("清除所有服务实例缓存")
+            logger.info("Clear all service instance cache")
 
     async def get_all_instances(self, service_name: str) -> List[Dict[str, Any]]:
-        """获取所有服务实例
+        """Get all service instances
 
         Args:
-            service_name: 服务名称
+            service_name: Service name
 
         Returns:
-            服务实例列表
+            Service instance list
         """
         return await self._get_instances(service_name)
 
     async def check_instance_health(self, service_name: str, ip: str, port: int) -> bool:
-        """检查实例健康状态
+        """Check instance health status
 
         Args:
-            service_name: 服务名称
-            ip: 实例 IP
-            port: 实例端口
+            service_name: Service name
+            ip: Instance IP
+            port: Instance port
 
         Returns:
-            实例是否健康
+            Whether instance is healthy
         """
         try:
             instances = await self._get_instances(service_name)
@@ -226,7 +226,7 @@ class LoadBalancer:
 
         except Exception as e:
             logger.error(
-                "检查实例健康状态异常",
+                "Exception checking instance health status",
                 extra={
                     "service_name": service_name,
                     "ip": ip,
@@ -237,18 +237,18 @@ class LoadBalancer:
             return False
 
 
-# 全局负载均衡器实例
+# Global load balancer instance
 _load_balancer_instance: Optional[LoadBalancer] = None
 
 
 def get_load_balancer(nacos_manager: NacosManager) -> LoadBalancer:
-    """获取负载均衡器实例（单例模式）
+    """Get load balancer instance (singleton pattern)
 
     Args:
-        nacos_manager: Nacos 管理器实例
+        nacos_manager: Nacos manager instance
 
     Returns:
-        负载均衡器实例
+        Load balancer instance
     """
     global _load_balancer_instance
 

@@ -1,8 +1,8 @@
-"""Agent WebSocket Redis Pub/Sub 模块
+"""Agent WebSocket Redis Pub/Sub Module
 
-提供 Redis Pub/Sub 相关的工具函数和常量定义。
+Provides Redis Pub/Sub related utility functions and constant definitions.
 
-从 agent_websocket_manager.py 拆分出来，提高代码可维护性。
+Split from agent_websocket_manager.py to improve code maintainability.
 """
 
 from datetime import datetime, timezone
@@ -12,7 +12,7 @@ import sys
 from typing import Any, Dict, Optional
 import uuid
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.cache import redis_manager
     from shared.common.loguru_config import get_logger
@@ -24,18 +24,18 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# Redis Pub/Sub 相关常量
-REDIS_BROADCAST_CHANNEL = "websocket:broadcast"  # 广播频道
-REDIS_UNICAST_CHANNEL_PREFIX = "websocket:unicast:"  # 单播频道前缀
+# Redis Pub/Sub related constants
+REDIS_BROADCAST_CHANNEL = "websocket:broadcast"  # Broadcast channel
+REDIS_UNICAST_CHANNEL_PREFIX = "websocket:unicast:"  # Unicast channel prefix
 
 
 def get_instance_id() -> str:
-    """获取当前服务实例 ID
+    """Get current service instance ID
 
-    优先使用环境变量 SERVICE_INSTANCE_ID，否则生成随机 ID。
+    Prefer environment variable SERVICE_INSTANCE_ID, otherwise generate random ID.
 
     Returns:
-        str: 实例唯一 ID
+        str: Instance unique ID
     """
     return os.getenv("SERVICE_INSTANCE_ID", str(uuid.uuid4())[:8])
 
@@ -45,15 +45,15 @@ def build_broadcast_message(
     message: dict,
     exclude: Optional[str] = None,
 ) -> dict:
-    """构建广播消息结构
+    """Build broadcast message structure
 
     Args:
-        instance_id: 发送实例 ID
-        message: 原始消息内容
-        exclude: 排除的 Host ID
+        instance_id: Sending instance ID
+        message: Original message content
+        exclude: Excluded Host ID
 
     Returns:
-        dict: 包装后的广播消息
+        dict: Wrapped broadcast message
     """
     return {
         "instance_id": instance_id,
@@ -68,15 +68,15 @@ def build_unicast_message(
     target_host_id: str,
     message: dict,
 ) -> dict:
-    """构建单播消息结构
+    """Build unicast message structure
 
     Args:
-        instance_id: 发送实例 ID
-        target_host_id: 目标 Host ID
-        message: 原始消息内容
+        instance_id: Sending instance ID
+        target_host_id: Target Host ID
+        message: Original message content
 
     Returns:
-        dict: 包装后的单播消息
+        dict: Wrapped unicast message
     """
     return {
         "instance_id": instance_id,
@@ -87,13 +87,13 @@ def build_unicast_message(
 
 
 def get_unicast_channel(host_id: str) -> str:
-    """获取单播频道名称
+    """Get unicast channel name
 
     Args:
         host_id: Host ID
 
     Returns:
-        str: 单播频道名称
+        str: Unicast channel name
     """
     return f"{REDIS_UNICAST_CHANNEL_PREFIX}{host_id}"
 
@@ -103,33 +103,33 @@ async def publish_broadcast_message(
     message: dict,
     exclude: Optional[str] = None,
 ) -> bool:
-    """发布广播消息到 Redis
+    """Publish broadcast message to Redis
 
     Args:
-        instance_id: 发送实例 ID
-        message: 消息内容
-        exclude: 排除的 Host ID
+        instance_id: Sending instance ID
+        message: Message content
+        exclude: Excluded Host ID
 
     Returns:
-        bool: 是否成功发布
+        bool: Whether publish succeeded
     """
-    # 检查 Redis 是否可用
+    # Check if Redis is available
     if not redis_manager.is_connected or not redis_manager.client:
-        logger.debug("Redis 不可用，跳过跨实例广播")
+        logger.debug("Redis unavailable, skipping cross-instance broadcast")
         return False
 
     try:
-        # 构建发布消息
+        # Build publish message
         pubsub_message = build_broadcast_message(instance_id, message, exclude)
 
-        # 发布到 Redis 频道
+        # Publish to Redis channel
         await redis_manager.client.publish(
             REDIS_BROADCAST_CHANNEL,
             json.dumps(pubsub_message, ensure_ascii=False),
         )
 
         logger.info(
-            "✅ 已发布广播消息到 Redis",
+            "✅ Broadcast message published to Redis",
             extra={
                 "channel": REDIS_BROADCAST_CHANNEL,
                 "instance_id": instance_id,
@@ -140,7 +140,7 @@ async def publish_broadcast_message(
 
     except Exception as e:
         logger.warning(
-            "Redis 发布广播消息失败",
+            "Redis publish broadcast message failed",
             extra={
                 "channel": REDIS_BROADCAST_CHANNEL,
                 "instance_id": instance_id,
@@ -156,26 +156,26 @@ async def publish_unicast_message(
     target_host_id: str,
     message: dict,
 ) -> bool:
-    """发布单播消息到 Redis
+    """Publish unicast message to Redis
 
     Args:
-        instance_id: 发送实例 ID
-        target_host_id: 目标 Host ID
-        message: 消息内容
+        instance_id: Sending instance ID
+        target_host_id: Target Host ID
+        message: Message content
 
     Returns:
-        bool: 是否成功发布
+        bool: Whether publish succeeded
     """
-    # 检查 Redis 是否可用
+    # Check if Redis is available
     if not redis_manager.is_connected or not redis_manager.client:
-        logger.debug("Redis 不可用，跳过跨实例单播")
+        logger.debug("Redis unavailable, skipping cross-instance unicast")
         return False
 
     try:
-        # 构建发布消息
+        # Build publish message
         pubsub_message = build_unicast_message(instance_id, target_host_id, message)
 
-        # 发布到单播频道
+        # Publish to unicast channel
         channel = get_unicast_channel(target_host_id)
         await redis_manager.client.publish(
             channel,
@@ -183,7 +183,7 @@ async def publish_unicast_message(
         )
 
         logger.info(
-            "✅ 已发布单播消息到 Redis",
+            "✅ Unicast message published to Redis",
             extra={
                 "channel": channel,
                 "instance_id": instance_id,
@@ -195,7 +195,7 @@ async def publish_unicast_message(
 
     except Exception as e:
         logger.warning(
-            "Redis 发布单播消息失败",
+            "Redis publish unicast message failed",
             extra={
                 "target_host_id": target_host_id,
                 "instance_id": instance_id,
@@ -207,42 +207,42 @@ async def publish_unicast_message(
 
 
 def parse_redis_message(redis_message: dict) -> Optional[Dict[str, Any]]:
-    """解析 Redis 消息
+    """Parse Redis message
 
     Args:
-        redis_message: Redis 原始消息
+        redis_message: Redis raw message
 
     Returns:
-        dict: 解析后的消息内容，解析失败返回 None
+        dict: Parsed message content, returns None if parsing fails
     """
     try:
         data = json.loads(redis_message.get("data", "{}"))
         return data
     except json.JSONDecodeError as e:
         logger.error(
-            "解析 Redis 消息失败",
+            "Failed to parse Redis message",
             extra={"error": str(e)},
         )
         return None
 
 
 def should_skip_own_message(source_instance_id: str, local_instance_id: str) -> bool:
-    """判断是否应该跳过自己发布的消息
+    """Determine whether to skip own published message
 
     Args:
-        source_instance_id: 消息来源实例 ID
-        local_instance_id: 本地实例 ID
+        source_instance_id: Message source instance ID
+        local_instance_id: Local instance ID
 
     Returns:
-        bool: 是否应该跳过
+        bool: Whether should skip
     """
     return source_instance_id == local_instance_id
 
 
 def is_redis_available() -> bool:
-    """检查 Redis 是否可用
+    """Check if Redis is available
 
     Returns:
-        bool: Redis 是否可用
+        bool: Whether Redis is available
     """
     return redis_manager.is_connected and redis_manager.client is not None

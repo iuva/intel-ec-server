@@ -1,6 +1,6 @@
-"""Agent WebSocket 管理 HTTP API 端点
+"""Agent WebSocket management HTTP API endpoints
 
-提供 Agent WebSocket 连接管理和消息发送的 HTTP 接口
+Provides HTTP interfaces for Agent WebSocket connection management and message sending
 """
 
 import os
@@ -9,7 +9,7 @@ from typing import Dict, List
 
 from fastapi import APIRouter, Depends, Path, Query
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.utils.websocket_helpers import validate_websocket_message
 
@@ -33,15 +33,15 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-# ========== 连接管理端点 ==========
+# ========== Connection management endpoints ==========
 
 
 @router.get("/ws/hosts")
 async def get_active_hosts(locale: str = Depends(get_locale)):
-    """获取所有活跃连接的 Host ID
+    """Get all actively connected Host IDs
 
     Returns:
-        活跃 Host 列表和总数
+        Active Host list and total count
 
     Example:
         ```
@@ -52,7 +52,7 @@ async def get_active_hosts(locale: str = Depends(get_locale)):
         ```json
         {
             "code": 200,
-            "message": "获取活跃Host成功",
+            "message": "Get active Hosts succeeded",
             "data": {
                 "hosts": ["1846486359367955051", "1846486359367955052"],
                 "count": 2
@@ -63,7 +63,7 @@ async def get_active_hosts(locale: str = Depends(get_locale)):
     ws_manager = get_agent_websocket_manager()
     hosts = ws_manager.get_active_hosts()
 
-    logger.info("查询活跃Host列表", extra={"host_count": len(hosts)})
+    logger.info("Query active Host list", extra={"host_count": len(hosts)})
 
     return SuccessResponse(
         data={"hosts": hosts, "count": len(hosts)},
@@ -74,16 +74,16 @@ async def get_active_hosts(locale: str = Depends(get_locale)):
 
 @router.get("/ws/status/{host_id}")
 async def get_host_status(
-    host_id: str = Path(..., description="主机ID（host_rec.id）"),
+    host_id: str = Path(..., description="Host ID (host_rec.id)"),
     locale: str = Depends(get_locale),
 ):
-    """检查 Host 连接状态
+    """Check Host connection status
 
     Args:
         host_id: Host ID
 
     Returns:
-        连接状态信息
+        Connection status information
 
     Example:
         ```
@@ -94,7 +94,7 @@ async def get_host_status(
         ```json
         {
             "code": 200,
-            "message": "获取Host状态成功",
+            "message": "Get Host status succeeded",
             "data": {
                 "host_id": "1846486359367955051",
                 "connected": true
@@ -105,7 +105,7 @@ async def get_host_status(
     ws_manager = get_agent_websocket_manager()
     is_connected = ws_manager.is_connected(host_id)
 
-    logger.debug("查询Host连接状态", extra={"host_id": host_id, "is_connected": is_connected})
+    logger.debug("Query Host connection status", extra={"host_id": host_id, "is_connected": is_connected})
 
     return SuccessResponse(
         data={"host_id": host_id, "connected": is_connected},
@@ -114,26 +114,26 @@ async def get_host_status(
     )
 
 
-# ========== 消息发送端点 ==========
+# ========== Message sending endpoints ==========
 
 
 @router.post("/ws/send/{host_id}")
 async def send_message_to_host(
-    host_id: str = Path(..., description="主机ID（host_rec.id）"),
+    host_id: str = Path(..., description="Host ID (host_rec.id)"),
     message: Dict = ...,
     locale: str = Depends(get_locale),
 ):
-    """发送消息给指定 Host
+    """Send message to specified Host
 
     Args:
-        host_id: 目标 Host ID
-        message: 消息内容（必须包含 type 字段）
+        host_id: Target Host ID
+        message: Message content (must include type field)
 
     Returns:
-        发送结果
+        Send result
 
     Raises:
-        BusinessError: 消息格式错误（缺少 type 字段）
+        BusinessError: Message format error (missing type field)
 
     Example:
         ```
@@ -150,7 +150,7 @@ async def send_message_to_host(
         ```json
         {
             "code": 200,
-            "message": "消息发送成功",
+            "message": "Message sent successfully",
             "data": {
                 "host_id": "1846486359367955051",
                 "success": true
@@ -158,16 +158,16 @@ async def send_message_to_host(
         }
         ```
     """
-    # 验证消息格式
+    # Validate message format
     validate_websocket_message(message)
 
     ws_manager = get_agent_websocket_manager()
     success = await ws_manager.send_to_host(host_id, message)
 
     if success:
-        logger.info("消息已发送到Host", extra={"host_id": host_id, "message_type": message.get('type')})
+        logger.info("Message sent to Host", extra={"host_id": host_id, "message_type": message.get("type")})
     else:
-        logger.warning("消息发送失败 (Host未连接)", extra={"host_id": host_id})
+        logger.warning("Message send failed (Host not connected)", extra={"host_id": host_id})
 
     if success:
         return SuccessResponse(
@@ -189,17 +189,17 @@ async def send_message_to_hosts(
     message: Dict,
     locale: str = Depends(get_locale),
 ):
-    """发送消息给指定的多个 Hosts（多播）
+    """Send message to specified multiple Hosts (multicast)
 
     Args:
-        host_ids: 目标 Host ID 列表
-        message: 消息内容（必须包含 type 字段）
+        host_ids: Target Host ID list
+        message: Message content (must include type field)
 
     Returns:
-        发送结果统计
+        Send result statistics
 
     Raises:
-        BusinessError: 消息格式错误（缺少 type 字段）
+        BusinessError: Message format error (missing type field)
 
     Example:
         ```
@@ -208,7 +208,7 @@ async def send_message_to_hosts(
             "host_ids": ["1846486359367955051", "1846486359367955052"],
             "message": {
                 "type": "notification",
-                "message": "系统维护通知",
+                "message": "System maintenance notification",
                 "data": {"maintenance_time": "2025-10-28 22:00:00"}
             }
         }
@@ -218,7 +218,7 @@ async def send_message_to_hosts(
         ```json
         {
             "code": 200,
-            "message": "消息发送完成 (2/2成功)",
+            "message": "Message sending completed (2/2 succeeded)",
             "data": {
                 "target_count": 2,
                 "success_count": 2,
@@ -227,18 +227,18 @@ async def send_message_to_hosts(
         }
         ```
     """
-    # 验证消息格式
+    # Validate message format
     validate_websocket_message(message)
 
     ws_manager = get_agent_websocket_manager()
     success_count = await ws_manager.send_to_hosts(host_ids, message)
 
     logger.info(
-        "多播消息完成",
+        "Multicast message completed",
         extra={
             "target_count": len(host_ids),
             "success_count": success_count,
-            "message_type": message.get('type'),
+            "message_type": message.get("type"),
         },
     )
 
@@ -258,27 +258,27 @@ async def send_message_to_hosts(
 @router.post("/ws/broadcast")
 async def broadcast_message(
     message: Dict,
-    exclude_host_id: str = Query(None, description="排除的Host ID"),
+    exclude_host_id: str = Query(None, description="Excluded Host ID"),
     locale: str = Depends(get_locale),
 ):
-    """广播消息给所有连接的 Hosts
+    """Broadcast message to all connected Hosts
 
     Args:
-        message: 消息内容（必须包含 type 字段）
-        exclude_host_id: 排除的 Host ID（可选）
+        message: Message content (must include type field)
+        exclude_host_id: Excluded Host ID (optional)
 
     Returns:
-        广播结果统计
+        Broadcast result statistics
 
     Raises:
-        BusinessError: 消息格式错误（缺少 type 字段）
+        BusinessError: Message format error (missing type field)
 
     Example:
         ```
         POST /api/v1/ws/broadcast?exclude_host_id=1846486359367955051
         {
             "type": "notification",
-            "message": "系统更新通知",
+            "message": "System update notification",
             "data": {"version": "2.0.0"}
         }
         ```
@@ -287,7 +287,7 @@ async def broadcast_message(
         ```json
         {
             "code": 200,
-            "message": "广播完成 (99/100成功)",
+            "message": "Broadcast completed (99/100 succeeded)",
             "data": {
                 "total_count": 100,
                 "success_count": 99,
@@ -296,7 +296,7 @@ async def broadcast_message(
         }
         ```
     """
-    # 验证消息格式
+    # Validate message format
     validate_websocket_message(message)
 
     ws_manager = get_agent_websocket_manager()
@@ -304,12 +304,12 @@ async def broadcast_message(
     total_count = ws_manager.get_connection_count()
 
     logger.info(
-        "广播消息完成",
+        "Broadcast message completed",
         extra={
             "target_count": total_count,
             "success_count": success_count,
-            "exclude_host_id": exclude_host_id or "无",
-            "message_type": message.get('type'),
+            "exclude_host_id": exclude_host_id or "None",
+            "message_type": message.get("type"),
         },
     )
 
@@ -327,56 +327,56 @@ async def broadcast_message(
     )
 
 
-# ========== Host 下线通知端点 ==========
+# ========== Host offline notification endpoints ==========
 
 
 @router.post("/ws/notify-offline/{host_id}")
 async def notify_host_offline(
-    host_id: str = Path(..., description="主机ID（host_rec.id）"),
-    reason: str = Query(None, description="下线原因"),
+    host_id: str = Path(..., description="Host ID (host_rec.id)"),
+    reason: str = Query(None, description="Offline reason"),
     locale: str = Depends(get_locale),
 ):
-    """通知指定 Host 下线
+    """Notify specified Host to go offline
 
-    服务端主动通知 Agent 其 Host 已下线，Agent 收到后会：
-    1. 查询 host_exec_log 表的最新一条记录（del_flag=0）
-    2. 更新 host_state 为 4（离线状态）
+    Server actively notifies Agent that its Host has gone offline, after Agent receives:
+    1. Query the latest record in host_exec_log table (del_flag=0)
+    2. Update host_state to 4 (offline status)
 
     Args:
-        host_id: 目标 Host ID
-        reason: 下线原因（可选）
+        host_id: Target Host ID
+        reason: Offline reason (optional)
 
     Returns:
-        通知发送结果
+        Notification send result
 
     Raises:
-        BusinessError: Host 未连接
+        BusinessError: Host not connected
 
     Example:
         ```
-        POST /api/v1/ws/notify-offline/1846486359367955051?reason=系统维护
+        POST /api/v1/ws/notify-offline/1846486359367955051?reason=System maintenance
         ```
 
     Response:
         ```json
         {
             "code": 200,
-            "message": "Host下线通知已发送",
+            "message": "Host offline notification sent",
             "data": {
                 "host_id": "1846486359367955051",
                 "success": true,
-                "reason": "系统维护"
+                "reason": "System maintenance"
             }
         }
         ```
     """
     ws_manager = get_agent_websocket_manager()
 
-    # 检查 Host 是否连接
+    # Check if Host is connected
     if not ws_manager.is_connected(host_id):
-        logger.warning("Host 未连接，无法发送下线通知", extra={"host_id": host_id})
+        logger.warning("Host not connected, cannot send offline notification", extra={"host_id": host_id})
         raise BusinessError(
-            message=f"Host 未连接: {host_id}",
+            message=f"Host not connected: {host_id}",
             message_key="error.host.not_connected",
             error_code="HOST_NOT_CONNECTED",
             code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -384,30 +384,33 @@ async def notify_host_offline(
             details={"host_id": host_id},
         )
 
-    # 构建下线通知消息
+    # Build offline notification message
     offline_message = {
         "type": "host_offline_notification",
         "host_id": host_id,
-        "message": "Host已下线",
-        "reason": reason or "未指定原因",
+        "message": "Host has gone offline",
+        "reason": reason or "Reason not specified",
     }
 
-    # 发送消息
+    # Send message
     success = await ws_manager.send_to_host(host_id, offline_message)
 
     if success:
-        logger.info("Host下线通知已发送", extra={"host_id": host_id, "reason": reason or "未指定原因"})
+        logger.info(
+            "Host offline notification sent",
+            extra={"host_id": host_id, "reason": reason or "Reason not specified"}
+        )
     else:
-        logger.warning("Host下线通知发送失败", extra={"host_id": host_id})
+        logger.warning("Host offline notification send failed", extra={"host_id": host_id})
         raise BusinessError(
-            message=f"发送下线通知失败: {host_id}",
+            message=f"Send offline notification failed: {host_id}",
             error_code="SEND_NOTIFICATION_FAILED",
             code=ServiceErrorCodes.HOST_OPERATION_FAILED,
             http_status_code=500,
         )
 
     return SuccessResponse(
-        data={"host_id": host_id, "success": success, "reason": reason or "未指定原因"},
+        data={"host_id": host_id, "success": success, "reason": reason or "Reason not specified"},
         message_key="success.websocket.offline_notification_sent",
         locale=locale,
     )

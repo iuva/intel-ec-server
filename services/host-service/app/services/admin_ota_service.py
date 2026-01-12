@@ -1,6 +1,6 @@
-"""管理后台 OTA 管理服务
+"""Admin Backend OTA Management Service
 
-提供管理后台使用的 OTA 配置查询等核心业务逻辑。
+Provides core business logic for OTA configuration queries used by admin backend.
 """
 
 from datetime import datetime, timezone
@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.models.host_upd import HostUpd
     from app.models.sys_conf import SysConf
@@ -39,57 +39,57 @@ logger = get_logger(__name__)
 
 
 class AdminOtaService:
-    """管理后台 OTA 管理服务
+    """Admin Backend OTA Management Service
 
-    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+    ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
     """
 
     def __init__(self):
-        """初始化服务"""
-        # ✅ 优化：缓存会话工厂
+        """Initialize service"""
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
     @handle_service_errors(
-        error_message="查询 OTA 配置列表失败",
+        error_message="Failed to query OTA configuration list",
         error_code="QUERY_OTA_CONFIG_LIST_FAILED",
     )
     async def list_ota_configs(self) -> List[Dict[str, Any]]:
-        """查询 OTA 配置列表
+        """Query OTA configuration list
 
-        业务逻辑：
-        - 查询 sys_conf 表
-        - 条件：conf_key = "ota", state_flag = 0, del_flag = 0
-        - 返回：id, conf_ver, conf_name, conf_url, conf_md5 数据列表
+        Business logic:
+        - Query sys_conf table
+        - Conditions: conf_key = "ota", state_flag = 0, del_flag = 0
+        - Return: id, conf_ver, conf_name, conf_url, conf_md5 data list
 
         Returns:
-            List[Dict[str, Any]]: OTA 配置列表，每个配置包含：
-                - id: 配置ID（主键）
-                - conf_ver: 配置版本号
-                - conf_name: 配置名称
-                - conf_url: OTA 包下载地址
-                - conf_md5: OTA 包 MD5 校验值
+            List[Dict[str, Any]]: OTA configuration list, each configuration contains:
+                - id: Configuration ID (primary key)
+                - conf_ver: Configuration version number
+                - conf_name: Configuration name
+                - conf_url: OTA package download address
+                - conf_md5: OTA package MD5 checksum
 
         Raises:
-            BusinessError: 查询失败时抛出业务异常
+            BusinessError: Raises business exception when query fails
         """
         log_operation_start(
-            "查询 OTA 配置列表",
+            "Query OTA configuration list",
             logger_instance=logger,
         )
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 构建查询条件
+            # Build query conditions
             stmt = select(
                 SysConf.id,
                 SysConf.conf_ver,
@@ -103,16 +103,16 @@ class AdminOtaService:
                 )
             )
 
-            # 执行查询
+            # Execute query
             result = await session.execute(stmt)
             rows = result.all()
 
-            # 转换为字典列表
+            # Convert to dictionary list
             ota_configs = []
             for row in rows:
                 json_data = row.conf_json or {}
                 ota_config = {
-                    "id": str(row.id),  # ✅ 转换为字符串避免精度丢失
+                    "id": str(row.id),  # ✅ Convert to string to avoid precision loss
                     "conf_ver": row.conf_ver,
                     "conf_name": row.conf_name,
                     "conf_url": json_data.get("conf_url"),
@@ -121,7 +121,7 @@ class AdminOtaService:
                 ota_configs.append(ota_config)
 
             logger.info(
-                "OTA 配置列表查询成功",
+                "OTA configuration list query succeeded",
                 extra={
                     "operation": "list_ota_configs",
                     "count": len(ota_configs),
@@ -131,7 +131,7 @@ class AdminOtaService:
             return ota_configs
 
     @handle_service_errors(
-        error_message="OTA 配置下发失败",
+        error_message="OTA configuration deployment failed",
         error_code="OTA_DEPLOY_FAILED",
     )
     async def deploy_ota_config(
@@ -143,35 +143,35 @@ class AdminOtaService:
         conf_md5: Optional[str] = None,
         operator_id: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """下发 OTA 配置
+        """Deploy OTA configuration
 
-        业务逻辑：
-        1. 更新 sys_conf 表：根据 id 更新 conf_ver, conf_name, conf_json
-        2. 通过 websocket 广播消息：conf_ver、conf_url、conf_md5 到所有 host
-        3. 注册回调处理器：当 host websocket 回调通知时，在 host_upd 表新增记录
+        Business logic:
+        1. Update sys_conf table: Update conf_ver, conf_name, conf_json based on id
+        2. Broadcast message via websocket: conf_ver, conf_url, conf_md5 to all hosts
+        3. Register callback handler: When host websocket callback notification, add record in host_upd table
 
         Args:
-            config_id: 配置ID（主键）
-            conf_ver: 配置版本号
-            conf_name: 配置名称
-            conf_url: OTA 包下载地址
-            conf_md5: OTA 包 MD5 校验值（可选）
-            operator_id: 操作人ID（可选）
+            config_id: Configuration ID (primary key)
+            conf_ver: Configuration version number
+            conf_name: Configuration name
+            conf_url: OTA package download address
+            conf_md5: OTA package MD5 checksum (optional)
+            operator_id: Operator ID (optional)
 
         Returns:
-            Dict[str, Any]: 下发结果，包含：
-                - id: 配置ID
-                - conf_ver: 配置版本号
-                - conf_name: 配置名称
-                - conf_url: 下载地址
-                - conf_md5: 校验值（可能为 None）
-                - broadcast_count: 广播消息成功发送的主机数量
+            Dict[str, Any]: Deployment result, containing:
+                - id: Configuration ID
+                - conf_ver: Configuration version number
+                - conf_name: Configuration name
+                - conf_url: Download address
+                - conf_md5: Checksum (may be None)
+                - broadcast_count: Number of hosts that successfully received broadcast message
 
         Raises:
-            BusinessError: 配置不存在或下发失败时抛出业务异常
+            BusinessError: Raises business exception when configuration does not exist or deployment fails
         """
         logger.info(
-            "开始下发 OTA 配置",
+            "Starting to deploy OTA configuration",
             extra={
                 "operation": "deploy_ota_config",
                 "config_id": config_id,
@@ -183,7 +183,7 @@ class AdminOtaService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 查询配置是否存在
+            # 1. Query if configuration exists
             stmt = select(SysConf).where(
                 and_(
                     SysConf.id == config_id,
@@ -195,13 +195,13 @@ class AdminOtaService:
 
             if not sys_conf:
                 raise BusinessError(
-                    message=f"OTA 配置不存在: {config_id}",
+                    message=f"OTA configuration does not exist: {config_id}",
                     error_code="OTA_CONFIG_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_OTA_CONFIG_NOT_FOUND,
                     http_status_code=404,
                 )
 
-            # 2. 更新 sys_conf 表
+            # 2. Update sys_conf table
             update_stmt = (
                 update(SysConf)
                 .where(SysConf.id == config_id)
@@ -220,7 +220,7 @@ class AdminOtaService:
             await session.commit()
 
             logger.info(
-                "OTA 配置更新成功",
+                "OTA configuration updated successfully",
                 extra={
                     "operation": "deploy_ota_config",
                     "config_id": config_id,
@@ -229,16 +229,16 @@ class AdminOtaService:
                 },
             )
 
-        # ✅ 优化：清除 OTA 配置缓存，确保下次查询获取最新数据
+        # ✅ Optimization: Clear OTA configuration cache to ensure next query gets latest data
         try:
             await invalidate_ota_config_cache()
         except ImportError:
-            # 降级处理：直接使用 redis_manager
+            # Fallback: Directly use redis_manager
             cache_key = "ota_configs:latest"
             try:
                 await redis_manager.delete(cache_key)
                 logger.info(
-                    "OTA 配置缓存已清除（降级模式）",
+                    "OTA configuration cache cleared (fallback mode)",
                     extra={
                         "operation": "deploy_ota_config",
                         "cache_key": cache_key,
@@ -247,7 +247,7 @@ class AdminOtaService:
                 )
             except Exception as e:
                 logger.warning(
-                    "清除 OTA 配置缓存失败",
+                    "Failed to clear OTA configuration cache",
                     extra={
                         "operation": "deploy_ota_config",
                         "cache_key": cache_key,
@@ -255,14 +255,14 @@ class AdminOtaService:
                     },
                 )
 
-        # 3. 通过 websocket 广播消息
+        # 3. Broadcast message via websocket
         ws_manager = get_agent_websocket_manager()
 
-        # 注册 OTA 下发回调处理器（如果尚未注册）
+        # Register OTA deployment callback handler (if not yet registered)
         if "ota_deploy_notification" not in ws_manager.message_handlers:
             ws_manager.register_handler("ota_deploy_notification", self._handle_ota_deploy_notification)
 
-        # 构建广播消息
+        # Build broadcast message
         broadcast_message = {
             "type": "ota_deploy",
             "conf_ver": conf_ver,
@@ -272,11 +272,11 @@ class AdminOtaService:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-        # 广播消息给所有连接的 hosts
+        # Broadcast message to all connected hosts
         broadcast_count = await ws_manager.broadcast(broadcast_message)
 
         logger.info(
-            "OTA 配置下发完成",
+            "OTA configuration deployment completed",
             extra={
                 "operation": "deploy_ota_config",
                 "config_id": config_id,
@@ -287,7 +287,7 @@ class AdminOtaService:
         )
 
         return {
-            "id": str(config_id),  # ✅ 转换为字符串避免精度丢失
+            "id": str(config_id),  # ✅ Convert to string to avoid precision loss
             "conf_ver": conf_ver,
             "conf_name": conf_name,
             "conf_url": conf_url,
@@ -296,29 +296,29 @@ class AdminOtaService:
         }
 
     async def _handle_ota_deploy_notification(self, agent_id: str, data: dict) -> None:
-        """处理 Host OTA 下发回调通知
+        """Handle Host OTA deployment callback notification
 
-        业务逻辑：
-        - 当 host 收到 OTA 下发消息后，会回调此处理器
-        - 在 host_upd 表中新增一条记录：
-          - app_state = 0 (预更新)
-          - host_id = host_id (从 websocket agent_id 获取)
-          - app_name = conf_name (从回调消息中获取)
-          - app_ver = conf_ver (从回调消息中获取)
+        Business logic:
+        - When host receives OTA deployment message, it will callback this handler
+        - Add a new record in host_upd table:
+          - app_state = 0 (pre-update)
+          - host_id = host_id (obtained from websocket agent_id)
+          - app_name = conf_name (obtained from callback message)
+          - app_ver = conf_ver (obtained from callback message)
 
         Args:
-            agent_id: Agent/Host ID (来自 websocket 连接)
-            data: 回调消息数据，应包含：
-                - conf_name: 配置名称
-                - conf_ver: 配置版本号
+            agent_id: Agent/Host ID (from websocket connection)
+            data: Callback message data, should contain:
+                - conf_name: Configuration name
+                - conf_ver: Configuration version number
         """
         try:
-            # 转换 agent_id 为整数
+            # Convert agent_id to integer
             try:
                 host_id_int = int(agent_id)
             except (ValueError, TypeError):
                 logger.error(
-                    f"Host ID 格式错误: {agent_id}",
+                    f"Host ID format error: {agent_id}",
                     extra={
                         "agent_id": agent_id,
                         "error": "not a valid integer",
@@ -326,13 +326,13 @@ class AdminOtaService:
                 )
                 return
 
-            # 从回调消息中获取配置信息
+            # Get configuration information from callback message
             conf_name = data.get("conf_name")
             conf_ver = data.get("conf_ver")
 
             if not conf_name or not conf_ver:
                 logger.warning(
-                    "OTA 下发回调消息缺少必要字段",
+                    "OTA deployment callback message missing required fields",
                     extra={
                         "agent_id": agent_id,
                         "data": data,
@@ -341,7 +341,7 @@ class AdminOtaService:
                 return
 
             logger.info(
-                "开始处理 OTA 下发回调通知",
+                "Starting to process OTA deployment callback notification",
                 extra={
                     "operation": "_handle_ota_deploy_notification",
                     "agent_id": agent_id,
@@ -351,22 +351,22 @@ class AdminOtaService:
                 },
             )
 
-            # 在 host_upd 表中新增记录
+            # Add new record in host_upd table
             session_factory = self.session_factory
             async with session_factory() as session:
                 host_upd = HostUpd(
                     host_id=host_id_int,
                     app_name=conf_name,
                     app_ver=conf_ver,
-                    app_state=0,  # 预更新状态
-                    created_by=None,  # 可以根据需要设置操作人
+                    app_state=0,  # Pre-update state
+                    created_by=None,  # Can set operator as needed
                 )
 
                 session.add(host_upd)
                 await session.commit()
 
                 logger.info(
-                    "OTA 下发回调记录已创建",
+                    "OTA deployment callback record created",
                     extra={
                         "operation": "_handle_ota_deploy_notification",
                         "agent_id": agent_id,
@@ -379,7 +379,7 @@ class AdminOtaService:
 
         except Exception as e:
             logger.error(
-                "处理 OTA 下发回调通知失败",
+                "Failed to process OTA deployment callback notification",
                 extra={
                     "operation": "_handle_ota_deploy_notification",
                     "agent_id": agent_id,

@@ -1,96 +1,96 @@
-# Gateway Service (网关服务)
+# Gateway Service
 
-## 概述
+## Overview
 
-Gateway Service 是系统的 API 网关，负责统一的请求入口、路由转发、负载均衡和认证验证。
+Gateway Service is the system's API gateway, responsible for unified request entry, route forwarding, load balancing, and authentication validation.
 
-## 核心功能
+## Core Functions
 
-- **路由转发**: 将客户端请求转发到对应的后端微服务
-- **负载均衡**: 基于 Nacos 服务发现的负载均衡
-- **认证验证**: 统一的 JWT 令牌验证
-- **限流熔断**: 保护后端服务免受过载
-- **请求日志**: 记录所有通过网关的请求
+- **Route Forwarding**: Forward client requests to corresponding backend microservices
+- **Load Balancing**: Load balancing based on Nacos service discovery
+- **Authentication Validation**: Unified JWT token validation
+- **Rate Limiting & Circuit Breaking**: Protect backend services from overload
+- **Request Logging**: Record all requests ***REMOVED***ing through the gateway
 
-## 技术栈
+## Tech Stack
 
 - **Python**: 3.8.10
-- **Web 框架**: FastAPI 0.116.1
-- **HTTP 客户端**: httpx
-- **服务发现**: Nacos
-- **缓存**: Redis
-- **监控**: Prometheus + Jaeger
+- **Web Framework**: FastAPI 0.116.1
+- **HTTP Client**: httpx
+- **Service Discovery**: Nacos
+- **Cache**: Redis
+- **Monitoring**: Prometheus + Jaeger
 
-## 目录结构
+## Directory Structure
 
 ```text
 gateway-service/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 # 应用入口
-│   ├── api/                    # API 接口
+│   ├── main.py                 # Application entry
+│   ├── api/                    # API interfaces
 │   │   └── v1/
 │   │       ├── __init__.py
 │   │       └── endpoints/
-│   │           └── proxy.py    # 代理端点
-│   ├── core/                   # 核心配置
+│   │           └── proxy.py    # Proxy endpoints
+│   ├── core/                   # Core configuration
 │   │   ├── __init__.py
-│   │   ├── config.py           # 配置管理
-│   │   └── exceptions.py       # 自定义异常
-│   ├── middleware/             # 中间件
+│   │   ├── config.py           # Configuration management
+│   │   └── exceptions.py       # Custom exceptions
+│   ├── middleware/             # Middleware
 │   │   ├── __init__.py
-│   │   └── auth_middleware.py  # 认证中间件
-│   └── services/               # 业务逻辑
+│   │   └── auth_middleware.py  # Authentication middleware
+│   └── services/               # Business logic
 │       ├── __init__.py
-│       ├── proxy_service.py    # 代理服务
-│       └── load_balancer.py    # 负载均衡器
+│       ├── proxy_service.py    # Proxy service
+│       └── load_balancer.py    # Load balancer
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
 ```
 
-## 环境变量
+## Environment Variables
 
 ```bash
-# 服务配置
+# Service configuration
 SERVICE_NAME=gateway-service
 SERVICE_PORT=8000
 SERVICE_IP=172.20.0.100
 
-# Nacos 配置
+# Nacos Configuration
 NACOS_SERVER_ADDR=http://intel-nacos:8848
 
-# Redis 配置
+# Redis Configuration
 REDIS_URL=redis://intel-redis:6379/0
 
-# JWT 配置
+# JWT Configuration
 JWT_SECRET_KEY=your-secret-key-here
 JWT_ALGORITHM=HS256
 
-# 认证服务配置
-AUTH_SERVICE_URL=http://auth-service:8001             # 网关用于HTTP请求的默认地址
-AUTH_SERVICE_BASE_URL=http://localhost:8001          # ✅ 可选：WebSocket认证的优先地址（未设置时自动回退）
+# Authentication Service Configuration
+AUTH_SERVICE_URL=http://auth-service:8001             # Gateway default address for HTTP requests
+AUTH_SERVICE_BASE_URL=http://localhost:8001          # ✅ Optional: Priority address for WebSocket authentication (automatically fallback when not set)
 
-# 日志配置
+# Logging Configuration
 LOG_LEVEL=INFO
 ```
 
-## 启动服务
+## Starting the Service
 
-### 本地开发
+### Local Development
 
-> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
+> **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
 
 ```bash
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# 启动服务（开发模式，支持热重载）
+# Start service (development mode, supports hot reload)
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**环境变量配置**:
-- 如果数据库在 Docker 中，需要在 `.env` 文件中设置：
+**Environment Variable Configuration**:
+- If the database is in Docker, you need to set in the `.env` file:
   ```bash
   # macOS/Windows
   MARIADB_HOST=host.docker.internal
@@ -100,15 +100,15 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
   MARIADB_HOST=172.17.0.1
   REDIS_HOST=172.17.0.1
   ```
-- 详细配置说明请参考 [快速开始指南](../../docs/00-quick-start.md) 和 [基础设施配置指南](../../docs/01-infrastructure-config.md)
+- For detailed configuration instructions, please refer to [Quick Start Guide](../../docs/00-quick-start.md) and [Infrastructure Configuration Guide](../../docs/01-infrastructure-config.md)
 
-### Docker 部署
+### Docker Deployment
 
 ```bash
-# 构建镜像
+# Build image
 docker build -t gateway-service:latest .
 
-# 运行容器
+# Run container
 docker run -d \
   --name gateway-service \
   -p 8000:8000 \
@@ -120,133 +120,133 @@ docker run -d \
 ### Docker Compose
 
 ```bash
-# 启动所有服务
+# Start all services
 docker-compose up -d gateway-service
 
-# 查看日志
+# View logs
 docker-compose logs -f gateway-service
 ```
 
-## API 端点
+## API Endpoints
 
-### 健康检查
+### Health Check
 
 ```bash
 GET /health
 ```
 
-### Prometheus 指标
+### Prometheus Metrics
 
 ```bash
 GET /metrics
 ```
 
-### 代理转发
+### Proxy Forwarding
 
 ```bash
-# 通用代理端点
+# Generic proxy endpoint
 GET/POST/PUT/DELETE /{service_name}/{path:path}
 
-# 示例
+# Example
 GET /auth-service/api/v1/auth/introspect
 GET /host-service/api/v1/host/admin/host/list
 ```
 
-## 服务路由映射
+## Service Route Mapping
 
-| 服务名称 | 后端地址 | 说明 |
+| Service Name | Backend Address | Description |
 |---------|---------|------|
-| auth-service | `http://auth-service:8001` | 认证服务 |
-| host-service | `http://host-service:8003` | 主机服务 |
+| auth-service | `http://auth-service:8001` | Authentication service |
+| host-service | `http://host-service:8003` | Host service |
 
-## 认证流程
+## Authentication Flow
 
-1. 客户端请求携带 JWT token
-2. 网关验证 token 有效性（调用 auth-service）
-3. 验证通过后转发请求到后端服务
-4. 返回后端服务响应
+1. Client request carries JWT token
+2. Gateway validates token validity (by calling auth-service)
+3. After validation, forwards request to backend service
+4. Returns backend service response
 
-## WebSocket 认证说明
+## WebSocket Authentication Instructions
 
-- 网关会从以下位置依次提取 WebSocket 令牌：
-  1. 查询参数 `?token=xxx`
-  2. `Authorization: Bearer xxx` 请求头
-  3. 自定义请求头 `X-Token` / `token`
-- 验证 Token 时会按顺序尝试以下认证服务地址（遇到请求失败会自动回退）：
-  1. `AUTH_SERVICE_BASE_URL` 环境变量指定地址
-  2. 通过服务发现获取的 `auth-service` 地址
+- Gateway will extract WebSocket tokens from the following locations in order:
+  1. Query parameter `?token=xxx`
+  2. `Authorization: Bearer xxx` header
+  3. Custom header `X-Token` / `token`
+- When validating Token, it will try the following authentication service addresses in order (automatically fallback when request fails):
+  1. Address specified by `AUTH_SERVICE_BASE_URL` environment variable
+  2. `auth-service` address obtained through service discovery
   3. `http://auth-service:8001`
   4. `http://localhost:8001`
   5. `http://127.0.0.1:8001`
-- 因此，在本地开发环境中只需确保认证服务运行在 `8001` 端口即可完成 WebSocket 认证。
+- Therefore, in local development environment, just ensure the authentication service runs on port `8001` to complete WebSocket authentication.
 
-## 负载均衡策略
+## Load Balancing Strategy
 
-- **服务发现**: 从 Nacos 获取服务实例列表
-- **负载均衡算法**: 加权随机选择
-- **健康检查**: 自动剔除不健康的实例
+- **Service Discovery**: Obtain service instance list from Nacos
+- **Load Balancing Algorithm**: Weighted random selection
+- **Health Checks**: Automatically remove unhealthy instances
 
-## 监控指标
+## Monitoring Metrics
 
-- `http_requests_total`: HTTP 请求总数
-- `http_request_duration_seconds`: 请求响应时间
-- `active_connections`: 活跃连接数
-- `service_discovery_errors`: 服务发现错误数
+- `http_requests_total`: Total HTTP requests
+- `http_request_duration_seconds`: Request response time
+- `active_connections`: Active connections count
+- `service_discovery_errors`: Service discovery error count
 
-## 故障排查
+## Troubleshooting
 
-### 服务注册失败
+### Service Registration Failure
 
 ```bash
-# 检查 Nacos 连接
+# Check Nacos connection
 curl http://nacos:8848/nacos/v1/ns/operator/metrics
 
-# 查看服务日志
+# View service logs
 docker-compose logs gateway-service
 ```
 
-### 认证失败
+### Authentication Failure
 
 ```bash
-# 检查 auth-service 连接
+# Check auth-service connection
 curl http://auth-service:8001/health
 
-# 验证 JWT token
+# Validate JWT token
 curl -X POST http://auth-service:8001/api/v1/auth/introspect \
   -H "Content-Type: application/json" \
   -d '{"token": "your-token-here"}'
 ```
 
-### 请求转发失败
+### Request Forwarding Failure
 
 ```bash
-# 检查后端服务状态
+# Check backend service status
 curl http://host-service:8003/health
 
-# 查看 Nacos 服务列表
+# View Nacos service list
 curl http://nacos:8848/nacos/v1/ns/instance/list?serviceName=host-service
 ```
 
-## 开发指南
+## Development Guide
 
-### 添加新的服务路由
+### Adding New Service Routes
 
-编辑 `app/services/proxy_service.py`:
+Edit `app/services/proxy_service.py`:
 
 ```python
 self.service_routes = {
     "auth-service": "http://auth-service:8001",
     "host-service": "http://host-service:8003",
-    "new-service": "http://new-service:8004",  # 添加新服务
+    "new-service": "http://new-service:8004",  # Add new service
 }
 ```
 
-### 自定义认证逻辑
+### Custom Authentication Logic
 
-编辑 `app/middleware/auth_middleware.py`:
+Edit `app/middleware/auth_middleware.py`:
 
 ```python
-# 添加公开路径
+# Add public paths
 public_paths = {
     "/",
     "/health",
@@ -254,21 +254,21 @@ public_paths = {
     "/docs",
     "/redoc",
     "/openapi.json",
-    "/new-public-path",  # 添加新的公开路径
+    "/new-public-path",  # Add new public path
 }
 ```
 
-## 相关文档
+## Related Documents
 
-- [项目总体规范](../../.cursor/rules/project-overview.mdc)
-- [微服务架构规范](../../.cursor/rules/microservice-architecture.mdc)
-- [API 设计规范](../../.cursor/rules/api-design-standards.mdc)
-- [认证安全规范](../../.cursor/rules/auth-security.mdc)
+- [Project Overview Guidelines](../../.cursor/rules/project-overview.mdc)
+- [Microservice Architecture Guidelines](../../.cursor/rules/microservice-architecture.mdc)
+- [API Design Guidelines](../../.cursor/rules/api-design-standards.mdc)
+- [Authentication Security Guidelines](../../.cursor/rules/auth-security.mdc)
 
-## 版本历史
+## Version History
 
-- **v1.0.0** (2025-01-29): 初始版本
-  - 基础路由转发功能
-  - Nacos 服务发现集成
-  - JWT 认证中间件
-  - 健康检查和监控端点
+- **v1.0.0** (2025-01-29): Initial version
+  - Basic route forwarding functionality
+  - Nacos service discovery integration
+  - JWT authentication middleware
+  - Health check and monitoring endpoints

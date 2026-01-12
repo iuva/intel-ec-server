@@ -1,8 +1,8 @@
-"""浏览器插件 VNC 连接管理 API 端点
+"""Browser extension VNC connection management API endpoints
 
-提供浏览器插件使用的 VNC 连接相关的 API 端点，包括：
-- POST /vnc/report - 上报 VNC 连接结果
-- POST /vnc/connect - 获取 VNC 连接信息
+Provides VNC connection-related API endpoints used by browser extensions, including:
+- POST /vnc/report - Report VNC connection result
+- POST /vnc/connect - Get VNC connection information
 """
 
 import os
@@ -11,7 +11,7 @@ import sys
 from fastapi import APIRouter, Body, Depends
 from starlette.status import HTTP_200_OK
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.utils.logging_helpers import log_request_completed, log_request_received
     from app.utils.response_helpers import create_success_result
@@ -48,16 +48,19 @@ router = APIRouter()
     "/report",
     response_model=Result[VNCConnectionResponse],
     status_code=HTTP_200_OK,
-    summary="上报 VNC 连接结果",
-    description="处理浏览器插件上报的 VNC 连接结果，更新主机状态并管理执行日志",
+    summary="Report VNC connection result",
+    description=(
+        "Process VNC connection result reported by browser extension, "
+        "update host status and manage execution logs"
+    ),
     responses={
         200: {
-            "description": "上报成功",
+            "description": "Report succeeded",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "message": "VNC连接结果上报成功",
+                        "message": "VNC connection result report succeeded",
                         "data": {
                             "host_id": "123",
                             "connection_status": "success",
@@ -68,12 +71,12 @@ router = APIRouter()
             },
         },
         400: {
-            "description": "主机不存在或请求数据无效",
+            "description": "Host does not exist or request data is invalid",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 400,
-                        "message": "主机不存在: 123",
+                        "message": "Host does not exist: 123",
                         "error_code": "HOST_NOT_FOUND",
                     }
                 }
@@ -83,46 +86,46 @@ router = APIRouter()
 )
 @handle_api_errors
 async def report_vnc_connection(
-    request: VNCConnectionReport = Body(..., description="VNC 连接结果上报数据"),
+    request: VNCConnectionReport = Body(..., description="VNC connection result report data"),
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
     locale: str = Depends(get_locale),
 ):
-    """上报 VNC 连接结果
+    """Report VNC connection result
 
-    处理浏览器插件上报的 VNC 连接结果，记录连接状态和时间，
-    并更新主机状态和执行日志。
+    Process VNC connection result reported by browser extension, record connection status and time,
+    and update host status and execution logs.
 
-    ## 请求参数说明
-    - `user_id`: 用户ID（必填）
-    - `tc_id`: 执行测试ID（必填）
-    - `cycle_name`: 周期名称（必填）
-    - `user_name`: 用户名称（必填）
-    - `host_id`: 主机ID，对应 host_rec.id（必填）
-    - `connection_status`: 连接状态，可选值: success/failed（必填）
-    - `connection_time`: VNC 连接时间（必填），支持格式：
-      - `yyyy/MM/dd HH:mm:ss`（如：`2025/01/30 10:00:00`）
-      - ISO 8601 格式（如：`2025-01-30T10:00:00Z`）
+    ## Request parameter description
+    - `user_id`: User ID (required)
+    - `tc_id`: Test execution ID (required)
+    - `cycle_name`: Cycle name (required)
+    - `user_name`: User name (required)
+    - `host_id`: Host ID, corresponds to host_rec.id (required)
+    - `connection_status`: Connection status, optional values: success/failed (required)
+    - `connection_time`: VNC connection time (required), supported formats:
+      - `yyyy/MM/dd HH:mm:ss` (e.g., `2025/01/30 10:00:00`)
+      - ISO 8601 format (e.g., `2025-01-30T10:00:00Z`)
 
-    ## 业务逻辑
-    1. 根据 host_id 查询 host_rec 表，验证主机是否存在
-    2. 若主机不存在，返回 400 错误
-    3. 如果 connection_status = "success"：
-       - 查询 host_exec_log 表（user_id、tc_id、cycle_name、user_name、host_id、del_flag=0）
-       - 如果存在旧记录：先逻辑删除旧记录（del_flag=1）
-       - 无论是否存在旧记录：都新增一条新记录（host_state=1, case_state=0）
-    4. 更新 host_rec 表：host_state = 1（已锁定），subm_time = 当前时间
-    5. 记录详细操作日志
+    ## Business logic
+    1. Query host_rec table based on host_id, verify if host exists
+    2. If host does not exist, return 400 error
+    3. If connection_status = "success":
+       - Query host_exec_log table (user_id, tc_id, cycle_name, user_name, host_id, del_flag=0)
+       - If old record exists: first logically delete old record (del_flag=1)
+       - Whether old record exists or not: add a new record (host_state=1, case_state=0)
+    4. Update host_rec table: host_state = 1 (locked), subm_time = current time
+    5. Record detailed operation logs
 
-    ## 错误码
-    - `HOST_NOT_FOUND`: 主机不存在（400）
-    - `INVALID_HOST_ID`: 主机ID格式无效（400）
+    ## Error codes
+    - `HOST_NOT_FOUND`: Host does not exist (400)
+    - `INVALID_HOST_ID`: Host ID format is invalid (400)
 
     Args:
-        request: VNC 连接结果上报数据
-        vnc_service: VNC 服务实例
+        request: VNC connection result report data
+        vnc_service: VNC service instance
 
     Returns:
-        上报成功响应，包含处理结果信息
+        Report success response, contains processing result information
     """
     log_request_received(
         "report_vnc_connection",
@@ -159,7 +162,7 @@ async def report_vnc_connection(
         data=vnc_response,
         message_key="success.vnc.report",
         locale=locale,
-        default_message="VNC连接结果上报成功",
+        default_message="VNC connection result report succeeded",
     )
 
 
@@ -167,16 +170,16 @@ async def report_vnc_connection(
     "/connect",
     response_model=Result[VNCConnectionInfo],
     status_code=HTTP_200_OK,
-    summary="获取 VNC 连接信息",
-    description="获取指定主机的 VNC 连接参数，用于建立 VNC 连接",
+    summary="Get VNC connection information",
+    description="Get VNC connection parameters for specified host, used to establish VNC connection",
     responses={
         200: {
-            "description": "获取成功",
+            "description": "Get succeeded",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "message": "操作成功",
+                        "message": "Operation succeeded",
                         "data": {
                             "ip": "192.168.101.118",
                             "port": "5900",
@@ -188,24 +191,24 @@ async def report_vnc_connection(
             },
         },
         400: {
-            "description": "请求数据无效或 VNC 信息不完整",
+            "description": "Request data is invalid or VNC information is incomplete",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 400,
-                        "message": "主机ID格式无效",
+                        "message": "Host ID format is invalid",
                         "error_code": "INVALID_HOST_ID",
                     }
                 }
             },
         },
         404: {
-            "description": "主机不存在或未启用",
+            "description": "Host does not exist or is not enabled",
             "content": {
                 "application/json": {
                     "example": {
                         "code": 53001,
-                        "message": "主机不存在或未启用",
+                        "message": "Host does not exist or is not enabled",
                         "error_code": "HOST_NOT_FOUND",
                     }
                 }
@@ -215,46 +218,46 @@ async def report_vnc_connection(
 )
 @handle_api_errors
 async def get_vnc_connection(
-    request: GetVNCConnectionRequest = Body(..., description="获取 VNC 连接信息请求数据"),
+    request: GetVNCConnectionRequest = Body(..., description="Get VNC connection information request data"),
     vnc_service: BrowserVNCService = Depends(get_vnc_service),
     locale: str = Depends(get_locale),
 ) -> Result[VNCConnectionInfo]:
-    """获取 VNC 连接信息
+    """Get VNC connection information
 
-    根据主机 ID 查询数据库，返回建立 VNC 连接所需的参数。
+    Query database based on host ID, return parameters required to establish VNC connection.
 
-    ## 请求参数说明
-    - `id`: 主机ID，对应 host_rec.id（必填）
+    ## Request parameter description
+    - `id`: Host ID, corresponds to host_rec.id (required)
 
-    ## 业务逻辑
-    1. 验证主机ID格式
-    2. 查询 host_rec 表
-    3. 检查主机是否启用且未删除
-    4. 检查 VNC 连接信息是否完整
-    5. 更新主机状态为已锁定（host_state = 1）
-    6. 返回 VNC 连接参数
+    ## Business logic
+    1. Verify host ID format
+    2. Query host_rec table
+    3. Check if host is enabled and not deleted
+    4. Check if VNC connection information is complete
+    5. Update host status to locked (host_state = 1)
+    6. Return VNC connection parameters
 
-    ## 返回字段说明
-    - `ip`: VNC 服务器 IP 地址
-    - `port`: VNC 服务端口
-    - `username`: 连接用户名
-    - `***REMOVED***word`: 连接密码
+    ## Return field description
+    - `ip`: VNC server IP address
+    - `port`: VNC service port
+    - `username`: Connection username
+    - `***REMOVED***word`: Connection ***REMOVED***word
 
-    ## 错误码
-    - `INVALID_HOST_ID`: 主机ID格式无效（400）
-    - `HOST_NOT_FOUND`: 主机不存在或未启用（404）
-    - `VNC_INFO_INCOMPLETE`: VNC 连接信息不完整（400）
-    - `VNC_GET_FAILED`: 获取失败，服务异常（500）
+    ## Error codes
+    - `INVALID_HOST_ID`: Host ID format is invalid (400)
+    - `HOST_NOT_FOUND`: Host does not exist or is not enabled (404)
+    - `VNC_INFO_INCOMPLETE`: VNC connection information is incomplete (400)
+    - `VNC_GET_FAILED`: Get failed, service exception (500)
 
     Args:
-        request: 获取 VNC 连接信息请求
-        vnc_service: VNC 服务实例
+        request: Get VNC connection information request
+        vnc_service: VNC service instance
 
     Returns:
-        包含 VNC 连接信息的响应
+        Response containing VNC connection information
     """
     logger.info(
-        "接收获取 VNC 连接信息请求",
+        "Received get VNC connection information request",
         extra={"host_rec_id": request.id},
     )
 
@@ -268,7 +271,7 @@ async def get_vnc_connection(
     )
 
     logger.info(
-        "获取 VNC 连接信息完成",
+        "Get VNC connection information completed",
         extra={
             "host_rec_id": request.id,
             "ip": vnc_info["ip"],
@@ -279,5 +282,5 @@ async def get_vnc_connection(
         data=vnc_connection_info,
         message_key="success.vnc.get_connection",
         locale=locale,
-        default_message="获取VNC连接信息成功",
+        default_message="Get VNC connection information succeeded",
     )

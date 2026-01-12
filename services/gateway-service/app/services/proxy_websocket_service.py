@@ -1,18 +1,19 @@
-"""代理服务 WebSocket 模块
+"""Proxy service WebSocket module
 
-提供 WebSocket 代理相关的工具函数和常量定义。
+Provides WebSocket proxy-related utility functions and constant definitions.
 
-从 proxy_service.py 拆分出来，提高代码可维护性。
+Extracted from proxy_service.py to improve code maintainability.
 
-注意：核心 WebSocket 转发逻辑仍保留在 ProxyService 中，
-因为它与服务发现和连接管理紧密耦合。此模块仅提供独立的工具函数。
+Note: Core WebSocket forwarding logic remains in ProxyService,
+as it is tightly coupled with service discovery and connection management.
+This module only provides independent utility functions.
 """
 
 import os
 import sys
 from typing import Any, Dict, Optional
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
@@ -22,7 +23,7 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# WebSocket 相关常量
+# WebSocket related constants
 DEFAULT_MAX_WEBSOCKET_CONNECTIONS = 1000
 WEBSOCKET_CLOSE_CODE_NORMAL = 1000
 WEBSOCKET_CLOSE_CODE_GOING_AWAY = 1001
@@ -37,17 +38,17 @@ def build_websocket_url(
     path: str,
     use_wss: bool = False,
 ) -> str:
-    """构建 WebSocket URL
+    """Build WebSocket URL
 
     Args:
-        service_url: 服务 URL（HTTP 格式）
-        path: 请求路径
-        use_wss: 是否使用 WSS（安全 WebSocket）
+        service_url: Service URL (HTTP format)
+        path: Request path
+        use_wss: Whether to use WSS (secure WebSocket)
 
     Returns:
         str: WebSocket URL
     """
-    # 移除 HTTP 协议前缀
+    # Remove HTTP protocol prefix
     if service_url.startswith("https://"):
         ws_protocol = "wss" if use_wss else "ws"
         ws_url = service_url.replace("https://", f"{ws_protocol}://")
@@ -55,11 +56,11 @@ def build_websocket_url(
         ws_protocol = "ws"
         ws_url = service_url.replace("http://", f"{ws_protocol}://")
     else:
-        # 假设是没有协议的 URL
+        # Assume URL without protocol
         ws_protocol = "wss" if use_wss else "ws"
         ws_url = f"{ws_protocol}://{service_url}"
 
-    # 添加路径
+    # Add path
     if not path.startswith("/"):
         path = f"/{path}"
 
@@ -74,18 +75,18 @@ def format_websocket_log_extra(
     current_connections: int = 0,
     max_connections: int = DEFAULT_MAX_WEBSOCKET_CONNECTIONS,
 ) -> dict:
-    """格式化 WebSocket 日志的 extra 字段
+    """Format WebSocket log extra fields
 
     Args:
-        service_name: 服务名称
-        path: 请求路径
-        connection_id: 连接 ID
-        session_key: 会话键
-        current_connections: 当前连接数
-        max_connections: 最大连接数
+        service_name: Service name
+        path: Request path
+        connection_id: Connection ID
+        session_key: Session key
+        current_connections: Current connection count
+        max_connections: Maximum connection count
 
     Returns:
-        dict: 日志 extra 字段
+        dict: Log extra fields
     """
     return {
         "service_name": service_name,
@@ -98,71 +99,72 @@ def format_websocket_log_extra(
 
 
 def generate_connection_id(service_name: str, websocket: Any) -> str:
-    """生成 WebSocket 连接 ID
+    """Generate WebSocket connection ID
 
     Args:
-        service_name: 服务名称
-        websocket: WebSocket 对象
+        service_name: Service name
+        websocket: WebSocket object
 
     Returns:
-        str: 连接 ID
+        str: Connection ID
     """
     return f"{service_name}_{id(websocket)}"
 
 
 def should_forward_message(message: Any) -> bool:
-    """判断消息是否应该转发
+    """Determine if message should be forwarded
 
     Args:
-        message: WebSocket 消息
+        message: WebSocket message
 
     Returns:
-        bool: 是否应该转发
+        bool: Whether message should be forwarded
     """
-    # 检查消息类型
+    # Check message type
     if message is None:
         return False
 
-    # 如果是字符串或字节，通常应该转发
+    # If string or bytes, usually should forward
     if isinstance(message, (str, bytes)):
         return True
 
-    # 其他类型需要特殊处理
+    # Other types need special handling
     return False
 
 
 def get_close_reason(code: int) -> str:
-    """获取 WebSocket 关闭原因描述
+    """Get WebSocket close reason description
 
     Args:
-        code: 关闭代码
+        code: Close code
 
     Returns:
-        str: 关闭原因描述
+        str: Close reason description
     """
     reasons = {
-        WEBSOCKET_CLOSE_CODE_NORMAL: "正常关闭",
-        WEBSOCKET_CLOSE_CODE_GOING_AWAY: "端点离开",
-        WEBSOCKET_CLOSE_CODE_PROTOCOL_ERROR: "协议错误",
-        WEBSOCKET_CLOSE_CODE_UNSUPPORTED_DATA: "不支持的数据",
-        WEBSOCKET_CLOSE_CODE_ABNORMAL: "异常关闭",
-        WEBSOCKET_CLOSE_CODE_POLICY_VIOLATION: "策略违规",
+        WEBSOCKET_CLOSE_CODE_NORMAL: "Normal close",
+        WEBSOCKET_CLOSE_CODE_GOING_AWAY: "Endpoint going away",
+        WEBSOCKET_CLOSE_CODE_PROTOCOL_ERROR: "Protocol error",
+        WEBSOCKET_CLOSE_CODE_UNSUPPORTED_DATA: "Unsupported data",
+        WEBSOCKET_CLOSE_CODE_ABNORMAL: "Abnormal close",
+        WEBSOCKET_CLOSE_CODE_POLICY_VIOLATION: "Policy violation",
     }
-    return reasons.get(code, f"未知原因 ({code})")
+    return reasons.get(code, f"Unknown reason ({code})")
 
 
 def is_connection_active(websocket: Any) -> bool:
-    """检查 WebSocket 连接是否活跃
+    """Check if WebSocket connection is active
 
     Args:
-        websocket: WebSocket 对象
+        websocket: WebSocket object
 
     Returns:
-        bool: 是否活跃
+        bool: Whether connection is active
     """
     try:
         # FastAPI/Starlette WebSocket
         from starlette.websockets import WebSocketState
+
         if hasattr(websocket, "client_state"):
             return websocket.client_state == WebSocketState.CONNECTED
         if hasattr(websocket, "application_state"):
@@ -170,23 +172,23 @@ def is_connection_active(websocket: Any) -> bool:
     except ImportError:
         ***REMOVED***
 
-    # websockets 库
+    # websockets library
     if hasattr(websocket, "open"):
         return websocket.open
 
-    # 默认认为活跃
+    # Default to active
     return True
 
 
 def extract_session_key_from_path(path: str, pattern: str = r"/ws/(\w+)") -> Optional[str]:
-    """从路径中提取会话键
+    """Extract session key from path
 
     Args:
-        path: WebSocket 路径
-        pattern: 提取模式（正则表达式）
+        path: WebSocket path
+        pattern: Extraction pattern (regular expression)
 
     Returns:
-        Optional[str]: 会话键，如果未找到则返回 None
+        Optional[str]: Session key, returns None if not found
     """
     import re
 
@@ -201,28 +203,28 @@ def build_websocket_headers(
     additional_headers: Optional[Dict[str, str]] = None,
     excluded_headers: Optional[set] = None,
 ) -> Dict[str, str]:
-    """构建 WebSocket 请求头
+    """Build WebSocket request headers
 
     Args:
-        original_headers: 原始请求头
-        additional_headers: 额外请求头
-        excluded_headers: 需要排除的请求头
+        original_headers: Original request headers
+        additional_headers: Additional request headers
+        excluded_headers: Headers to exclude
 
     Returns:
-        Dict[str, str]: 处理后的请求头
+        Dict[str, str]: Processed request headers
     """
     if excluded_headers is None:
         excluded_headers = {"host", "connection", "upgrade", "sec-websocket-key", "sec-websocket-version"}
 
     headers: Dict[str, str] = {}
 
-    # 复制原始请求头（排除特定头）
+    # Copy original headers (exclude specific headers)
     if original_headers:
         for key, value in original_headers.items():
             if key.lower() not in excluded_headers:
                 headers[key] = value
 
-    # 添加额外请求头
+    # Add additional headers
     if additional_headers:
         headers.update(additional_headers)
 
@@ -230,25 +232,25 @@ def build_websocket_headers(
 
 
 class WebSocketConnectionTracker:
-    """WebSocket 连接跟踪器
+    """WebSocket connection tracker
 
-    用于跟踪和管理活跃的 WebSocket 连接。
+    Used to track and manage active WebSocket connections.
     """
 
     def __init__(self, max_connections: int = DEFAULT_MAX_WEBSOCKET_CONNECTIONS):
-        """初始化跟踪器
+        """Initialize tracker
 
         Args:
-            max_connections: 最大连接数
+            max_connections: Maximum connection count
         """
         self.max_connections = max_connections
         self.active_connections: Dict[str, Dict[str, Any]] = {}
 
     def can_accept(self) -> bool:
-        """检查是否可以接受新连接
+        """Check if new connection can be accepted
 
         Returns:
-            bool: 是否可以接受
+            bool: Whether connection can be accepted
         """
         return len(self.active_connections) < self.max_connections
 
@@ -258,20 +260,21 @@ class WebSocketConnectionTracker:
         service_name: str,
         path: str,
     ) -> bool:
-        """注册新连接
+        """Register new connection
 
         Args:
-            connection_id: 连接 ID
-            service_name: 服务名称
-            path: 请求路径
+            connection_id: Connection ID
+            service_name: Service name
+            path: Request path
 
         Returns:
-            bool: 是否成功注册
+            bool: Whether registration was successful
         """
         if not self.can_accept():
             return False
 
         import asyncio
+
         self.active_connections[connection_id] = {
             "service_name": service_name,
             "path": path,
@@ -280,13 +283,13 @@ class WebSocketConnectionTracker:
         return True
 
     def unregister(self, connection_id: str) -> bool:
-        """注销连接
+        """Unregister connection
 
         Args:
-            connection_id: 连接 ID
+            connection_id: Connection ID
 
         Returns:
-            bool: 是否成功注销
+            bool: Whether unregistration was successful
         """
         if connection_id in self.active_connections:
             del self.active_connections[connection_id]
@@ -294,20 +297,20 @@ class WebSocketConnectionTracker:
         return False
 
     def get_connection_count(self) -> int:
-        """获取当前连接数
+        """Get current connection count
 
         Returns:
-            int: 当前连接数
+            int: Current connection count
         """
         return len(self.active_connections)
 
     def get_connection_info(self, connection_id: str) -> Optional[Dict[str, Any]]:
-        """获取连接信息
+        """Get connection information
 
         Args:
-            connection_id: 连接 ID
+            connection_id: Connection ID
 
         Returns:
-            Optional[Dict[str, Any]]: 连接信息，如果不存在则返回 None
+            Optional[Dict[str, Any]]: Connection information, returns None if not found
         """
         return self.active_connections.get(connection_id)

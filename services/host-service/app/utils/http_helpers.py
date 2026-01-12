@@ -1,6 +1,6 @@
-"""HTTP 请求处理辅助函数
+"""HTTP request processing helper functions
 
-提供 HTTP 请求相关的工具函数，如 Range 头解析等。
+Provides HTTP request-related utility functions, such as Range header parsing, etc.
 """
 
 import re
@@ -10,23 +10,23 @@ from fastapi import HTTPException, status
 
 
 def parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
-    """解析 Range 头，返回起始和结束字节范围（包含）
+    """Parse Range header, return start and end byte range (inclusive)
 
     Args:
-        range_header: Range 请求头值，格式：bytes=start-end
-        file_size: 文件大小（字节）
+        range_header: Range request header value, format: bytes=start-end
+        file_size: File size (bytes)
 
     Returns:
-        Tuple[int, int]: (起始位置, 结束位置)，都是包含的
+        Tuple[int, int]: (start position, end position), both inclusive
 
     Raises:
-        HTTPException: Range 格式错误或范围无效时抛出 416 错误
+        HTTPException: Raises 416 error when Range format is invalid or range is invalid
     """
     range_match = re.match(r"bytes=(\d*)-(\d*)", range_header)
     if not range_match:
         raise HTTPException(
             status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range header 格式错误，示例：bytes=0-1023",
+            detail="Range header format error, example: bytes=0-1023",
         )
 
     start_str, end_str = range_match.groups()
@@ -34,16 +34,16 @@ def parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
     if start_str == "" and end_str == "":
         raise HTTPException(
             status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range header 必须包含开始或结束位置",
+            detail="Range header must include start or end position",
         )
 
     if start_str == "":
-        # 形如 bytes=-500 表示最后 500 字节
+        # Format like bytes=-500 means last 500 bytes
         length = int(end_str)
         if length <= 0:
             raise HTTPException(
                 status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-                detail="Range 长度必须大于 0",
+                detail="Range length must be greater than 0",
             )
         start = max(file_size - length, 0)
         end = file_size - 1
@@ -57,7 +57,7 @@ def parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
     if start >= file_size or start < 0:
         raise HTTPException(
             status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range 起始位置超出文件大小",
+            detail="Range start position exceeds file size",
         )
 
     end = min(end, file_size - 1)
@@ -65,7 +65,7 @@ def parse_range_header(range_header: str, file_size: int) -> Tuple[int, int]:
     if end < start:
         raise HTTPException(
             status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            detail="Range 结束位置必须大于等于起始位置",
+            detail="Range end position must be greater than or equal to start position",
         )
 
     return start, end

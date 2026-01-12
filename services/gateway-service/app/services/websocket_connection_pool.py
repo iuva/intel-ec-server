@@ -1,7 +1,7 @@
 """
-WebSocket 连接池管理器
+WebSocket connection pool manager
 
-管理 WebSocket 连接的创建、复用、关闭和监控
+Manages WebSocket connection creation, reuse, closing, and monitoring
 """
 
 import asyncio
@@ -18,7 +18,7 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     import websockets  # type: ignore[import-not-found]
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
@@ -30,15 +30,15 @@ logger = get_logger(__name__)
 
 @dataclass
 class PooledConnection:
-    """池化 WebSocket 连接
+    """Pooled WebSocket connection
 
     Attributes:
-        connection: WebSocket 连接对象
-        created_at: 创建时间
-        last_used_at: 最后使用时间
-        use_count: 使用次数
-        is_active: 是否活跃
-        service_url: 连接的服务 URL
+        connection: WebSocket connection object
+        created_at: Creation time
+        last_used_at: Last used time
+        use_count: Usage count
+        is_active: Whether active
+        service_url: Service URL for connection
     """
 
     connection: Any
@@ -49,43 +49,43 @@ class PooledConnection:
     service_url: str = ""
 
     def mark_used(self) -> None:
-        """标记为已使用"""
+        """Mark as used"""
         self.last_used_at = datetime.now(timezone.utc)
         self.use_count += 1
 
     def is_stale(self, timeout_seconds: int = 300) -> bool:
-        """检查连接是否过时
+        """Check if connection is stale
 
         Args:
-            timeout_seconds: 超时秒数，默认 300 秒
+            timeout_seconds: Timeout in seconds, default 300 seconds
 
         Returns:
-            连接过时返回 True
+            True if connection is stale
         """
         age = (datetime.now(timezone.utc) - self.last_used_at).total_seconds()
         return age > timeout_seconds
 
     def is_expired(self, max_lifetime_seconds: int = 3600) -> bool:
-        """检查连接是否过期
+        """Check if connection is expired
 
         Args:
-            max_lifetime_seconds: 最大生命周期秒数，默认 3600 秒
+            max_lifetime_seconds: Maximum lifetime in seconds, default 3600 seconds
 
         Returns:
-            连接过期返回 True
+            True if connection is expired
         """
         lifetime = (datetime.now(timezone.utc) - self.created_at).total_seconds()
         return lifetime > max_lifetime_seconds
 
 
 class WebSocketConnectionPool:
-    """WebSocket 连接池
+    """WebSocket connection pool
 
-    管理多个服务的 WebSocket 连接，提供：
-    - 连接复用和缓存
-    - 自动过期清理
-    - 连接健康检查
-    - 性能监控
+    Manages WebSocket connections for multiple services, providing:
+    - Connection reuse and caching
+    - Automatic expiration cleanup
+    - Connection health checks
+    - Performance monitoring
     """
 
     def __init__(
@@ -95,23 +95,23 @@ class WebSocketConnectionPool:
         max_lifetime: int = 3600,
         health_check_interval: int = 60,
     ):
-        """初始化连接池
+        """Initialize connection pool
 
         Args:
-            max_connections_per_service: 每个服务的最大连接数
-            idle_timeout: 空闲超时时间（秒）
-            max_lifetime: 连接最大生命周期（秒）
-            health_check_interval: 健康检查间隔（秒）
+            max_connections_per_service: Maximum connections per service
+            idle_timeout: Idle timeout (seconds)
+            max_lifetime: Maximum connection lifetime (seconds)
+            health_check_interval: Health check interval (seconds)
         """
         self.max_connections_per_service = max_connections_per_service
         self.idle_timeout = idle_timeout
         self.max_lifetime = max_lifetime
         self.health_check_interval = health_check_interval
 
-        # 连接存储: service_url -> 连接列表
+        # Connection storage: service_url -> connection list
         self.pools: Dict[str, list[PooledConnection]] = {}
 
-        # 性能指标
+        # Performance metrics
         self.stats = {
             "total_created": 0,
             "total_closed": 0,
@@ -120,13 +120,13 @@ class WebSocketConnectionPool:
             "pool_misses": 0,
         }
 
-        # 后台任务
+        # Background tasks
         self._cleanup_task: Optional[asyncio.Task[None]] = None
         self._health_check_task: Optional[asyncio.Task[None]] = None
         self._monitor_task: Optional[asyncio.Task[None]] = None
 
         logger.info(
-            "WebSocket 连接池已初始化",
+            "WebSocket connection pool initialized",
             extra={
                 "max_connections": max_connections_per_service,
                 "idle_timeout": idle_timeout,
@@ -135,29 +135,29 @@ class WebSocketConnectionPool:
         )
 
     async def get_connection(self, service_url: str) -> Any:
-        """从池中获取连接
+        """Get connection from pool
 
         Args:
-            service_url: 服务 URL
+            service_url: Service URL
 
         Returns:
-            可用的 WebSocket 连接
+            Available WebSocket connection
 
         Raises:
-            Exception: 连接失败时抛出异常
+            Exception: Raises exception when connection fails
         """
-        # 尝试从池中获取可用连接
+        # Try to get available connection from pool
         available_conn = self._get_available_connection(service_url)
         if available_conn:
             self.stats["pool_hits"] += 1
             available_conn.mark_used()
             logger.debug(
-                f"从连接池中获取连接: {service_url}",
+                f"Get connection from pool: {service_url}",
                 extra={"use_count": available_conn.use_count},
             )
             return available_conn.connection
 
-        # 池中没有可用连接，创建新连接
+        # No available connection in pool, create new connection
         self.stats["pool_misses"] += 1
         try:
             new_connection = await websockets.connect(
@@ -166,14 +166,14 @@ class WebSocketConnectionPool:
                 close_timeout=10.0,
             )
 
-            # 创建池化连接
+            # Create pooled connection
             pooled = PooledConnection(
                 connection=new_connection,
                 service_url=service_url,
             )
             pooled.mark_used()
 
-            # 添加到池
+            # Add to pool
             if service_url not in self.pools:
                 self.pools[service_url] = []
 
@@ -181,7 +181,7 @@ class WebSocketConnectionPool:
             self.stats["total_created"] += 1
 
             logger.info(
-                f"创建新的 WebSocket 连接: {service_url}",
+                f"Create new WebSocket connection: {service_url}",
                 extra={
                     "pool_size": len(self.pools[service_url]),
                     "total_created": self.stats["total_created"],
@@ -192,79 +192,82 @@ class WebSocketConnectionPool:
 
         except Exception as e:
             logger.error(
-                f"WebSocket 连接创建失败: {service_url}",
+                f"WebSocket connection creation failed: {service_url}",
                 extra={"error": str(e)},
                 exc_info=True,
             )
             raise
 
     def _get_available_connection(self, service_url: str) -> Optional[PooledConnection]:
-        """从池中获取可用连接
+        """Get available connection from pool
 
         Args:
-            service_url: 服务 URL
+            service_url: Service URL
 
         Returns:
-            可用连接，未找到返回 None
+            Available connection, returns None if not found
         """
         if service_url not in self.pools:
             return None
 
         pool = self.pools[service_url]
 
-        # 查找第一个活跃、未过时、未过期的连接
+        # Find first active, non-stale, non-expired connection
         for conn in pool:
             if conn.is_active and not conn.is_stale(self.idle_timeout) and not conn.is_expired(self.max_lifetime):
-                # 验证连接是否仍然有效
+                # Verify connection is still valid
                 try:
-                    # 使用 ping 检查连接
+                    # Use ping to check connection
                     if hasattr(conn.connection, "ping"):
                         task = asyncio.create_task(conn.connection.ping())
-                        # 确保任务被追踪，避免警告
+                        # Ensure task is tracked to avoid warnings
                         task.add_done_callback(lambda _t: None)
                     return conn
                 except Exception:
                     conn.is_active = False
 
-        # 清理失效连接
+        # Clean up invalid connections
         self.pools[service_url] = [c for c in pool if c.is_active]
 
         return None
 
     async def release_connection(self, service_url: str, connection: Any, reusable: bool = True) -> None:
-        """释放连接回池
+        """Release connection back to pool
 
         Args:
-            service_url: 服务 URL
-            connection: 要释放的连接
-            reusable: 是否可复用
+            service_url: Service URL
+            connection: Connection to release
+            reusable: Whether reusable
         """
         if not reusable or service_url not in self.pools:
-            # 不可复用或未在池中，关闭连接
+            # Not reusable or not in pool, close connection
             try:
                 await connection.close()
                 self.stats["total_closed"] += 1
-                logger.debug("WebSocket 连接已关闭", extra={"service_url": service_url})
+                logger.debug("WebSocket connection closed", extra={"service_url": service_url})
             except Exception as e:
-                logger.warning("关闭 WebSocket 连接时出错", extra={"service_url": service_url, "error": str(e)})
+                logger.warning(
+                    "Error closing WebSocket connection",
+                    extra={"service_url": service_url, "error": str(e)}
+                )
             return
 
-        # 标记为可复用
+        # Mark as reusable
         pool = self.pools[service_url]
         for pooled in pool:
             if pooled.connection == connection:
                 pooled.is_active = True
                 pooled.mark_used()
                 self.stats["total_reused"] += 1
-                logger.debug("连接已返回到池", extra={"service_url": service_url})
+                logger.debug("Connection returned to pool", extra={"service_url": service_url})
                 return
 
     async def cleanup(self) -> None:
-        """清理过期和失效连接
+        """Clean up expired and invalid connections
 
-        定期执行此方法以释放资源
+        Execute this method periodically to release resources
         """
-        logger.info("开始清理连接池...")
+        logger.info("Starting connection pool cleanup...")
 
         closed_count = 0
 
@@ -272,15 +275,15 @@ class WebSocketConnectionPool:
             remaining = []
 
             for pooled in pool:
-                # 检查连接是否应该关闭
+                # Check if connection should be closed
                 if not pooled.is_active or pooled.is_stale(self.idle_timeout) or pooled.is_expired(self.max_lifetime):
                     try:
                         await pooled.connection.close()
                         self.stats["total_closed"] += 1
                         closed_count += 1
-                        logger.debug("关闭过期连接", extra={"service_url": service_url})
+                        logger.debug("Close expired connection", extra={"service_url": service_url})
                     except Exception as e:
-                        logger.warning("关闭连接时出错", extra={"service_url": service_url, "error": str(e)})
+                        logger.warning("Error closing connection", extra={"service_url": service_url, "error": str(e)})
                 else:
                     remaining.append(pooled)
 
@@ -290,15 +293,15 @@ class WebSocketConnectionPool:
                 del self.pools[service_url]
 
         logger.info(
-            "连接池清理完成",
+            "Connection pool cleanup completed",
             extra={"closed_count": closed_count, "pools_count": len(self.pools)},
         )
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取连接池统计信息
+        """Get connection pool statistics
 
         Returns:
-            统计信息字典
+            Statistics dictionary
         """
         total_connections = sum(len(pool) for pool in self.pools.values())
         active_connections = sum(sum(1 for c in pool if c.is_active) for pool in self.pools.values())
@@ -324,8 +327,8 @@ class WebSocketConnectionPool:
         }
 
     async def close_all(self) -> None:
-        """关闭所有连接"""
-        logger.info("关闭所有 WebSocket 连接...")
+        """Close all connections"""
+        logger.info("Closing all WebSocket connections...")
 
         for pool in self.pools.values():
             for pooled in pool:
@@ -334,19 +337,19 @@ class WebSocketConnectionPool:
                     self.stats["total_closed"] += 1
 
         self.pools.clear()
-        logger.info("所有连接已关闭")
+        logger.info("All connections closed")
 
     async def start_background_tasks(self) -> None:
-        """启动后台任务"""
-        logger.info("启动连接池后台任务...")
+        """Start background tasks"""
+        logger.info("Starting connection pool background tasks...")
 
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         self._health_check_task = asyncio.create_task(self._health_check_loop())
         self._monitor_task = asyncio.create_task(self._monitor_loop())
 
     async def stop_background_tasks(self) -> None:
-        """停止后台任务"""
-        logger.info("停止连接池后台任务...")
+        """Stop background tasks"""
+        logger.info("Stopping connection pool background tasks...")
 
         if self._cleanup_task:
             self._cleanup_task.cancel()
@@ -366,7 +369,7 @@ class WebSocketConnectionPool:
             ***REMOVED***
 
     async def _cleanup_loop(self) -> None:
-        """定期清理连接"""
+        """Periodic cleanup loop"""
         while True:
             try:
                 await asyncio.sleep(self.health_check_interval)
@@ -374,10 +377,10 @@ class WebSocketConnectionPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("清理循环异常", extra={"error": str(e)}, exc_info=True)
+                logger.error("Cleanup loop exception", extra={"error": str(e)}, exc_info=True)
 
     async def _health_check_loop(self) -> None:
-        """定期健康检查"""
+        """Periodic health check loop"""
         while True:
             try:
                 await asyncio.sleep(self.health_check_interval // 2)
@@ -394,17 +397,17 @@ class WebSocketConnectionPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("健康检查异常", extra={"error": str(e)}, exc_info=True)
+                logger.error("Health check exception", extra={"error": str(e)}, exc_info=True)
 
     async def _monitor_loop(self) -> None:
-        """定期监控连接池状态"""
+        """Periodic connection pool status monitoring"""
         while True:
             try:
                 await asyncio.sleep(60)
 
                 stats = self.get_stats()
                 logger.info(
-                    "连接池状态监控",
+                    "Connection pool status monitoring",
                     extra={
                         "total": stats["total_connections"],
                         "active": stats["active_connections"],
@@ -417,4 +420,4 @@ class WebSocketConnectionPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("监控异常", extra={"error": str(e)}, exc_info=True)
+                logger.error("Monitoring exception", extra={"error": str(e)}, exc_info=True)

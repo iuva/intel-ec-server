@@ -1,7 +1,7 @@
 """
-WebSocket 高级特性管理器
+WebSocket advanced features manager
 
-提供心跳检测、速率限制、消息压缩等高级功能
+Provides advanced features such as heartbeat detection, rate limiting, and message compression
 """
 
 import asyncio
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class HeartbeatStats:
-    """心跳统计信息"""
+    """Heartbeat statistics"""
 
     total_heartbeats: int = 0
     successful_heartbeats: int = 0
@@ -36,29 +36,29 @@ class HeartbeatStats:
 
 
 class HeartbeatManager:
-    """WebSocket 心跳检测管理器
+    """WebSocket heartbeat detection manager
 
-    定期发送 ping 消息以验证连接活跃性，快速检测死连接。
+    Periodically sends ping messages to verify connection activity and quickly detect dead connections.
     """
 
     def __init__(self, interval: float = 30.0, timeout: float = 10.0):
-        """初始化心跳管理器
+        """Initialize heartbeat manager
 
         Args:
-            interval: 心跳间隔（秒）
-            timeout: 心跳响应超时（秒）
+            interval: Heartbeat interval (seconds)
+            timeout: Heartbeat response timeout (seconds)
         """
         self.interval = interval
         self.timeout = timeout
 
-        # 心跳任务管理
+        # Heartbeat task management
         self._heartbeat_tasks: Dict[str, asyncio.Task[None]] = {}
 
-        # 心跳统计
+        # Heartbeat statistics
         self._stats: Dict[str, HeartbeatStats] = {}
 
         logger.info(
-            "心跳管理器初始化",
+            "Heartbeat manager initialized",
             extra={
                 "interval": interval,
                 "timeout": timeout,
@@ -66,48 +66,51 @@ class HeartbeatManager:
         )
 
     def register_connection(self, connection_id: str, send_heartbeat: Callable[[], Any]) -> None:
-        """注册连接心跳
+        """Register connection heartbeat
 
         Args:
-            connection_id: 连接ID
-            send_heartbeat: 发送心跳的可调用对象
+            connection_id: Connection ID
+            send_heartbeat: Callable object for sending heartbeat
         """
         if connection_id in self._heartbeat_tasks:
-            logger.warning("连接的心跳已存在，将被覆盖", extra={"connection_id": connection_id})
+            logger.warning(
+                "Connection heartbeat already exists, will be overwritten",
+                extra={"connection_id": connection_id}
+            )
             self._heartbeat_tasks[connection_id].cancel()
 
-        # 创建心跳任务
+        # Create heartbeat task
         task = asyncio.create_task(self._heartbeat_loop(connection_id, send_heartbeat))
 
         self._heartbeat_tasks[connection_id] = task
         self._stats[connection_id] = HeartbeatStats()
 
-        logger.debug("连接的心跳已注册", extra={"connection_id": connection_id})
+        logger.debug("Connection heartbeat registered", extra={"connection_id": connection_id})
 
     def unregister_connection(self, connection_id: str) -> None:
-        """注销连接心跳
+        """Unregister connection heartbeat
 
         Args:
-            connection_id: 连接ID
+            connection_id: Connection ID
         """
         if connection_id in self._heartbeat_tasks:
             self._heartbeat_tasks[connection_id].cancel()
             del self._heartbeat_tasks[connection_id]
 
-            logger.debug("连接的心跳已注销", extra={"connection_id": connection_id})
+            logger.debug("Connection heartbeat unregistered", extra={"connection_id": connection_id})
 
     async def _heartbeat_loop(self, connection_id: str, send_heartbeat: Callable[[], Any]) -> None:
-        """心跳循环"""
+        """Heartbeat loop"""
         while True:
             try:
                 await asyncio.sleep(self.interval)
 
-                # 发送心跳
+                # Send heartbeat
                 start_time = time.time()
                 await send_heartbeat()
                 response_time_ms = (time.time() - start_time) * 1000
 
-                # 更新统计
+                # Update statistics
                 stats = self._stats[connection_id]
                 stats.total_heartbeats += 1
                 stats.successful_heartbeats += 1
@@ -115,28 +118,28 @@ class HeartbeatManager:
                 stats.average_response_time_ms = stats.average_response_time_ms * 0.9 + response_time_ms * 0.1
 
                 logger.debug(
-                    "心跳发送成功",
+                    "Heartbeat sent successfully",
                     extra={"connection_id": connection_id, "response_time_ms": response_time_ms},
                 )
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                # 更新失败统计
+                # Update failure statistics
                 stats = self._stats[connection_id]
                 stats.total_heartbeats += 1
                 stats.failed_heartbeats += 1
 
-                logger.warning("心跳发送失败", extra={"connection_id": connection_id, "error": str(e)})
+                logger.warning("Heartbeat send failed", extra={"connection_id": connection_id, "error": str(e)})
 
     def get_stats(self, connection_id: str) -> Optional[Dict[str, Any]]:
-        """获取连接的心跳统计
+        """Get connection heartbeat statistics
 
         Args:
-            connection_id: 连接ID
+            connection_id: Connection ID
 
         Returns:
-            心跳统计信息
+            Heartbeat statistics
         """
         if connection_id not in self._stats:
             return None
@@ -154,9 +157,9 @@ class HeartbeatManager:
 
 
 class RateLimiter:
-    """WebSocket 速率限制管理器
+    """WebSocket rate limiting manager
 
-    限制消息发送频率和大小，防止洪泛攻击和 DDoS。
+    Limits message sending frequency and size to prevent flooding attacks and DDoS.
     """
 
     def __init__(
@@ -165,25 +168,25 @@ class RateLimiter:
         window_size: float = 60.0,
         max_size_bytes: int = 1024 * 1024,
     ):
-        """初始化速率限制器
+        """Initialize rate limiter
 
         Args:
-            max_messages: 时间窗口内最多消息数
-            window_size: 时间窗口大小（秒）
-            max_size_bytes: 单条消息最大大小（字节）
+            max_messages: Maximum number of messages in time window
+            window_size: Time window size (seconds)
+            max_size_bytes: Maximum size of single message (bytes)
         """
         self.max_messages = max_messages
         self.window_size = window_size
         self.max_size_bytes = max_size_bytes
 
-        # 连接消息计数
+        # Connection message count
         self._message_times: Dict[str, list[float]] = {}
 
-        # 连接总字节数
+        # Connection total bytes
         self._connection_bytes: Dict[str, int] = {}
 
         logger.info(
-            "速率限制器初始化",
+            "Rate limiter initialized",
             extra={
                 "max_messages": max_messages,
                 "window_size": window_size,
@@ -192,46 +195,46 @@ class RateLimiter:
         )
 
     async def check_rate_limit(self, connection_id: str, message_size: int) -> Tuple[bool, Optional[str]]:
-        """检查速率限制
+        """Check rate limit
 
         Args:
-            connection_id: 连接ID
-            message_size: 消息大小（字节）
+            connection_id: Connection ID
+            message_size: Message size (bytes)
 
         Returns:
-            (是否通过限制, 错误消息)
+            (Whether limit ***REMOVED***ed, error message)
         """
         current_time = time.time()
 
-        # 检查单条消息大小
+        # Check single message size
         if message_size > self.max_size_bytes:
-            return False, f"消息大小超过限制: {message_size} > {self.max_size_bytes}"
+            return False, f"Message size exceeds limit: {message_size} > {self.max_size_bytes}"
 
-        # 初始化连接记录
+        # Initialize connection record
         if connection_id not in self._message_times:
             self._message_times[connection_id] = []
             self._connection_bytes[connection_id] = 0
 
-        # 清理过期的消息时间戳
+        # Clean up expired message timestamps
         message_times = self._message_times[connection_id]
         cutoff_time = current_time - self.window_size
         self._message_times[connection_id] = [t for t in message_times if t > cutoff_time]
 
-        # 检查消息频率
+        # Check message frequency
         if len(self._message_times[connection_id]) >= self.max_messages:
-            return False, f"消息频率超过限制: {self.max_messages}/{self.window_size}s"
+            return False, f"Message frequency exceeds limit: {self.max_messages}/{self.window_size}s"
 
-        # 记录消息
+        # Record message
         self._message_times[connection_id].append(current_time)
         self._connection_bytes[connection_id] += message_size
 
         return True, None
 
     def cleanup_connection(self, connection_id: str) -> None:
-        """清理连接记录
+        """Clean up connection record
 
         Args:
-            connection_id: 连接ID
+            connection_id: Connection ID
         """
         if connection_id in self._message_times:
             del self._message_times[connection_id]
@@ -239,13 +242,13 @@ class RateLimiter:
             del self._connection_bytes[connection_id]
 
     def get_stats(self, connection_id: str) -> Optional[Dict[str, Any]]:
-        """获取连接的速率限制统计
+        """Get connection rate limiting statistics
 
         Args:
-            connection_id: 连接ID
+            connection_id: Connection ID
 
         Returns:
-            速率限制统计信息
+            Rate limiting statistics
         """
         if connection_id not in self._message_times:
             return None
@@ -253,7 +256,7 @@ class RateLimiter:
         current_time = time.time()
         cutoff_time = current_time - self.window_size
 
-        # 清理过期时间戳
+        # Clean up expired timestamps
         message_times = self._message_times[connection_id]
         active_times = [t for t in message_times if t > cutoff_time]
 
@@ -267,20 +270,20 @@ class RateLimiter:
 
 
 class MessageCompressor:
-    """WebSocket 消息压缩管理器
+    """WebSocket message compression manager
 
-    使用 Gzip 算法压缩消息，显著减少带宽占用。
+    Uses Gzip algorithm to compress messages, significantly reducing bandwidth usage.
     """
 
     def __init__(self, compression_threshold: int = 1024):
-        """初始化消息压缩器
+        """Initialize message compressor
 
         Args:
-            compression_threshold: 压缩阈值（字节），小于此值不压缩
+            compression_threshold: Compression threshold (bytes), messages smaller than this are not compressed
         """
         self.compression_threshold = compression_threshold
 
-        # 压缩统计
+        # Compression statistics
         self._stats: Dict[str, Any] = {
             "total_messages": 0,
             "compressed_count": 0,
@@ -290,44 +293,44 @@ class MessageCompressor:
         }
 
         logger.info(
-            "消息压缩器初始化",
+            "Message compressor initialized",
             extra={"compression_threshold": compression_threshold},
         )
 
     async def compress_message(self, message: str) -> Tuple[bool, str]:
-        """压缩消息
+        """Compress message
 
         Args:
-            message: 要压缩的消息
+            message: Message to compress
 
         Returns:
-            (是否被压缩, 压缩后的消息)
+            (Whether compressed, compressed message)
         """
         message_bytes = message.encode("utf-8")
         original_size = len(message_bytes)
 
-        # 更新统计
+        # Update statistics
         self._stats["total_messages"] += 1
         self._stats["bytes_original"] += original_size
 
-        # 检查是否需要压缩
+        # Check if compression is needed
         if original_size < self.compression_threshold:
             self._stats["uncompressed_count"] += 1
             return False, message
 
-        # 压缩消息
+        # Compress message
         compressed_bytes = gzip.compress(message_bytes)
         compressed_size = len(compressed_bytes)
 
-        # 检查压缩是否有效
+        # Check if compression is effective
         if compressed_size >= original_size:
             self._stats["uncompressed_count"] += 1
             return False, message
 
-        # 编码为 base64（便于通过文本通道传输）
+        # Encode as base64 (for transmission through text channel)
         compressed_b64 = base64.b64encode(compressed_bytes).decode("utf-8")
 
-        # 创建压缩消息格式
+        # Create compressed message format
         compressed_message = json.dumps(
             {
                 "type": "compressed",
@@ -337,12 +340,12 @@ class MessageCompressor:
             }
         )
 
-        # 更新统计
+        # Update statistics
         self._stats["compressed_count"] += 1
         self._stats["bytes_compressed"] += compressed_size
 
         logger.debug(
-            "消息已压缩",
+            "Message compressed",
             extra={
                 "original_size": original_size,
                 "compressed_size": compressed_size,
@@ -353,38 +356,38 @@ class MessageCompressor:
         return True, compressed_message
 
     async def decompress_message(self, message: str) -> Optional[str]:
-        """解压消息
+        """Decompress message
 
         Args:
-            message: 压缩后的消息
+            message: Compressed message
 
         Returns:
-            解压后的消息，如果失败返回 None
+            Decompressed message, returns None if failed
         """
         try:
-            # 尝试解析为压缩消息
+            # Try to parse as compressed message
             data = json.loads(message)
 
             if data.get("type") != "compressed":
                 return message
 
-            # 解码 base64
+            # Decode base64
             compressed_bytes = base64.b64decode(data["data"])
 
-            # 解压
+            # Decompress
             decompressed_bytes = gzip.decompress(compressed_bytes)
 
             return decompressed_bytes.decode("utf-8")
 
         except (json.JSONDecodeError, ValueError, Exception):
-            # 不是压缩消息或解压失败
+            # Not a compressed message or decompression failed
             return message
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取压缩统计
+        """Get compression statistics
 
         Returns:
-            压缩统计信息
+            Compression statistics
         """
         total = self._stats["total_messages"]
         if total == 0:
@@ -401,9 +404,9 @@ class MessageCompressor:
 
 
 class WebSocketFeaturesManager:
-    """WebSocket 功能管理器
+    """WebSocket features manager
 
-    聚合所有 WebSocket 高级特性：心跳、限流、压缩等。
+    Aggregates all WebSocket advanced features: heartbeat, rate limiting, compression, etc.
     """
 
     def __init__(
@@ -415,27 +418,27 @@ class WebSocketFeaturesManager:
         max_message_size: int = 1024 * 1024,
         compression_threshold: int = 1024,
     ):
-        """初始化功能管理器
+        """Initialize features manager
 
         Args:
-            heartbeat_interval: 心跳间隔（秒）
-            heartbeat_timeout: 心跳超时（秒）
-            max_messages: 时间窗口内最大消息数
-            window_size: 限速时间窗口（秒）
-            max_message_size: 最大消息大小（字节）
-            compression_threshold: 压缩阈值（字节）
+            heartbeat_interval: Heartbeat interval (seconds)
+            heartbeat_timeout: Heartbeat timeout (seconds)
+            max_messages: Maximum number of messages in time window
+            window_size: Rate limiting time window (seconds)
+            max_message_size: Maximum message size (bytes)
+            compression_threshold: Compression threshold (bytes)
         """
         self.heartbeat_manager = HeartbeatManager(heartbeat_interval, heartbeat_timeout)
         self.rate_limiter = RateLimiter(max_messages, window_size, max_message_size)
         self.compressor = MessageCompressor(compression_threshold)
 
-        logger.info("WebSocket 功能管理器初始化完成")
+        logger.info("WebSocket features manager initialized")
 
     def get_stats(self) -> Dict[str, Any]:
-        """获取所有功能的统计信息
+        """Get statistics for all features
 
         Returns:
-            统计信息字典
+            Statistics dictionary
         """
         return {
             "heartbeat": {

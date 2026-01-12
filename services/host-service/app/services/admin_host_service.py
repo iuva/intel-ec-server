@@ -1,6 +1,6 @@
-"""管理后台主机管理服务
+"""Admin backend host management service
 
-提供管理后台使用的主机查询、搜索等核心业务逻辑。
+Provides core business logic for host querying, searching, and other operations used by the admin backend.
 """
 
 from datetime import datetime, timezone
@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy import and_, func, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_OFFLINE
     from app.models.host_exec_log import HostExecLog
@@ -59,55 +59,55 @@ logger = get_logger(__name__)
 
 
 class AdminHostService:
-    """管理后台主机管理服务类
+    """Admin backend host management service class
 
-    负责管理后台的主机查询、搜索等操作。
+    Responsible for host querying, searching, and other operations in the admin backend.
 
-    ✅ 优化：缓存会话工厂，避免每次操作都调用 get_session()
+    ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
     """
 
     def __init__(self):
-        """初始化服务"""
-        # ✅ 优化：缓存会话工厂
+        """Initialize service"""
+        # ✅ Optimization: Cache session factory
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）
+        """Get session factory (lazy initialization, singleton pattern)
 
-        ✅ 优化：缓存会话工厂，避免重复获取
+        ✅ Optimization: Cache session factory to avoid repeated retrieval
         """
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
 
     @handle_service_errors(
-        error_message="查询主机列表失败",
+        error_message="Failed to query host list",
         error_code="QUERY_HOST_LIST_FAILED",
     )
     async def list_hosts(
         self,
         request: AdminHostListRequest,
     ) -> Tuple[List[AdminHostInfo], PaginationResponse]:
-        """查询可用主机列表（分页、搜索）
+        """Query available host list (paginated, searchable)
 
-        业务逻辑：
-        1. 查询 host_rec 表，条件：host_state >= 0 且 host_state <= 4, appr_state = 1, del_flag = 0
-        2. 关联 host_exec_log 表，获取每个 host_id 的最新一条记录（按 created_time 倒序）
-        3. 支持按 use_by（user_name）过滤
-        4. 按 host_rec.created_time 倒序排序
+        Business logic:
+        1. Query host_rec table with conditions: host_state >= 0 and host_state <= 4, appr_state = 1, del_flag = 0
+        2. Join host_exec_log table to get the latest record for each host_id (ordered by created_time descending)
+        3. Support filtering by use_by (user_name)
+        4. Order by host_rec.created_time descending
 
         Args:
-            request: 查询请求参数
+            request: Query request parameters
 
         Returns:
-            Tuple[List[AdminHostInfo], PaginationResponse]: 主机列表和分页信息
+            Tuple[List[AdminHostInfo], PaginationResponse]: Host list and pagination information
 
         Raises:
-            BusinessError: 查询失败时
+            BusinessError: When query fails
         """
         log_operation_start(
-            "查询可用主机列表",
+            "Query available host list",
             extra={
                 "page": request.page,
                 "page_size": request.page_size,
@@ -122,8 +122,8 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 构建子查询：获取每个 host_id 的最新一条 host_exec_log 记录
-            # 方法：先获取每个 host_id 的最大 created_time，如果相同则取 id 最大的
+            # Build subquery: Get the latest host_exec_log record for each host_id
+            # Method: First get the max created_time for each host_id, if same then take the max id
             max_time_subquery = (
                 select(
                     HostExecLog.host_id,
@@ -134,9 +134,9 @@ class AdminHostService:
                 .subquery()
             )
 
-            # 获取每个 host_id 的最大 id（当 created_time 相同时）
-            # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
-            # 使用 select_from() 配合 join() 在表对象上
+            # Get the max id for each host_id (when created_time is the same)
+            # ✅ Fix: Use correct SQLAlchemy 2.0 join syntax
+            # Use select_from() with join() on table objects
             max_id_subquery = (
                 select(
                     HostExecLog.host_id,
@@ -156,8 +156,8 @@ class AdminHostService:
                 .subquery()
             )
 
-            # 获取最新执行日志的完整记录（使用 id 确保唯一性）
-            # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+            # Get complete record of latest execution log (use id to ensure uniqueness)
+            # ✅ Fix: Use correct SQLAlchemy 2.0 join syntax
             latest_log_subquery = (
                 select(HostExecLog.host_id, HostExecLog.user_name)
                 .select_from(
@@ -169,8 +169,8 @@ class AdminHostService:
                 .subquery()
             )
 
-            # 主查询：JOIN host_rec 和最新的 host_exec_log
-            # 基础条件：host_state >= 0 且 host_state <= 4, appr_state = 1, del_flag = 0
+            # Main query: JOIN host_rec and latest host_exec_log
+            # Base conditions: host_state >= 0 and host_state <= 4, appr_state = 1, del_flag = 0
             base_conditions = [
                 HostRec.host_state >= 0,
                 HostRec.host_state <= 4,
@@ -178,21 +178,21 @@ class AdminHostService:
                 HostRec.del_flag == 0,
             ]
 
-            # 添加搜索条件（过滤空字符串）
+            # Add search conditions (filter empty strings)
             if request.mac and request.mac.strip():
                 base_conditions.append(HostRec.mac_addr.like(f"%{request.mac.strip()}%"))
 
             if request.username and request.username.strip():
                 base_conditions.append(HostRec.host_acct.like(f"%{request.username.strip()}%"))
 
-            # 如果指定了 host_state 过滤条件，添加精确匹配
-            # 注意：基础条件已固定为 host_state >= 0 且 host_state <= 4
-            # 如果提供了 host_state 参数，则进一步精确匹配该状态
+            # If host_state filter condition is specified, add exact match
+            # Note: Base conditions are fixed as host_state >= 0 and host_state <= 4
+            # If host_state parameter is provided, further match that state exactly
             if request.host_state is not None:
-                # 验证 host_state 范围（0-4）
+                # Validate host_state range (0-4)
                 if request.host_state < 0 or request.host_state > 4:
                     raise BusinessError(
-                        message=f"host_state 参数值必须在 0-4 范围内，当前值: {request.host_state}",
+                        message=f"host_state parameter value must be in range 0-4, current value: {request.host_state}",
                         message_key="error.host.invalid_host_state",
                         error_code="INVALID_HOST_STATE",
                         code=ServiceErrorCodes.HOST_INVALID_REQUEST,
@@ -204,10 +204,10 @@ class AdminHostService:
             if request.mg_id and request.mg_id.strip():
                 base_conditions.append(HostRec.mg_id.like(f"%{request.mg_id.strip()}%"))
 
-            # 如果指定了 use_by 过滤条件，需要重新构建子查询并添加过滤
+            # If use_by filter condition is specified, need to rebuild subquery and add filter
             if request.use_by and request.use_by.strip():
-                # 重新获取最大 id，但这次要过滤 user_name
-                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+                # Re-get max id, but this time filter by user_name
+                # ✅ Fix: Use correct SQLAlchemy 2.0 join syntax
                 max_id_with_filter_subquery = (
                     select(
                         HostExecLog.host_id,
@@ -228,8 +228,8 @@ class AdminHostService:
                     .subquery()
                 )
 
-                # 获取过滤后的最新执行日志
-                # ✅ 修复：使用正确的 SQLAlchemy 2.0 join 语法
+                # Get filtered latest execution log
+                # ✅ Fix: Use correct SQLAlchemy 2.0 join syntax
                 latest_log_subquery = (
                     select(HostExecLog.host_id, HostExecLog.user_name)
                     .select_from(
@@ -241,11 +241,11 @@ class AdminHostService:
                     .subquery()
                 )
 
-            # 构建主查询：LEFT JOIN 获取最新的执行日志
-            # 如果指定了 use_by，需要过滤掉 user_name 为 None 的记录
+            # Build main query: LEFT JOIN to get latest execution log
+            # If use_by is specified, need to filter out records where user_name is None
             query_conditions = base_conditions.copy()
             if request.use_by and request.use_by.strip():
-                # 由于使用了 LEFT JOIN，需要过滤掉 user_name 为 None 的记录
+                # Since LEFT JOIN is used, need to filter out records where user_name is None
                 query_conditions.append(latest_log_subquery.c.user_name.is_not(None))
 
             base_query = (
@@ -265,15 +265,15 @@ class AdminHostService:
                 .where(and_(*query_conditions))
             )
 
-            # 1. 查询总数
+            # 1. Query total count
             count_stmt = select(func.count()).select_from(base_query.subquery())
             count_result = await session.execute(count_stmt)
             total = count_result.scalar() or 0
 
-            # 2. 分页查询：按 created_time 倒序排序
+            # 2. Paginated query: Order by created_time descending
             pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
 
-            # 添加排序和分页
+            # Add sorting and pagination
             stmt = (
                 base_query.order_by(HostRec.created_time.desc())
                 .offset(pagination_params.offset)
@@ -283,11 +283,11 @@ class AdminHostService:
             result = await session.execute(stmt)
             rows = result.all()
 
-            # 3. 构建响应数据
+            # 3. Build response data
             host_info_list: List[AdminHostInfo] = []
             for row in rows:
                 host_info = AdminHostInfo(
-                    host_id=str(row.host_id),  # ✅ 转换为字符串避免精度丢失
+                    host_id=str(row.host_id),  # ✅ Convert to string to avoid precision loss
                     username=row.username,
                     mg_id=row.mg_id,
                     mac=row.mac,
@@ -297,7 +297,7 @@ class AdminHostService:
                 )
                 host_info_list.append(host_info)
 
-            # 4. 构建分页响应
+            # 4. Build pagination response
             pagination_response = PaginationResponse(
                 page=request.page,
                 page_size=request.page_size,
@@ -305,7 +305,7 @@ class AdminHostService:
             )
 
             logger.info(
-                "查询可用主机列表完成",
+                "Query available host list completed",
                 extra={
                     "total": total,
                     "returned_count": len(host_info_list),
@@ -317,31 +317,32 @@ class AdminHostService:
             return host_info_list, pagination_response
 
     @handle_service_errors(
-        error_message="删除主机失败",
+        error_message="Failed to delete host",
         error_code="DELETE_HOST_FAILED",
     )
     async def delete_host(
         self, host_id: int, request=None, user_id: Optional[int] = None, locale: str = "zh_CN"
     ) -> str:
-        """删除主机（逻辑删除）
+        """Delete host (logical delete)
 
-        根据主机ID逻辑删除 host_rec 表数据。删除后需要同步通知外部API，
-        如果通知失败则回滚删除操作。
+        Logically delete host_rec table data based on host ID. After deletion,
+        need to synchronously notify external API.
+        If notification fails, rollback the delete operation.
 
         Args:
-            host_id: 主机ID（host_rec.id）
-            request: FastAPI Request 对象（用于从请求头获取 user_id）
-            user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
-            locale: 语言偏好，用于错误消息多语言处理
+            host_id: Host ID (host_rec.id)
+            request: FastAPI Request object (used to get user_id from request headers)
+            user_id: ID of currently logged-in admin backend user (optional, if provided will be used preferentially)
+            locale: Language preference for error message internationalization
 
         Returns:
-            str: 已删除的主机ID（字符串格式，避免精度丢失）
+            str: Deleted host ID (string format to avoid precision loss)
 
         Raises:
-            BusinessError: 主机不存在或删除失败时
+            BusinessError: When host does not exist or deletion fails
         """
         logger.info(
-            "开始删除主机",
+            "Start deleting host",
             extra={
                 "host_id": host_id,
             },
@@ -349,11 +350,11 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除，并获取 host_rec 对象（用于获取 hardware_id）
+            # 1. Check if host exists and is not deleted, and get host_rec object (for getting hardware_id)
             host_stmt = select(HostRec).where(
                 and_(
                     HostRec.id == host_id,
-                    HostRec.del_flag == 0,  # 只查询未删除的记录
+                    HostRec.del_flag == 0,  # Only query non-deleted records
                 )
             )
             host_result = await session.execute(host_stmt)
@@ -361,7 +362,7 @@ class AdminHostService:
 
             if not host_rec:
                 raise BusinessError(
-                    message=f"主机不存在或已被删除（ID: {host_id}）",
+                    message=f"Host does not exist or has been deleted (ID: {host_id})",
                     message_key="error.host.not_found",
                     error_code="HOST_NOT_FOUND",
                     code=ServiceErrorCodes.HOST_NOT_FOUND,
@@ -369,27 +370,27 @@ class AdminHostService:
                     details={"host_id": host_id},
                 )
 
-            # 2. 执行逻辑删除（设置 del_flag = 1）
+            # 2. Execute logical delete (set del_flag = 1)
             update_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id == host_id,
-                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                        HostRec.del_flag == 0,  # Only update non-deleted records
                     )
                 )
-                .values(del_flag=1)  # 设置为已删除
+                .values(del_flag=1)  # Set as deleted
             )
 
             logger.info(
-                "执行逻辑删除操作",
+                "Execute logical delete operation",
                 extra={
                     "host_id": host_id,
                     "operation": "UPDATE del_flag = 1",
                 },
             )
 
-            # 执行更新
+            # Execute update
             result = await session.execute(update_stmt)
             await session.commit()
 
@@ -397,13 +398,13 @@ class AdminHostService:
 
             if updated_count == 0:
                 logger.warning(
-                    "逻辑删除失败，记录可能已被删除",
+                    "Logical delete failed, record may have been deleted",
                     extra={
                         "host_id": host_id,
                     },
                 )
                 raise BusinessError(
-                    message=f"主机删除失败，记录可能已被删除（ID: {host_id}）",
+                    message=f"Host deletion failed, record may have been deleted (ID: {host_id})",
                     message_key="error.host.delete_failed",
                     error_code="HOST_DELETE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -412,22 +413,22 @@ class AdminHostService:
                 )
 
             logger.info(
-                "主机逻辑删除完成",
+                "Host logical delete completed",
                 extra={
                     "host_id": host_id,
                     "updated_count": updated_count,
                 },
             )
 
-            # 3. 在删除成功后，将 host_id 添加到 Redis 黑名单
+            # 3. After successful deletion, add host_id to Redis blacklist
             try:
                 deleted_host_key = f"deleted:host:{host_id}"
-                # 过期时间：24 小时（与 token 过期时间一致）
+                # Expiration time: 24 hours (consistent with token expiration time)
                 expire_seconds = 24 * 60 * 60
                 await redis_manager.set(deleted_host_key, True, expire=expire_seconds)
 
                 logger.info(
-                    "已删除的 host ID 已添加到 Redis 黑名单",
+                    "Deleted host ID added to Redis blacklist",
                     extra={
                         "host_id": host_id,
                         "redis_key": deleted_host_key,
@@ -435,24 +436,27 @@ class AdminHostService:
                     },
                 )
             except Exception as redis_error:
-                # Redis 操作失败时记录警告，但不影响删除操作
+                # Log warning when Redis operation fails, but don't affect delete operation
                 logger.warning(
-                    "添加 host ID 到 Redis 黑名单失败",
+                    "Failed to add host ID to Redis blacklist",
                     extra={
                         "host_id": host_id,
                         "error": str(redis_error),
                         "error_type": type(redis_error).__name__,
-                        "hint": "Redis 不可用时，已删除的 host token 可能仍可使用，直到 token 过期",
+                        "hint": (
+                            "When Redis is unavailable, deleted host tokens may still be usable "
+                            "until token expires"
+                        ),
                     },
                 )
 
-            # 4. 通知外部API
+            # 4. Notify external API
             try:
-                # 构建通知路径（根据实际外部API接口调整）
+                # Build notification path (adjust according to actual external API interface)
                 external_api_path = f"/api/v1/hardware/{host_rec.hardware_id}"
 
                 logger.info(
-                    "调用外部API通知主机删除",
+                    "Call external API to notify host deletion",
                     extra={
                         "host_id": host_id,
                         "hardware_id": host_rec.hardware_id,
@@ -461,7 +465,7 @@ class AdminHostService:
                     },
                 )
 
-                # 调用外部接口通知主机已删除
+                # Call external API to notify host has been deleted
                 response = await call_external_api(
                     method="DELETE",
                     url_path=external_api_path,
@@ -470,14 +474,14 @@ class AdminHostService:
                     locale=locale,
                 )
 
-                # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+                # Determine if request succeeded: Check if response header :status or response body code is 200
                 response_headers = response.get("headers", {})
                 response_body = response.get("body", {})
                 status_header = response_headers.get(":status") or response_headers.get("status")
                 status_code = response.get("status_code")
                 body_code = response_body.get("code") if isinstance(response_body, dict) else None
 
-                # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+                # Determine success: response header :status or status_code or response body code equals 200
                 is_success = (
                     (status_header and str(status_header) == "200")
                     or (status_code and status_code == 200)
@@ -486,14 +490,14 @@ class AdminHostService:
 
                 if not is_success:
                     error_msg = (
-                        response_body.get("message", "未知错误")
+                        response_body.get("message", "Unknown error")
                         if isinstance(response_body, dict)
                         else str(response_body)
                     )
-                    raise Exception(f"外部API通知失败: {error_msg}")
+                    raise Exception(f"External API notification failed: {error_msg}")
 
                 logger.info(
-                    "外部API通知成功",
+                    "External API notification succeeded",
                     extra={
                         "host_id": host_id,
                         "status_header": status_header,
@@ -503,9 +507,9 @@ class AdminHostService:
                 )
 
             except Exception as e:
-                # 4. 如果外部API通知失败，回滚删除操作
+                # 4. If external API notification fails, rollback delete operation
                 logger.error(
-                    "外部API通知失败，开始回滚删除操作",
+                    "External API notification failed, starting rollback of delete operation",
                     extra={
                         "host_id": host_id,
                         "error": str(e),
@@ -514,9 +518,9 @@ class AdminHostService:
                     exc_info=True,
                 )
 
-                # 回滚：将 del_flag 改回 0
+                # Rollback: Change del_flag back to 0
                 rollback_stmt = (
-                    update(HostRec).where(HostRec.id == host_id).values(del_flag=0)  # 恢复为未删除状态
+                    update(HostRec).where(HostRec.id == host_id).values(del_flag=0)  # Restore to non-deleted state
                 )
 
                 rollback_result = await session.execute(rollback_stmt)
@@ -525,16 +529,16 @@ class AdminHostService:
                 rollback_count = rollback_result.rowcount
 
                 logger.info(
-                    "删除操作已回滚",
+                    "Delete operation rolled back",
                     extra={
                         "host_id": host_id,
                         "rollback_count": rollback_count,
                     },
                 )
 
-                # 抛出业务异常，返回删除失败
+                # Raise business exception, return deletion failure
                 raise BusinessError(
-                    message=f"主机删除失败：外部API通知失败（ID: {host_id}）",
+                    message=f"Host deletion failed: External API notification failed (ID: {host_id})",
                     message_key="error.host.delete_external_api_failed",
                     error_code="HOST_DELETE_EXTERNAL_API_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -546,37 +550,37 @@ class AdminHostService:
                     },
                 )
 
-            # 5. 删除成功
+            # 5. Deletion succeeded
             logger.info(
-                "主机删除成功（包含外部API通知）",
+                "Host deletion succeeded (including external API notification)",
                 extra={
                     "host_id": host_id,
                 },
             )
 
-            return str(host_id)  # ✅ 转换为字符串避免精度丢失
+            return str(host_id)  # ✅ Convert to string to avoid precision loss
 
     @handle_service_errors(
-        error_message="停用主机失败",
+        error_message="Failed to disable host",
         error_code="DISABLE_HOST_FAILED",
     )
     async def disable_host(self, host_id: int) -> dict:
-        """停用主机
+        """Disable host
 
-        根据主机ID更新 host_rec 表的 appr_state 字段为 0（停用），
-        同时设置 host_state 为 7（手动停用）。
+        Update host_rec table's appr_state field to 0 (disabled) based on host ID,
+        and set host_state to 7 (manually disabled).
 
         Args:
-            host_id: 主机ID（host_rec.id）
+            host_id: Host ID (host_rec.id)
 
         Returns:
-            dict: 包含更新后的主机ID、审批状态和主机状态
+            dict: Contains updated host ID, approval state, and host state
 
         Raises:
-            BusinessError: 主机不存在或更新失败时
+            BusinessError: When host does not exist or update fails
         """
         logger.info(
-            "开始停用主机",
+            "Start disabling host",
             extra={
                 "host_id": host_id,
             },
@@ -584,13 +588,13 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除（使用工具函数）
+            # 1. Check if host exists and is not deleted (using utility function)
             host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
-            # 2. 检查当前状态是否已经是停用状态
+            # 2. Check if current state is already disabled
             if host_rec.appr_state == 0 and host_rec.host_state == 7:
                 logger.info(
-                    "主机已是停用状态，无需更新",
+                    "Host is already disabled, no update needed",
                     extra={
                         "host_id": host_id,
                         "current_appr_state": host_rec.appr_state,
@@ -598,25 +602,25 @@ class AdminHostService:
                     },
                 )
                 return {
-                    "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
+                    "id": str(host_id),  # ✅ Convert to string to avoid precision loss
                     "appr_state": 0,
                     "host_state": 7,
                 }
 
-            # 3. 更新审批状态为停用，同时设置 host_state 为 7（手动停用）
+            # 3. Update approval state to disabled, and set host_state to 7 (manually disabled)
             update_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id == host_id,
-                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                        HostRec.del_flag == 0,  # Only update non-deleted records
                     )
                 )
                 .values(appr_state=0, host_state=7)
             )
 
             logger.info(
-                "执行停用操作",
+                "Execute disable operation",
                 extra={
                     "host_id": host_id,
                     "old_appr_state": host_rec.appr_state,
@@ -627,7 +631,7 @@ class AdminHostService:
                 },
             )
 
-            # 执行更新
+            # Execute update
             result = await session.execute(update_stmt)
             await session.commit()
 
@@ -635,13 +639,13 @@ class AdminHostService:
 
             if updated_count == 0:
                 logger.warning(
-                    "主机停用失败，记录可能已被删除",
+                    "Host disable failed, record may have been deleted",
                     extra={
                         "host_id": host_id,
                     },
                 )
                 raise BusinessError(
-                    message=f"主机停用失败，记录可能已被删除（ID: {host_id}）",
+                    message=f"Host disable failed, record may have been deleted (ID: {host_id})",
                     message_key="error.host.disable_failed",
                     error_code="HOST_DISABLE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -650,7 +654,7 @@ class AdminHostService:
                 )
 
             logger.info(
-                "主机停用成功",
+                "Host disable succeeded",
                 extra={
                     "host_id": host_id,
                     "old_appr_state": host_rec.appr_state,
@@ -662,36 +666,36 @@ class AdminHostService:
             )
 
             return {
-                "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
+                "id": str(host_id),  # ✅ Convert to string to avoid precision loss
                 "appr_state": 0,
                 "host_state": 7,
-                "message": "主机已停用",
+                "message": "Host has been disabled",
             }
 
     @handle_service_errors(
-        error_message="强制下线主机失败",
+        error_message="Failed to force offline host",
         error_code="FORCE_OFFLINE_HOST_FAILED",
     )
     async def force_offline_host(self, host_id: int, locale: str = "zh_CN") -> dict:
-        """强制下线主机
+        """Force offline host
 
-        业务逻辑：
-        1. 检查主机是否存在且未删除
-        2. 检查主机状态是否为 0（空闲状态），只有空闲状态才能下线
-        3. 更新 host_rec 表的 host_state 字段为 4（离线状态）
+        Business logic:
+        1. Check if host exists and is not deleted
+        2. Check if host state is 0 (free state), only free state can be taken offline
+        3. Update host_rec table's host_state field to 4 (offline state)
 
         Args:
-            host_id: 主机ID（host_rec.id）
-            locale: 语言偏好，用于错误消息多语言处理
+            host_id: Host ID (host_rec.id)
+            locale: Language preference for error message internationalization
 
         Returns:
-            dict: 包含更新后的主机ID和状态
+            dict: Contains updated host ID and state
 
         Raises:
-            BusinessError: 主机不存在、主机状态不为空闲或更新失败时
+            BusinessError: When host does not exist, host state is not free, or update fails
         """
         logger.info(
-            "开始强制下线主机",
+            "Start forcing host offline",
             extra={
                 "host_id": host_id,
             },
@@ -699,13 +703,13 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除（使用工具函数）
+            # 1. Check if host exists and is not deleted (using utility function)
             host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
 
-            # 2. 检查主机状态是否为 0（空闲状态），只有空闲状态才能下线
+            # 2. Check if host state is 0 (free state), only free state can be taken offline
             if host_rec.host_state != HOST_STATE_FREE:
                 logger.warning(
-                    "主机状态不允许强制下线",
+                    "Host state does not allow force offline",
                     extra={
                         "host_id": host_id,
                         "current_host_state": host_rec.host_state,
@@ -713,7 +717,10 @@ class AdminHostService:
                     },
                 )
                 raise BusinessError(
-                    message=f"主机状态不允许强制下线，当前状态：{host_rec.host_state}，需要状态：{HOST_STATE_FREE}（空闲）",
+                    message=(
+                        f"Host state does not allow force offline, current state: {host_rec.host_state}, "
+                        f"required state: {HOST_STATE_FREE} (free)"
+                    ),
                     message_key="error.host.force_offline_state_invalid",
                     error_code="HOST_FORCE_OFFLINE_STATE_INVALID",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -725,21 +732,22 @@ class AdminHostService:
                     },
                 )
 
-            # 3. 更新主机状态为离线（host_state = 4）
+            # 3. Update host state to offline (host_state = 4)
             update_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id == host_id,
-                        HostRec.del_flag == 0,  # 只更新未删除的记录
-                        HostRec.host_state == HOST_STATE_FREE,  # 确保状态仍为 0（防止并发修改）
+                        HostRec.del_flag == 0,  # Only update non-deleted records
+                        HostRec.host_state
+                        == HOST_STATE_FREE,  # Ensure state is still 0 (prevent concurrent modification)
                     )
                 )
-                .values(host_state=HOST_STATE_OFFLINE)  # 4 = 离线状态
+                .values(host_state=HOST_STATE_OFFLINE)  # 4 = offline state
             )
 
             logger.info(
-                "执行强制下线操作",
+                "Execute force offline operation",
                 extra={
                     "host_id": host_id,
                     "old_host_state": host_rec.host_state,
@@ -748,7 +756,7 @@ class AdminHostService:
                 },
             )
 
-            # 执行更新
+            # Execute update
             result = await session.execute(update_stmt)
             await session.commit()
 
@@ -756,13 +764,13 @@ class AdminHostService:
 
             if updated_count == 0:
                 logger.warning(
-                    "主机强制下线失败，记录可能已被删除或状态已变更",
+                    "Host force offline failed, record may have been deleted or state changed",
                     extra={
                         "host_id": host_id,
                     },
                 )
                 raise BusinessError(
-                    message=f"主机强制下线失败，记录可能已被删除或状态已变更（ID: {host_id}）",
+                    message=f"Host force offline failed, record may have been deleted or state changed (ID: {host_id})",
                     message_key="error.host.force_offline_failed",
                     error_code="HOST_FORCE_OFFLINE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -771,7 +779,7 @@ class AdminHostService:
                 )
 
             logger.info(
-                "主机强制下线成功",
+                "Host force offline succeeded",
                 extra={
                     "host_id": host_id,
                     "old_host_state": host_rec.host_state,
@@ -781,34 +789,34 @@ class AdminHostService:
             )
 
             return {
-                "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
+                "id": str(host_id),  # ✅ Convert to string to avoid precision loss
                 "host_state": HOST_STATE_OFFLINE,
             }
 
     @handle_service_errors(
-        error_message="查询主机详情失败",
+        error_message="Failed to query host detail",
         error_code="GET_HOST_DETAIL_FAILED",
     )
     async def get_host_detail(self, host_id: int) -> dict:
-        """查询主机详情（主体信息）
+        """Query host detail (main information)
 
-        业务逻辑：
-        1. 查询 host_rec 表的基础信息
-        2. 关联 host_hw_rec 表，获取 sync_state=2 的列表数据，按 updated_time 倒序排序
-        3. 返回主机详情（包含硬件信息列表）
-        4. 密码字段需要解密（AES加密）
+        Business logic:
+        1. Query basic information from host_rec table
+        2. Join host_hw_rec table, get list data with sync_state=2, ordered by updated_time descending
+        3. Return host detail (including hardware information list)
+        4. Password field needs decryption (AES encrypted)
 
         Args:
-            host_id: 主机ID（host_rec.id）
+            host_id: Host ID (host_rec.id)
 
         Returns:
-            dict: 包含主机详情信息，包含 hw_list 字段（硬件信息列表）
+            dict: Contains host detail information, including hw_list field (hardware information list)
 
         Raises:
-            BusinessError: 主机不存在时
+            BusinessError: When host does not exist
         """
         logger.info(
-            "开始查询主机详情",
+            "Start querying host detail",
             extra={
                 "host_id": host_id,
             },
@@ -816,16 +824,16 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 验证主机是否存在且未删除（使用工具函数）
+            # 1. Verify if host exists and is not deleted (using utility function)
             host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
-            # 2. 查询 host_hw_rec 表 sync_state=2 的列表数据，按 updated_time 倒序排序
+            # 2. Query host_hw_rec table for list data with sync_state=2, ordered by updated_time descending
             hw_stmt = (
                 select(HostHwRec)
                 .where(
                     and_(
                         HostHwRec.host_id == host_id,
-                        HostHwRec.sync_state == 2,  # sync_state = 2（通过）
+                        HostHwRec.sync_state == 2,  # sync_state = 2 (approved)
                         HostHwRec.del_flag == 0,
                     )
                 )
@@ -834,39 +842,39 @@ class AdminHostService:
             hw_result = await session.execute(hw_stmt)
             hw_recs = hw_result.scalars().all()
 
-            # 3. 解密密码（AES加密）
+            # 3. Decrypt ***REMOVED***word (AES encrypted)
             ***REMOVED*** = None
             if host_rec.host_pwd:
                 try:
                     ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
                     if ***REMOVED***:
                         logger.debug(
-                            "密码解密成功",
+                            "Password decryption succeeded",
                             extra={
                                 "host_id": host_id,
                             },
                         )
                     else:
                         logger.warning(
-                            "密码解密失败（返回None）",
+                            "Password decryption failed (returned None)",
                             extra={
                                 "host_id": host_id,
-                                "note": "可能是密码格式不正确或加密方式不匹配",
+                                "note": "Password format may be incorrect or encryption method mismatch",
                             },
                         )
                 except Exception as e:
                     logger.warning(
-                        "密码解密异常",
+                        "Password decryption exception",
                         extra={
                             "host_id": host_id,
                             "error": str(e),
                             "error_type": type(e).__name__,
                         },
                     )
-                    # 解密失败时返回 None，而不是抛出异常
+                    # Return None when decryption fails, instead of raising exception
                     ***REMOVED*** = None
 
-            # 4. 构建硬件信息列表
+            # 4. Build hardware information list
             hw_list = []
             for hw_rec in hw_recs:
                 hw_list.append(
@@ -876,7 +884,7 @@ class AdminHostService:
                     }
                 )
 
-            # 5. 构建响应数据
+            # 5. Build response data
             detail = {
                 "mg_id": host_rec.mg_id,
                 "mac": host_rec.mac_addr,
@@ -888,7 +896,7 @@ class AdminHostService:
             }
 
             logger.info(
-                "查询主机详情完成",
+                "Query host detail completed",
                 extra={
                     "host_id": host_id,
                     "has_hw_rec": host_rec is not None,
@@ -900,29 +908,29 @@ class AdminHostService:
             return detail
 
     @handle_service_errors(
-        error_message="修改主机密码失败",
+        error_message="Failed to update host ***REMOVED***word",
         error_code="UPDATE_HOST_PASSWORD_FAILED",
     )
     async def update_host_***REMOVED***word(self, host_id: int, ***REMOVED***word: str) -> dict:
-        """修改主机密码
+        """Update host ***REMOVED***word
 
-        业务逻辑：
-        1. 检查主机是否存在且未删除
-        2. 对密码进行 AES 加密
-        3. 更新 host_rec 表的 host_pwd 字段
+        Business logic:
+        1. Check if host exists and is not deleted
+        2. Encrypt ***REMOVED***word with AES
+        3. Update host_rec table's host_pwd field
 
         Args:
-            host_id: 主机ID（host_rec.id）
-            ***REMOVED***word: 明文密码（将进行AES加密）
+            host_id: Host ID (host_rec.id)
+            ***REMOVED***word: Plaintext ***REMOVED***word (will be AES encrypted)
 
         Returns:
-            dict: 包含更新后的主机ID和操作结果消息
+            dict: Contains updated host ID and operation result message
 
         Raises:
-            BusinessError: 主机不存在或更新失败时
+            BusinessError: When host does not exist or update fails
         """
         logger.info(
-            "开始修改主机密码",
+            "Start updating host ***REMOVED***word",
             extra={
                 "host_id": host_id,
             },
@@ -930,21 +938,21 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 1. 检查主机是否存在且未删除（使用工具函数）
+            # 1. Check if host exists and is not deleted (using utility function)
             await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
 
-            # 2. 对密码进行 AES 加密
+            # 2. Encrypt ***REMOVED***word with AES
             try:
                 encrypted_***REMOVED***word = aes_encrypt(***REMOVED***word)
                 logger.debug(
-                    "密码加密成功",
+                    "Password encryption succeeded",
                     extra={
                         "host_id": host_id,
                     },
                 )
             except Exception as e:
                 logger.error(
-                    "密码加密失败",
+                    "Password encryption failed",
                     extra={
                         "host_id": host_id,
                         "error": str(e),
@@ -953,7 +961,7 @@ class AdminHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"密码加密失败（ID: {host_id}）",
+                    message=f"Password encryption failed (ID: {host_id})",
                     message_key="error.host.***REMOVED***word_encrypt_failed",
                     error_code="PASSWORD_ENCRYPT_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -961,27 +969,27 @@ class AdminHostService:
                     details={"host_id": host_id},
                 )
 
-            # 3. 更新主机密码
+            # 3. Update host ***REMOVED***word
             update_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id == host_id,
-                        HostRec.del_flag == 0,  # 只更新未删除的记录
+                        HostRec.del_flag == 0,  # Only update non-deleted records
                     )
                 )
                 .values(host_pwd=encrypted_***REMOVED***word)
             )
 
             logger.info(
-                "执行密码修改操作",
+                "Execute ***REMOVED***word update operation",
                 extra={
                     "host_id": host_id,
                     "operation": "UPDATE host_pwd",
                 },
             )
 
-            # 执行更新
+            # Execute update
             result = await session.execute(update_stmt)
             await session.commit()
 
@@ -989,13 +997,13 @@ class AdminHostService:
 
             if updated_count == 0:
                 logger.warning(
-                    "主机密码修改失败，记录可能已被删除",
+                    "Host ***REMOVED***word update failed, record may have been deleted",
                     extra={
                         "host_id": host_id,
                     },
                 )
                 raise BusinessError(
-                    message=f"主机密码修改失败，记录可能已被删除（ID: {host_id}）",
+                    message=f"Host ***REMOVED***word update failed, record may have been deleted (ID: {host_id})",
                     message_key="error.host.***REMOVED***word_update_failed",
                     error_code="HOST_PASSWORD_UPDATE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -1004,7 +1012,7 @@ class AdminHostService:
                 )
 
             logger.info(
-                "主机密码修改成功",
+                "Host ***REMOVED***word update succeeded",
                 extra={
                     "host_id": host_id,
                     "updated_count": updated_count,
@@ -1012,37 +1020,37 @@ class AdminHostService:
             )
 
             return {
-                "id": str(host_id),  # ✅ 转换为字符串避免精度丢失
+                "id": str(host_id),  # ✅ Convert to string to avoid precision loss
             }
 
     @handle_service_errors(
-        error_message="查询主机执行日志失败",
+        error_message="Failed to query host execution logs",
         error_code="GET_HOST_EXEC_LOG_FAILED",
     )
     async def list_host_exec_logs(
         self,
         request: AdminHostExecLogListRequest,
     ) -> Tuple[List[AdminHostExecLogInfo], PaginationResponse]:
-        """查询主机执行日志列表（分页）
+        """Query host execution log list (paginated)
 
-        业务逻辑：
-        1. 根据 host_id 查询 host_exec_log 表
-        2. 条件：del_flag = 0
-        3. 按 created_time 倒序排序
-        4. 计算 exec_date（begin_time 的日期部分，格式 %Y-%m-%d）
-        5. 计算 exec_time（end_time - begin_time，格式 %H:%M:%S，如果 end_time 为空，使用当前时间）
+        Business logic:
+        1. Query host_exec_log table based on host_id
+        2. Condition: del_flag = 0
+        3. Order by created_time descending
+        4. Calculate exec_date (date part of begin_time, format %Y-%m-%d)
+        5. Calculate exec_time (end_time - begin_time, format %H:%M:%S, if end_time is empty, use current time)
 
         Args:
-            request: 查询请求参数（host_id、分页参数）
+            request: Query request parameters (host_id, pagination parameters)
 
         Returns:
-            Tuple[List[AdminHostExecLogInfo], PaginationResponse]: 执行日志列表和分页信息
+            Tuple[List[AdminHostExecLogInfo], PaginationResponse]: Execution log list and pagination information
 
         Raises:
-            BusinessError: 查询失败时
+            BusinessError: When query fails
         """
         logger.info(
-            "开始查询主机执行日志列表",
+            "Start querying host execution log list",
             extra={
                 "host_id": request.host_id,
                 "page": request.page,
@@ -1052,18 +1060,18 @@ class AdminHostService:
 
         session_factory = self.session_factory
         async with session_factory() as session:
-            # 构建查询条件
+            # Build query conditions
             base_conditions = [
                 HostExecLog.host_id == request.host_id,
                 HostExecLog.del_flag == 0,
             ]
 
-            # 1. 查询总数
+            # 1. Query total count
             count_stmt = select(func.count(HostExecLog.id)).where(and_(*base_conditions))
             count_result = await session.execute(count_stmt)
             total = count_result.scalar() or 0
 
-            # 2. 分页查询：按 created_time 倒序排序
+            # 2. Paginated query: Order by created_time descending
             pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
 
             stmt = (
@@ -1077,19 +1085,19 @@ class AdminHostService:
             result = await session.execute(stmt)
             exec_logs = result.scalars().all()
 
-            # 3. 构建响应数据
+            # 3. Build response data
             log_info_list: List[AdminHostExecLogInfo] = []
             current_time = datetime.now(timezone.utc)
 
             for log in exec_logs:
-                # 计算 exec_date（begin_time 的日期部分）
+                # Calculate exec_date (date part of begin_time)
                 exec_date: Optional[str] = None
                 if log.begin_time:
                     try:
                         exec_date = log.begin_time.strftime("%Y-%m-%d")
                     except Exception as e:
                         logger.warning(
-                            "格式化执行日期失败",
+                            "Failed to format execution date",
                             extra={
                                 "log_id": log.id,
                                 "begin_time": str(log.begin_time),
@@ -1098,38 +1106,38 @@ class AdminHostService:
                         )
                         exec_date = None
 
-                # 计算 exec_time（end_time - begin_time，格式 %H:%M:%S）
+                # Calculate exec_time (end_time - begin_time, format %H:%M:%S)
                 exec_time: Optional[str] = None
                 if log.begin_time:
                     try:
-                        # 确保 begin_time 是 timezone-aware
+                        # Ensure begin_time is timezone-aware
                         begin_time = log.begin_time
                         if begin_time.tzinfo is None:
-                            # 如果是 naive datetime，假设是 UTC
+                            # If naive datetime, assume UTC
                             begin_time = begin_time.replace(tzinfo=timezone.utc)
 
-                        # 如果 end_time 为空，使用当前时间
+                        # If end_time is empty, use current time
                         if log.end_time:
                             end_time = log.end_time
-                            # 确保 end_time 是 timezone-aware
+                            # Ensure end_time is timezone-aware
                             if end_time.tzinfo is None:
                                 end_time = end_time.replace(tzinfo=timezone.utc)
                         else:
                             end_time = current_time
 
-                        # 计算时间差
+                        # Calculate time difference
                         time_diff = end_time - begin_time
-                        # 转换为秒（确保非负数）
+                        # Convert to seconds (ensure non-negative)
                         total_seconds = max(0, int(time_diff.total_seconds()))
-                        # 计算小时、分钟、秒
+                        # Calculate hours, minutes, seconds
                         hours = total_seconds // 3600
                         minutes = (total_seconds % 3600) // 60
                         seconds = total_seconds % 60
-                        # 格式化为 %H:%M:%S
+                        # Format as %H:%M:%S
                         exec_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                     except Exception as e:
                         logger.warning(
-                            "计算执行时长失败",
+                            "Failed to calculate execution duration",
                             extra={
                                 "log_id": log.id,
                                 "begin_time": str(log.begin_time),
@@ -1153,7 +1161,7 @@ class AdminHostService:
                 )
                 log_info_list.append(log_info)
 
-            # 4. 构建分页响应
+            # 4. Build pagination response
             pagination_response = PaginationResponse(
                 page=request.page,
                 page_size=request.page_size,
@@ -1161,7 +1169,7 @@ class AdminHostService:
             )
 
             log_operation_completed(
-                "查询主机执行日志列表",
+                "Query host execution log list",
                 extra={
                     "host_id": request.host_id,
                     "total": total,

@@ -1,9 +1,9 @@
 """
-Gateway Service - API网关服务
+Gateway Service - API Gateway Service
 
-作为微服务架构的统一入口，提供：
-- 请求路由和转发
-- 负载均衡
-- 认证中间件
-- 统一的API网关管理
+Serves as the unified entry point for microservices architecture, provides:
+- Request routing and forwarding
+- Load balancing
+- Authentication middleware
+- Unified API gateway management
 """

@@ -1,95 +1,95 @@
-# Host Service (主机服务)
+# Host Service
 
-## 概述
+## Overview
 
-Host Service 是 Intel EC 微服务架构中的主机管理服务，提供主机注册、状态管理和 WebSocket 实时通信功能。
+Host Service is the host management service in the Intel EC microservices architecture, providing host registration, state management, and WebSocket real-time communication functionality.
 
-## 核心功能
+## Core Functions
 
-- **主机管理**: 主机注册、查询、状态更新
-- **WebSocket 通信**: 与 Agent 进行实时双向通信
-- **状态监控**: 实时监控主机状态和心跳
-- **消息广播**: 支持向所有连接的 Agent 广播消息
+- **Host Management**: Host registration, query, and status updates
+- **WebSocket Communication**: Real-time bidirectional communication with Agents
+- **Status Monitoring**: Real-time monitoring of host status and heartbeats
+- **Message Broadcasting**: Supports broadcasting messages to all connected Agents
 
-## 技术栈
+## Tech Stack
 
 - **Python**: 3.8.10
-- **Web 框架**: FastAPI 0.116.1
-- **数据库**: MariaDB 10.11 (SQLAlchemy 异步 ORM)
-- **缓存**: Redis 6.0+
-- **服务发现**: Nacos
-- **分布式追踪**: Jaeger + OpenTelemetry
-- **日志**: Loguru
-- **WebSocket**: FastAPI WebSocket 支持
+- **Web Framework**: FastAPI 0.116.1
+- **Database**: MariaDB 10.11 (SQLAlchemy async ORM)
+- **Cache**: Redis 6.0+
+- **Service Discovery**: Nacos
+- **Distributed Tracing**: Jaeger + OpenTelemetry
+- **Logging**: Loguru
+- **WebSocket**: FastAPI WebSocket support
 
-## 端口配置
+## Port Configuration
 
-- **HTTP 服务**: 8003
+- **HTTP Service**: 8003
 - **WebSocket**: ws://localhost:8003/ws/agent/{agent_id}
 
-## API 端点
+## API Endpoints
 
-### HTTP 端点
+### HTTP Endpoints
 
-- `GET /health` - 健康检查
-- `GET /metrics` - Prometheus 监控指标
-- `GET /api/v1/hosts` - 获取主机列表
-- `POST /api/v1/hosts` - 注册新主机
-- `GET /api/v1/hosts/{host_id}` - 获取主机详情
-- `PATCH /api/v1/hosts/{host_id}/status` - 更新主机状态
+- `GET /health` - Health check
+- `GET /metrics` - Prometheus monitoring metrics
+- `GET /api/v1/hosts` - Get host list
+- `POST /api/v1/hosts` - Register new host
+- `GET /api/v1/hosts/{host_id}` - Get host details
+- `PATCH /api/v1/hosts/{host_id}/status` - Update host status
 
-### WebSocket 端点
+### WebSocket Endpoints
 
-- `WS /ws/agent/{agent_id}` - Agent WebSocket 连接
+- `WS /ws/agent/{agent_id}` - Agent WebSocket connection
 
-## 环境变量
+## Environment Variables
 
 ```bash
-# 服务配置
+# Service configuration
 SERVICE_NAME=host-service
 SERVICE_PORT=8003
 SERVICE_IP=127.0.0.1
 
-# 数据库配置
+# Database configuration
 MYSQL_URL=mysql+aiomysql://root:***REMOVED***word@localhost:3306/intel_cw
 
-# Redis 配置
+# Redis configuration
 REDIS_URL=redis://localhost:6379/3
 
-# Nacos 配置
+# Nacos configuration
 NACOS_SERVER_ADDR=http://localhost:8848
 
-# Jaeger 配置
+# Jaeger configuration
 JAEGER_ENDPOINT=http://localhost:4318/v1/traces
 
-# JWT 配置
+# JWT configuration
 JWT_SECRET_KEY=your_secret_key
 JWT_ALGORITHM=HS256
 ```
 
-## 本地开发
+## Local Development
 
-### 安装依赖
+### Install Dependencies
 
 ```bash
 cd services/host-service
 pip install -r requirements.txt
 ```
 
-### 启动服务
+### Start Service
 
-> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
+> **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
 
 ```bash
-# 开发模式（支持热重载）
+# Development mode (supports hot reload)
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 
-# 生产模式
+# Production mode
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8003
 ```
 
-**环境变量配置**:
-- 如果数据库在 Docker 中，需要在 `.env` 文件中设置：
+**Environment Variable Configuration**:
+- If the database is in Docker, you need to set in the `.env` file:
   ```bash
   # macOS/Windows
   MARIADB_HOST=host.docker.internal
@@ -97,22 +97,22 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8003
   # Linux
   MARIADB_HOST=172.17.0.1
   ```
-- 详细配置说明请参考 [快速开始指南](../../docs/00-quick-start.md#步骤-7-本地启动微服务非-docker-方式)
+- For detailed configuration instructions, please refer to [Quick Start Guide](../../docs/00-quick-start.md)
 
-### 访问文档
+### Access Documentation
 
 - Swagger UI: http://localhost:8003/docs
 - ReDoc: http://localhost:8003/redoc
 
-## Docker 部署
+## Docker Deployment
 
-### 构建镜像
+### Build Image
 
 ```bash
 docker build -t host-service:latest -f services/host-service/Dockerfile .
 ```
 
-### 运行容器
+### Run Container
 
 ```bash
 docker run -d \
@@ -124,9 +124,9 @@ docker run -d \
   host-service:latest
 ```
 
-## WebSocket 使用示例
+## WebSocket Usage Examples
 
-### Python 客户端
+### Python Client
 
 ```python
 import asyncio
@@ -137,29 +137,29 @@ async def connect_agent():
     uri = "ws://localhost:8003/ws/agent/agent-001"
     
     async with websockets.connect(uri) as websocket:
-        # 发送消息
+        # Send message
         await websocket.send(json.dumps({
             "type": "heartbeat",
             "agent_id": "agent-001",
             "status": "online"
         }))
         
-        # 接收消息
+        # Receive message
         response = await websocket.recv()
-        print(f"收到消息: {response}")
+        print(f"Received message: {response}")
 
 asyncio.run(connect_agent())
 ```
 
-### JavaScript 客户端
+### JavaScript Client
 
 ```javascript
 const ws = new WebSocket('ws://localhost:8003/ws/agent/agent-001');
 
 ws.onopen = () => {
-    console.log('WebSocket 连接已建立');
+    console.log('WebSocket connection established');
     
-    // 发送消息
+    // Send message
     ws.send(JSON.stringify({
         type: 'heartbeat',
         agent_id: 'agent-001',
@@ -168,21 +168,21 @@ ws.onopen = () => {
 };
 
 ws.onmessage = (event) => {
-    console.log('收到消息:', event.data);
+    console.log('Received message:', event.data);
 };
 
 ws.onerror = (error) => {
-    console.error('WebSocket 错误:', error);
+    console.error('WebSocket error:', error);
 };
 
 ws.onclose = () => {
-    console.log('WebSocket 连接已关闭');
+    console.log('WebSocket connection closed');
 };
 ```
 
-## 数据模型
+## Data Models
 
-### Host (主机)
+### Host
 
 ```python
 {
@@ -199,68 +199,68 @@ ws.onclose = () => {
 }
 ```
 
-## 监控和日志
+## Monitoring and Logging
 
-### 健康检查
+### Health Check
 
 ```bash
 curl http://localhost:8003/health
 ```
 
-### Prometheus 指标
+### Prometheus Metrics
 
 ```bash
 curl http://localhost:8003/metrics
 ```
 
-### 日志查看
+### Log Viewing
 
 ```bash
-# Docker 日志
+# Docker logs
 docker logs -f host-service
 
-# 本地日志
+# Local logs
 tail -f logs/app.log
 ```
 
-## 故障排查
+## Troubleshooting
 
-### 服务无法启动
+### Service Cannot Start
 
-1. 检查数据库连接
-2. 检查 Redis 连接
-3. 检查端口占用
-4. 查看日志文件
+1. Check database connection
+2. Check Redis connection
+3. Check port occupation
+4. View log files
 
-### WebSocket 连接失败
+### WebSocket Connection Failed
 
-1. 检查防火墙设置
-2. 验证 agent_id 格式
-3. 检查网络连接
-4. 查看服务日志
+1. Check firewall settings
+2. Verify agent_id format
+3. Check network connection
+4. View service logs
 
-### Nacos 注册失败
+### Nacos Registration Failed
 
-1. 检查 Nacos 服务状态
-2. 验证网络连接
-3. 检查服务配置
-4. 查看心跳日志
+1. Check Nacos service status
+2. Verify network connection
+3. Check service configuration
+4. View heartbeat logs
 
-## 开发规范
+## Development Guidelines
 
-- 遵循 PEP 8 代码规范
-- 使用类型注解
-- 编写中文注释
-- 实现单元测试
-- 通过代码质量检查 (Ruff, MyPy)
+- Follow PEP 8 code standards
+- Use type annotations
+- Write English comments
+- Implement unit tests
+- Pass code quality checks (Ruff, MyPy)
 
-## 相关文档
+## Related Documents
 
-- [项目总体规范](../../.cursor/rules/project-overview.mdc)
-- [微服务架构规范](../../.cursor/rules/microservice-architecture.mdc)
-- [API 设计规范](../../.cursor/rules/api-design-standards.mdc)
-- [WebSocket 通信规范](../../docs/websocket-guide.md)
+- [Project Overview Guidelines](../../.cursor/rules/project-overview.mdc)
+- [Microservice Architecture Guidelines](../../.cursor/rules/microservice-architecture.mdc)
+- [API Design Guidelines](../../.cursor/rules/api-design-standards.mdc)
+- [WebSocket Communication Guidelines](../../docs/websocket-guide.md)
 
-## 许可证
+## License
 
 MIT License

@@ -1,15 +1,15 @@
-"""管理后台待审批主机管理 - 工具函数模块
+"""Admin Backend Pending Approval Host Management - Utility Functions Module
 
-提供审批相关的工具函数，包括硬件接口调用、表格构建等。
+Provides approval-related utility functions, including hardware API calls, table building, etc.
 
-从 admin_appr_host_service.py 拆分出来，提高代码可维护性。
+Split from admin_appr_host_service.py to improve code maintainability.
 """
 
 import os
 import sys
 from typing import Any, Dict, List, Optional
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.models.host_rec import HostRec
     from app.services.external_api_client import call_external_api
@@ -28,24 +28,24 @@ logger = get_logger(__name__)
 
 
 def build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
-    """构建主机信息表格（HTML格式）
+    """Build host information table (HTML format)
 
     Args:
-        hardware_ids: Hardware ID 列表
-        host_ips: Host IP 列表
+        hardware_ids: Hardware ID list
+        host_ips: Host IP list
 
     Returns:
-        HTML 表格字符串
+        HTML table string
     """
     if not hardware_ids and not host_ips:
-        return "无变更的主机信息"
+        return "No changed host information"
 
-    # 确保两个列表长度一致（用空字符串填充）
+    # Ensure both lists have same length (pad with empty strings)
     max_len = max(len(hardware_ids), len(host_ips))
     hardware_ids_padded = hardware_ids + [""] * (max_len - len(hardware_ids))
     host_ips_padded = host_ips + [""] * (max_len - len(host_ips))
 
-    # 构建 HTML 表格
+    # Build HTML table
     table_rows = []
     cell_style = "padding: 12px; border: 1px solid #ddd; text-align: left;"
     header_style = (
@@ -89,16 +89,16 @@ def build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
 
 
 def get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) -> str:
-    """从硬件信息中提取配置名称
+    """Extract configuration name from hardware information
 
     Args:
-        hw_info: 硬件信息字典（包含 dmr_config）
-        host_rec: 主机记录对象
+        hw_info: Hardware information dictionary (contains dmr_config)
+        host_rec: Host record object
 
     Returns:
-        配置名称字符串
+        Configuration name string
     """
-    # 优先从 dmr_config 中提取 host_name
+    # Prefer extracting host_name from dmr_config
     try:
         dmr_config = hw_info.get("dmr_config", {})
         mainboard = dmr_config.get("mainboard", {})
@@ -110,7 +110,7 @@ def get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) -
     except Exception:
         ***REMOVED***
 
-    # 如果无法从 dmr_config 提取，使用 host_rec 的字段
+    # If cannot extract from dmr_config, use host_rec fields
     if host_rec.host_ip:
         return f"Host-{host_rec.host_ip}"
     elif host_rec.mg_id:
@@ -120,10 +120,10 @@ def get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) -
 
 
 def build_hardware_head() -> Dict[str, str]:
-    """构建硬件接口 Head 参数（Mock 数据）
+    """Build hardware API Head parameters (Mock data)
 
     Returns:
-        Head 参数字典
+        Head parameters dictionary
     """
     return {
         "ConfigName": "DMR-sample-1",
@@ -146,91 +146,92 @@ async def call_hardware_api(
     locale: str = "zh_CN",
     host_id: Optional[int] = None,
 ) -> Dict[str, Optional[str]]:
-    """调用外部硬件接口（新增或修改）
+    """Call external hardware API (create or update)
 
-    使用统一的外部接口调用客户端，自动处理认证。
-    新增硬件时使用 Redis 分布式锁防止并发创建。
+    Uses unified external API call client, automatically handles authentication.
+    Uses Redis distributed lock to prevent concurrent creation when creating new hardware.
 
     Args:
-        hardware_id: 硬件ID（如果为 None 则调用新增接口，否则调用修改接口）
-        hw_info: 硬件信息（对应 host_hw_rec 表的 hw_info 字段）
-        request: FastAPI Request 对象（用于从请求头获取 user_id）
-        user_id: 当前登录管理后台用户的ID（可选，如果提供则优先使用）
-        locale: 语言偏好
-        host_id: 主机ID（用于生成分布式锁的键，仅在新增硬件时需要）
+        hardware_id: Hardware ID (if None, calls create API, otherwise calls update API)
+        hw_info: Hardware information (corresponds to host_hw_rec table hw_info field)
+        request: FastAPI Request object (used to get user_id from request headers)
+        user_id: Currently logged in admin backend user ID (optional, preferred if provided)
+        locale: Language preference
+        host_id: Host ID (used to generate distributed lock key, only needed when creating new hardware)
 
     Returns:
-        Dict[str, Optional[str]]: 包含 hardware_id 和 host_name 的字典
-            - hardware_id: 硬件ID（必填）
-            - host_name: 主机名称（可选，从响应体中提取）
+        Dict[str, Optional[str]]: Dictionary containing hardware_id and host_name
+            - hardware_id: Hardware ID (required)
+            - host_name: Host name (optional, extracted from response body)
 
     Raises:
-        BusinessError: 接口调用失败时
+        BusinessError: When API call fails
     """
-    # 检查是否使用 Mock 数据
+    # Check if using Mock data
     use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
 
     if use_mock:
         logger.info(
-            "使用 Mock 硬件接口数据",
+            "Using Mock hardware API data",
             extra={
                 "hardware_id": hardware_id,
                 "is_new": hardware_id is None,
             },
         )
-        # 返回模拟的 hardware_id 和 host_name
+        # Return simulated hardware_id and host_name
         if hardware_id:
             return {"hardware_id": hardware_id, "host_name": None}
         else:
-            # 生成模拟的 hardware_id
+            # Generate simulated hardware_id
             import uuid
+
             mock_id = f"mock-hardware-{uuid.uuid4().hex[:8]}"
             return {"hardware_id": mock_id, "host_name": None}
 
-        # 使用统一的外部接口调用客户端
+        # Use unified external API call client
     try:
-        # 构建 Head 参数（Mock 数据）
+        # Build Head parameters (Mock data)
         head_data = build_hardware_head()
 
-        # ✅ 判断 hardware_id 是否有效：None 或空字符串都视为无效，调用新增接口
+        # ✅ Determine if hardware_id is valid: None or empty string are considered invalid, call create API
         is_valid_hardware_id = hardware_id is not None and bool(hardware_id and hardware_id.strip())
 
         if not is_valid_hardware_id:
-            # ✅ 新增硬件：使用 Redis 分布式锁防止并发创建
+            # ✅ Create hardware: Use Redis distributed lock to prevent concurrent creation
             lock_key = None
             lock_value = None
 
             if host_id is not None:
-                # 生成锁的键：基于 host_id，确保同一主机不会并发创建多个 hardware
+                # Generate lock key: based on host_id, ensure same host won't concurrently create multiple hardware
                 lock_key = f"hardware_create_lock:{host_id}"
                 import uuid
 
                 lock_value = str(uuid.uuid4())
 
-                # 尝试获取锁（超时时间 30 秒）
+                # Try to acquire lock (timeout 30 seconds)
                 lock_acquired = await redis_manager.acquire_lock(lock_key, timeout=30, lock_value=lock_value)
 
                 if not lock_acquired:
-                    # 如果 Redis 不可用，记录警告但继续执行（降级处理）
+                    # If Redis unavailable, log warning but continue execution (fallback)
                     if not redis_manager.is_connected:
                         logger.warning(
-                            "Redis 不可用，无法获取分布式锁，继续执行（降级处理）",
+                            "Redis unavailable, cannot acquire distributed lock, continuing execution (fallback)",
                             extra={
                                 "host_id": host_id,
                                 "lock_key": lock_key,
                             },
                         )
                     else:
-                        # Redis 可用但获取锁失败，说明其他实例正在处理
+                        # Redis available but lock acquisition failed, another instance is processing
                         logger.warning(
-                            "获取硬件创建锁失败，可能其他实例正在处理",
+                            "Failed to acquire hardware creation lock, another instance may be processing",
                             extra={
                                 "host_id": host_id,
                                 "lock_key": lock_key,
                             },
                         )
                         raise BusinessError(
-                            message=f"主机 {host_id} 正在创建硬件记录，请稍后重试",
+                            message=f"Host {host_id} is creating hardware record, please retry later",
                             message_key="error.hardware.creation_in_progress",
                             error_code="HARDWARE_CREATION_IN_PROGRESS",
                             code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -242,7 +243,7 @@ async def call_hardware_api(
                         )
 
                 logger.info(
-                    "已获取硬件创建锁",
+                    "Hardware creation lock acquired",
                     extra={
                         "host_id": host_id,
                         "lock_key": lock_key,
@@ -251,7 +252,7 @@ async def call_hardware_api(
                 )
 
             try:
-                # 新增硬件：POST /api/v1/hardware/
+                # Create hardware: POST /api/v1/hardware/
                 url_path = "/api/v1/hardware/"
                 request_body = {
                     "Head": head_data,
@@ -259,7 +260,7 @@ async def call_hardware_api(
                 }
 
                 logger.info(
-                    "调用外部硬件接口（新增）",
+                    "Calling external hardware API (create)",
                     extra={
                         "url_path": url_path,
                         "user_id": user_id,
@@ -277,14 +278,14 @@ async def call_hardware_api(
                     locale=locale,
                 )
 
-                # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+                # Determine if request succeeded: check response header :status or response body code is 200
                 response_headers = response.get("headers", {})
                 response_body = response.get("body", {})
                 status_header = response_headers.get(":status") or response_headers.get("status")
                 status_code = response.get("status_code")
                 body_code = response_body.get("code") if isinstance(response_body, dict) else None
 
-                # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+                # Determine success: response header :status or status_code or response body code equals 200
                 is_success = (
                     (status_header and str(status_header) == "200")
                     or (status_code and status_code == 200)
@@ -293,12 +294,12 @@ async def call_hardware_api(
 
                 if not is_success:
                     error_msg = (
-                        response_body.get("message", "未知错误")
+                        response_body.get("message", "Unknown error")
                         if isinstance(response_body, dict)
                         else str(response_body)
                     )
                     raise BusinessError(
-                        message=f"调用硬件接口失败（新增）: {error_msg}",
+                        message=f"Hardware API call failed (create): {error_msg}",
                         message_key="error.hardware.create_failed",
                         error_code="HARDWARE_CREATE_FAILED",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -312,34 +313,34 @@ async def call_hardware_api(
                         },
                     )
 
-                # 从响应中提取 hardware_id 和 host_name
-                # 返回格式：{"_id": "hardware_id", "host_name": "host_name"}
+                # Extract hardware_id and host_name from response
+                # Return format: {"_id": "hardware_id", "host_name": "host_name"}
                 if isinstance(response_body, dict):
-                    # 直接提取 _id 字段
+                    # Directly extract _id field
                     new_hardware_id = response_body.get("_id")
                     if not new_hardware_id:
-                        # 如果 _id 不存在，尝试其他字段名
+                        # If _id doesn't exist, try other field names
                         new_hardware_id = response_body.get("hardware_id") or response_body.get("id")
 
                     if not new_hardware_id:
                         raise BusinessError(
-                            message="硬件接口返回数据格式错误：缺少 _id 字段",
+                            message="Hardware API returned data format error: missing _id field",
                             message_key="error.hardware.invalid_response",
                             error_code="HARDWARE_INVALID_RESPONSE",
                             code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                             http_status_code=500,
                         )
 
-                    # 提取 host_name（在响应体顶层，与 _id 同级）
+                    # Extract host_name (at response body top level, same level as _id)
                     host_name = response_body.get("host_name")
-                    # 验证 host_name 不为空字符串或 None
+                    # Validate host_name is not empty string or None
                     if host_name and isinstance(host_name, str):
                         host_name = host_name.strip() if host_name.strip() else None
                     else:
                         host_name = None
 
                     logger.info(
-                        "硬件接口调用成功（新增）",
+                        "Hardware API call succeeded (create)",
                         extra={
                             "hardware_id": new_hardware_id,
                             "host_name": host_name,
@@ -349,19 +350,19 @@ async def call_hardware_api(
                     return {"hardware_id": str(new_hardware_id), "host_name": host_name}
                 else:
                     raise BusinessError(
-                        message="硬件接口返回数据格式错误：响应不是 JSON 格式",
+                        message="Hardware API returned data format error: response is not JSON format",
                         message_key="error.hardware.invalid_response",
                         error_code="HARDWARE_INVALID_RESPONSE",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                         http_status_code=500,
                     )
             finally:
-                # 释放锁
+                # Release lock
                 if lock_key and lock_value:
                     lock_released = await redis_manager.release_lock(lock_key, lock_value)
                     if lock_released:
                         logger.debug(
-                            "已释放硬件创建锁",
+                            "Hardware creation lock released",
                             extra={
                                 "host_id": host_id,
                                 "lock_key": lock_key,
@@ -369,7 +370,7 @@ async def call_hardware_api(
                         )
                     else:
                         logger.warning(
-                            "释放硬件创建锁失败",
+                            "Failed to release hardware creation lock",
                             extra={
                                 "host_id": host_id,
                                 "lock_key": lock_key,
@@ -377,9 +378,9 @@ async def call_hardware_api(
                         )
 
         else:
-            # 修改硬件：PUT /api/v1/hardware/{hardware_id}
-            # ✅ 此时 hardware_id 一定不是 None 且不是空字符串（已通过 is_valid_hardware_id 检查）
-            assert hardware_id is not None and hardware_id.strip(), "hardware_id 必须有效"
+            # Update hardware: PUT /api/v1/hardware/{hardware_id}
+            # ✅ At this point hardware_id must not be None and not empty string (checked by is_valid_hardware_id)
+            assert hardware_id is not None and hardware_id.strip(), "hardware_id must be valid"
             valid_hardware_id: str = hardware_id.strip()
 
             url_path = f"/api/v1/hardware/{valid_hardware_id}"
@@ -390,7 +391,7 @@ async def call_hardware_api(
             }
 
             logger.info(
-                "调用外部硬件接口（修改）",
+                "Calling external hardware API (update)",
                 extra={
                     "url_path": url_path,
                     "hardware_id": valid_hardware_id,
@@ -408,14 +409,14 @@ async def call_hardware_api(
                 locale=locale,
             )
 
-            # 判断请求是否成功：检查响应头 :status 或响应体 code 是否为 200
+            # Determine if request succeeded: check response header :status or response body code is 200
             response_headers = response.get("headers", {})
             response_body = response.get("body", {})
             status_header = response_headers.get(":status") or response_headers.get("status")
             status_code = response.get("status_code")
             body_code = response_body.get("code") if isinstance(response_body, dict) else None
 
-            # 判断成功：响应头 :status 或 status_code 或响应体 code 等于 200
+            # Determine success: response header :status or status_code or response body code equals 200
             is_success = (
                 (status_header and str(status_header) == "200")
                 or (status_code and status_code == 200)
@@ -424,12 +425,12 @@ async def call_hardware_api(
 
             if not is_success:
                 error_msg = (
-                    response_body.get("message", "未知错误")
+                    response_body.get("message", "Unknown error")
                     if isinstance(response_body, dict)
                     else str(response_body)
                 )
                 raise BusinessError(
-                    message=f"调用硬件接口失败（修改）: {error_msg}",
+                    message=f"Hardware API call failed (update): {error_msg}",
                     message_key="error.hardware.update_failed",
                     error_code="HARDWARE_UPDATE_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -444,18 +445,18 @@ async def call_hardware_api(
                     },
                 )
 
-            # 提取 host_name（如果响应包含）
+            # Extract host_name (if response contains)
             host_name = None
             if isinstance(response_body, dict):
                 host_name = response_body.get("host_name")
-                # 验证 host_name 不为空字符串或 None
+                # Validate host_name is not empty string or None
                 if host_name and isinstance(host_name, str):
                     host_name = host_name.strip() if host_name.strip() else None
                 else:
                     host_name = None
 
             logger.info(
-                "硬件接口调用成功（修改）",
+                "Hardware API call succeeded (update)",
                 extra={
                     "hardware_id": valid_hardware_id,
                     "host_name": host_name,
@@ -467,7 +468,7 @@ async def call_hardware_api(
         raise
     except Exception as e:
         logger.error(
-            "调用硬件接口异常",
+            "Hardware API call exception",
             extra={
                 "hardware_id": hardware_id,
                 "user_id": user_id,
@@ -478,7 +479,7 @@ async def call_hardware_api(
             exc_info=True,
         )
         raise BusinessError(
-            message=f"调用硬件接口异常: {str(e)}",
+            message=f"Hardware API call exception: {str(e)}",
             message_key="error.hardware.api_error",
             error_code="HARDWARE_API_ERROR",
             code=ServiceErrorCodes.HOST_OPERATION_FAILED,

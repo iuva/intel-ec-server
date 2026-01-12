@@ -1,7 +1,7 @@
 """
-数据库查询辅助工具
+Database Query Helper Tools
 
-提供通用的数据库查询辅助函数，减少代码重复。
+Provides common database query helper functions, reducing code duplication.
 """
 
 import os
@@ -11,7 +11,7 @@ from typing import Any, List, Optional, Tuple, TypeVar
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from shared.utils.pagination import PaginationParams, PaginationResponse
 except ImportError:
@@ -27,18 +27,18 @@ async def execute_paginated_query(
     pagination_params: PaginationParams,
     order_by: Optional[Any] = None,
 ) -> Tuple[List[Any], int]:
-    """执行分页查询
+    """Execute paginated query
 
-    通用的分页查询函数，自动处理计数查询和数据查询。
+    Generic pagination query function, automatically handles count query and data query.
 
     Args:
-        session: 数据库会话
-        base_query: 基础查询语句（不包含排序和分页）
-        pagination_params: 分页参数
-        order_by: 排序字段（可选）
+        session: Database session
+        base_query: Base query statement (does not include sorting and pagination)
+        pagination_params: Pagination parameters
+        order_by: Sort field (optional)
 
     Returns:
-        Tuple[List[Any], int]: (查询结果列表, 总记录数)
+        Tuple[List[Any], int]: (Query result list, total record count)
 
     Example:
         >>> from shared.utils.pagination import PaginationParams
@@ -53,22 +53,22 @@ async def execute_paginated_query(
         ...     order_by=User.created_time.desc()
         ... )
     """
-    # 1. 查询总数
+    # 1. Query total count
     count_stmt = select(func.count()).select_from(base_query.subquery())
     count_result = await session.execute(count_stmt)
     total = count_result.scalar() or 0
 
-    # 2. 分页查询
+    # 2. Paginated query
     stmt = base_query
 
-    # 添加排序
+    # Add sorting
     if order_by is not None:
         stmt = stmt.order_by(order_by)
 
-    # 添加分页
+    # Add pagination
     stmt = stmt.offset(pagination_params.offset).limit(pagination_params.limit)
 
-    # 执行查询
+    # Execute query
     result = await session.execute(stmt)
     rows = list(result.all())
 
@@ -80,17 +80,17 @@ async def build_pagination_response(
     page_size: int,
     total: int,
 ) -> PaginationResponse:
-    """构建分页响应
+    """Build pagination response
 
-    根据分页参数和总记录数构建分页响应对象。
+    Build pagination response object based on pagination parameters and total record count.
 
     Args:
-        page: 当前页码
-        page_size: 每页大小
-        total: 总记录数
+        page: Current page number
+        page_size: Page size
+        total: Total record count
 
     Returns:
-        PaginationResponse: 分页响应对象
+        PaginationResponse: Pagination response object
 
     Example:
         >>> response = await build_pagination_response(
@@ -98,8 +98,8 @@ async def build_pagination_response(
         ...     page_size=20,
         ...     total=100
         ... )
-        >>> print(response.total_pages)  # 输出: 5
-        >>> print(response.has_next)     # 输出: True
+        >>> print(response.total_pages)  # Output: 5
+        >>> print(response.has_next)     # Output: True
     """
     return PaginationResponse(
         page=page,

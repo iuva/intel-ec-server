@@ -1,7 +1,7 @@
 """
-认证中间件模块
+Authentication middleware module
 
-负责验证请求的 JWT 令牌，调用 Auth Service 进行令牌验证
+Responsible for validating JWT tokens in requests, calling Auth Service for token verification
 """
 
 import os
@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
@@ -21,7 +21,7 @@ try:
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
@@ -36,36 +36,37 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-# ==================== 辅助函数 ====================
+# ==================== Helper Functions ====================
+
 
 def _get_locale_from_request(request: Request) -> str:
-    """从请求中获取语言偏好
+    """Get language preference from request
 
     Args:
-        request: 请求对象
+        request: Request object
 
     Returns:
-        语言代码（如 "zh_CN", "en_US"）
+        Language code (e.g., "zh_CN", "en_US")
     """
     accept_language = request.headers.get("Accept-Language")
     return parse_accept_language(accept_language)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """认证中间件
+    """Authentication middleware
 
-    拦截所有请求，验证 JWT 令牌有效性
+    Intercepts all requests and validates JWT token validity
     """
 
     def __init__(self, app):
-        """初始化认证中间件
+        """Initialize authentication middleware
 
         Args:
-            app: FastAPI 应用实例
+            app: FastAPI application instance
         """
         super().__init__(app)
 
-        # 公开路径白名单（不需要认证）
+        # Public path whitelist (no authentication required)
         self.public_paths = {
             "/",
             "/health",
@@ -74,86 +75,84 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/docs",
             "/redoc",
             "/openapi.json",
-            "/test-error",  # 测试用
-            # 认证端点（公开访问）
+            "/test-error",  # For testing
+            # Authentication endpoints (public access)
             "/api/v1/auth/admin/login",
             "/api/v1/auth/device/login",
             "/api/v1/auth/logout",
-            "/api/v1/auth/refresh",  # ✅ Token 刷新端点
-            "/api/v1/auth/auto-refresh",  # ✅ 自动续期端点
-            "/api/v1/auth/introspect",  # Token 验证端点
-            # ⚠️ WebSocket 路由需要在路由级别进行认证检查，
-            # 不能在中间件级别设为公开路径，否则无法强制认证
+            "/api/v1/auth/refresh",  # ✅ Token refresh endpoint
+            "/api/v1/auth/auto-refresh",  # ✅ Auto-renewal endpoint
+            "/api/v1/auth/introspect",  # Token verification endpoint
+            # ⚠️ WebSocket routes need authentication check at route level,
+            # cannot be set as public path at middleware level, otherwise authentication cannot be enforced
         }
 
-        # ✅ 浏览器插件接口前缀（所有以这些前缀开头的路径都不需要认证）
+        # ✅ Browser plugin interface prefixes (all paths starting with these prefixes do not require authentication)
         self.browser_plugin_prefixes = [
-            "/api/v1/host/hosts",  # 浏览器插件-主机管理接口（包含 /hosts/vnc/*）
+            "/api/v1/host/hosts",  # Browser plugin - host management interface (includes /hosts/vnc/*)
         ]
 
-        # ✅ 从配置读取认证服务 URL 和端口（兼容 Docker 和本地开发）
-        # 优先级：AUTH_SERVICE_URL > (AUTH_SERVICE_IP + AUTH_SERVICE_PORT) > 自动判定（Docker/本地）
+        # ✅ Read authentication service URL and port from configuration (compatible with Docker and local development)
+        # Priority: AUTH_SERVICE_URL > (AUTH_SERVICE_IP + AUTH_SERVICE_PORT) > auto-detect (Docker/local)
         auth_service_url = os.getenv("AUTH_SERVICE_URL")
         if auth_service_url:
-            # 如果设置了完整的 URL，直接使用
+            # If full URL is set, use it directly
             self.auth_service_url = auth_service_url.rstrip("/")
         else:
-            # 否则从 IP 和端口构建（根据运行环境自动选择默认值）
+            # Otherwise build from IP and port (automatically select default based on runtime environment)
             is_docker_env = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
 
-            auth_service_host = (
-                os.getenv("AUTH_SERVICE_IP")
-                or ("auth-service" if is_docker_env else "127.0.0.1")
-            )
-            auth_service_port = int(
-                os.getenv("AUTH_SERVICE_PORT", "8001")
-            )
+            auth_service_host = os.getenv("AUTH_SERVICE_IP") or ("auth-service" if is_docker_env else "127.0.0.1")
+            auth_service_port = int(os.getenv("AUTH_SERVICE_PORT", "8001"))
 
             self.auth_service_url = f"http://{auth_service_host}:{auth_service_port}"
 
         logger.info(
-            "认证中间件初始化完成",
+            "Authentication middleware initialization completed",
             extra={
                 "auth_service_url": self.auth_service_url,
             },
         )
 
-        # ✅ 从配置读取 HTTP 客户端超时配置
+        # ✅ Read HTTP client timeout configuration from config
         auth_timeout = float(os.getenv("AUTH_MIDDLEWARE_TIMEOUT", "10.0"))
         auth_connect_timeout = float(os.getenv("AUTH_MIDDLEWARE_CONNECT_TIMEOUT", "5.0"))
         self.timeout = httpx.Timeout(auth_timeout, connect=auth_connect_timeout)
 
     async def dispatch(self, request: Request, call_next):
-        """处理请求
+        """Handle request
 
         Args:
-            request: 请求对象
-            call_next: 下一个中间件或路由处理器
+            request: Request object
+            call_next: Next middleware or route handler
 
         Returns:
-            响应对象
+            Response object
         """
-        # ✅ 安全措施：删除客户端传入的 X-User-Info header（防止伪造）
-        # Gateway 会在验证 token 后添加自己的 X-User-Info header
+        # ✅ Security measure: remove X-User-Info header from client (prevent forgery)
+        # Gateway will add its own X-User-Info header after verifying token
         if "X-User-Info" in request.headers:
             logger.warning(
-                "检测到客户端传入的 X-User-Info header，已删除（安全措施）",
+                "Detected X-User-Info header from client, removed (security measure)",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
                     "client_host": request.client.host if request.client else "unknown",
-                    "hint": "X-User-Info header 只能由 Gateway 在验证 token 后添加，客户端传入的将被删除",
+                    "hint": (
+                        "X-User-Info header can only be added by Gateway after token verification, "
+                        "client-sent headers will be removed"
+                    ),
                 },
             )
-            # 删除客户端传入的 X-User-Info header
-            # 注意：Starlette 的 headers 是只读的，需要通过修改请求对象来删除
-            # 我们将在 proxy.py 中处理，这里只记录日志
+            # Remove X-User-Info header from client
+            # Note: Starlette's headers are read-only, need to modify request object to remove
+            # We will handle this in proxy.py, only log here
 
-        # ✅ 处理 OPTIONS 预检请求（CORS 预检请求）
-        # OPTIONS 请求应该直接通过，由 CORS 中间件处理
+        # ✅ Handle OPTIONS preflight requests (CORS preflight requests)
+        # OPTIONS requests should ***REMOVED*** through directly, handled by CORS middleware
         if request.method == "OPTIONS":
             logger.debug(
-                "OPTIONS 预检请求，跳过认证检查",
+                "OPTIONS preflight request, skipping authentication check",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
@@ -161,24 +160,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return await call_next(request)
 
-        # 获取 Authorization 头（使用多种方式确保兼容性）
-        # Starlette 的 headers 对象是大小写不敏感的，但为了确保兼容性，使用多种方式提取
+        # Get Authorization header (use multiple methods to ensure compatibility)
+        # Starlette's headers object is case-insensitive, but use multiple methods for compatibility
         auth_header = None
 
-        # 方式1: 标准方式（Starlette headers 是大小写不敏感的）
+        # Method 1: Standard method (Starlette headers are case-insensitive)
         auth_header = request.headers.get("Authorization")
 
-        # 方式2: 如果方式1失败，尝试使用小写键名
+        # Method 2: If method 1 fails, try lowercase key name
         if not auth_header:
             auth_header = request.headers.get("authorization")
 
-        # 方式3: 如果还是找不到，尝试遍历所有 headers 查找（处理特殊情况）
+        # Method 3: If still not found, try iterating through all headers (handle special cases)
         if not auth_header:
             for key, value in request.headers.items():
                 if key.lower() == "authorization":
                     auth_header = value
                     logger.debug(
-                        "从 headers 遍历中找到 Authorization 头",
+                        "Found Authorization header from header iteration",
                         extra={
                             "header_key": key,
                             "header_value": value,
@@ -189,11 +188,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         has_token = bool(auth_header)
 
-        # 调试日志：记录所有 header 键（仅当找不到 Authorization 时，用于调试）
+        # Debug log: record all header keys (only when Authorization not found, for debugging)
         if not auth_header:
             all_header_keys = list(request.headers.keys())
             logger.warning(
-                "未找到 Authorization 头，记录所有 header 键用于调试",
+                "Authorization header not found, recording all header keys for debugging",
                 extra={
                     "all_header_keys": all_header_keys,
                     "header_count": len(all_header_keys),
@@ -202,12 +201,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        # 检查是否为公开路径
+        # Check if path is public
         is_public = self._is_public_path(request.url.path)
 
-        # 详细的请求日志
+        # Detailed request log
         logger.info(
-            "认证中间件处理请求",
+            "Authentication middleware processing request",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -217,10 +216,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        # 如果是公开路径，跳过认证
+        # If public path, skip authentication
         if is_public:
             logger.info(
-                "公开路径，跳过认证检查",
+                "Public path, skipping authentication check",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
@@ -228,10 +227,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return await call_next(request)
 
-        # 检查是否有 Authorization 头
+        # Check if Authorization header exists
         if not auth_header:
             logger.warning(
-                "受保护路径缺少 Authorization 头",
+                "Protected path missing Authorization header",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
@@ -240,19 +239,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return self._unauthorized_response(
                 request=request,
-                message="缺少认证令牌",
+                message="Missing authentication token",
                 message_key="error.auth.missing_token",
                 details={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": "请在请求头中添加 Authorization: Bearer <token>",
+                    "hint": "Please add Authorization: Bearer <token> to request headers",
                 },
             )
 
-        # 验证令牌格式
+        # Validate token format
         if not auth_header.startswith("Bearer "):
             logger.warning(
-                "无效的 Authorization 头格式",
+                "Invalid Authorization header format",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
@@ -261,22 +260,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return self._unauthorized_response(
                 request=request,
-                message="无效的认证令牌格式",
+                message="Invalid authentication token format",
                 message_key="error.auth.invalid_token_format",
                 details={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": "Authorization 头必须使用 Bearer 格式",
+                    "hint": "Authorization header must use Bearer format",
                     "expected_format": "Bearer <token>",
                 },
             )
 
-        # 提取令牌
-        token = auth_header[7:]  # 移除 "Bearer " 前缀
+        # Extract token
+        token = auth_header[7:]  # Remove "Bearer " prefix
         token_preview = token[:8] + "..." if len(token) > 8 else token
 
         logger.debug(
-            "开始验证令牌",
+            "Starting token verification",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -284,42 +283,45 @@ class AuthMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        # 验证令牌
+        # Verify token
         user_info = await self._verify_token(token, request.url.path, request.method)
 
-        # 处理验证结果
+        # Handle verification result
         if not user_info:
-            # ✅ 增强日志记录，包含更多诊断信息
+            # ✅ Enhanced logging with more diagnostic information
             logger.warning(
-                "令牌验证失败，拒绝访问",
+                "Token verification failed, access denied",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
                     "token_preview": token_preview,
                     "token_length": len(token) if token else 0,
                     "auth_service_url": self.auth_service_url,
-                    "hint": "请检查 Gateway 和 Auth Service 日志以获取详细错误信息",
+                    "hint": "Please check Gateway and Auth Service logs for detailed error information",
                 },
             )
             return self._unauthorized_response(
                 request=request,
-                message="无效或过期的认证令牌",
+                message="Invalid or expired authentication token",
                 message_key="error.auth.token_invalid_or_expired",
                 details={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": "令牌可能已过期或无效，请重新登录获取新令牌",
-                    "troubleshooting": "请查看 Gateway 和 Auth Service 日志中的 'reason' 字段以获取详细错误原因",
+                    "hint": "Token may be expired or invalid, please login again to get new token",
+                    "troubleshooting": (
+                        "Please check 'reason' field in Gateway and Auth Service logs "
+                        "for detailed error cause"
+                    ),
                 },
             )
 
-        # 检查是否为服务错误（超时或连接错误）
+        # Check if service error (timeout or connection error)
         if isinstance(user_info, dict) and "error_type" in user_info:
             error_type = user_info["error_type"]
 
             if error_type == "timeout":
                 logger.error(
-                    "认证服务超时，返回 504 错误",
+                    "Authentication service timeout, returning 504 error",
                     extra={
                         "path": request.url.path,
                         "method": request.method,
@@ -329,20 +331,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return self._create_error_response(
                     request=request,
                     code=504,
-                    message="认证服务响应超时，请稍后重试",
+                    message="Authentication service response timeout, please try again later",
                     message_key="error.auth.service_timeout",
                     error_code="GATEWAY_TIMEOUT",
                     details={
                         "path": request.url.path,
                         "method": request.method,
                         "service": "auth-service",
-                        "hint": "认证服务当前响应缓慢，请稍后重试",
+                        "hint": (
+                            "Authentication service is currently responding slowly, "
+                            "please try again later"
+                        ),
                     },
                 )
 
             if error_type == "connection_error":
                 logger.error(
-                    "无法连接到认证服务，返回 503 错误",
+                    "Unable to connect to authentication service, returning 503 error",
                     extra={
                         "path": request.url.path,
                         "method": request.method,
@@ -352,20 +357,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return self._create_error_response(
                     request=request,
                     code=503,
-                    message="认证服务暂时不可用，请稍后重试",
+                    message="Authentication service temporarily unavailable, please try again later",
                     message_key="error.auth.service_unavailable",
                     error_code="SERVICE_UNAVAILABLE",
                     details={
                         "path": request.url.path,
                         "method": request.method,
                         "service": "auth-service",
-                        "hint": "认证服务当前不可用，请联系系统管理员或稍后重试",
+                        "hint": (
+                            "Authentication service is currently unavailable, "
+                            "please contact system administrator or try again later"
+                        ),
                     },
                 )
 
             if error_type == "request_error":
                 logger.error(
-                    "认证服务请求错误，返回 502 错误",
+                    "Authentication service request error, returning 502 error",
                     extra={
                         "path": request.url.path,
                         "method": request.method,
@@ -375,20 +383,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return self._create_error_response(
                     request=request,
                     code=502,
-                    message="认证服务请求失败",
+                    message="Authentication service request failed",
                     message_key="error.auth.service_error",
                     error_code="BAD_GATEWAY",
                     details={
                         "path": request.url.path,
                         "method": request.method,
                         "service": "auth-service",
-                        "hint": "网关无法从认证服务获取有效响应",
+                        "hint": "Gateway cannot get valid response from authentication service",
                     },
                 )
 
-            # 其他未知错误类型，返回 500
+            # Other unknown error types, return 500
             logger.error(
-                "认证过程中发生未知错误",
+                "Unknown error occurred during authentication",
                 extra={
                     "path": request.url.path,
                     "method": request.method,
@@ -399,21 +407,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return self._create_error_response(
                 request=request,
                 code=500,
-                message="认证过程中发生内部错误",
+                message="Internal error occurred during authentication",
                 message_key="error.internal",
                 error_code="INTERNAL_ERROR",
                 details={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": "系统内部错误，请联系系统管理员",
+                    "hint": (
+                        "System internal error, please contact system administrator"
+                    ),
                 },
             )
 
-        # 将用户信息添加到请求状态
+        # Add user information to request state
         request.state.user = user_info
 
         logger.info(
-            "令牌验证成功，允许访问",
+            "Token verification successful, access allowed",
             extra={
                 "path": request.url.path,
                 "method": request.method,
@@ -423,45 +433,45 @@ class AuthMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        # 继续处理请求
+        # Continue processing request
         return await call_next(request)
 
     def _is_public_path(self, path: str) -> bool:
-        """检查是否为公开路径
+        """Check if path is public
 
         Args:
-            path: 请求路径
+            path: Request path
 
         Returns:
-            是否为公开路径
+            Whether path is public
         """
-        # 移除查询参数
+        # Remove query parameters
         clean_path = path.split("?")[0]
 
-        # 移除尾部斜杠（但保留根路径 "/"）
+        # Remove trailing slash (but keep root path "/")
         if clean_path != "/" and clean_path.endswith("/"):
             clean_path = clean_path.rstrip("/")
 
-        # 检查精确匹配
+        # Check exact match
         if clean_path in self.public_paths:
             return True
 
-        # ✅ 检查前缀匹配（用于文档路径和浏览器插件接口）
-        # 支持前缀匹配的路径模式：
-        # - /docs, /redoc, /openapi.json (文档路径)
-        # - /api/v1/host/hosts, /api/v1/host/vnc (浏览器插件接口)
+        # ✅ Check prefix match (for documentation paths and browser plugin interfaces)
+        # Supported prefix match path patterns:
+        # - /docs, /redoc, /openapi.json (documentation paths)
+        # - /api/v1/host/hosts, /api/v1/host/vnc (browser plugin interfaces)
         prefix_match_paths = {
             "/docs",  # Swagger UI
             "/redoc",  # ReDoc
             "/openapi.json",  # OpenAPI spec
         }
 
-        # 检查文档路径前缀匹配
+        # Check documentation path prefix match
         for prefix_path in prefix_match_paths:
             if clean_path.startswith(prefix_path):
                 return True
 
-        # ✅ 检查浏览器插件接口前缀匹配（所有浏览器插件接口都不需要认证）
+        # ✅ Check browser plugin interface prefix match (all browser plugin interfaces do not require authentication)
         for prefix_path in self.browser_plugin_prefixes:
             if clean_path.startswith(prefix_path):
                 return True
@@ -471,23 +481,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def _verify_token(
         self, token: str, request_path: str = "", request_method: str = ""
     ) -> Optional[Dict[str, Any]]:
-        """验证 JWT 令牌
+        """Verify JWT token
 
-        调用 Auth Service 的 introspect 端点验证令牌
+        Call Auth Service's introspect endpoint to verify token
 
         Args:
-            token: JWT 访问令牌
-            request_path: 请求路径（用于日志）
-            request_method: 请求方法（用于日志）
+            token: JWT access token
+            request_path: Request path (for logging)
+            request_method: Request method (for logging)
 
         Returns:
-            用户信息，如果验证失败则返回 None
-            特殊情况：返回包含 error_type 的字典表示服务错误
+            User information, returns None if verification fails
+            Special case: returns dict with error_type to indicate service error
         """
         token_preview = token[:8] + "..." if len(token) > 8 else token
 
         try:
-            # 调用 Auth Service 的 introspect 端点来验证令牌
+            # Call Auth Service's introspect endpoint to verify token
             introspect_url = f"{self.auth_service_url}/api/v1/auth/introspect"
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -500,16 +510,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 if response.status_code == 200:
                     result = response.json()
 
-                    # 检查令牌是否有效
+                    # Check if token is valid
                     if result.get("code") == 200:
                         data = result.get("data", {})
                         if data.get("active"):
-                            # ✅ 统一使用 id 字段，没有则返回 None（401）
+                            # ✅ Use id field uniformly, return None if missing (401)
                             user_id = data.get("id")
 
                             if not user_id:
                                 logger.warning(
-                                    "Token 验证成功但 id 为空",
+                                    "Token verification successful but id is empty",
                                     extra={
                                         "data_keys": list(data.keys()),
                                         "token_preview": token_preview,
@@ -521,30 +531,30 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                             "message": result.get("message"),
                                             "data": data,
                                         },
-                                        "hint": "Auth Service 返回的 id 为空，token 无效",
+                                        "hint": "Auth Service returned empty id, token is invalid",
                                     },
                                 )
-                                return None  # 返回 None 表示验证失败
+                                return None  # Return None to indicate verification failure
 
-                            # ✅ 检查用户/host 是否已被删除（从 Redis 读取）
+                            # ✅ Check if user/host has been deleted (read from Redis)
                             try:
                                 user_type = data.get("user_type", "user")
 
                                 if user_id:
-                                    # 根据 user_type 确定 Redis key 前缀
+                                    # Determine Redis key prefix based on user_type
                                     if user_type == "device":
-                                        # device 类型表示 host
+                                        # device type represents host
                                         deleted_key = f"deleted:host:{user_id}"
                                     else:
-                                        # admin 或其他类型表示用户
+                                        # admin or other types represent user
                                         deleted_key = f"deleted:user:{user_id}"
 
-                                    # 检查 Redis 中是否存在已删除标记
+                                    # Check if deleted marker exists in Redis
                                     is_deleted = await redis_manager.exists(deleted_key)
 
                                     if is_deleted:
                                         logger.warning(
-                                            "Token 对应的用户/host 已被删除",
+                                            "User/host corresponding to token has been deleted",
                                             extra={
                                                 "id": user_id,
                                                 "user_type": user_type,
@@ -553,23 +563,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                                 "request_method": request_method,
                                             },
                                         )
-                                        return None  # 返回 None 表示验证失败，会触发 401 响应
+                                        return None  # Return None to indicate verification failure,
+                                        # will trigger 401 response
                             except Exception as redis_error:
-                                # Redis 操作失败时记录警告，但继续验证（降级处理）
+                                # Log warning when Redis operation fails, but continue verification (degradation)
                                 logger.warning(
-                                    "Redis 删除检查失败，继续验证 token",
+                                    "Redis deletion check failed, continuing token verification",
                                     extra={
                                         "id": user_id,
                                         "user_type": data.get("user_type"),
                                         "error": str(redis_error),
                                         "error_type": type(redis_error).__name__,
                                         "request_path": request_path,
-                                        "hint": "Redis 不可用时，跳过删除检查，继续验证 token（降级处理）",
+                                        "hint": (
+                                            "When Redis is unavailable, skip deletion check and "
+                                            "continue token verification (degradation)"
+                                        ),
                                     },
                                 )
-                                # 继续执行，不因为 Redis 失败而拒绝所有请求
+                                # Continue execution, don't reject all requests due to Redis failure
 
-                            # ✅ 构造用户信息（统一使用 id 字段）
+                            # ✅ Construct user information (use id field uniformly)
                             user_info = {
                                 "id": user_id,
                                 "username": data.get("username"),
@@ -578,7 +592,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             }
 
                             logger.info(
-                                "令牌验证成功 - Auth Service 返回有效用户信息",
+                                "Token verification successful - Auth Service returned valid user information",
                                 extra={
                                     "id": user_info.get("id"),
                                     "username": user_info.get("username"),
@@ -589,7 +603,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                             )
                             return user_info
                         logger.warning(
-                            "令牌验证失败 - 令牌未激活",
+                            "Token verification failed - token not active",
                             extra={
                                 "token_preview": token_preview,
                                 "active": data.get("active"),
@@ -601,12 +615,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                     "message": result.get("message"),
                                     "data_keys": list(data.keys()) if isinstance(data, dict) else [],
                                 },
-                                "hint": "Token 可能已过期、被加入黑名单或格式错误",
+                                "hint": (
+                                    "Token may be expired, blacklisted, or malformed"
+                                ),
                             },
                         )
                     else:
                         logger.warning(
-                            "令牌验证失败 - Auth Service 返回错误码",
+                            "Token verification failed - Auth Service returned error code",
                             extra={
                                 "response_code": result.get("code"),
                                 "response_message": result.get("message"),
@@ -618,7 +634,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         )
                 else:
                     logger.warning(
-                        "令牌验证失败 - HTTP 状态码异常",
+                        "Token verification failed - HTTP status code abnormal",
                         extra={
                             "status_code": response.status_code,
                             "response_text": response.text[:200] if response.text else "",
@@ -632,7 +648,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         except httpx.TimeoutException as e:
             logger.error(
-                "令牌验证超时 - Auth Service 响应超时",
+                "Token verification timeout - Auth Service response timeout",
                 extra={
                     "auth_service_url": self.auth_service_url,
                     "timeout_config": str(self.timeout),
@@ -643,12 +659,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "error_detail": str(e),
                 },
             )
-            # 返回特殊标记，表示超时错误
+            # Return special marker to indicate timeout error
             return {"error_type": "timeout"}
 
         except httpx.ConnectError as e:
             logger.error(
-                "无法连接到认证服务 - 网络连接失败",
+                "Unable to connect to authentication service - network connection failed",
                 extra={
                     "auth_service_url": self.auth_service_url,
                     "error": str(e),
@@ -659,12 +675,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "error_detail": "connection_refused_or_network_unreachable",
                 },
             )
-            # 返回特殊标记，表示连接错误
+            # Return special marker to indicate connection error
             return {"error_type": "connection_error"}
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                "Auth Service 返回 HTTP 错误状态",
+                "Auth Service returned HTTP error status",
                 extra={
                     "status_code": e.response.status_code,
                     "response_text": e.response.text[:200] if e.response.text else "",
@@ -679,7 +695,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         except httpx.RequestError as e:
             logger.error(
-                "Auth Service 请求错误",
+                "Auth Service request error",
                 extra={
                     "error_type": type(e).__name__,
                     "error": str(e),
@@ -693,7 +709,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         except Exception as e:
             logger.error(
-                "令牌验证异常 - 未预期的错误",
+                "Token verification exception - unexpected error",
                 extra={
                     "error_type": type(e).__name__,
                     "error": str(e),
@@ -715,24 +731,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
         message_key: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> JSONResponse:
-        """创建统一的错误响应（支持多语言）
+        """Create unified error response (supports i18n)
 
         Args:
-            request: 请求对象（用于获取语言偏好）
-            code: HTTP 状态码
-            message: 错误消息（备用消息）
-            error_code: 错误类型标识
-            message_key: 翻译键（可选）
-            details: 错误详情（可选）
+            request: Request object (for getting language preference)
+            code: HTTP status code
+            message: Error message (fallback message)
+            error_code: Error type identifier
+            message_key: Translation key (optional)
+            details: Error details (optional)
 
         Returns:
-            JSON 响应
+            JSON response
         """
         locale = _get_locale_from_request(request)
 
         error_response = ErrorResponse(
             code=code,
-            message=message,  # 备用消息
+            message=message,  # Fallback message
             message_key=message_key,
             error_code=error_code,
             details=details,
@@ -740,7 +756,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
         logger.warning(
-            "返回错误响应",
+            "Returning error response",
             extra={
                 "status_code": code,
                 "error_code": error_code,
@@ -761,16 +777,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         message_key: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> JSONResponse:
-        """返回未授权响应（401）（支持多语言）
+        """Return unauthorized response (401) (supports i18n)
 
         Args:
-            request: 请求对象（用于获取语言偏好）
-            message: 错误消息（备用消息）
-            message_key: 翻译键（可选）
-            details: 错误详情（可选）
+            request: Request object (for getting language preference)
+            message: Error message (fallback message)
+            message_key: Translation key (optional)
+            details: Error details (optional)
 
         Returns:
-            JSON 响应
+            JSON response
         """
         return self._create_error_response(
             request=request,

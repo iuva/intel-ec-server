@@ -1,4 +1,4 @@
-"""主机记录数据模型"""
+"""Host record data model"""
 
 from datetime import datetime
 from typing import Optional
@@ -6,11 +6,11 @@ from typing import Optional
 from sqlalchemy import INT, VARCHAR, BigInteger, DateTime, Index, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.database import BaseDBModel
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     import os
     import sys
 
@@ -19,10 +19,10 @@ except ImportError:
 
 
 class HostRec(BaseDBModel):
-    """主机记录模型 - 对应 host_rec 表
+    """Host record model - corresponds to host_rec table
 
-    继承 BaseDBModel 获得以下字段：
-    - id: BIGINT (主键, 自增)
+    Inherits from BaseDBModel to get the following fields:
+    - id: BIGINT (primary key, auto-increment)
     - created_time: DATETIME DEFAULT CURRENT_TIMESTAMP
     - updated_time: DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     - del_flag: TINYINT DEFAULT 0
@@ -30,81 +30,94 @@ class HostRec(BaseDBModel):
 
     __tablename__ = "host_rec"
 
-    # 主机主键;对应 mongo 数据库 host 主键
+    # Host primary key; corresponds to mongo database host primary key
     host_no: Mapped[Optional[str]] = mapped_column(
-        VARCHAR(64), nullable=True, index=True, comment="主机主键;对应 mongo 数据库 host 主键"
+        VARCHAR(64),
+        nullable=True,
+        index=True,
+        comment="Host primary key; corresponds to mongo database host primary key"
     )
 
-    # 唯一引导 id
-    mg_id: Mapped[Optional[str]] = mapped_column(VARCHAR(128), nullable=True, comment="唯一引导id")
+    # Unique machine GUID
+    mg_id: Mapped[Optional[str]] = mapped_column(VARCHAR(128), nullable=True, comment="Unique machine GUID")
 
-    # 硬件记录表主键;host_hw_rec 表主键
-    hw_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="硬件记录表主键;host_hw_rec 表主键")
+    # Hardware record table primary key; host_hw_rec table primary key
+    hw_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="Hardware record table primary key; host_hw_rec table primary key"
+    )
 
-    # mongodb 主键;mongo db 硬件 id
+    # MongoDB primary key; mongo db hardware id
     hardware_id: Mapped[Optional[str]] = mapped_column(
-        VARCHAR(64), nullable=True, index=True, comment="mongodb 主键;mongo db 硬件 id"
+        VARCHAR(64), nullable=True, index=True, comment="MongoDB primary key; mongo db hardware id"
     )
 
-    # ip 地址
-    host_ip: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="ip 地址")
+    # IP address
+    host_ip: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="IP address")
 
-    # ip 端口
-    host_port: Mapped[Optional[int]] = mapped_column(INT, nullable=True, comment="ip 端口")
+    # IP port
+    host_port: Mapped[Optional[int]] = mapped_column(INT, nullable=True, comment="IP port")
 
-    # 主机账号
-    host_acct: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="主机账号")
+    # Host account
+    host_acct: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="Host account")
 
-    # 主机密码
-    host_pwd: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, comment="主机密码")
+    # Host ***REMOVED***word
+    host_pwd: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, comment="Host ***REMOVED***word")
 
-    # mac 地址
-    mac_addr: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="mac 地址")
+    # MAC address
+    mac_addr: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="MAC address")
 
-    # 审批状态;{disable: 0, 停用. enable: 1, 启用. new: 1, 新增. change: 2, 存在改动.}
+    # Approval state; {disable: 0, disabled. enable: 1, enabled. new: 1, new. change: 2, has changes.}
     appr_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
         index=True,
-        comment=("审批状态;{disable: 0, 停用. enable: 1, 启用. new: 1, 新增. change: 2, 存在改动.}"),
+        comment=(
+            "Approval state; {disable: 0, disabled. enable: 1, enabled. "
+            "new: 1, new. change: 2, has changes.}"
+        ),
     )
 
-    # TCP在线状态;{close: 0, 关闭. wait: 1, 等待. lsn: 2, 监听.}
+    # TCP online state; {close: 0, closed. wait: 1, waiting. lsn: 2, listening.}
     tcp_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
         index=True,
-        comment="tcp在线状态;{close: 0, 关闭. wait: 1, 等待. lsn: 2, 监听.}",
+        comment="TCP online state; {close: 0, closed. wait: 1, waiting. lsn: 2, listening.}",
     )
 
-    # 主机状态 - 对应多个状态码
-    # {free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.
-    #  offline: 4, 离线. inact: 5, 待激活. hw_chg: 6, 存在潜在的硬件改动.
-    #  disable: 7, 手动停用. updating: 8, 更新中.}
+    # Host state - corresponds to multiple state codes
+    # {free: 0, free. lock: 1, locked. occ: 2, occupied. run: 3, case executing.
+    #  offline: 4, offline. inact: 5, pending activation. hw_chg: 6,
+    #  has potential hardware changes. disable: 7, manually disabled. updating: 8, updating.}
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
         index=True,
-        comment=("主机状态;0-空闲 1-已锁定 2-已占用 3-case执行中 4-离线 5-待激活 6-硬件改动 7-手动停用 8-更新中"),
+        comment=(
+            "Host state; 0-free 1-locked 2-occupied 3-case executing 4-offline "
+            "5-pending activation 6-hardware changed 7-manually disabled 8-updating"
+        ),
     )
 
-    # 申报时间
-    subm_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="申报时间")
+    # Submission time
+    subm_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="Submission time")
 
-    # agent 版本号
-    agent_ver: Mapped[Optional[str]] = mapped_column(VARCHAR(10), nullable=True, comment="agent 版本号")
+    # Agent version
+    agent_ver: Mapped[Optional[str]] = mapped_column(VARCHAR(10), nullable=True, comment="Agent version")
 
-    # 创建人
-    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="创建人")
+    # Creator
+    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="Creator")
 
-    # 📌 更新人 - 对应表中 updated_by 字段
-    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="更新人")
+    # 📌 Updater - corresponds to updated_by field in table
+    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="Updater")
 
-    # 📌 注意: del_flag 字段已由 BaseDBModel 提供，不需要重复定义
-    # del_flag: SmallInteger, default=0 (继承自 BaseDBModel)
+    # 📌 Note: del_flag field is provided by BaseDBModel, no need to redefine
+    # del_flag: SmallInteger, default=0 (inherited from BaseDBModel)
 
     def __repr__(self) -> str:
-        """字符串表示"""
+        """String representation"""
         return f"<HostRec(id={self.id}, host_ip={self.host_ip}, host_state={self.host_state})>"
 
     __table_args__ = (

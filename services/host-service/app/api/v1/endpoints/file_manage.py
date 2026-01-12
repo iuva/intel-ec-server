@@ -1,6 +1,6 @@
-"""文件管理 API 端点
+"""File management API endpoints
 
-提供文件上传、下载和访问等 HTTP API 接口。
+Provides HTTP API interfaces for file upload, download, and access.
 """
 
 import os
@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from starlette.responses import Response
 from starlette.status import HTTP_206_PARTIAL_CONTENT, HTTP_404_NOT_FOUND
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.api.v1.dependencies import get_file_manage_service, get_current_user
     from app.schemas.host import FileUploadResponse
@@ -46,55 +46,55 @@ router = APIRouter()
 @router.post(
     "/upload",
     response_model=Result[FileUploadResponse],
-    summary="上传文件",
-    description="上传文件到服务器指定目录，返回文件访问 URL",
+    summary="Upload file",
+    description="Upload file to server specified directory, return file access URL",
     responses={
         200: {
-            "description": "上传成功",
+            "description": "Upload succeeded",
             "model": Result[FileUploadResponse],
         },
     },
 )
 @handle_api_errors
 async def upload_file(
-    file: UploadFile = File(..., description="要上传的文件"),
+    file: UploadFile = File(..., description="File to upload"),
     file_manage_service: FileManageService = Depends(get_file_manage_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> Result[FileUploadResponse]:
-    """上传文件（管理后台）
+    """Upload file (admin backend)
 
-    业务逻辑：
-    1. 接收上传的文件
-    2. 保存到环境配置的本地指定目录（FILE_UPLOAD_DIR）
-    3. 生成唯一文件名（使用 UUID）
-    4. 返回文件访问 URL
+    Business logic:
+    1. Receive uploaded file
+    2. Save to locally specified directory configured by environment (FILE_UPLOAD_DIR)
+    3. Generate unique filename (using UUID)
+    4. Return file access URL
 
-    ## 文件存储
-    - 文件保存目录由环境变量 `FILE_UPLOAD_DIR` 配置，默认为 `/app/uploads`
-    - Docker 启动时需要挂载卷到该目录，确保文件不丢失
-    - 文件名使用 UUID 生成，避免文件名冲突
+    ## File storage
+    - File save directory is configured by environment variable `FILE_UPLOAD_DIR`, default is `/app/uploads`
+    - Docker startup needs to mount volume to this directory to ensure files are not lost
+    - Filename uses UUID generation to avoid filename conflicts
 
-    ## 返回字段
-    - `file_id`: 文件唯一标识
-    - `filename`: 原始文件名
-    - `saved_filename`: 保存的文件名
-    - `file_url`: 文件访问 URL（可直接通过服务访问）
-    - `file_size`: 文件大小（字节）
-    - `content_type`: 文件 MIME 类型
-    - `upload_time`: 上传时间
+    ## Return fields
+    - `file_id`: File unique identifier
+    - `filename`: Original filename
+    - `saved_filename`: Saved filename
+    - `file_url`: File access URL (can be accessed directly through service)
+    - `file_size`: File size (bytes)
+    - `content_type`: File MIME type
+    - `upload_time`: Upload time
 
     Args:
-        file: 上传的文件对象
-        file_manage_service: 文件管理服务实例
-        current_user: 当前用户信息
-        locale: 语言偏好
+        file: Uploaded file object
+        file_manage_service: File management service instance
+        current_user: Current user information
+        locale: Language preference
 
     Returns:
-        SuccessResponse: 包含文件信息和访问 URL
+        SuccessResponse: Contains file information and access URL
     """
     logger.info(
-        "开始上传文件",
+        "Start uploading file",
         extra={
             "operation": "upload_file",
             "filename": file.filename,
@@ -104,21 +104,21 @@ async def upload_file(
         },
     )
 
-    # 读取文件内容
+    # Read file content
     file_content = await file.read()
 
-    # 调用服务层上传文件
+    # Call service layer to upload file
     file_info = await file_manage_service.upload_file(
         file_content=file_content,
         filename=file.filename or "unknown",
         content_type=file.content_type,
     )
 
-    # 构建响应数据
+    # Build response data
     response_data = FileUploadResponse(**file_info)
 
     logger.info(
-        "文件上传成功",
+        "File upload succeeded",
         extra={
             "operation": "upload_file",
             "file_id": file_info["file_id"],
@@ -131,12 +131,12 @@ async def upload_file(
         data=response_data,
         message_key="success.file.upload",
         locale=locale,
-        default_message="文件上传成功",
+        default_message="File upload succeeded",
     )
 
 
 def _file_chunk_generator(file_path: SysPath, start: int, end: int, chunk_size: int = 1024 * 1024) -> Iterator[bytes]:
-    """生成器：按 Range 输出文件内容"""
+    """Generator: Output file content by Range"""
 
     with open(file_path, "rb") as file_obj:
         file_obj.seek(start)
@@ -153,56 +153,56 @@ def _file_chunk_generator(file_path: SysPath, start: int, end: int, chunk_size: 
 
 @router.get(
     "/{filename}",
-    summary="获取文件（支持断点续传）",
+    summary="Get file (supports resumable download)",
     description=(
-        "通过 `saved_filename` 获取上传的文件内容，默认返回完整文件。\n\n"
-        "### Range 下载说明\n"
-        "- 支持标准 HTTP Range 请求头，格式：`Range: bytes=start-end`\n"
-        "- 例如：`Range: bytes=0-1048575` 可获取前 1MB，用于断点续传\n"
-        "- 响应会携带 `Accept-Ranges: bytes`、`Content-Range`、`Content-Length`\n"
-        "- 当 Range 合法时返回 `206 Partial Content`，否则返回 `416`\n"
-        "- 未携带 Range 时返回完整文件（200 OK）"
+        "Get uploaded file content through `saved_filename`, returns complete file by default.\n\n"
+        "### Range download description\n"
+        "- Supports standard HTTP Range request header, format: `Range: bytes=start-end`\n"
+        "- Example: `Range: bytes=0-1048575` can get first 1MB, used for resumable download\n"
+        "- Response will include `Accept-Ranges: bytes`, `Content-Range`, `Content-Length`\n"
+        "- Returns `206 Partial Content` when Range is valid, otherwise returns `416`\n"
+        "- Returns complete file (200 OK) when Range is not included"
     ),
     responses={
         200: {
-            "description": "返回完整文件内容",
+            "description": "Returns complete file content",
             "content": {"application/octet-stream": {}},
         },
         206: {
-            "description": "返回部分内容（断点续传），包含 Content-Range 头",
+            "description": "Returns partial content (resumable download), includes Content-Range header",
             "content": {"application/octet-stream": {}},
         },
         404: {
-            "description": "文件不存在",
+            "description": "File does not exist",
         },
         416: {
-            "description": "Range 请求范围无效",
+            "description": "Range request range is invalid",
         },
     },
 )
 @handle_api_errors
 async def get_file(
     request: Request,
-    filename: str = Path(..., description="保存的文件名（由上传接口返回的 saved_filename）"),
+    filename: str = Path(..., description="Saved filename (saved_filename returned by upload interface)"),
     file_manage_service: FileManageService = Depends(get_file_manage_service),
     current_user: dict = Depends(get_current_user),
 ) -> Response:
-    """获取上传的文件，支持 HTTP Range 断点续传
+    """Get uploaded file, supports HTTP Range resumable download
 
     Args:
-        request: FastAPI 请求对象，用于读取 Range 头
-        filename: 保存的文件名（由上传接口返回的 saved_filename）
-        file_manage_service: 文件管理服务实例
-        current_user: 当前用户信息
+        request: FastAPI request object, used to read Range header
+        filename: Saved filename (saved_filename returned by upload interface)
+        file_manage_service: File management service instance
+        current_user: Current user information
 
     Returns:
-        Response: 根据是否携带 Range 返回 FileResponse 或 StreamingResponse
+        Response: Returns FileResponse or StreamingResponse based on whether Range is included
 
     Raises:
-        HTTPException: 文件不存在 (404) 或 Range 无效 (416)
+        HTTPException: File does not exist (404) or Range is invalid (416)
     """
     logger.info(
-        "获取文件",
+        "Get file",
         extra={
             "operation": "get_file",
             "filename": filename,
@@ -210,11 +210,11 @@ async def get_file(
         },
     )
 
-    # 获取文件路径
+    # Get file path
     file_path = file_manage_service.get_file_path(filename)
 
     if not file_path.exists():
-        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="文件不存在")
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="File does not exist")
 
     file_size = file_path.stat().st_size
     range_header = request.headers.get("range")

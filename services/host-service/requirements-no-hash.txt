@@ -1,53 +1,53 @@
 # Intel EC Host Service Dependencies
-# 无哈希版本，用于 Docker 构建
+# No hash versions, for Docker builds
 
 fastapi==0.116.1
 uvicorn[standard]==0.32.1
 python-multipart==0.0.20
 websockets==13.1
 
-# 数据库和 ORM
+# Database and ORM
 SQLAlchemy==2.0.36
 aiomysql==0.2.0
 pymysql==1.1.1
 
-# Redis 缓存
+# Redis cache
 redis==5.2.1
 
-# 认证和安全
+# Authentication and security
 python-jose[cryptography]==3.3.0
 ***REMOVED***lib[bcrypt]==1.7.4
 bcrypt==3.2.2
 PyJWT==2.8.0
 pycryptodome==3.20.0
 
-# 数据验证
+# Data validation
 pydantic==2.10.6
 pydantic-settings==2.7.1
 email-validator==2.2.0
 
-# 日志
+# Logging
 loguru==0.7.3
 
-# 服务发现
+# Service discovery
 nacos-sdk-python==1.0.0
 
-# 分布式追踪
+# Distributed tracing
 opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
 opentelemetry-instrumentation-fastapi==0.50b0
 opentelemetry-instrumentation-redis==0.50b0
 opentelemetry-instrumentation-sqlalchemy==0.50b0
 opentelemetry-instrumentation-httpx==0.50b0
-# opentelemetry-instrumentation-websocket 不存在，移除
-# opentelemetry-exporter-jaeger 已废弃，使用 OTLP
+# opentelemetry-instrumentation-websocket does not exist, removed
+# opentelemetry-exporter-jaeger deprecated, use OTLP
 opentelemetry-exporter-otlp==1.29.0
 
-# 监控指标
+# Monitoring metrics
 prometheus-client==0.21.1
 
-# HTTP 客户端
+# HTTP client
 httpx==0.28.1
 
-# 工具库
+# Utility libraries
 python-dotenv==1.0.1

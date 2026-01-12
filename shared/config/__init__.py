@@ -1,7 +1,7 @@
 """
-共享配置模块
+Shared Configuration Module
 
-提供Nacos服务发现等配置功能
+Provides Nacos service discovery and other configuration functions
 """
 
 from shared.config.nacos_config import NacosManager, get_nacos_manager, init_nacos_manager, nacos_manager

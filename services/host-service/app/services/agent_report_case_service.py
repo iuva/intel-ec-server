@@ -1,8 +1,8 @@
-"""Agent 测试用例上报服务模块
+"""Agent Test Case Report Service Module
 
-提供测试用例执行结果上报和预期时间更新功能。
+Provides test case execution result reporting and expected time update functionality.
 
-从 agent_report_service.py 拆分出来，提高代码可维护性。
+Split from agent_report_service.py to improve code maintainability.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import and_, select, update
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.models.host_exec_log import HostExecLog
     from shared.common.database import mariadb_manager
@@ -29,20 +29,20 @@ logger = get_logger(__name__)
 
 
 class AgentTestCaseReportService:
-    """Agent 测试用例上报服务
+    """Agent Test Case Report Service
 
-    负责处理：
-    - 测试用例执行结果上报
-    - 预期结束时间更新
+    Responsible for handling:
+    - Test case execution result reporting
+    - Expected end time updates
     """
 
     def __init__(self) -> None:
-        """初始化服务"""
+        """Initialize service"""
         self._session_factory = None
 
     @property
     def session_factory(self):
-        """获取会话工厂（延迟初始化，单例模式）"""
+        """Get session factory (lazy initialization, singleton pattern)"""
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
@@ -55,24 +55,24 @@ class AgentTestCaseReportService:
         result_msg: Optional[str] = None,
         log_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """上报测试用例执行结果
+        """Report test case execution result
 
         Args:
-            host_id: 主机ID（从token中获取）
-            tc_id: 测试用例ID
-            state: 执行状态（0-空闲 1-启动 2-成功 3-失败）
-            result_msg: 结果消息
-            log_url: 日志文件URL
+            host_id: Host ID (obtained from token)
+            tc_id: Test case ID
+            state: Execution state (0-free, 1-started, 2-success, 3-failed)
+            result_msg: Result message
+            log_url: Log file URL
 
         Returns:
-            更新结果
+            Update result
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
             logger.info(
-                "开始处理测试用例结果上报",
+                "Starting to process test case result report",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -82,7 +82,7 @@ class AgentTestCaseReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询最新的执行日志记录
+                # 1. Query latest execution log record
                 stmt = (
                     select(HostExecLog)
                     .where(
@@ -101,7 +101,7 @@ class AgentTestCaseReportService:
 
                 if not exec_log:
                     raise BusinessError(
-                        message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
+                        message=f"Execution record not found for host {host_id} test case {tc_id}",
                         message_key="error.host.exec_log_not_found",
                         error_code="EXEC_LOG_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -110,7 +110,7 @@ class AgentTestCaseReportService:
                     )
 
                 logger.info(
-                    "找到执行日志记录",
+                    "Found execution log record",
                     extra={
                         "log_id": exec_log.id,
                         "host_id": host_id,
@@ -119,7 +119,7 @@ class AgentTestCaseReportService:
                     },
                 )
 
-                # 2. 更新执行状态和结果
+                # 2. Update execution state and result
                 update_stmt = (
                     update(HostExecLog)
                     .where(HostExecLog.id == exec_log.id)
@@ -134,7 +134,7 @@ class AgentTestCaseReportService:
                 await session.commit()
 
                 logger.info(
-                    "测试用例结果上报成功",
+                    "Test case result report succeeded",
                     extra={
                         "log_id": exec_log.id,
                         "host_id": host_id,
@@ -157,7 +157,7 @@ class AgentTestCaseReportService:
             raise
         except Exception as e:
             logger.error(
-                "测试用例结果上报失败",
+                "Test case result report failed",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -166,7 +166,7 @@ class AgentTestCaseReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="测试用例结果上报处理失败",
+                message="Test case result report processing failed",
                 error_code="TESTCASE_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_TESTCASE_REPORT_FAILED,
                 http_status_code=500,
@@ -178,26 +178,26 @@ class AgentTestCaseReportService:
         tc_id: str,
         due_time_minutes: int,
     ) -> Dict[str, Any]:
-        """更新测试用例预期结束时间
+        """Update test case expected end time
 
         Args:
-            host_id: 主机ID（从token中获取）
-            tc_id: 测试用例ID
-            due_time_minutes: 预期结束时间（分钟时间差，整数）
+            host_id: Host ID (obtained from token)
+            tc_id: Test case ID
+            due_time_minutes: Expected end time (time difference in minutes, integer)
 
         Returns:
-            更新结果
+            Update result
 
         Raises:
-            BusinessError: 业务逻辑错误
+            BusinessError: Business logic error
         """
         try:
-            # 计算实际的预期结束时间（当前时间 + 分钟数）
+            # Calculate actual expected end time (current time + minutes)
             now = datetime.now(timezone.utc)
             due_time = now + timedelta(minutes=due_time_minutes)
 
             logger.info(
-                "开始处理预期结束时间上报",
+                "Starting to process expected end time report",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -208,7 +208,7 @@ class AgentTestCaseReportService:
 
             session_factory = self.session_factory
             async with session_factory() as session:
-                # 1. 查询最新的执行日志记录
+                # 1. Query latest execution log record
                 stmt = (
                     select(HostExecLog)
                     .where(
@@ -227,7 +227,7 @@ class AgentTestCaseReportService:
 
                 if not exec_log:
                     raise BusinessError(
-                        message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行记录",
+                        message=f"Execution record not found for host {host_id} test case {tc_id}",
                         message_key="error.host.exec_log_not_found",
                         error_code="EXEC_LOG_NOT_FOUND",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -236,7 +236,7 @@ class AgentTestCaseReportService:
                     )
 
                 logger.info(
-                    "找到执行日志记录",
+                    "Found execution log record",
                     extra={
                         "log_id": exec_log.id,
                         "host_id": host_id,
@@ -245,18 +245,14 @@ class AgentTestCaseReportService:
                     },
                 )
 
-                # 2. 更新预期结束时间
-                update_stmt = (
-                    update(HostExecLog)
-                    .where(HostExecLog.id == exec_log.id)
-                    .values(due_time=due_time)
-                )
+                # 2. Update expected end time
+                update_stmt = update(HostExecLog).where(HostExecLog.id == exec_log.id).values(due_time=due_time)
 
                 await session.execute(update_stmt)
                 await session.commit()
 
                 logger.info(
-                    "预期结束时间上报成功",
+                    "Expected end time report succeeded",
                     extra={
                         "log_id": exec_log.id,
                         "host_id": host_id,
@@ -278,7 +274,7 @@ class AgentTestCaseReportService:
             raise
         except Exception as e:
             logger.error(
-                "预期结束时间上报失败",
+                "Expected end time report failed",
                 extra={
                     "host_id": host_id,
                     "tc_id": tc_id,
@@ -287,22 +283,22 @@ class AgentTestCaseReportService:
                 exc_info=True,
             )
             raise BusinessError(
-                message="预期结束时间上报处理失败",
+                message="Expected end time report processing failed",
                 error_code="DUE_TIME_UPDATE_FAILED",
                 code=ServiceErrorCodes.HOST_DUE_TIME_UPDATE_FAILED,
                 http_status_code=500,
             )
 
 
-# 模块级实例
+# Module-level instance
 _testcase_report_service_instance: Optional[AgentTestCaseReportService] = None
 
 
 def get_testcase_report_service() -> AgentTestCaseReportService:
-    """获取测试用例上报服务实例（单例模式）
+    """Get test case report service instance (singleton pattern)
 
     Returns:
-        AgentTestCaseReportService: 测试用例上报服务实例
+        AgentTestCaseReportService: Test case report service instance
     """
     global _testcase_report_service_instance
     if _testcase_report_service_instance is None:

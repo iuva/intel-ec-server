@@ -1,4 +1,4 @@
-"""Pydantic 模式模块"""
+"""Pydantic schemas module"""
 
 from app.schemas.host import (
     GetVNCConnectionRequest,
@@ -12,7 +12,7 @@ from app.schemas.host import (
 )
 
 __all__ = [
-    # 主机相关
+    # Host related
     "GetVNCConnectionRequest",
     "HostBase",
     "HostCreate",

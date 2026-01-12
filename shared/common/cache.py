@@ -1,7 +1,7 @@
 """
-Redis缓存管理模块
+Redis Cache Management Module
 
-提供Redis异步连接管理、缓存操作和装饰器功能
+Provides Redis asynchronous connection management, caching operations and decorator functions
 """
 
 import hashlib
@@ -25,20 +25,21 @@ def build_redis_url(
     username: Optional[str] = None,
     ssl_enabled: bool = False,
 ) -> str:
-    """构建 Redis 连接 URL
+    """Build Redis Connection URL
 
-    根据提供的参数构建符合 Redis 规范的连接 URL，自动处理密码中的特殊字符。
+    Build a Redis-compliant connection URL according to the provided parameters,
+    automatically handling special characters in ***REMOVED***words.
 
     Args:
-        host: Redis 主机地址
-        port: Redis 端口
-        ***REMOVED***word: Redis 密码（可选）
-        db: 数据库编号，默认为 0
-        username: Redis 用户名（可选，Redis 6.0+）
-        ssl_enabled: 是否启用 SSL/TLS（默认 False）
+        host: Redis host address
+        port: Redis port
+        ***REMOVED***word: Redis ***REMOVED***word (optional)
+        db: Database number, default is 0
+        username: Redis username (optional, Redis 6.0+)
+        ssl_enabled: Whether to enable SSL/TLS (default False)
 
     Returns:
-        格式化的 Redis URL（SSL 使用 rediss://，非 SSL 使用 redis://）
+        Formatted Redis URL (SSL uses rediss://, non-SSL uses redis://)
 
     Examples:
         >>> build_redis_url("localhost", 6379)
@@ -56,25 +57,25 @@ def build_redis_url(
         >>> build_redis_url("localhost", 6379, username="user", ***REMOVED***word="***REMOVED***", ssl_enabled=True)
         'rediss://user:***REMOVED***@localhost:6379/0'
     """
-    # 选择协议：SSL 使用 rediss://，非 SSL 使用 redis://
+    # Select protocol: SSL uses rediss://, non-SSL uses redis://
     protocol = "rediss://" if ssl_enabled else "redis://"
 
-    # 基础 URL
+    # Base URL
     if ***REMOVED***word:
-        # URL 编码密码中的特殊字符
+        # URL encode special characters in ***REMOVED***word
         encoded_***REMOVED***word = quote_plus(***REMOVED***word)
 
         if username:
-            # 有用户名和密码（Redis 6.0+）
+            # Username and ***REMOVED***word (Redis 6.0+)
             encoded_username = quote_plus(username)
             auth_part = f"{encoded_username}:{encoded_***REMOVED***word}"
         else:
-            # 只有密码（Redis 5.x 及以下）
+            # Password only (Redis 5.x and below)
             auth_part = f":{encoded_***REMOVED***word}"
 
         return f"{protocol}{auth_part}@{host}:{port}/{db}"
 
-    # 无密码
+    # No ***REMOVED***word
     return f"{protocol}{host}:{port}/{db}"
 
 
@@ -83,68 +84,68 @@ def validate_redis_config(
     port: Optional[str],
     db: Optional[str],
 ) -> Tuple[str, int, int]:
-    """验证并规范化 Redis 配置
+    """Validate and normalize Redis configuration
 
-    验证 Redis 配置参数的有效性，并返回规范化的值。
+    Validate the validity of Redis configuration parameters and return normalized values.
 
     Args:
-        host: Redis 主机地址
-        port: Redis 端口（字符串）
-        db: 数据库编号（字符串）
+        host: Redis host address
+        port: Redis port (string)
+        db: Database number (string)
 
     Returns:
-        (host, port, db) 元组，包含规范化的配置值
+        (host, port, db) tuple containing normalized configuration values
 
     Raises:
-        ValueError: 当配置无效时抛出
+        ValueError: Raised when configuration is invalid
 
     Examples:
         >>> validate_redis_config("localhost", "6379", "0")
         ('localhost', 6379, 0)
 
         >>> validate_redis_config("", "6379", "0")
-        ValueError: Redis host 不能为空
+        ValueError: Redis host cannot be empty
 
         >>> validate_redis_config("localhost", "invalid", "0")
-        ValueError: Redis port 必须是有效的整数
+        ValueError: Redis port must be a valid integer
     """
-    # 验证 host
+    # Validate host
     if not host or not host.strip():
-        raise ValueError("Redis host 不能为空")
+        raise ValueError("Redis host cannot be empty")
 
-    # 验证 port
+    # Validate port
     try:
         port_int = int(port) if port else 6379
         if not (1 <= port_int <= 65535):
-            raise ValueError("Redis port 必须在 1-65535 范围内")
+            raise ValueError("Redis port must be within range 1-65535")
     except (ValueError, TypeError) as e:
-        if "must be" in str(e) or "范围" in str(e):
+        if "must be" in str(e) or "range" in str(e):
             raise
-        raise ValueError("Redis port 必须是有效的整数")
+        raise ValueError("Redis port must be a valid integer")
 
-    # 验证 db
+    # Validate db
     try:
         db_int = int(db) if db else 0
         if not (0 <= db_int <= 15):
-            raise ValueError("Redis db 必须在 0-15 范围内")
+            raise ValueError("Redis db must be within range 0-15")
     except (ValueError, TypeError) as e:
-        if "must be" in str(e) or "范围" in str(e):
+        if "must be" in str(e) or "range" in str(e):
             raise
-        raise ValueError("Redis db 必须是有效的整数")
+        raise ValueError("Redis db must be a valid integer")
 
     return host.strip(), port_int, db_int
 
 
 def mask_sensitive_info(url: str) -> str:
-    """脱敏 URL 中的敏感信息
+    """Mask sensitive information in URL
 
-    将 Redis URL 中的密码部分替换为 ***，用于日志记录时保护敏感信息。
+    Replace the ***REMOVED***word part in Redis URL with ***, to protect sensitive information when logging.
 
     Args:
-        url: Redis 连接 URL
+        url: Redis connection URL
 
     Returns:
-        脱敏后的 URL
+        Masked URL
 
     Examples:
         >>> mask_sensitive_info("redis://:***REMOVED***@localhost:6379/0")
@@ -156,8 +157,8 @@ def mask_sensitive_info(url: str) -> str:
         >>> mask_sensitive_info("redis://localhost:6379/0")
         'redis://localhost:6379/0'
     """
-    # 匹配密码部分: ://[username]:***REMOVED***word@
-    # 捕获组: (://[^:]*:) 匹配到冒号, ([^@]+) 匹配密码, (@) 匹配 @
+    # Match ***REMOVED***word part: ://[username]:***REMOVED***word@
+    # Capture group: (://[^:]*:) matches to colon, ([^@]+) matches ***REMOVED***word, (@) matches @
     pattern = r"(://[^:]*:)([^@]+)(@)"
     return re.sub(pattern, r"\1***\3", url)
 
@@ -168,22 +169,23 @@ async def diagnose_connection_error(
     host: str,
     port: int,
 ) -> Dict[str, Any]:
-    """诊断 Redis 连接错误
+    """Diagnose Redis connection errors
 
-    根据错误类型提供具体的故障排查建议，帮助快速定位和解决 Redis 连接问题。
+    Provide specific troubleshooting suggestions based on error type,
+    to help quickly locate and resolve Redis connection issues.
 
     Args:
-        error: 连接异常对象
-        redis_url: 连接 URL（应该已经脱敏）
-        host: Redis 主机地址
-        port: Redis 端口
+        error: Connection exception object
+        redis_url: Connection URL (should already be masked)
+        host: Redis host address
+        port: Redis port
 
     Returns:
-        诊断信息字典，包含以下字段：
-        - error_type: 错误类型名称
-        - error_message: 错误消息
-        - suggestions: 故障排查建议列表
-        - connection_info: 连接信息字典
+        Diagnosis information dictionary containing the following fields:
+        - error_type: Error type name
+        - error_message: Error message
+        - suggestions: Troubleshooting suggestions list
+        - connection_info: Connection information dictionary
 
     Examples:
         >>> error = ConnectionRefusedError("Connection refused")
@@ -198,88 +200,88 @@ async def diagnose_connection_error(
     suggestions = []
     error_str = str(error).lower()
 
-    # 根据错误类型提供建议
+    # Provide suggestions based on error type
     if "connection refused" in error_str or "refused" in error_str:
-        # 连接被拒绝错误
+        # Connection refused error
         suggestions.extend(
             [
-                f"检查 Redis 服务是否在 {host}:{port} 上运行",
-                f"运行命令验证: redis-cli -h {host} -p {port} ping",
-                "检查防火墙设置是否阻止了连接",
-                "确认 Redis 配置文件中的 bind 地址设置",
-                "检查 Redis 是否正在监听正确的端口",
+                f"Check if Redis service is running on {host}:{port}",
+                f"Run command to verify: redis-cli -h {host} -p {port} ping",
+                "Check if firewall settings are blocking the connection",
+                "Confirm bind address setting in Redis configuration file",
+                "Check if Redis is listening on the correct port",
             ]
         )
 
     elif "timeout" in error_str or "timed out" in error_str:
-        # 超时错误
+        # Timeout error
         suggestions.extend(
             [
-                "检查网络连接是否正常",
-                f"验证主机 {host} 是否可达: ping {host}",
-                "增加连接超时时间配置",
-                "检查是否存在网络延迟或丢包",
-                "确认 Redis 服务器负载是否过高",
+                "Check if network connection is normal",
+                f"Verify if host {host} is reachable: ping {host}",
+                "Increase connection timeout configuration",
+                "Check if there is network delay or packet loss",
+                "Confirm if Redis server load is too high",
             ]
         )
 
     elif "authentication" in error_str or "auth" in error_str or "noauth" in error_str:
-        # 认证错误
+        # Authentication error
         suggestions.extend(
             [
-                "检查 REDIS_PASSWORD 环境变量是否正确",
-                "验证 Redis 配置中的 require***REMOVED*** 设置",
-                "确认密码中的特殊字符已正确编码",
-                "检查是否使用了正确的用户名（Redis 6.0+）",
-                "尝试使用 redis-cli 手动连接验证密码",
+                "Check if REDIS_PASSWORD environment variable is correct",
+                "Verify require***REMOVED*** setting in Redis configuration",
+                "Confirm special characters in ***REMOVED***word are correctly encoded",
+                "Check if correct username is used (Redis 6.0+)",
+                "Try using redis-cli to manually connect and verify ***REMOVED***word",
             ]
         )
 
     elif "name or service not known" in error_str or "nodename nor servname" in error_str:
-        # 主机名解析失败
+        # Hostname resolution failure
         suggestions.extend(
             [
-                f"主机名 {host} 无法解析",
-                "检查 /etc/hosts 文件或 DNS 配置",
-                "尝试使用 IP 地址而不是主机名",
-                f"运行命令验证: nslookup {host}",
-                "确认网络连接正常",
+                f"Hostname {host} cannot be resolved",
+                "Check /etc/hosts file or DNS configuration",
+                "Try using IP address instead of hostname",
+                f"Run command to verify: nslookup {host}",
+                "Confirm network connection is normal",
             ]
         )
 
     elif "max" in error_str and "client" in error_str:
-        # 最大连接数错误
+        # Maximum connections error
         suggestions.extend(
             [
-                "Redis 服务器已达到最大客户端连接数",
-                "检查 Redis 配置中的 maxclients 设置",
-                "关闭不必要的 Redis 连接",
-                "考虑增加 maxclients 配置值",
-                "检查是否存在连接泄漏",
+                "Redis server has reached maximum client connections",
+                "Check maxclients setting in Redis configuration",
+                "Close unnecessary Redis connections",
+                "Consider increasing maxclients configuration value",
+                "Check if there are connection leaks",
             ]
         )
 
     elif "readonly" in error_str or "read only" in error_str:
-        # 只读模式错误
+        # Read-only mode error
         suggestions.extend(
             [
-                "Redis 服务器处于只读模式",
-                "检查 Redis 是否为从节点（slave/replica）",
-                "确认是否需要连接到主节点（master）",
-                "检查磁盘空间是否已满",
-                "查看 Redis 日志了解只读原因",
+                "Redis server is in read-only mode",
+                "Check if Redis is a slave/replica node",
+                "Confirm if need to connect to master node",
+                "Check if disk space is full",
+                "View Redis logs to understand read-only reason",
             ]
         )
 
     else:
-        # 通用错误处理
+        # Generic error handling
         suggestions.extend(
             [
-                "检查 Redis 服务状态",
-                "查看 Redis 服务器日志: /var/log/redis/redis-server.log",
-                "验证网络连接和防火墙配置",
-                f"尝试手动连接: redis-cli -h {host} -p {port}",
-                "检查 Redis 配置文件是否正确",
+                "Check Redis service status",
+                "View Redis server logs: /var/log/redis/redis-server.log",
+                "Verify network connection and firewall configuration",
+                f"Try manual connection: redis-cli -h {host} -p {port}",
+                "Check if Redis configuration file is correct",
             ]
         )
 
@@ -290,23 +292,23 @@ async def diagnose_connection_error(
         "connection_info": {
             "host": host,
             "port": port,
-            "url": redis_url,  # 应该已经脱敏
+            "url": redis_url,  # Should already be masked
         },
     }
 
 
 class RedisManager:
-    """Redis缓存管理器
+    """Redis Cache Manager
 
-    提供Redis的异步连接管理和缓存操作功能：
-    - 连接管理
-    - 基础缓存操作（get/set/delete）
-    - 批量操作
-    - 模式匹配删除
+    Provides Redis asynchronous connection management and caching operation functions:
+    - Connection management
+    - Basic cache operations (get/set/delete)
+    - Batch operations
+    - Pattern matching deletion
     """
 
     def __init__(self) -> None:
-        """初始化Redis管理器"""
+        """Initialize Redis manager"""
         self.client: Optional[redis.Redis] = None
         self._is_connected: bool = False
 
@@ -322,36 +324,36 @@ class RedisManager:
         ssl_cert_reqs: Optional[str] = None,
         ssl_check_hostname: bool = False,
     ) -> None:
-        """连接到Redis服务器
+        """Connect to Redis server
 
         Args:
-            redis_url: Redis连接URL，格式：redis://host:port/db 或 rediss://host:port/db（SSL）
-            encoding: 字符编码
-            decode_responses: 是否自动解码响应
-            max_connections: 最大连接数
-            ssl_ca_certs: CA 证书文件路径（可选）
-            ssl_certfile: 客户端证书文件路径（可选）
-            ssl_keyfile: 客户端私钥文件路径（可选）
-            ssl_cert_reqs: SSL 证书验证要求（可选，none/optional/required）
-            ssl_check_hostname: 是否验证主机名（默认 False）
+            redis_url: Redis connection URL, format: redis://host:port/db or rediss://host:port/db (SSL)
+            encoding: Character encoding
+            decode_responses: Whether to automatically decode responses
+            max_connections: Maximum connections
+            ssl_ca_certs: CA certificate file path (optional)
+            ssl_certfile: Client certificate file path (optional)
+            ssl_keyfile: Client private key file path (optional)
+            ssl_cert_reqs: SSL certificate verification requirement (optional, none/optional/required)
+            ssl_check_hostname: Whether to verify hostname (default False)
         """
         import os
         import ssl
 
-        # 脱敏 URL 用于日志记录
+        # Mask URL for logging
         masked_url = mask_sensitive_info(redis_url)
 
-        # 从 URL 中提取 host 和 port 用于诊断
-        # 格式: redis://[auth@]host:port/db 或 rediss://[auth@]host:port/db
+        # Extract host and port from URL for diagnosis
+        # Format: redis://[auth@]host:port/db or rediss://[auth@]host:port/db
         url_pattern = r"rediss?://(?:[^@]+@)?([^:]+):(\d+)"
         match = re.match(url_pattern, redis_url)
         host = match.group(1) if match else "unknown"
         port = int(match.group(2)) if match else 6379
 
-        # ✅ 从环境变量读取 SSL 配置（如果未通过参数提供）
+        # ✅ Read SSL configuration from environment variables (if not provided via parameters)
         ssl_enabled = redis_url.startswith("rediss://")
         if ssl_enabled:
-            # 如果 URL 使用 rediss://，则启用 SSL
+            # If URL uses rediss://, enable SSL
             if not ssl_ca_certs:
                 ssl_ca_certs = os.getenv("REDIS_SSL_CA", "")
             if not ssl_certfile:
@@ -362,17 +364,17 @@ class RedisManager:
                 ssl_cert_reqs = os.getenv("REDIS_SSL_VERIFY_CERT", "required")
             ssl_check_hostname = os.getenv("REDIS_SSL_VERIFY_IDENTITY", "false").lower() in ("true", "1", "yes")
 
-        # 构建 SSL 参数字典
+        # Build SSL parameters dictionary
         ssl_params = {}
         if ssl_enabled:
-            # 创建 SSL 上下文
+            # Create SSL context
             ssl_context = ssl.create_default_context()
 
-            # ✅ 修复：必须先设置 check_hostname，再设置 verify_mode
-            # 当 verify_mode 为 CERT_NONE 时，必须先禁用 check_hostname
-            # 否则会报错：cannot set verify_mode to CERT_NONE when check_hostname is enabled
+            # ✅ Fix: Must set check_hostname first, then verify_mode
+            # When verify_mode is CERT_NONE, check_hostname must be disabled first
+            # Otherwise error: cannot set verify_mode to CERT_NONE when check_hostname is enabled
 
-            # 确定证书验证要求
+            # Determine certificate verification requirements
             if ssl_cert_reqs:
                 cert_reqs_map = {
                     "none": ssl.CERT_NONE,
@@ -383,43 +385,43 @@ class RedisManager:
             else:
                 verify_mode_value = ssl.CERT_REQUIRED
 
-            # 如果 verify_mode 为 CERT_NONE，必须先禁用 check_hostname
+            # If verify_mode is CERT_NONE, must disable check_hostname first
             if verify_mode_value == ssl.CERT_NONE:
                 ssl_context.check_hostname = False
                 ssl_context.verify_mode = ssl.CERT_NONE
             else:
-                # 先设置 verify_mode，再设置 check_hostname
+                # Set verify_mode first, then check_hostname
                 ssl_context.verify_mode = verify_mode_value
                 ssl_context.check_hostname = ssl_check_hostname
 
-            # 加载 CA 证书
+            # Load CA certificate
             if ssl_ca_certs:
                 try:
                     ssl_context.load_verify_locations(ssl_ca_certs)
-                    logger.debug(f"已加载 Redis SSL CA 证书: {ssl_ca_certs}")
+                    logger.debug(f"Loaded Redis SSL CA certificate: {ssl_ca_certs}")
                 except Exception as e:
                     logger.warning(
-                        f"加载 Redis SSL CA 证书失败: {ssl_ca_certs}",
+                        f"Failed to load Redis SSL CA certificate: {ssl_ca_certs}",
                         extra={"error": str(e)},
                     )
 
-            # 加载客户端证书
+            # Load client certificate
             if ssl_certfile and ssl_keyfile:
                 try:
                     ssl_context.load_cert_chain(ssl_certfile, ssl_keyfile)
-                    logger.debug(f"已加载 Redis SSL 客户端证书: {ssl_certfile}, {ssl_keyfile}")
+                    logger.debug(f"Loaded Redis SSL client certificate: {ssl_certfile}, {ssl_keyfile}")
                 except Exception as e:
                     logger.warning(
-                        f"加载 Redis SSL 客户端证书失败: {ssl_certfile}, {ssl_keyfile}",
+                        f"Failed to load Redis SSL client certificate: {ssl_certfile}, {ssl_keyfile}",
                         extra={"error": str(e)},
                     )
 
-            # ✅ 修复：redis.from_url() 不接受 ssl 参数
-            # 由于 URL 使用 rediss://，SSL 会自动启用，不需要传递 ssl=True
-            # 我们只需要传递证书文件路径（如果提供）
-            # redis-py 支持这些参数：ssl_ca_certs, ssl_certfile, ssl_keyfile, ssl_cert_reqs
+            # ✅ Fix: redis.from_url() doesn't accept ssl parameter
+            # Since URL uses rediss://, SSL is automatically enabled, no need to ***REMOVED*** ssl=True
+            # We only need to ***REMOVED*** certificate file paths (if provided)
+            # redis-py supports these parameters: ssl_ca_certs, ssl_certfile, ssl_keyfile, ssl_cert_reqs
 
-            # 传递证书文件路径（如果提供）
+            # Pass certificate file paths (if provided)
             if ssl_ca_certs:
                 ssl_params["ssl_ca_certs"] = ssl_ca_certs
             if ssl_certfile:
@@ -427,19 +429,19 @@ class RedisManager:
             if ssl_keyfile:
                 ssl_params["ssl_keyfile"] = ssl_keyfile
 
-            # 传递证书验证要求
-            # redis-py 的 ssl_cert_reqs 接受 ssl.CERT_NONE, ssl.CERT_OPTIONAL, ssl.CERT_REQUIRED
-            # 或者 None（表示不验证）
+            # Pass certificate verification requirements
+            # redis-py's ssl_cert_reqs accepts ssl.CERT_NONE, ssl.CERT_OPTIONAL, ssl.CERT_REQUIRED
+            # or None (means no verification)
             if verify_mode_value == ssl.CERT_NONE:
-                ssl_params["ssl_cert_reqs"] = None  # 不验证证书
+                ssl_params["ssl_cert_reqs"] = None  # Don't verify certificate
             else:
                 ssl_params["ssl_cert_reqs"] = verify_mode_value
 
-            # 传递主机名验证设置
+            # Pass hostname verification setting
             ssl_params["ssl_check_hostname"] = ssl_check_hostname if verify_mode_value != ssl.CERT_NONE else False
 
             logger.info(
-                "Redis SSL 已启用",
+                "Redis SSL enabled",
                 extra={
                     "ssl_enabled": True,
                     "ssl_verify_cert": ssl_cert_reqs != "none",
@@ -448,29 +450,29 @@ class RedisManager:
             )
 
         try:
-            # 记录连接尝试
-            logger.info(f"正在连接 Redis: {masked_url}")
+            # Log connection attempt
+            logger.info(f"Connecting to Redis: {masked_url}")
 
             self.client = await redis.from_url(
                 redis_url,
                 encoding=encoding,
                 decode_responses=decode_responses,
                 max_connections=max_connections,
-                **ssl_params,  # ✅ 传递 SSL 参数
+                **ssl_params,  # ✅ Pass SSL parameters
             )
 
-            # 测试连接
+            # Test connection
             await self.client.ping()
 
             self._is_connected = True
-            logger.info(f"Redis 连接成功: {masked_url}")
+            logger.info(f"Redis connection successful: {masked_url}")
 
         except Exception as e:
-            # 记录连接失败错误
-            logger.error(f"Redis 连接失败: {masked_url}")
-            logger.error(f"错误详情: {type(e).__name__}: {e!s}")
+            # Log connection failure error
+            logger.error(f"Redis connection failed: {masked_url}")
+            logger.error(f"Error details: {type(e).__name__}: {e!s}")
 
-            # 调用诊断函数获取详细的排查建议
+            # Call diagnosis function to get detailed troubleshooting suggestions
             diagnosis = await diagnose_connection_error(
                 error=e,
                 redis_url=masked_url,
@@ -478,35 +480,35 @@ class RedisManager:
                 port=port,
             )
 
-            # 记录错误类型和错误消息
-            logger.error(f"错误类型: {diagnosis['error_type']}")
-            logger.error(f"错误消息: {diagnosis['error_message']}")
+            # Log error type and error message
+            logger.error(f"Error type: {diagnosis['error_type']}")
+            logger.error(f"Error message: {diagnosis['error_message']}")
 
-            # 记录所有排查建议
-            logger.error("故障排查建议:")
+            # Log all troubleshooting suggestions
+            logger.error("Troubleshooting suggestions:")
             for i, suggestion in enumerate(diagnosis["suggestions"], 1):
                 logger.error(f"  {i}. {suggestion}")
 
-            # 降级到无缓存模式
+            # Downgrade to no-cache mode
             self.client = None
             self._is_connected = False
-            logger.warning("Redis 不可用，服务已降级到无缓存模式，将继续运行")
+            logger.warning("Redis unavailable, service has been downgraded to no-cache mode, will continue running")
 
     async def disconnect(self) -> None:
-        """断开Redis连接"""
+        """Disconnect from Redis"""
         if self.client:
             await self.client.close()
             self._is_connected = False
-            logger.info("Redis连接已关闭")
+            logger.info("Redis connection closed")
 
     async def get(self, key: str) -> Optional[Any]:
-        """获取缓存值
+        """Get cached value
 
         Args:
-            key: 缓存键
+            key: Cache key
 
         Returns:
-            缓存值，如果不存在或连接失败则返回None
+            Cached value, returns None if not exists or connection failed
         """
         if not self.client:
             return None
@@ -517,19 +519,19 @@ class RedisManager:
                 return json.loads(value)
             return None
         except Exception as e:
-            logger.error(f"获取缓存失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to get cache: {key}, Error: {e!s}")
             return None
 
     async def set(self, key: str, value: Any, expire: int = 3600) -> bool:
-        """设置缓存值
+        """Set cached value
 
         Args:
-            key: 缓存键
-            value: 缓存值
-            expire: 过期时间（秒），默认1小时
+            key: Cache key
+            value: Cache value
+            expire: Expiration time (seconds), default 1 hour
 
         Returns:
-            是否设置成功
+            Whether set was successful
         """
         if not self.client:
             return False
@@ -538,17 +540,17 @@ class RedisManager:
             await self.client.setex(key, expire, json.dumps(value, ensure_ascii=False))
             return True
         except Exception as e:
-            logger.error(f"设置缓存失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to set cache: {key}, Error: {e!s}")
             return False
 
     async def delete(self, key: str) -> bool:
-        """删除缓存
+        """Delete cache
 
         Args:
-            key: 缓存键
+            key: Cache key
 
         Returns:
-            是否删除成功
+            Whether deletion was successful
         """
         if not self.client:
             return False
@@ -557,17 +559,17 @@ class RedisManager:
             await self.client.delete(key)
             return True
         except Exception as e:
-            logger.error(f"删除缓存失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to delete cache: {key}, Error: {e!s}")
             return False
 
     async def delete_pattern(self, pattern: str) -> int:
-        """按模式批量删除缓存
+        """Batch delete cache by pattern
 
         Args:
-            pattern: 匹配模式，如 "user:*"
+            pattern: Matching pattern, e.g. "user:*"
 
         Returns:
-            删除的键数量
+            Number of deleted keys
         """
         if not self.client:
             return 0
@@ -579,21 +581,21 @@ class RedisManager:
 
             if keys:
                 deleted = await self.client.delete(*keys)
-                logger.info(f"批量删除缓存: {pattern}, 数量: {deleted}")
+                logger.info(f"Batch deleted cache: {pattern}, Count: {deleted}")
                 return deleted
             return 0
         except Exception as e:
-            logger.error(f"批量删除缓存失败: {pattern}, 错误: {e!s}")
+            logger.error(f"Failed to batch delete cache: {pattern}, Error: {e!s}")
             return 0
 
     async def exists(self, key: str) -> bool:
-        """检查缓存是否存在
+        """Check if cache exists
 
         Args:
-            key: 缓存键
+            key: Cache key
 
         Returns:
-            是否存在
+            Whether exists
         """
         if not self.client:
             return False
@@ -601,18 +603,18 @@ class RedisManager:
         try:
             return await self.client.exists(key) > 0
         except Exception as e:
-            logger.error(f"检查缓存存在失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to check cache existence: {key}, Error: {e!s}")
             return False
 
     async def expire(self, key: str, seconds: int) -> bool:
-        """设置缓存过期时间
+        """Set cache expiration time
 
         Args:
-            key: 缓存键
-            seconds: 过期时间（秒）
+            key: Cache key
+            seconds: Expiration time (seconds)
 
         Returns:
-            是否设置成功
+            Whether set was successful
         """
         if not self.client:
             return False
@@ -620,17 +622,17 @@ class RedisManager:
         try:
             return await self.client.expire(key, seconds)
         except Exception as e:
-            logger.error(f"设置缓存过期时间失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to set cache expiration time: {key}, Error: {e!s}")
             return False
 
     async def ttl(self, key: str) -> int:
-        """获取缓存剩余过期时间
+        """Get remaining cache expiration time
 
         Args:
-            key: 缓存键
+            key: Cache key
 
         Returns:
-            剩余秒数，-1表示永不过期，-2表示不存在
+            Remaining seconds, -1 means never expires, -2 means doesn't exist
         """
         if not self.client:
             return -2
@@ -638,21 +640,21 @@ class RedisManager:
         try:
             return await self.client.ttl(key)
         except Exception as e:
-            logger.error(f"获取缓存TTL失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to get cache TTL: {key}, Error: {e!s}")
             return -2
 
     async def acquire_lock(self, key: str, timeout: int = 30, lock_value: Optional[str] = None) -> bool:
-        """获取分布式锁
+        """Acquire distributed lock
 
-        使用 Redis SET NX EX 命令实现分布式锁。
+        Implement distributed lock using Redis SET NX EX command.
 
         Args:
-            key: 锁的键名
-            timeout: 锁的过期时间（秒），默认 30 秒
-            lock_value: 锁的值（用于释放时验证），如果为 None 则自动生成 UUID
+            key: Key name of the lock
+            timeout: Lock expiration time (seconds), default 30 seconds
+            lock_value: Value of the lock (for validation when releasing), if None auto-generate UUID
 
         Returns:
-            是否成功获取锁
+            Whether lock acquisition was successful
         """
         if not self.client:
             return False
@@ -663,50 +665,50 @@ class RedisManager:
             if lock_value is None:
                 lock_value = str(uuid.uuid4())
 
-            # 使用 SET NX EX 命令：如果键不存在则设置，并设置过期时间
+            # Use SET NX EX command: set if key doesn't exist, and set expiration time
             result = await self.client.set(key, lock_value, nx=True, ex=timeout)
             return result is True
         except Exception as e:
-            logger.error(f"获取锁失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to acquire lock: {key}, Error: {e!s}")
             return False
 
     async def release_lock(self, key: str, lock_value: str) -> bool:
-        """释放分布式锁
+        """Release distributed lock
 
-        使用 Lua 脚本确保只有锁的持有者才能释放锁。
+        Use Lua script to ensure only the lock holder can release the lock.
 
         Args:
-            key: 锁的键名
-            lock_value: 锁的值（必须与获取锁时的值一致）
+            key: Key name of the lock
+            lock_value: Value of the lock (must match the value when acquiring)
 
         Returns:
-            是否成功释放锁
+            Whether lock release was successful
         """
         if not self.client:
             return False
 
         try:
-            # 使用 Lua 脚本确保原子性：只有锁的值匹配时才删除
-            lua_script = """
+            # Use Lua script to ensure atomicity: only delete when lock value matches
+            lua_script = '''
             if redis.call("get", KEYS[1]) == ARGV[1] then
                 return redis.call("del", KEYS[1])
             else
                 return 0
             end
-            """
-            result = await self.client.eval(lua_script, 1, key, lock_value)
+            '''
+            result = await self.client.eval(lua_script, 1, key, lock_value)  # type: ignore
             return result == 1
         except Exception as e:
-            logger.error(f"释放锁失败: {key}, 错误: {e!s}")
+            logger.error(f"Failed to release lock: {key}, Error: {e!s}")
             return False
 
     @property
     def is_connected(self) -> bool:
-        """检查Redis是否已连接"""
+        """Check if Redis is connected"""
         return self._is_connected
 
 
-# 全局Redis管理器实例
+# Global Redis manager instance
 redis_manager = RedisManager()
 
 
@@ -716,40 +718,40 @@ def cache_result(
     serialize_func: Optional[Callable[[Any], str]] = None,
     deserialize_func: Optional[Callable[[str], Any]] = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """缓存函数结果的装饰器
+    """Decorator to cache function results
 
     Args:
-        expire: 缓存过期时间（秒）
-        key_prefix: 缓存键前缀
-        serialize_func: 自定义序列化函数
-        deserialize_func: 自定义反序列化函数
+        expire: Cache expiration time (seconds)
+        key_prefix: Cache key prefix
+        serialize_func: Custom serialization function
+        deserialize_func: Custom deserialization function
 
     Returns:
-        装饰器函数
+        Decorator function
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # 生成缓存键
+            # Generate cache key
             cache_key = _generate_cache_key(key_prefix, func.__name__, args, kwargs)
 
-            # 尝试从缓存获取
+            # Try to get from cache
             cached_value = await redis_manager.get(cache_key)
             if cached_value is not None:
-                logger.debug(f"缓存命中: {cache_key}")
+                logger.debug(f"Cache hit: {cache_key}")
                 if deserialize_func:
                     return deserialize_func(cached_value)
                 return cached_value
 
-            # 执行函数
+            # Execute function
             result = await func(*args, **kwargs)
 
-            # 存入缓存
+            # Store in cache
             if result is not None:
                 value_to_cache = serialize_func(result) if serialize_func else result
                 await redis_manager.set(cache_key, value_to_cache, expire)
-                logger.debug(f"缓存已设置: {cache_key}")
+                logger.debug(f"Cache set: {cache_key}")
 
             return result
 
@@ -759,35 +761,35 @@ def cache_result(
 
 
 def _generate_cache_key(prefix: str, func_name: str, args: tuple, kwargs: dict) -> str:
-    """生成缓存键
+    """Generate cache key
 
     Args:
-        prefix: 键前缀
-        func_name: 函数名
-        args: 位置参数
-        kwargs: 关键字参数
+        prefix: Key prefix
+        func_name: Function name
+        args: Positional arguments
+        kwargs: Keyword arguments
 
     Returns:
-        缓存键
+        Cache key
     """
-    # 将参数转换为字符串
+    # Convert parameters to string
     args_str = str(args) + str(sorted(kwargs.items()))
 
-    # 生成哈希值
+    # Generate hash value
     hash_value = hashlib.md5(args_str.encode()).hexdigest()
 
     return f"{prefix}:{func_name}:{hash_value}"
 
 
 async def get_cache(key: str, deserialize_func: Optional[Callable[[str], Any]] = None) -> Optional[Any]:
-    """获取缓存的辅助函数
+    """Helper function to get cache
 
     Args:
-        key: 缓存键
-        deserialize_func: 反序列化函数
+        key: Cache key
+        deserialize_func: Deserialization function
 
     Returns:
-        缓存值
+        Cached value
     """
     value = await redis_manager.get(key)
     if value is not None and deserialize_func:
@@ -801,16 +803,16 @@ async def set_cache(
     expire: int = 3600,
     serialize_func: Optional[Callable[[Any], str]] = None,
 ) -> bool:
-    """设置缓存的辅助函数
+    """Helper function to set cache
 
     Args:
-        key: 缓存键
-        value: 缓存值
-        expire: 过期时间（秒）
-        serialize_func: 序列化函数
+        key: Cache key
+        value: Cache value
+        expire: Expiration time (seconds)
+        serialize_func: Serialization function
 
     Returns:
-        是否设置成功
+        Whether set was successful
     """
     value_to_cache = serialize_func(value) if serialize_func else value
     return await redis_manager.set(key, value_to_cache, expire)

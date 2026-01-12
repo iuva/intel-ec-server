@@ -1,6 +1,6 @@
-"""管理后台待审批主机管理 API 端点
+"""Admin backend pending approval host management API endpoints
 
-提供管理后台使用的待审批主机管理 HTTP API 接口。
+Provides HTTP API interfaces for pending approval host management used by admin backend.
 """
 
 import os
@@ -8,7 +8,7 @@ import sys
 
 from fastapi import APIRouter, Body, Depends, Request
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from app.api.v1.dependencies import get_admin_appr_host_service, get_current_user
     from app.schemas.host import (
@@ -57,11 +57,11 @@ router = APIRouter()
 @router.get(
     "/list",
     response_model=Result[AdminApprHostListResponse],
-    summary="查询待审批 host 主机列表",
-    description="分页查询待审批主机列表，支持多种搜索条件",
+    summary="Query pending approval host list",
+    description="Query pending approval host list with pagination, supports multiple search conditions",
     responses={
         200: {
-            "description": "查询成功",
+            "description": "Query succeeded",
             "model": Result[AdminApprHostListResponse],
         },
     },
@@ -73,40 +73,41 @@ async def list_appr_hosts(
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> Result[AdminApprHostListResponse]:
-    """查询待审批主机列表（管理后台）
+    """Query pending approval host list (admin backend)
 
-    业务逻辑：
-    - 查询 host_rec 表，条件：host_state > 4 且 host_state < 8，appr_state != 1，del_flag = 0
-    - 按 created_time 倒序排序
-    - 关联 host_hw_rec 表，获取每个 host_id 对应的最新一条记录的 diff_state
-      - 只查询 sync_state = 1（待同步）的记录
-      - 按 created_time 倒序排序，取第一条记录的 diff_state
-      - 与 get_appr_host_detail 接口的 diff_state 获取逻辑保持一致
+    Business logic:
+    - Query host_rec table, conditions: host_state > 4 and host_state < 8, appr_state != 1, del_flag = 0
+    - Sort by created_time descending
+    - Join host_hw_rec table, get diff_state of latest record for each host_id
+      - Only query records with sync_state = 1 (pending sync)
+      - Sort by created_time descending, take diff_state of first record
+      - Keep consistent with diff_state retrieval logic of get_appr_host_detail interface
 
-    ## 搜索条件（可选）
-    - `mac`: MAC地址（对应 host_rec.mac_addr）
-    - `mg_id`: 唯一引导ID（对应 host_rec.mg_id）
-    - `host_state`: 主机状态（对应 host_rec.host_state）
+    ## Search conditions (optional)
+    - `mac`: MAC address (corresponds to host_rec.mac_addr)
+    - `mg_id`: Unique boot ID (corresponds to host_rec.mg_id)
+    - `host_state`: Host status (corresponds to host_rec.host_state)
 
-    ## 返回字段
-    - `host_id`: 主机ID（host_rec 表主键 id）
-    - `mg_id`: 唯一引导ID（host_rec 表 mg_id）
-    - `mac_addr`: MAC地址（host_rec 表 mac_addr）
-    - `host_state`: 主机状态（host_rec 表 host_state）
-    - `subm_time`: 申报时间（host_rec 表 subm_time）
-    - `diff_state`: 参数状态（host_hw_rec 表 diff_state，最新一条 sync_state=1 的记录；1-版本号变化, 2-内容更改, 3-异常）
+    ## Return fields
+    - `host_id`: Host ID (host_rec table primary key id)
+    - `mg_id`: Unique boot ID (host_rec table mg_id)
+    - `mac_addr`: MAC address (host_rec table mac_addr)
+    - `host_state`: Host status (host_rec table host_state)
+    - `subm_time`: Submission time (host_rec table subm_time)
+    - `diff_state`: Parameter status (host_hw_rec table diff_state, latest record with sync_state=1; 1-version change,
+      2-content change, 3-abnormal)
 
     Args:
-        request: 查询请求参数（分页、搜索条件）
-        admin_appr_host_service: 管理后台待审批主机服务实例
-        current_user: 当前用户信息
-        locale: 语言偏好
+        request: Query request parameters (pagination, search conditions)
+        admin_appr_host_service: Admin backend pending approval host service instance
+        current_user: Current user information
+        locale: Language preference
 
     Returns:
-        AdminApprHostListSuccessResponse: 包含待审批主机列表和分页信息
+        AdminApprHostListSuccessResponse: Contains pending approval host list and pagination information
     """
     logger.info(
-        "接收管理后台待审批主机列表查询请求",
+        "Received admin backend pending approval host list query request",
         extra={
             "page": request.page,
             "page_size": request.page_size,
@@ -117,10 +118,10 @@ async def list_appr_hosts(
         },
     )
 
-    # 调用服务层查询
+    # Call service layer to query
     hosts, pagination = await admin_appr_host_service.list_appr_hosts(request)
 
-    # 构建响应数据
+    # Build response data
     response_data = AdminApprHostListResponse(
         hosts=hosts,
         total=pagination.total,
@@ -132,7 +133,7 @@ async def list_appr_hosts(
     )
 
     logger.info(
-        "管理后台待审批主机列表查询完成",
+        "Admin backend pending approval host list query completed",
         extra={
             "total": pagination.total,
             "returned_count": len(hosts),
@@ -145,30 +146,30 @@ async def list_appr_hosts(
         data=response_data,
         message_key="success.host.appr_list_query",
         locale=locale,
-        default_message="查询待审批主机列表成功",
+        default_message="Query pending approval host list succeeded",
     )
 
 
 @router.get(
     "/detail",
     response_model=Result[AdminApprHostDetailResponse],
-    summary="查询待审批 host 主机详情",
-    description="查询待审批主机的详细信息",
+    summary="Query pending approval host detail",
+    description="Query detailed information of pending approval host",
     responses={
         200: {
-            "description": "查询成功",
+            "description": "Query succeeded",
             "model": Result[AdminApprHostDetailResponse],
         },
         400: {
-            "description": "查询失败（业务错误）",
+            "description": "Query failed (business error)",
             "content": {
                 "application/json": {
                     "examples": {
                         "host_not_found": {
-                            "summary": "主机不存在",
+                            "summary": "Host does not exist",
                             "value": {
                                 "code": 53001,
-                                "message": "主机不存在或已删除（ID: 123）",
+                                "message": "Host does not exist or has been deleted (ID: 123)",
                                 "error_code": "HOST_NOT_FOUND",
                             },
                         },
@@ -185,52 +186,54 @@ async def get_appr_host_detail(
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> Result[AdminApprHostDetailResponse]:
-    """查询待审批主机详情（管理后台）
+    """Query pending approval host detail (admin backend)
 
-    业务逻辑：
-    - 查询 host_rec 表 id = host_id 的数据
-    - 关联 host_hw_rec 表，查询 sync_state = 1 的数据
-    - 按 host_hw_rec.created_time 倒序排序
-    - 密码字段需要 AES 解密
+    Business logic:
+    - Query host_rec table where id = host_id
+    - Join host_hw_rec table, query data with sync_state = 1
+    - Sort by host_hw_rec.created_time descending
+    - Password field needs AES decryption
 
-    ## 返回字段
-    - `mg_id`: 唯一引导ID（host_rec 表 mg_id）
-    - `mac`: MAC地址（host_rec 表 mac_addr）
-    - `ip`: IP地址（host_rec 表 host_ip）
-    - `username`: 主机账号（host_rec 表 host_acct）
-    - `***REMOVED***word`: 主机密码（host_rec 表 host_pwd，已解密）
-    - `port`: 端口（host_rec 表 host_port）
-    - `host_state`: 主机状态（host_rec 表 host_state）
-    - `diff_state`: 参数状态（host_hw_rec 表 diff_state，最新一条记录；1-版本号变化, 2-内容更改, 3-异常）
-    - `hw_list`: 硬件信息列表（host_hw_rec 表 sync_state=1 的记录，按 created_time 倒序）
-      - `created_time`: 创建时间（host_hw_rec 表 created_time）
-      - `hw_info`: 硬件信息（host_hw_rec 表 hw_info）
+    ## Return fields
+    - `mg_id`: Unique boot ID (host_rec table mg_id)
+    - `mac`: MAC address (host_rec table mac_addr)
+    - `ip`: IP address (host_rec table host_ip)
+    - `username`: Host account (host_rec table host_acct)
+    - `***REMOVED***word`: Host ***REMOVED***word (host_rec table host_pwd, decrypted)
+    - `port`: Port (host_rec table host_port)
+    - `host_state`: Host status (host_rec table host_state)
+    - `diff_state`: Parameter status (host_hw_rec table diff_state, latest record; 1-version change,
+      2-content change, 3-abnormal)
+    - `hw_list`: Hardware information list (host_hw_rec table records with sync_state=1, sorted by
+      created_time descending)
+      - `created_time`: Creation time (host_hw_rec table created_time)
+      - `hw_info`: Hardware information (host_hw_rec table hw_info)
 
     Args:
-        request: 包含主机ID的请求对象
-        admin_appr_host_service: 管理后台待审批主机服务实例
-        current_user: 当前用户信息
-        locale: 语言偏好
+        request: Request object containing host ID
+        admin_appr_host_service: Admin backend pending approval host service instance
+        current_user: Current user information
+        locale: Language preference
 
     Returns:
-        AdminApprHostDetailSuccessResponse: 包含待审批主机详情的响应
+        AdminApprHostDetailSuccessResponse: Response containing pending approval host detail
 
     Raises:
-        BusinessError: 主机不存在时
+        BusinessError: When host does not exist
     """
     logger.info(
-        "接收管理后台待审批主机详情查询请求",
+        "Received admin backend pending approval host detail query request",
         extra={
             "host_id": request.host_id,
             "user_id": current_user.get("id"),
         },
     )
 
-    # 调用服务层查询
+    # Call service layer to query
     detail = await admin_appr_host_service.get_appr_host_detail(request.host_id)
 
     logger.info(
-        "管理后台待审批主机详情查询完成",
+        "Admin backend pending approval host detail query completed",
         extra={
             "host_id": request.host_id,
             "hw_list_count": len(detail.hw_list),
@@ -241,30 +244,30 @@ async def get_appr_host_detail(
         data=detail,
         message_key="success.host.appr_detail_query",
         locale=locale,
-        default_message="查询待审批主机详情成功",
+        default_message="Query pending approval host detail succeeded",
     )
 
 
 @router.post(
     "/approve",
     response_model=SuccessResponse,
-    summary="同意启用待审批 host 主机",
-    description="同意启用待审批主机，更新硬件记录和主机状态",
+    summary="Approve pending approval host",
+    description="Approve pending approval host, update hardware records and host status",
     responses={
         200: {
-            "description": "处理成功",
+            "description": "Processing succeeded",
             "model": AdminApprHostApproveResponse,
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "examples": {
                         "host_ids_required": {
-                            "summary": "host_ids 必填",
+                            "summary": "host_ids required",
                             "value": {
                                 "code": 400,
-                                "message": "当 diff_type=2 时，host_ids 为必填参数",
+                                "message": "When diff_type=2, host_ids is a required parameter",
                                 "error_code": "HOST_IDS_REQUIRED",
                             },
                         },
@@ -273,15 +276,15 @@ async def get_appr_host_detail(
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "examples": {
                         "approve_failed": {
-                            "summary": "同意启用失败",
+                            "summary": "Approve failed",
                             "value": {
                                 "code": 500,
-                                "message": "同意启用主机失败: 数据库操作异常",
+                                "message": "Approve host failed: database operation exception",
                                 "error_code": "APPROVE_HOST_FAILED",
                             },
                         },
@@ -293,55 +296,60 @@ async def get_appr_host_detail(
 )
 @handle_api_errors
 async def approve_hosts(
-    request: AdminApprHostApproveRequest = Body(..., description="同意启用待审批主机请求数据"),
+    request: AdminApprHostApproveRequest = Body(..., description="Approve pending approval host request data"),
     http_request: Request = ...,
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
-    """同意启用待审批主机（管理后台）
+    """Approve pending approval host (admin backend)
 
-    业务逻辑：
-    - **diff_type 为空**（手动停用数据）：
-      - host_ids 为必填
-      - 修改 host_rec 表：appr_state = 1, host_state = 0
-      - 不处理硬件记录（host_hw_rec）
-    - **diff_type = 1**（版本号变化）：
-      - 如果传入了 host_ids，逻辑与 diff_type = 2 相同
-      - 如果未传入 host_ids，自动查询所有 host_hw_rec 表 sync_state = 1, diff_state = 1 数据的 host_id
-    - **diff_type = 2**（内容变化）：
-      - 查询所有 host_hw_rec 表 host_id = id, sync_state = 1 的数据
-      - 最新一条数据：sync_state = 2, appr_time = now(), appr_by = token 中的 id
-      - 其他数据：sync_state = 4
-      - 修改 host_rec 表：appr_state = 1, host_state = 0, hw_id = host_hw_rec 最新一条数据的 id, subm_time = now()
-    - **邮件通知**（diff_type = 1 或 2 时，所有数据处理完毕后）：
-      - 查询 sys_conf 表 conf_key = "email" 的 conf_val
-      - 如果配置不为空，为每个邮箱发送通知邮件
-      - 邮件内容包含：审批人信息（user_name, user_account）、变更的主机信息（hardware_id, host_ip）
-      - 邮件发送失败不影响全局事务
+    Business logic:
+    - **diff_type is empty** (manually disabled data):
+      - host_ids is required
+      - Update host_rec table: appr_state = 1, host_state = 0
+      - Do not process hardware records (host_hw_rec)
+    - **diff_type = 1** (version change):
+      - If host_ids is provided, logic is same as diff_type = 2
+      - If host_ids is not provided, automatically query all host_id from host_hw_rec table where
+        sync_state = 1, diff_state = 1
+    - **diff_type = 2** (content change):
+      - Query all data from host_hw_rec table where host_id = id, sync_state = 1
+      - Latest record: sync_state = 2, appr_time = now(), appr_by = id from token
+      - Other records: sync_state = 4
+      - Update host_rec table: appr_state = 1, host_state = 0, hw_id = id of latest record in
+        host_hw_rec, subm_time = now()
+    - **Email notification** (when diff_type = 1 or 2, after all data processing completed):
+      - Query sys_conf table where conf_key = "email" for conf_val
+      - If configuration is not empty, send notification email to each email address
+      - Email content includes: approver information (user_name, user_account), changed host
+        information (hardware_id, host_ip)
+      - Email sending failure does not affect global transaction
 
-    ## 请求参数
-    - `diff_type`: 变更类型（1-版本号变化, 2-内容变化；为空时代表手动停用数据）
-    - `host_ids`: 主机ID列表（当 diff_type 为空或 diff_type=2 时必填；当 diff_type=1 时可选，不传则自动查询）
+    ## Request parameters
+    - `diff_type`: Change type (1-version change, 2-content change; empty represents manually disabled data)
+    - `host_ids`: Host ID list (required when diff_type is empty or diff_type=2; optional when
+      diff_type=1, auto-query if not provided)
 
-    ## 返回字段
-    - `success_count`: 成功处理的主机数量
-    - `failed_count`: 失败的主机数量
-    - `results`: 处理结果详情（包含成功和失败的记录，以及邮件通知错误信息）
+    ## Return fields
+    - `success_count`: Number of successfully processed hosts
+    - `failed_count`: Number of failed hosts
+    - `results`: Processing result details (includes successful and failed records, and email
+      notification error information)
 
     Args:
-        request: 同意启用请求参数
-        admin_appr_host_service: 管理后台待审批主机服务实例
-        current_user: 当前用户信息（包含 user_id）
-        locale: 语言偏好
+        request: Approve request parameters
+        admin_appr_host_service: Admin backend pending approval host service instance
+        current_user: Current user information (contains user_id)
+        locale: Language preference
 
     Returns:
-        SuccessResponse: 包含处理结果和统计信息
+        SuccessResponse: Contains processing results and statistics
 
     Raises:
-        BusinessError: 参数验证失败或业务逻辑错误时
+        BusinessError: When parameter validation fails or business logic error occurs
     """
     logger.info(
-        "接收管理后台同意启用主机请求",
+        "Received admin backend approve host request",
         extra={
             "diff_type": request.diff_type,
             "host_ids": request.host_ids,
@@ -349,24 +357,24 @@ async def approve_hosts(
         },
     )
 
-    # 从请求头获取用户ID（Gateway 传递的）
+    # Get user ID from request header (***REMOVED***ed by Gateway)
     from app.services.external_api_client import get_user_id_from_request
 
     appr_by = get_user_id_from_request(http_request)
     if not appr_by:
         logger.warning(
-            "无法从请求头获取用户ID",
+            "Unable to get user ID from request header",
             extra={
                 "path": http_request.url.path,
             },
         )
-        appr_by = 0  # 如果无法获取用户ID，使用默认值
+        appr_by = 0  # If unable to get user ID, use default value
 
-    # 调用服务层处理（传入 locale 参数和 http_request 对象）
+    # Call service layer to process (***REMOVED*** locale parameter and http_request object)
     result = await admin_appr_host_service.approve_hosts(request, appr_by, locale=locale, http_request=http_request)
 
     logger.info(
-        "管理后台同意启用主机处理完成",
+        "Admin backend approve host processing completed",
         extra={
             "diff_type": request.diff_type,
             "success_count": result.success_count,
@@ -385,23 +393,23 @@ async def approve_hosts(
 @router.get(
     "/maintain-email",
     response_model=SuccessResponse,
-    summary="获取维护通知邮箱",
-    description="查询 sys_conf 表，获取维护通知邮箱配置",
+    summary="Get maintenance notification email",
+    description="Query sys_conf table, get maintenance notification email configuration",
     responses={
         200: {
-            "description": "查询成功",
+            "description": "Query succeeded",
             "model": AdminMaintainEmailResponse,
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "examples": {
                         "get_failed": {
-                            "summary": "获取失败",
+                            "summary": "Get failed",
                             "value": {
                                 "code": 500,
-                                "message": "获取维护通知邮箱失败: 数据库操作异常",
+                                "message": "Get maintenance notification email failed: database operation exception",
                                 "error_code": "GET_MAINTAIN_EMAIL_FAILED",
                             },
                         },
@@ -417,40 +425,40 @@ async def get_maintain_email(
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
-    """获取维护通知邮箱（管理后台）
+    """Get maintenance notification email (admin backend)
 
-    业务逻辑：
-    1. 查询 sys_conf 表，conf_key = "email", state_flag = 0, del_flag = 0
-    2. 返回 conf_val 值
+    Business logic:
+    1. Query sys_conf table, conf_key = "email", state_flag = 0, del_flag = 0
+    2. Return conf_val value
 
-    ## 返回字段
-    - `conf_key`: 配置键（固定为 "email"）
-    - `conf_val`: 配置值（邮箱地址，多个邮箱以半角逗号分割）
-    - `message`: 操作结果消息
+    ## Return fields
+    - `conf_key`: Configuration key (fixed as "email")
+    - `conf_val`: Configuration value (email addresses, multiple emails separated by half-width commas)
+    - `message`: Operation result message
 
     Args:
-        admin_appr_host_service: 管理后台待审批主机服务实例
-        current_user: 当前用户信息
-        locale: 语言偏好
+        admin_appr_host_service: Admin backend pending approval host service instance
+        current_user: Current user information
+        locale: Language preference
 
     Returns:
-        SuccessResponse: 包含维护通知邮箱配置信息
+        SuccessResponse: Contains maintenance notification email configuration information
 
     Raises:
-        BusinessError: 数据库操作失败时
+        BusinessError: When database operation fails
     """
     logger.info(
-        "接收管理后台获取维护通知邮箱请求",
+        "Received admin backend get maintenance notification email request",
         extra={
             "user_id": current_user.get("id"),
         },
     )
 
-    # 调用服务层查询
+    # Call service layer to query
     result = await admin_appr_host_service.get_maintain_email()
 
     logger.info(
-        "管理后台获取维护通知邮箱完成",
+        "Admin backend get maintenance notification email completed",
         extra={
             "conf_key": result.conf_key,
             "conf_val_length": len(result.conf_val),
@@ -467,23 +475,23 @@ async def get_maintain_email(
 @router.post(
     "/maintain-email",
     response_model=SuccessResponse,
-    summary="设置维护通知邮箱",
-    description="设置维护通知邮箱，多个邮箱以半角逗号分割",
+    summary="Set maintenance notification email",
+    description="Set maintenance notification email, multiple emails separated by half-width commas",
     responses={
         200: {
-            "description": "设置成功",
+            "description": "Set succeeded",
             "model": AdminMaintainEmailResponse,
         },
         400: {
-            "description": "请求参数错误",
+            "description": "Request parameter error",
             "content": {
                 "application/json": {
                     "examples": {
                         "email_empty": {
-                            "summary": "邮箱地址为空",
+                            "summary": "Email address is empty",
                             "value": {
                                 "code": 400,
-                                "message": "邮箱地址不能为空",
+                                "message": "Email address cannot be empty",
                                 "error_code": "EMAIL_EMPTY",
                             },
                         },
@@ -492,15 +500,15 @@ async def get_maintain_email(
             },
         },
         500: {
-            "description": "服务器内部错误",
+            "description": "Internal server error",
             "content": {
                 "application/json": {
                     "examples": {
                         "set_failed": {
-                            "summary": "设置失败",
+                            "summary": "Set failed",
                             "value": {
                                 "code": 500,
-                                "message": "设置维护通知邮箱失败: 数据库操作异常",
+                                "message": "Set maintenance notification email failed: database operation exception",
                                 "error_code": "SET_MAINTAIN_EMAIL_FAILED",
                             },
                         },
@@ -512,62 +520,62 @@ async def get_maintain_email(
 )
 @handle_api_errors
 async def set_maintain_email(
-    request: AdminMaintainEmailRequest = Body(..., description="设置维护通知邮箱请求数据"),
+    request: AdminMaintainEmailRequest = Body(..., description="Set maintenance notification email request data"),
     admin_appr_host_service: AdminApprHostService = Depends(get_admin_appr_host_service),
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
-    """设置维护通知邮箱（管理后台）
+    """Set maintenance notification email (admin backend)
 
-    业务逻辑：
-    1. 格式化邮箱：去除空格，全角逗号转为半角逗号
-    2. 查询 sys_conf 表，conf_key = "email"
-    3. 如果不存在则插入，如果存在则更新 conf_val
+    Business logic:
+    1. Format email: remove spaces, convert full-width commas to half-width commas
+    2. Query sys_conf table, conf_key = "email"
+    3. Insert if not exists, update conf_val if exists
 
-    ## 请求参数
-    - `email`: 邮箱地址（多个邮箱以半角逗号分割）
+    ## Request parameters
+    - `email`: Email address (multiple emails separated by half-width commas)
 
-    ## 返回字段
-    - `conf_key`: 配置键（固定为 "email"）
-    - `conf_val`: 配置值（格式化后的邮箱地址）
-    - `message`: 操作结果消息
+    ## Return fields
+    - `conf_key`: Configuration key (fixed as "email")
+    - `conf_val`: Configuration value (formatted email address)
+    - `message`: Operation result message
 
     Args:
-        request: 维护通知邮箱设置请求参数
-        admin_appr_host_service: 管理后台待审批主机服务实例
-        current_user: 当前用户信息（包含 user_id）
-        locale: 语言偏好
+        request: Maintenance notification email setting request parameters
+        admin_appr_host_service: Admin backend pending approval host service instance
+        current_user: Current user information (contains user_id)
+        locale: Language preference
 
     Returns:
-        SuccessResponse: 包含设置结果
+        SuccessResponse: Contains setting result
 
     Raises:
-        BusinessError: 参数验证失败或数据库操作失败时
+        BusinessError: When parameter validation fails or database operation fails
     """
     logger.info(
-        "接收管理后台维护通知邮箱设置请求",
+        "Received admin backend maintenance notification email setting request",
         extra={
             "email": request.email,
             "user_id": current_user.get("id"),
         },
     )
 
-    # 获取当前用户ID
+    # Get current user ID
     operator_id = current_user.get("id")
     if not operator_id:
         logger.warning(
-            "无法获取当前用户ID",
+            "Unable to get current user ID",
             extra={
                 "current_user": current_user,
             },
         )
-        operator_id = 0  # 如果无法获取用户ID，使用默认值
+        operator_id = 0  # If unable to get user ID, use default value
 
-    # 调用服务层处理
+    # Call service layer to process
     result = await admin_appr_host_service.set_maintain_email(request, operator_id)
 
     logger.info(
-        "管理后台维护通知邮箱设置完成",
+        "Admin backend maintenance notification email setting completed",
         extra={
             "conf_key": result.conf_key,
             "conf_val": result.conf_val,

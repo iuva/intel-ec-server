@@ -1,16 +1,16 @@
 """
-API v1 版本
+API v1 Version
 
-注册所有 v1 版本的路由
+Register all v1 version routes
 """
 
 from app.api.v1.endpoints.auth import router as auth_router
 from fastapi import APIRouter
 
-# 创建 v1 API 路由器
+# Create v1 API router
 api_router = APIRouter()
 
-# 注册端点路由 - 使用 /auth 前缀
-api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
+# Register endpoint routes - Using /auth prefix
+api_router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 
 __all__ = ["api_router"]

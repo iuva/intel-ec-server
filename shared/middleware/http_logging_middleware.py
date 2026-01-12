@@ -1,11 +1,11 @@
 """
-HTTP 请求/响应日志中间件
+HTTP Request/Response Logging Middleware
 
-记录所有 HTTP 请求和响应的详细信息，包括：
-- 请求方法、路径、查询参数
-- 请求 Body（JSON格式）
-- 响应状态码、响应 Body（JSON格式）
-- 请求耗时
+Records detailed information for all HTTP requests and responses, including:
+- Request method, path, query parameters
+- Request body (JSON format)
+- Response status code, response body (JSON format)
+- Request duration
 """
 
 import json
@@ -30,22 +30,22 @@ logger = get_logger(__name__)
 
 class HTTPLoggingMiddleware(BaseHTTPMiddleware):
     """
-    HTTP 请求/响应日志中间件
+    HTTP Request/Response Logging Middleware
 
-    自动记录所有 HTTP 请求和响应的详细信息：
-    - 请求方法、路径、查询参数
-    - 请求 Body（JSON格式）
-    - 响应状态码、响应 Body（JSON格式）
-    - 请求耗时
+    Automatically records detailed information for all HTTP requests and responses:
+    - Request method, path, query parameters
+    - Request body (JSON format)
+    - Response status code, response body (JSON format)
+    - Request duration
     """
 
     def __init__(self, app: Any, exclude_paths: Optional[list] = None) -> None:
         """
-        初始化中间件
+        Initialize the middleware
 
         Args:
-            app: FastAPI 应用实例
-            exclude_paths: 排除的路径列表（不记录日志的路径，如 /health, /metrics）
+            app: FastAPI application instance
+            exclude_paths: List of excluded paths (paths not to log, such as /health, /metrics)
         """
         super().__init__(app)
         self.exclude_paths = exclude_paths or [
@@ -57,18 +57,18 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         ]
 
     def _should_log(self, path: str) -> bool:
-        """判断是否应该记录日志
+        """Determine whether to log
 
         Args:
-            path: 请求路径
+            path: Request path
 
         Returns:
-            是否应该记录日志
+            Whether to log
         """
-        # 移除查询参数
+        # Remove query parameters
         clean_path = path.split("?")[0]
 
-        # 检查是否在排除列表中
+        # Check if in exclusion list
         for exclude_path in self.exclude_paths:
             if clean_path.startswith(exclude_path):
                 return False
@@ -76,57 +76,57 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         return True
 
     async def _read_request_body(self, request: Request) -> Optional[dict]:
-        """读取请求 Body（JSON格式）
+        """Read request body (JSON format)
 
         Args:
-            request: FastAPI 请求对象
+            request: FastAPI request object
 
         Returns:
-            解析后的 JSON 对象，如果不是 JSON 格式则返回 None
+            Parsed JSON object, return None if not in JSON format
         """
         try:
-            # 检查 Content-Type
+            # Check Content-Type
             content_type = request.headers.get("content-type", "").lower()
             if "application/json" not in content_type:
                 return None
 
-            # 读取 body
+            # Read body
             body = await request.body()
 
-            # 如果 body 为空，返回 None
+            # If body is empty, return None
             if not body:
                 return None
 
-            # 尝试解析 JSON
+            # Try to parse JSON
             try:
                 return json.loads(body.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return None
 
         except Exception:
-            # 读取失败时返回 None
+            # Return None when reading fails
             return None
 
     async def _read_response_body(self, response: Response) -> Optional[dict]:
-        """读取响应 Body（JSON格式）
+        """Read response body (JSON format)
 
         Args:
-            response: FastAPI 响应对象
+            response: FastAPI response object
 
         Returns:
-            解析后的 JSON 对象，如果不是 JSON 格式则返回 None
+            Parsed JSON object, return None if not in JSON format
         """
         try:
-            # 检查 Content-Type
+            # Check Content-Type
             content_type = response.headers.get("content-type", "").lower()
             if "application/json" not in content_type:
                 return None
 
-            # 如果是 StreamingResponse，无法读取 body
+            # If it's a StreamingResponse, unable to read body
             if isinstance(response, StreamingResponse):
                 return None
 
-            # 方法1: 尝试从 JSONResponse 的 body 属性读取（FastAPI/Starlette）
+            # Method 1: Try to read from JSONResponse's body property (FastAPI/Starlette)
             if hasattr(response, "body"):
                 body = response.body
                 if body:
@@ -141,15 +141,16 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             return None
                     elif isinstance(body, (dict, list)):
-                        # 如果 body 已经是字典或列表，直接返回
+                        # If body is already a dictionary or list, return directly
                         return body
 
-            # 方法2: 尝试从 JSONResponse 的 render 方法获取内容
-            # FastAPI 的 JSONResponse 在 render 时会序列化 body
-            # 注意：render() 方法不需要参数，但会修改响应对象，所以这里不使用
-            # 改为在 dispatch 中直接读取 body 属性
+            # Method 2: Try to get content from JSONResponse's render method
+            # FastAPI's JSONResponse serializes the body when rendering
+            # Note: The render() method doesn't require parameters,
+            # but modifies the response object, so it's not used here
+            # Instead, read the body property directly in dispatch
 
-            # 方法3: 尝试从 _content 属性读取（某些响应类型）
+            # Method 3: Try to read from _content property (for certain response types)
             if hasattr(response, "_content") and response._content:
                 body = response._content
                 if isinstance(body, bytes):
@@ -158,92 +159,92 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         return None
 
-            # ❌ 注意：不要尝试从 body_iterator 读取！
-            # body_iterator 是响应流的一部分，消费它会破坏响应流
-            # 如果尝试重新创建，必须创建异步迭代器，但这样会很复杂且容易出错
-            # 对于 JSONResponse，应该能够从 body 或 content 属性读取
+            # ❌ Note: Don't try to read from body_iterator!
+            # body_iterator is part of the response stream, consuming it will break the response stream
+            # If attempting to recreate, an async iterator must be created, but this is complex and error-prone
+            # For JSONResponse, it should be possible to read from body or content property
 
             return None
 
         except Exception:
-            # 读取失败时返回 None
+            # Return None when reading fails
             return None
 
     def _extract_error_summary(self, response_body: Any) -> str:
-        """从响应体中提取错误摘要信息
+        """Extract error summary information from response body
 
         Args:
-            response_body: 响应体（可能是字典、列表或其他类型）
+            response_body: Response body (could be dictionary, list, or other type)
 
         Returns:
-            错误摘要字符串
+            Error summary string
         """
         if not isinstance(response_body, dict):
-            # 如果是列表，尝试提取第一个错误
+            # If it's a list, try to extract the first error
             if isinstance(response_body, list) and response_body:
                 first_error = response_body[0]
                 if isinstance(first_error, dict):
-                    return f"验证错误: {first_error.get('msg', '未知错误')}"
-            return "未知错误格式"
+                    return f"Validation error: {first_error.get('msg', 'Unknown error')}"
+            return "Unknown error format"
 
-        # 尝试提取错误信息
+        # Try to extract error information
         error_parts = []
 
-        # 1. 提取 message 字段
+        # 1. Extract message field
         if "message" in response_body:
-            error_parts.append(f"消息: {response_body['message']}")
+            error_parts.append(f"Message: {response_body['message']}")
 
-        # 2. 提取 error_code 字段
+        # 2. Extract error_code field
         if "error_code" in response_body:
-            error_parts.append(f"错误码: {response_body['error_code']}")
+            error_parts.append(f"Error code: {response_body['error_code']}")
 
-        # 3. 提取 details 中的验证错误（422 错误）
+        # 3. Extract validation errors from details (422 errors)
         if "details" in response_body and isinstance(response_body["details"], dict):
             details = response_body["details"]
-            # 检查是否有 errors 字段（验证错误）
+            # Check if there are errors fields (validation errors)
             if "errors" in details and isinstance(details["errors"], dict):
                 errors = details["errors"]
                 if errors:
-                    # 提取字段验证错误
+                    # Extract field validation errors
                     field_errors = []
                     for field, error_msg in errors.items():
                         field_errors.append(f"{field}: {error_msg}")
                     if field_errors:
-                        error_parts.append(f"验证错误: {', '.join(field_errors)}")
+                        error_parts.append(f"Validation errors: {', '.join(field_errors)}")
 
-        # 4. 如果没有提取到信息，返回响应体的键
+        # 4. If no information extracted, return keys from response body
         if not error_parts:
-            error_parts.append(f"响应键: {', '.join(response_body.keys())}")
+            error_parts.append(f"Response keys: {', '.join(response_body.keys())}")
 
         return " | ".join(error_parts)
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """处理请求并记录日志
+        """Process request and log
 
         Args:
-            request: FastAPI 请求对象
-            call_next: 下一个中间件或路由处理器
+            request: FastAPI request object
+            call_next: Next middleware or route handler
 
         Returns:
-            FastAPI 响应对象
+            FastAPI response object
         """
-        # 检查是否应该记录日志
+        # Check whether to log
         if not self._should_log(request.url.path):
             return await call_next(request)
 
-        # 记录开始时间
+        # Record start time
         start_time = time.time()
 
-        # 提取请求信息
+        # Extract request information
         method = request.method
         path = request.url.path
         query_params = dict(request.query_params)
         client_ip = request.client.host if request.client else "unknown"
 
-        # 读取请求 Body（JSON格式）
+        # Read request body (JSON format)
         request_body = await self._read_request_body(request)
 
-        # 记录请求日志
+        # Log request
         request_log_data = {
             "method": method,
             "path": path,
@@ -254,30 +255,30 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         if request_body is not None:
             request_log_data["body"] = request_body
             logger.info(
-                f"HTTP 请求: {method} {path}",
+                f"HTTP Request: {method} {path}",
                 extra=request_log_data,
             )
         else:
             logger.info(
-                f"HTTP 请求: {method} {path}",
+                f"HTTP Request: {method} {path}",
                 extra=request_log_data,
             )
 
         try:
-            # 处理请求
+            # Process request
             response = await call_next(request)
 
-            # 计算耗时
+            # Calculate duration
             duration = time.time() - start_time
 
-            # 提取响应信息
+            # Extract response information
             status_code = response.status_code
 
-            # ✅ 读取响应体（JSON格式）
-            # 使用改进的 _read_response_body 方法
+            # ✅ Read response body (JSON format)
+            # Using improved _read_response_body method
             response_body = await self._read_response_body(response)
 
-            # 记录响应日志
+            # Log response
             response_log_data = {
                 "method": method,
                 "path": path,
@@ -285,51 +286,60 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
                 "duration_ms": round(duration * 1000, 2),
             }
 
-            # ✅ 对于错误响应（4xx, 5xx），总是尝试记录响应体，即使读取失败也记录警告
+            # ✅ For error responses (4xx, 5xx), always try to log response body, even if reading fails log warning
             is_error_response = status_code >= 400
 
             if response_body is not None:
                 response_log_data["body"] = response_body
-                # ✅ 对于错误响应，使用 WARNING 级别，并突出显示错误信息
+                # ✅ For error responses, use WARNING level and highlight error information
                 if is_error_response:
-                    # 提取关键错误信息
+                    # Extract key error information
                     error_summary = self._extract_error_summary(response_body)
                     logger.warning(
-                        f"HTTP 错误响应: {method} {path} - {status_code} ({duration*1000:.2f}ms) - {error_summary}",
+                        (
+                            f"HTTP Error Response: {method} {path} - {status_code} "
+                            f"({duration * 1000:.2f}ms) - {error_summary}"
+                        ),
                         extra=response_log_data,
                     )
                 else:
                     logger.info(
-                        f"HTTP 响应: {method} {path} - {status_code} ({duration*1000:.2f}ms)",
+                        f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
                         extra=response_log_data,
                     )
             else:
-                # ✅ 对于错误响应，即使无法读取 body，也记录警告
+                # ✅ For error responses, even if unable to read body, also log warning
                 if is_error_response:
                     logger.warning(
-                        f"HTTP 错误响应: {method} {path} - {status_code} ({duration*1000:.2f}ms) - 无法读取响应体",
+                        (
+                            f"HTTP Error Response: {method} {path} - {status_code} "
+                            f"({duration * 1000:.2f}ms) - Unable to read response body"
+                        ),
                         extra={
                             **response_log_data,
-                            "hint": "响应体可能不是 JSON 格式，或响应类型不支持读取（如 StreamingResponse）",
+                            "hint": (
+                                "Response body may not be in JSON format, or response type "
+                                "doesn't support reading (e.g., StreamingResponse)"
+                            ),
                             "content_type": response.headers.get("content-type"),
                         },
                     )
                 else:
-                    # 即使无法读取 body，也记录响应状态码和耗时
+                    # Even if unable to read body, still log response status code and duration
                     logger.info(
-                        f"HTTP 响应: {method} {path} - {status_code} ({duration*1000:.2f}ms)",
+                        f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
                         extra=response_log_data,
                     )
 
             return response
 
         except Exception as e:
-            # 计算耗时
+            # Calculate duration
             duration = time.time() - start_time
 
-            # 记录异常日志（包含完整堆栈）
+            # Log exception (including full stack trace)
             logger.error(
-                f"HTTP 请求异常: {method} {path} - {type(e).__name__}: {str(e)} ({duration*1000:.2f}ms)",
+                f"HTTP Request Exception: {method} {path} - {type(e).__name__}: {str(e)} ({duration * 1000:.2f}ms)",
                 extra={
                     "method": method,
                     "path": path,
@@ -337,8 +347,8 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
                     "error_message": str(e),
                     "duration_ms": round(duration * 1000, 2),
                 },
-                exc_info=True,  # 记录完整堆栈信息
+                exc_info=True,  # Record full stack trace
             )
 
-            # 重新抛出异常
+            # Re-raise exception
             raise

@@ -1,7 +1,7 @@
 """
-认证相关 API 端点
+Authentication-related API endpoints
 
-提供登录、令牌刷新、令牌验证、注销等功能
+Provide functions such as login, token refresh, token validation, logout, etc.
 """
 
 from typing import Optional
@@ -22,7 +22,7 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import AuthService
 
-# 使用 try-except 方式处理路径导入
+# Use try-except approach to handle path imports
 try:
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n import t
@@ -30,7 +30,7 @@ try:
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result, SuccessResponse
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     import os
     import sys
 
@@ -46,32 +46,32 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/admin/login", response_model=Result[LoginResponse], summary="管理员登录")
+@router.post("/admin/login", response_model=Result[LoginResponse], summary="Admin Login")
 @handle_api_errors
 async def admin_login(
     login_data: AdminLoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
 ) -> Result[LoginResponse]:
-    """管理员登录（传统方式）
+    """Admin login (traditional method)
 
-    使用用户名和密码进行登录，返回访问令牌
+    Use username and ***REMOVED***word to login, return access token
 
     Args:
-        login_data: 登录请求数据（username, ***REMOVED***word）
-        auth_service: 认证服务实例
+        login_data: Login request data (username, ***REMOVED***word)
+        auth_service: Authentication service instance
 
     Returns:
-        Result[LoginResponse]: 包含 token 的成功响应
+        Result[LoginResponse]: Success response containing token
 
     Raises:
-        HTTPException: 登录失败时抛出（由 @handle_api_errors 统一处理）
+        HTTPException: Thrown when login fails (handled uniformly by @handle_api_errors)
     """
-    # 执行登录
+    # Execute login
     login_response = await auth_service.admin_login(login_data)
 
     logger.info(
-        "管理员登录成功",
+        "Admin login successful",
         extra={
             "operation": "admin_login",
             "username": login_data.username,
@@ -80,13 +80,13 @@ async def admin_login(
 
     return Result(
         code=200,
-        message=t("success.login", locale=locale, default="登录成功"),
+        message=t("success.login", locale=locale, default="Login successful"),
         data=login_response,
         locale=locale,
     )
 
 
-@router.post("/device/login", response_model=Result[LoginResponse], summary="设备登录")
+@router.post("/device/login", response_model=Result[LoginResponse], summary="Device Login")
 @handle_api_errors
 async def device_login(
     login_data: DeviceLoginRequest,
@@ -94,33 +94,33 @@ async def device_login(
     current_user: Optional[dict] = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> Result[LoginResponse]:
-    """设备登录（传统方式）
+    """Device login (traditional method)
 
-    使用 mg_id、host_ip 和 username 进行登录
-    如果 mg_id 存在则更新信息，不存在则创建新记录
+    Use mg_id, host_ip and username to login
+    If mg_id exists, update information; if not, create new record
 
     Args:
-        login_data: 设备登录请求数据（mg_id, host_ip, username）
-        auth_service: 认证服务实例
-        current_user: 当前用户信息（可选，用于审计）
+        login_data: Device login request data (mg_id, host_ip, username)
+        auth_service: Authentication service instance
+        current_user: Current user information (optional, for audit)
 
     Returns:
-        Result[LoginResponse]: 包含 token 的成功响应
+        Result[LoginResponse]: Success response containing token
 
     Raises:
-        HTTPException: 登录失败时抛出（由 @handle_api_errors 统一处理）
+        HTTPException: Thrown when login fails (handled uniformly by @handle_api_errors)
     """
-    # 从当前用户信息中获取 user_id（如果已认证）
+    # Get user_id from current user information (if authenticated)
     current_user_id = None
     if current_user:
-        # ✅ 统一使用 id 字段（从 id 或 sub 提取，向后兼容）
+        # ✅ Uniformly use id field (extract from id or sub, backward compatible)
         user_id = current_user.get("id") or current_user.get("sub")
         if user_id:
             try:
                 current_user_id = int(user_id)
             except (ValueError, TypeError):
                 logger.warning(
-                    "无法将 user_id 转换为整数",
+                    "Unable to convert user_id to integer",
                     extra={
                         "user_id": user_id,
                         "user_id_type": type(user_id).__name__,
@@ -128,11 +128,11 @@ async def device_login(
                 )
                 current_user_id = None
 
-    # 执行登录，传递当前用户ID用于审计
+    # Execute login, ***REMOVED*** current user ID for audit
     login_response = await auth_service.device_login(login_data, current_user_id=current_user_id)
 
     logger.info(
-        "设备登录成功",
+        "Device login successful",
         extra={
             "operation": "device_login",
             "mg_id": login_data.mg_id,
@@ -143,7 +143,7 @@ async def device_login(
 
     return Result(
         code=200,
-        message=t("success.login", locale=locale, default="登录成功"),
+        message=t("success.login", locale=locale, default="Login successful"),
         data=login_response,
         locale=locale,
     )
@@ -156,23 +156,23 @@ async def refresh_token(
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
 ) -> Result[TokenResponse]:
-    """刷新访问令牌
+    """Refresh access token
 
     Args:
-        refresh_data: 刷新令牌请求数据
-        auth_service: 认证服务实例
+        refresh_data: Refresh token request data
+        auth_service: Authentication service instance
 
     Returns:
-        Result[TokenResponse]: 包含新令牌的成功响应
+        Result[TokenResponse]: Success response containing new token
 
     Raises:
-        HTTPException: 刷新失败时抛出（由 @handle_api_errors 统一处理）
+        HTTPException: Thrown when refresh fails (handled uniformly by @handle_api_errors)
     """
-    # 刷新令牌
+    # Refresh token
     token_response = await auth_service.refresh_access_token(refresh_data)
 
     logger.info(
-        "令牌刷新成功",
+        "Token refresh successful",
         extra={
             "operation": "refresh_token",
             "token_type": "refresh",
@@ -182,39 +182,39 @@ async def refresh_token(
 
     return Result(
         code=200,
-        message=t("success.operation", locale=locale, default="操作成功"),
+        message=t("success.operation", locale=locale, default="Operation successful"),
         data=token_response,
         locale=locale,
     )
 
 
-@router.post("/auto-refresh", response_model=Result[TokenResponse], summary="自动续期令牌")
+@router.post("/auto-refresh", response_model=Result[TokenResponse], summary="Auto Renew Token")
 @handle_api_errors
 async def auto_refresh_tokens(
     refresh_data: AutoRefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
 ) -> Result[TokenResponse]:
-    """自动续期访问令牌和刷新令牌
+    """Auto renew access token and refresh token
 
-    当刷新令牌将要过期时，同时生成新的 access_token 和 refresh_token
-    实现真正的"双 token 续期"机制
+    When refresh token is about to expire, generate new access_token and refresh_token simultaneously
+    Implement true "dual token renewal" mechanism
 
     Args:
-        refresh_data: 自动续期请求数据（包含 auto_renew 参数）
-        auth_service: 认证服务实例
+        refresh_data: Auto renewal request data (contains auto_renew parameter)
+        auth_service: Authentication service instance
 
     Returns:
-        Result[TokenResponse]: 包含新的 access_token 和 refresh_token 的成功响应
+        Result[TokenResponse]: Success response containing new access_token and refresh_token
 
     Raises:
-        HTTPException: 续期失败时抛出（由 @handle_api_errors 统一处理）
+        HTTPException: Thrown when renewal fails (handled uniformly by @handle_api_errors)
     """
-    # 自动续期令牌
+    # Auto renew token
     token_response = await auth_service.auto_refresh_tokens(refresh_data)
 
     logger.info(
-        "令牌自动续期成功",
+        "Token auto renewal successful",
         extra={
             "operation": "auto_refresh_token",
             "auto_renew": refresh_data.auto_renew,
@@ -223,7 +223,7 @@ async def auto_refresh_tokens(
 
     return Result(
         code=200,
-        message=t("success.operation", locale=locale, default="操作成功"),
+        message=t("success.operation", locale=locale, default="Operation successful"),
         data=token_response,
         locale=locale,
     )
@@ -236,29 +236,29 @@ async def introspect_token(
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
 ) -> Result[IntrospectResponse]:
-    """验证令牌
+    """Validate token
 
     Args:
-        introspect_data: 令牌验证请求数据
-        auth_service: 认证服务实例
+        introspect_data: Token validation request data
+        auth_service: Authentication service instance
 
     Returns:
-        Result[IntrospectResponse]: 包含令牌验证结果的成功响应
+        Result[IntrospectResponse]: Success response containing token validation result
     """
     try:
-        # 验证令牌
+        # Validate token
         introspect_response = await auth_service.introspect_token(introspect_data.token)
 
         return Result(
             code=200,
-            message=t("success.operation", locale=locale, default="验证成功"),
+            message=t("success.operation", locale=locale, default="Validation successful"),
             data=introspect_response,
             locale=locale,
         )
 
     except (ValueError, KeyError, AttributeError) as e:
         logger.error(
-            "令牌验证异常",
+            "Token validation exception",
             extra={
                 "operation": "introspect",
                 "error_type": type(e).__name__,
@@ -266,8 +266,8 @@ async def introspect_token(
             },
             exc_info=True,
         )
-        # ✅ 正确：直接返回标准的成功响应，active=false 表示令牌无效
-        # 不抛出 HTTPException，保持响应格式一致性
+        # ✅ Correct: Directly return standard success response, active=false indicates invalid token
+        # Don't throw HTTPException, maintain response format consistency
         error_response = IntrospectResponse(
             active=False,
             username=None,
@@ -278,7 +278,7 @@ async def introspect_token(
         )
         return Result(
             code=200,
-            message=t("error.auth.token_expired", locale=locale, default="令牌验证失败"),
+            message=t("error.auth.token_expired", locale=locale, default="Token validation failed"),
             data=error_response,
             locale=locale,
         )
@@ -291,23 +291,23 @@ async def logout(
     auth_service: AuthService = Depends(get_auth_service),
     locale: str = Depends(get_locale),
 ) -> SuccessResponse:
-    """用户注销
+    """User logout
 
     Args:
-        logout_data: 注销请求数据
-        auth_service: 认证服务实例
+        logout_data: Logout request data
+        auth_service: Authentication service instance
 
     Returns:
-        SuccessResponse: 注销成功响应
+        SuccessResponse: Logout success response
 
     Raises:
-        HTTPException: 注销失败时抛出（由 @handle_api_errors 统一处理）
+        HTTPException: Thrown when logout fails (handled uniformly by @handle_api_errors)
     """
-    # 执行注销
+    # Execute logout
     await auth_service.logout(logout_data.token)
 
     logger.info(
-        "用户注销成功",
+        "User logout successful",
         extra={
             "operation": "logout",
         },

@@ -1,7 +1,7 @@
 """
-Nacos服务发现配置模块
+Nacos Service Discovery Configuration Module
 
-提供Nacos服务注册、发现和心跳检测功能
+Provides Nacos service registration, discovery, and heartbeat detection functions
 """
 
 import asyncio
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class NacosManager:
-    """Nacos服务发现管理器
+    """Nacos Service Discovery Manager
 
-    提供服务注册、发现、心跳检测等功能
+    Provides service registration, discovery, heartbeat detection and other functions
     """
 
     def __init__(
@@ -27,14 +27,14 @@ class NacosManager:
         username: Optional[str] = None,
         ***REMOVED***word: Optional[str] = None,
     ) -> None:
-        """初始化Nacos管理器
+        """Initialize Nacos manager
 
         Args:
-            server_addresses: Nacos服务器地址，格式：host:port
-            namespace: 命名空间ID
-            group: 分组名称
-            username: 用户名（可选）
-            ***REMOVED***word: 密码（可选）
+            server_addresses: Nacos server address, format: host:port
+            namespace: Namespace ID
+            group: Group name
+            username: Username (optional)
+            ***REMOVED***word: Password (optional)
         """
         self.server_addresses = server_addresses
         self.namespace = namespace
@@ -42,7 +42,7 @@ class NacosManager:
         self.username = username
         self.***REMOVED***word = ***REMOVED***word
 
-        # 初始化Nacos客户端
+        # Initialize Nacos client
         self.client = nacos.NacosClient(
             server_addresses=server_addresses,
             namespace=namespace,
@@ -50,11 +50,11 @@ class NacosManager:
             ***REMOVED***word=***REMOVED***word,
         )
 
-        # 心跳任务
+        # Heartbeat task
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._heartbeat_running = False
 
-        logger.info(f"Nacos管理器初始化完成: {server_addresses}")
+        logger.info(f"Nacos manager initialized: {server_addresses}")
 
     async def register_service(
         self,
@@ -67,24 +67,24 @@ class NacosManager:
         weight: float = 1.0,
         enabled: bool = True,
     ) -> bool:
-        """注册服务实例
+        """Register service instance
 
         Args:
-            service_name: 服务名称
-            ip: 服务IP地址
-            port: 服务端口
-            ephemeral: 是否为临时实例（临时实例需要心跳）
-            metadata: 元数据
-            cluster_name: 集群名称
-            weight: 权重
-            enabled: 是否启用（注意：Nacos Python SDK 不支持此参数）
+            service_name: Service name
+            ip: Service IP address
+            port: Service port
+            ephemeral: Whether it is an ephemeral instance (ephemeral instances require heartbeat)
+            metadata: Metadata
+            cluster_name: Cluster name
+            weight: Weight
+            enabled: Whether enabled (note: Nacos Python SDK does not support this parameter)
 
         Returns:
-            是否注册成功
+            Whether registration is successful
         """
         try:
-            # 注意：Nacos Python SDK 的 add_naming_instance 不支持 enabled 参数
-            # 如果需要禁用实例，应该使用 remove_naming_instance 注销服务
+            # Note: Nacos Python SDK's add_naming_instance does not support the enabled parameter
+            # If you need to disable an instance, use remove_naming_instance to deregister the service
             success = self.client.add_naming_instance(
                 service_name=service_name,
                 ip=ip,
@@ -98,29 +98,29 @@ class NacosManager:
 
             if success:
                 logger.info(
-                    f"服务注册成功: {service_name} ({ip}:{port}), "
-                    + f"临时实例: {ephemeral}, 集群: {cluster_name}, 权重: {weight}"
+                    f"Service registered successfully: {service_name} ({ip}:{port}), "
+                    + f"Ephemeral: {ephemeral}, Cluster: {cluster_name}, Weight: {weight}"
                 )
             else:
-                logger.error(f"服务注册失败: {service_name} ({ip}:{port})")
+                logger.error(f"Service registration failed: {service_name} ({ip}:{port})")
 
             return success  # type: ignore[no-any-return]
 
         except Exception as e:
-            logger.error(f"服务注册异常: {service_name}, 错误: {e!s}")
+            logger.error(f"Service registration exception: {service_name}, Error: {e!s}")
             return False
 
     async def deregister_service(self, service_name: str, ip: str, port: int, cluster_name: str = "DEFAULT") -> bool:
-        """注销服务实例
+        """Deregister service instance
 
         Args:
-            service_name: 服务名称
-            ip: 服务IP地址
-            port: 服务端口
-            cluster_name: 集群名称
+            service_name: Service name
+            ip: Service IP address
+            port: Service port
+            cluster_name: Cluster name
 
         Returns:
-            是否注销成功
+            Whether deregistration is successful
         """
         try:
             success = self.client.remove_naming_instance(
@@ -132,14 +132,14 @@ class NacosManager:
             )
 
             if success:
-                logger.info(f"服务注销成功: {service_name} ({ip}:{port})")
+                logger.info(f"Service deregistered successfully: {service_name} ({ip}:{port})")
             else:
-                logger.error(f"服务注销失败: {service_name} ({ip}:{port})")
+                logger.error(f"Service deregistration failed: {service_name} ({ip}:{port})")
 
             return success  # type: ignore[no-any-return]
 
         except Exception as e:
-            logger.error(f"服务注销异常: {service_name}, 错误: {e!s}")
+            logger.error(f"Service deregistration exception: {service_name}, Error: {e!s}")
             return False
 
     async def discover_service(
@@ -148,15 +148,15 @@ class NacosManager:
         clusters: Optional[str] = None,
         healthy_only: bool = True,
     ) -> List[Dict[str, Any]]:
-        """发现服务实例
+        """Discover service instances
 
         Args:
-            service_name: 服务名称
-            clusters: 集群名称，多个用逗号分隔
-            healthy_only: 是否只返回健康实例
+            service_name: Service name
+            clusters: Cluster names, multiple names separated by commas
+            healthy_only: Whether to return only healthy instances
 
         Returns:
-            服务实例列表
+            List of service instances
         """
         try:
             instances = self.client.list_naming_instance(
@@ -167,47 +167,47 @@ class NacosManager:
             )
 
             hosts = instances.get("hosts", [])
-            logger.debug(f"服务发现: {service_name}, 实例数: {len(hosts)}")
+            logger.debug(f"Service discovery: {service_name}, Instance count: {len(hosts)}")
 
             return hosts  # type: ignore[no-any-return]
 
         except Exception as e:
-            logger.error(f"服务发现异常: {service_name}, 错误: {e!s}")
+            logger.error(f"Service discovery exception: {service_name}, Error: {e!s}")
             return []
 
     async def get_service_instance(self, service_name: str, clusters: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """获取单个服务实例（负载均衡）
+        """Get a single service instance (load balancing)
 
         Args:
-            service_name: 服务名称
-            clusters: 集群名称
+            service_name: Service name
+            clusters: Cluster name
 
         Returns:
-            服务实例信息
+            Service instance information
         """
         try:
-            # 使用 list_naming_instance 获取所有实例
+            # Use list_naming_instance to get all instances
             instances = self.client.list_naming_instance(
                 service_name=service_name,
                 group_name=self.group,
                 clusters=clusters or "DEFAULT",
-                healthy_only=True,  # 只获取健康实例
+                healthy_only=True,  # Only get healthy instances
             )
 
-            # 获取实例列表
+            # Get instance list
             hosts = instances.get("hosts", [])
 
             if not hosts:
-                logger.warning(f"没有可用的服务实例: {service_name}")
+                logger.warning(f"No available service instances: {service_name}")
                 return None
 
-            # 简单负载均衡：选择第一个实例（也可以实现轮询等策略）
+            # Simple load balancing: select the first instance (round-robin or other strategies can also be implemented)
             instance = hosts[0]
-            logger.debug(f"选择服务实例: {service_name} ({instance.get('ip')}:{instance.get('port')})")
+            logger.debug(f"Selected service instance: {service_name} ({instance.get('ip')}:{instance.get('port')})")
             return instance  # type: ignore[no-any-return]
 
         except Exception as e:
-            logger.error(f"获取服务实例异常: {service_name}, 错误: {e!s}", exc_info=True)
+            logger.error(f"Get service instance exception: {service_name}, Error: {e!s}", exc_info=True)
             return None
 
     async def start_heartbeat(
@@ -218,26 +218,26 @@ class NacosManager:
         interval: int = 5,
         cluster_name: str = "DEFAULT",
     ) -> None:
-        """启动心跳检测
+        """Start heartbeat detection
 
         Args:
-            service_name: 服务名称
-            ip: 服务IP地址
-            port: 服务端口
-            interval: 心跳间隔（秒）
-            cluster_name: 集群名称
+            service_name: Service name
+            ip: Service IP address
+            port: Service port
+            interval: Heartbeat interval (seconds)
+            cluster_name: Cluster name
         """
         if self._heartbeat_running:
-            logger.warning("心跳检测已在运行")
+            logger.warning("Heartbeat detection is already running")
             return
 
         self._heartbeat_running = True
 
         async def heartbeat_loop() -> None:
-            """心跳循环"""
+            """Heartbeat loop"""
             while self._heartbeat_running:
                 try:
-                    # 发送心跳
+                    # Send heartbeat
                     self.client.send_heartbeat(
                         service_name=service_name,
                         ip=ip,
@@ -245,22 +245,22 @@ class NacosManager:
                         cluster_name=cluster_name,
                         group_name=self.group,
                     )
-                    logger.debug(f"心跳发送成功: {service_name} ({ip}:{port})")
+                    logger.debug(f"Heartbeat sent successfully: {service_name} ({ip}:{port})")
 
                 except Exception as e:
-                    logger.error(f"心跳发送失败: {service_name}, 错误: {e!s}")
+                    logger.error(f"Heartbeat sending failed: {service_name}, Error: {e!s}")
 
-                # 等待下一次心跳
+                # Wait for next heartbeat
                 await asyncio.sleep(interval)
 
-        # 创建心跳任务
+        # Create heartbeat task
         self._heartbeat_task = asyncio.create_task(heartbeat_loop())
-        logger.info(f"心跳检测已启动: {service_name} ({ip}:{port}), 间隔: {interval}秒")
+        logger.info(f"Heartbeat detection started: {service_name} ({ip}:{port}), Interval: {interval} seconds")
 
     def stop_heartbeat(self) -> None:
-        """停止心跳检测"""
+        """Stop heartbeat detection"""
         if not self._heartbeat_running:
-            logger.warning("心跳检测未运行")
+            logger.warning("Heartbeat detection is not running")
             return
 
         self._heartbeat_running = False
@@ -269,7 +269,7 @@ class NacosManager:
             self._heartbeat_task.cancel()
             self._heartbeat_task = None
 
-        logger.info("心跳检测已停止")
+        logger.info("Heartbeat detection stopped")
 
     async def subscribe_service(
         self,
@@ -277,47 +277,47 @@ class NacosManager:
         callback: Callable[..., None],
         clusters: Optional[str] = None,
     ) -> None:
-        """订阅服务变化
+        """Subscribe to service changes
 
         Args:
-            service_name: 服务名称
-            callback: 回调函数
-            clusters: 集群名称
+            service_name: Service name
+            callback: Callback function
+            clusters: Cluster name
         """
         try:
-            # Nacos Python SDK的subscribe方法参数不同，需要检查SDK文档
-            # 这里暂时注释掉，因为Nacos Python SDK的API可能不同
-            logger.warning(f"服务订阅功能暂未实现: {service_name}")
+            # Nacos Python SDK's subscribe method has different parameters, need to check SDK documentation
+            # Temporarily commented out, as Nacos Python SDK API may be different
+            logger.warning(f"Service subscription feature not yet implemented: {service_name}")
             # self.client.subscribe(
             #     service_name=service_name,
             #     listener_fn=callback,
             # )
-            # logger.info(f"服务订阅成功: {service_name}")
+            # logger.info(f"Service subscription successful: {service_name}")
 
         except Exception as e:
-            logger.error(f"服务订阅异常: {service_name}, 错误: {e!s}")
+            logger.error(f"Service subscription exception: {service_name}, Error: {e!s}")
 
     async def unsubscribe_service(self, service_name: str, clusters: Optional[str] = None) -> None:
-        """取消订阅服务
+        """Unsubscribe from service
 
         Args:
-            service_name: 服务名称
-            clusters: 集群名称
+            service_name: Service name
+            clusters: Cluster name
         """
         try:
-            # Nacos Python SDK的unsubscribe方法参数不同，需要检查SDK文档
-            # 这里暂时注释掉，因为Nacos Python SDK的API可能不同
-            logger.warning(f"取消服务订阅功能暂未实现: {service_name}")
+            # Nacos Python SDK's unsubscribe method has different parameters, need to check SDK documentation
+            # Temporarily commented out, as Nacos Python SDK API may be different
+            logger.warning(f"Unsubscribe service feature not yet implemented: {service_name}")
             # self.client.unsubscribe(
             #     service_name=service_name,
             # )
-            # logger.info(f"取消服务订阅: {service_name}")
+            # logger.info(f"Unsubscribe from service: {service_name}")
 
         except Exception as e:
-            logger.error(f"取消服务订阅异常: {service_name}, 错误: {e!s}")
+            logger.error(f"Unsubscribe service exception: {service_name}, Error: {e!s}")
 
 
-# 全局Nacos管理器实例
+# Global Nacos manager instance
 nacos_manager: Optional[NacosManager] = None
 
 
@@ -328,17 +328,17 @@ def init_nacos_manager(
     username: Optional[str] = None,
     ***REMOVED***word: Optional[str] = None,
 ) -> NacosManager:
-    """初始化全局Nacos管理器
+    """Initialize global Nacos manager
 
     Args:
-        server_addresses: Nacos服务器地址
-        namespace: 命名空间
-        group: 分组名称
-        username: 用户名
-        ***REMOVED***word: 密码
+        server_addresses: Nacos server address
+        namespace: Namespace
+        group: Group name
+        username: Username
+        ***REMOVED***word: Password
 
     Returns:
-        Nacos管理器实例
+        Nacos manager instance
     """
     global nacos_manager
     nacos_manager = NacosManager(
@@ -352,14 +352,14 @@ def init_nacos_manager(
 
 
 def get_nacos_manager() -> NacosManager:
-    """获取全局Nacos管理器
+    """Get global Nacos manager
 
     Returns:
-        Nacos管理器实例
+        Nacos manager instance
 
     Raises:
-        RuntimeError: 如果Nacos管理器未初始化
+        RuntimeError: If Nacos manager is not initialized
     """
     if nacos_manager is None:
-        raise RuntimeError("Nacos管理器未初始化，请先调用init_nacos_manager()")
+        raise RuntimeError("Nacos manager not initialized, please call init_nacos_manager() first")
     return nacos_manager

@@ -1,4 +1,4 @@
-"""主机执行日志数据模型"""
+"""Host execution log data model"""
 
 from datetime import datetime
 from typing import Optional
@@ -6,11 +6,11 @@ from typing import Optional
 from sqlalchemy import JSON, VARCHAR, BigInteger, DateTime, Index, SmallInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
-# 使用 try-except 方式处理路径导入
+# Use try-except to handle path imports
 try:
     from shared.common.database import BaseDBModel
 except ImportError:
-    # 如果导入失败，添加项目根目录到 Python 路径
+    # If import fails, add project root directory to Python path
     import os
     import sys
 
@@ -19,10 +19,10 @@ except ImportError:
 
 
 class HostExecLog(BaseDBModel):
-    """主机执行日志模型 - 对应 host_exec_log 表
+    """Host execution log model - corresponds to host_exec_log table
 
-    继承 BaseDBModel 获得以下字段：
-    - id: BIGINT (主键, 自增)
+    Inherits from BaseDBModel to get the following fields:
+    - id: BIGINT (primary key, auto-increment)
     - created_time: DATETIME DEFAULT CURRENT_TIMESTAMP
     - updated_time: DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     - del_flag: TINYINT DEFAULT 0
@@ -30,78 +30,80 @@ class HostExecLog(BaseDBModel):
 
     __tablename__ = "host_exec_log"
 
-    # 主机主键;host_rec 表主键
+    # Host primary key; host_rec table primary key
     host_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, nullable=True, index=True, comment="主机主键;host_rec 表主键"
+        BigInteger, nullable=True, index=True, comment="Host primary key; host_rec table primary key"
     )
 
-    # 执行用户
-    user_id: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, index=True, comment="执行用户")
+    # Execution user
+    user_id: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, index=True, comment="Execution user")
 
-    # 执行测试 id
-    tc_id: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, comment="执行测试 id")
+    # Test case ID
+    tc_id: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, comment="Test case ID")
 
-    # 周期名称
-    cycle_name: Mapped[Optional[str]] = mapped_column(VARCHAR(128), nullable=True, comment="周期名称")
+    # Cycle name
+    cycle_name: Mapped[Optional[str]] = mapped_column(VARCHAR(128), nullable=True, comment="Cycle name")
 
-    # 用户名称
-    user_name: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="用户名称")
+    # User name
+    user_name: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="User name")
 
-    # 异常信息
-    err_msg: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, comment="异常信息")
+    # Error message
+    err_msg: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, comment="Error message")
 
-    # 开始时间
-    begin_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="开始时间")
+    # Start time
+    begin_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="Start time")
 
-    # 结束时间
-    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="结束时间")
+    # End time
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="End time")
 
-    # 预期结束时间;agent 上报的预期结束时间
-    due_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="预期结束时间;agent 上报的预期结束时间")
+    # Expected end time; expected end time reported by agent
+    due_time: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, comment="Expected end time; expected end time reported by agent"
+    )
 
-    # 主机状态;{free: 0, 空闲. lock: 1, 已锁定. occ: 2, 已占用. run: 3, case执行中.offline: 4, 离线.}
+    # Host state; {free: 0, free. lock: 1, locked. occ: 2, occupied. run: 3, case executing. offline: 4, offline.}
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
         nullable=True,
         index=True,
-        comment="主机状态;0-空闲 1-已锁定 2-已占用 3-case执行中 4-离线",
+        comment="Host state; 0-free 1-locked 2-occupied 3-case executing 4-offline",
     )
 
-    # case 执行状态;{free: 0, 空闲. start: 1, 启动. success: 2, 成功. failed: 3, 失败.}
+    # Case execution state; {free: 0, free. start: 1, started. success: 2, success. failed: 3, failed.}
     case_state: Mapped[int] = mapped_column(
         SmallInteger,
         default=0,
         nullable=False,
         index=True,
-        comment="case 执行状态;0-空闲 1-启动 2-成功 3-失败",
+        comment="Case execution state; 0-free 1-started 2-success 3-failed",
     )
 
-    # 执行结果
-    result_msg: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="执行结果")
+    # Execution result
+    result_msg: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="Execution result")
 
-    # 执行日志 log 地址
-    log_url: Mapped[Optional[str]] = mapped_column(VARCHAR(512), nullable=True, comment="执行日志 log 地址")
+    # Execution log URL
+    log_url: Mapped[Optional[str]] = mapped_column(VARCHAR(512), nullable=True, comment="Execution log URL")
 
-    # 创建人
-    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="创建人")
+    # Creator
+    created_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="Creator")
 
-    # 备注信息
-    exec_rmk: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="备注信息")
+    # Remarks
+    exec_rmk: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="Remarks")
 
-    # 更新人
-    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="更新人")
+    # Updater
+    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, comment="Updater")
 
-    # 邮件通知状态;{not: 0, 未通知, yes: 1, 已通知.}
+    # Email notification state; {not: 0, not notified. yes: 1, notified.}
     notify_state: Mapped[int] = mapped_column(
         SmallInteger,
         default=0,
         nullable=False,
         index=True,
-        comment="邮件通知状态;0-未通知 1-已通知",
+        comment="Email notification state; 0-not notified 1-notified",
     )
 
-    # 📌 注意: del_flag 字段已由 BaseDBModel 提供，不需要重复定义
-    # del_flag: TINYINT, default=0 (继承自 BaseDBModel)
+    # 📌 Note: del_flag field is provided by BaseDBModel, no need to redefine
+    # del_flag: TINYINT, default=0 (inherited from BaseDBModel)
 
     __table_args__ = (
         Index("ix_host_exec_log_case_state", "case_state"),
@@ -115,7 +117,7 @@ class HostExecLog(BaseDBModel):
     )
 
     def __repr__(self) -> str:
-        """字符串表示"""
+        """String representation"""
         return (
             f"<HostExecLog(id={self.id}, host_id={self.host_id}, user_id={self.user_id}, case_state={self.case_state})>"
         )

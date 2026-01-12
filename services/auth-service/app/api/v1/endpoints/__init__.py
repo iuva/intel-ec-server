@@ -1,7 +1,7 @@
 """
-API 端点模块
+API endpoints module
 
-导出所有端点路由
+Export all endpoint routes
 """
 
 from app.api.v1.endpoints.auth import router as auth_router
