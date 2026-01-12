@@ -77,7 +77,7 @@ __all__ = [
     "hash_***REMOVED***word",
 =======
     "get_***REMOVED***word_hash",
-    # 装饰器
+    # Decorators
     "handle_api_errors",
     "handle_service_errors",
     "hash_***REMOVED***word",
