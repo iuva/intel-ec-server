@@ -2,8 +2,9 @@
 Gateway Service API v1 route configuration
 """
 
-from app.api.v1.endpoints import proxy
 from fastapi import APIRouter
+
+from app.api.v1.endpoints import proxy
 
 # Create API router
 api_router = APIRouter()

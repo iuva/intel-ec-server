@@ -5,6 +5,7 @@ Provides unified error handling, monitoring and logging decorators
 """
 
 import asyncio
+from functools import wraps
 import time
 <<<<<<< HEAD
 <<<<<<< HEAD
