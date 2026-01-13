@@ -6,8 +6,8 @@ Provides multilingual message support, automatically detects language preference
 
 import json
 import os
-import sys
 from pathlib import Path
+import sys
 from typing import Any, Dict, Optional
 
 try:
@@ -57,11 +57,11 @@ class I18nManager:
             locale_file = self.locales_dir / f"{locale}.json"
             if locale_file.exists():
                 try:
-                    with open(locale_file, "r", encoding="utf-8") as f:
+                    with open(locale_file, encoding="utf-8") as f:
                         self._translations[locale] = json.load(f)
                     logger.info(f"Loaded language file: {locale} ({len(self._translations[locale])} translations)")
                 except Exception as e:
-                    logger.error(f"Failed to load language file: {locale_file}, Error: {str(e)}")
+                    logger.error(f"Failed to load language file: {locale_file}, Error: {e!s}")
             else:
                 logger.warning(f"Language file does not exist: {locale_file}")
 
@@ -116,7 +116,7 @@ class I18nManager:
                 logger.warning(f"Missing variables when formatting message: {key}, Missing: {e}")
                 # If formatting fails, return original message
             except Exception as e:
-                logger.error(f"Failed to format message: {key}, Error: {str(e)}")
+                logger.error(f"Failed to format message: {key}, Error: {e!s}")
 
         return message
 
@@ -238,7 +238,7 @@ def parse_accept_language(accept_language: Optional[str]) -> str:
         lang_code = normalized.split("_")[0].lower()
         if lang_code == "zh":
             return "zh_CN"
-        elif lang_code == "en":
+        if lang_code == "en":
             return "en_US"
 
     # Default language

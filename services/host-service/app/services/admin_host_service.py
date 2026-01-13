@@ -444,8 +444,7 @@ class AdminHostService:
                         "error": str(redis_error),
                         "error_type": type(redis_error).__name__,
                         "hint": (
-                            "When Redis is unavailable, deleted host tokens may still be usable "
-                            "until token expires"
+                            "When Redis is unavailable, deleted host tokens may still be usable until token expires"
                         ),
                     },
                 )

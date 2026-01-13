@@ -14,12 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Use try-except approach to handle path imports
 try:
     from app.models.host_hw_rec import HostHwRec
-
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
     from app.models.host_hw_rec import HostHwRec
-
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
@@ -78,9 +76,7 @@ def build_pending_hw_records_query(
         stmt = stmt.where(and_(*conditions))
 
     # Order by creation time and ID in descending order (to get latest records)
-    stmt = stmt.order_by(desc(HostHwRec.created_time), desc(HostHwRec.id))
-
-    return stmt
+    return stmt.order_by(desc(HostHwRec.created_time), desc(HostHwRec.id))
 
 
 async def get_latest_hw_record(

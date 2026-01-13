@@ -130,11 +130,9 @@ class VNCConnectionReport(BaseModel):
                     return dt
                 except ValueError as e:
                     raise ValueError(
-                        (
-                            f"Connection time format incorrect, supported formats: "
-                            f"yyyy/MM/dd HH:mm:ss (e.g., 2025/01/30 10:00:00) "
-                            f"or ISO 8601 (e.g., 2025-01-30T10:00:00Z), current value: {value}"
-                        )
+                        f"Connection time format incorrect, supported formats: "
+                        f"yyyy/MM/dd HH:mm:ss (e.g., 2025/01/30 10:00:00) "
+                        f"or ISO 8601 (e.g., 2025-01-30T10:00:00Z), current value: {value}"
                     ) from e
 
         raise ValueError(f"Connection time must be string or datetime object, current type: {type(value).__name__}")
@@ -540,8 +538,7 @@ class AdminHostDetailResponse(BaseModel):
     hw_list: List[AdminHostHwDetailInfo] = Field(
         default_factory=list,
         description=(
-            "Hardware information list (host_hw_rec table records with sync_state=2, "
-            "sorted by updated_time descending)"
+            "Hardware information list (host_hw_rec table records with sync_state=2, sorted by updated_time descending)"
         ),
     )
 
@@ -717,8 +714,7 @@ class AdminApprHostDetailResponse(BaseModel):
     hw_list: List[AdminApprHostHwInfo] = Field(
         default_factory=list,
         description=(
-            "Hardware information list (host_hw_rec table records with sync_state=1, "
-            "sorted by created_time descending)"
+            "Hardware information list (host_hw_rec table records with sync_state=1, sorted by created_time descending)"
         ),
     )
 

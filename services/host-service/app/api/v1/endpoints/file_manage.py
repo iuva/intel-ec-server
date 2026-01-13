@@ -4,8 +4,8 @@ Provides HTTP API interfaces for file upload, download, and access.
 """
 
 import os
-import sys
 from pathlib import Path as SysPath
+import sys
 from typing import Iterator
 
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Request, UploadFile
@@ -15,24 +15,22 @@ from starlette.status import HTTP_206_PARTIAL_CONTENT, HTTP_404_NOT_FOUND
 
 # Use try-except to handle path imports
 try:
-    from app.api.v1.dependencies import get_file_manage_service, get_current_user
+    from app.api.v1.dependencies import get_current_user, get_file_manage_service
     from app.schemas.host import FileUploadResponse
     from app.services.file_manage_service import FileManageService
     from app.utils.http_helpers import parse_range_header
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
     from shared.common.response import Result
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from app.api.v1.dependencies import get_file_manage_service, get_current_user
+    from app.api.v1.dependencies import get_current_user, get_file_manage_service
     from app.schemas.host import FileUploadResponse
     from app.services.file_manage_service import FileManageService
     from app.utils.http_helpers import parse_range_header
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger

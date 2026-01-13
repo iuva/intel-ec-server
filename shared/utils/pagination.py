@@ -150,9 +150,7 @@ class CursorPaginationResponse(BaseModel):
         >>> print(response.has_next)  # Output: False
     """
 
-    page_size: int = Field(
-        description="Page size"
-    )
+    page_size: int = Field(description="Page size")
     total: int = Field(description="Total number of records found in this query")
     has_next: bool = Field(description="Whether there is a next page")
     last_id: Optional[int] = Field(

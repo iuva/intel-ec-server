@@ -4,13 +4,16 @@ Redis Cache Management Module
 Provides Redis asynchronous connection management, caching operations and decorator functions
 """
 
+from functools import wraps
 import hashlib
 import json
 import logging
+import os
 import re
-from functools import wraps
+import ssl
 from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import quote_plus
+import uuid
 
 import redis.asyncio as redis
 
@@ -337,8 +340,6 @@ class RedisManager:
             ssl_cert_reqs: SSL certificate verification requirement (optional, none/optional/required)
             ssl_check_hostname: Whether to verify hostname (default False)
         """
-        import os
-        import ssl
 
         # Mask URL for logging
         masked_url = mask_sensitive_info(redis_url)
@@ -660,8 +661,6 @@ class RedisManager:
             return False
 
         try:
-            import uuid
-
             if lock_value is None:
                 lock_value = str(uuid.uuid4())
 
@@ -689,13 +688,13 @@ class RedisManager:
 
         try:
             # Use Lua script to ensure atomicity: only delete when lock value matches
-            lua_script = '''
+            lua_script = """
             if redis.call("get", KEYS[1]) == ARGV[1] then
                 return redis.call("del", KEYS[1])
             else
                 return 0
             end
-            '''
+            """
             result = await self.client.eval(lua_script, 1, key, lock_value)  # type: ignore
             return result == 1
         except Exception as e:

@@ -19,7 +19,6 @@ try:
     )
     from app.services.admin_ota_service import AdminOtaService
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -35,7 +34,6 @@ except ImportError:
     )
     from app.services.admin_ota_service import AdminOtaService
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger

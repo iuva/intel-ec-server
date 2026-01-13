@@ -74,8 +74,7 @@ class HeartbeatManager:
         """
         if connection_id in self._heartbeat_tasks:
             logger.warning(
-                "Connection heartbeat already exists, will be overwritten",
-                extra={"connection_id": connection_id}
+                "Connection heartbeat already exists, will be overwritten", extra={"connection_id": connection_id}
             )
             self._heartbeat_tasks[connection_id].cancel()
 

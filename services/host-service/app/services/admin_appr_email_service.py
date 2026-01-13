@@ -151,7 +151,6 @@ class ApprovalEmailService:
 
     def __init__(self) -> None:
         """Initialize email service"""
-        ***REMOVED***
 
     async def send_approval_email(
         self,
@@ -261,7 +260,7 @@ class ApprovalEmailService:
                     },
                 )
             except Exception as email_error:
-                error_msg = f"Email sending exception: {str(email_error)}"
+                error_msg = f"Email sending exception: {email_error!s}"
                 email_errors.append(error_msg)
                 logger.warning(
                     "Email sending exception (does not affect transaction)",
@@ -273,7 +272,7 @@ class ApprovalEmailService:
                 )
 
         except Exception as e:
-            error_msg = f"Email notification processing exception: {str(e)}"
+            error_msg = f"Email notification processing exception: {e!s}"
             email_errors.append(error_msg)
             logger.warning(
                 "Email notification processing exception (does not affect transaction)",

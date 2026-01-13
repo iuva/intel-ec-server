@@ -71,7 +71,7 @@ def build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
         "border-collapse: collapse; width: 100%; margin: 15px 0; "
         "border-radius: 5px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
     )
-    table_html = f"""
+    return f"""
 <table style='{table_style}'>
     <thead>
         <tr>
@@ -84,58 +84,6 @@ def build_host_table(hardware_ids: List[str], host_ips: List[str]) -> str:
     </tbody>
 </table>
 """
-
-    return table_html
-
-
-def get_hardware_name_from_hw_info(hw_info: Dict[str, Any], host_rec: HostRec) -> str:
-    """Extract configuration name from hardware information
-
-    Args:
-        hw_info: Hardware information dictionary (contains dmr_config)
-        host_rec: Host record object
-
-    Returns:
-        Configuration name string
-    """
-    # Prefer extracting host_name from dmr_config
-    try:
-        dmr_config = hw_info.get("dmr_config", {})
-        mainboard = dmr_config.get("mainboard", {})
-        board = mainboard.get("board", {})
-        board_meta_data = board.get("board_meta_data", {})
-        host_name = board_meta_data.get("host_name")
-        if host_name:
-            return host_name
-    except Exception:
-        ***REMOVED***
-
-    # If cannot extract from dmr_config, use host_rec fields
-    if host_rec.host_ip:
-        return f"Host-{host_rec.host_ip}"
-    elif host_rec.mg_id:
-        return f"Host-{host_rec.mg_id}"
-    else:
-        return f"Host-{host_rec.id}"
-
-
-def build_hardware_head() -> Dict[str, str]:
-    """Build hardware API Head parameters (Mock data)
-
-    Returns:
-        Head parameters dictionary
-    """
-    return {
-        "ConfigName": "DMR-sample-1",
-        "Component": "bios.playform",
-        "Owner": "zeyichen",
-        "Project": "bios.oakstream_diamondrapids",
-        "Environment": "silicon",
-        "Milestone": "Alpha",
-        "SubComponent": "",
-        "Type": "hardware",
-        "Tag": "",
-    }
 
 
 async def call_hardware_api(
@@ -167,32 +115,7 @@ async def call_hardware_api(
     Raises:
         BusinessError: When API call fails
     """
-    # Check if using Mock data
-    use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
-
-    if use_mock:
-        logger.info(
-            "Using Mock hardware API data",
-            extra={
-                "hardware_id": hardware_id,
-                "is_new": hardware_id is None,
-            },
-        )
-        # Return simulated hardware_id and host_name
-        if hardware_id:
-            return {"hardware_id": hardware_id, "host_name": None}
-        else:
-            # Generate simulated hardware_id
-            import uuid
-
-            mock_id = f"mock-hardware-{uuid.uuid4().hex[:8]}"
-            return {"hardware_id": mock_id, "host_name": None}
-
-        # Use unified external API call client
     try:
-        # Build Head parameters (Mock data)
-        head_data = build_hardware_head()
-
         # ✅ Determine if hardware_id is valid: None or empty string are considered invalid, call create API
         is_valid_hardware_id = hardware_id is not None and bool(hardware_id and hardware_id.strip())
 
@@ -255,8 +178,9 @@ async def call_hardware_api(
                 # Create hardware: POST /api/v1/hardware/
                 url_path = "/api/v1/hardware/"
                 request_body = {
-                    "Head": head_data,
-                    "Payload": hw_info,
+                    "name": "dmr_config_schema",
+                    "hardware_config": hw_info.get("hardware_config", hw_info.get("dmr_config", {})),
+                    "updated_by": str(user_id) if user_id else "",
                 }
 
                 logger.info(
@@ -348,14 +272,13 @@ async def call_hardware_api(
                         },
                     )
                     return {"hardware_id": str(new_hardware_id), "host_name": host_name}
-                else:
-                    raise BusinessError(
-                        message="Hardware API returned data format error: response is not JSON format",
-                        message_key="error.hardware.invalid_response",
-                        error_code="HARDWARE_INVALID_RESPONSE",
-                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                        http_status_code=500,
-                    )
+                raise BusinessError(
+                    message="Hardware API returned data format error: response is not JSON format",
+                    message_key="error.hardware.invalid_response",
+                    error_code="HARDWARE_INVALID_RESPONSE",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=500,
+                )
             finally:
                 # Release lock
                 if lock_key and lock_value:
@@ -385,9 +308,8 @@ async def call_hardware_api(
 
             url_path = f"/api/v1/hardware/{valid_hardware_id}"
             request_body = {
-                "_id": {"$oid": valid_hardware_id},
-                "Head": head_data,
-                "Payload": hw_info,
+                "hardware_config": hw_info.get("hardware_config", hw_info.get("dmr_config", {})),
+                "updated_by": str(user_id) if user_id else "",
             }
 
             logger.info(
@@ -479,7 +401,7 @@ async def call_hardware_api(
             exc_info=True,
         )
         raise BusinessError(
-            message=f"Hardware API call exception: {str(e)}",
+            message=f"Hardware API call exception: {e!s}",
             message_key="error.hardware.api_error",
             error_code="HARDWARE_API_ERROR",
             code=ServiceErrorCodes.HOST_OPERATION_FAILED,

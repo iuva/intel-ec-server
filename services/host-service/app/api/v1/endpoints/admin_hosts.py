@@ -29,7 +29,6 @@ try:
     )
     from app.services.admin_host_service import AdminHostService
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -54,7 +53,6 @@ except ImportError:
     )
     from app.services.admin_host_service import AdminHostService
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -382,8 +380,7 @@ async def disable_host(
     response_model=SuccessResponse,
     summary="Force offline host",
     description=(
-        "Force offline host (set host_state=4), "
-        "only hosts in free state (host_state=0) are allowed to go offline"
+        "Force offline host (set host_state=4), only hosts in free state (host_state=0) are allowed to go offline"
     ),
     responses={
         200: {
@@ -430,8 +427,7 @@ async def disable_host(
                             "value": {
                                 "code": 53005,
                                 "message": (
-                                    "Host force offline failed, "
-                                    "record may have been deleted or state changed (ID: 123)"
+                                    "Host force offline failed, record may have been deleted or state changed (ID: 123)"
                                 ),
                                 "error_code": "HOST_FORCE_OFFLINE_FAILED",
                             },

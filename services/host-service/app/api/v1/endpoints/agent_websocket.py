@@ -146,8 +146,7 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
             await ws_manager.disconnect(host_id)
         else:
             logger.debug(
-                "Connection already disconnected, skipping duplicate disconnect operation",
-                extra={"host_id": host_id}
+                "Connection already disconnected, skipping duplicate disconnect operation", extra={"host_id": host_id}
             )
 
     except Exception as e:
@@ -161,8 +160,7 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
             await ws_manager.disconnect(host_id)
         else:
             logger.debug(
-                "Connection already disconnected, skipping duplicate disconnect operation",
-                extra={"host_id": host_id}
+                "Connection already disconnected, skipping duplicate disconnect operation", extra={"host_id": host_id}
             )
 
 

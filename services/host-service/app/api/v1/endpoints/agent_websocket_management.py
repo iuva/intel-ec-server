@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, Path, Query
 # Use try-except to handle path imports
 try:
     from app.utils.websocket_helpers import validate_websocket_message
-
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -20,7 +19,6 @@ try:
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.utils.websocket_helpers import validate_websocket_message
-
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -175,12 +173,11 @@ async def send_message_to_host(
             message_key="success.websocket.message_sent",
             locale=locale,
         )
-    else:
-        return SuccessResponse(
-            data={"host_id": host_id, "success": success},
-            message_key="error.websocket.host_not_connected",
-            locale=locale,
-        )
+    return SuccessResponse(
+        data={"host_id": host_id, "success": success},
+        message_key="error.websocket.host_not_connected",
+        locale=locale,
+    )
 
 
 @router.post("/ws/send-to-hosts")
@@ -397,8 +394,7 @@ async def notify_host_offline(
 
     if success:
         logger.info(
-            "Host offline notification sent",
-            extra={"host_id": host_id, "reason": reason or "Reason not specified"}
+            "Host offline notification sent", extra={"host_id": host_id, "reason": reason or "Reason not specified"}
         )
     else:
         logger.warning("Host offline notification send failed", extra={"host_id": host_id})

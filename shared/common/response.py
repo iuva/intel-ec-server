@@ -5,11 +5,11 @@ Provides standardized API response formats, including success response, error re
 Supports multi-language messages.
 """
 
+from datetime import datetime, timezone
 import os
 import sys
-import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, Generic, List, Optional, TypeVar
+import uuid
 
 from pydantic import BaseModel, Field, model_serializer
 
@@ -209,6 +209,7 @@ class ErrorResponse(BaseModel):
         default_factory=lambda: str(uuid.uuid4()),
         description="Request unique identifier",
     )
+    data: Optional[Any] = Field(default=None, description="Error data (optional, for unified format)")
     locale: Optional[str] = Field(default=None, description="Language code (for translating message_key)")
 
     model_config = {"from_attributes": True}

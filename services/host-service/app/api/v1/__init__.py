@@ -1,5 +1,7 @@
 """API v1 route configuration"""
 
+from fastapi import APIRouter
+
 from app.api.v1.endpoints import (
     admin_appr_host,
     admin_hosts,
@@ -11,7 +13,6 @@ from app.api.v1.endpoints import (
     browser_vnc,
     file_manage,
 )
-from fastapi import APIRouter
 
 api_router = APIRouter()
 
@@ -30,9 +31,7 @@ api_router.include_router(agent_websocket_management.router, tags=["Agent-WebSoc
 # Admin backend routes
 api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["Admin Backend-Available Host Management"])
 api_router.include_router(
-    admin_appr_host.router,
-    prefix="/admin/appr-host",
-    tags=["Admin Backend-Pending Approval Host Management"]
+    admin_appr_host.router, prefix="/admin/appr-host", tags=["Admin Backend-Pending Approval Host Management"]
 )
 api_router.include_router(admin_ota.router, prefix="/admin/ota", tags=["Admin Backend-OTA Management"])
 # File management routes

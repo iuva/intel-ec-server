@@ -110,9 +110,7 @@ class CommandMessage(BaseMessage):
     command_id: str = Field(..., description="Command ID (unique identifier)")
     command: str = Field(..., description="Command name")
     args: Optional[Dict[str, Any]] = Field(default=None, description="Command arguments")
-    target_agents: Optional[List[str]] = Field(
-        default=None, description="Target Agent list (None means all)"
-    )
+    target_agents: Optional[List[str]] = Field(default=None, description="Target Agent list (None means all)")
 
 
 class CommandResponseMessage(BaseMessage):
@@ -125,9 +123,7 @@ class CommandResponseMessage(BaseMessage):
     agent_id: str = Field(..., description="Agent ID")
     command_id: str = Field(..., description="Corresponding command ID")
     result: Optional[Dict[str, Any]] = Field(default=None, description="Command execution result")
-    error: Optional[str] = Field(
-        default=None, description="Error information (if execution failed)"
-    )
+    error: Optional[str] = Field(default=None, description="Error information (if execution failed)")
     success: bool = Field(..., description="Whether command execution succeeded")
 
 
@@ -143,9 +139,7 @@ class NotificationMessage(BaseMessage):
     type: MessageType = Field(default=MessageType.NOTIFICATION, description="Message type")
     title: str = Field(..., description="Notification title")
     content: str = Field(..., description="Notification content")
-    level: str = Field(
-        default="info", description="Notification level (info/warning/error/critical)"
-    )
+    level: str = Field(default="info", description="Notification level (info/warning/error/critical)")
     data: Optional[Dict[str, Any]] = Field(default=None, description="Additional data")
 
 
@@ -189,8 +183,7 @@ class ConnectionNotificationMessage(BaseMessage):
     type: MessageType = Field(default=MessageType.CONNECTION_NOTIFICATION, description="Message type")
     host_id: str = Field(..., description="Host ID")
     message: str = Field(
-        default="VNC connection succeeded, please start log monitoring",
-        description="Notification message"
+        default="VNC connection succeeded, please start log monitoring", description="Notification message"
     )
     action: str = Field(default="start_log_monitoring", description="Action type (start_log_monitoring)")
     details: Optional[Dict[str, Any]] = Field(

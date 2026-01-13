@@ -365,9 +365,7 @@ async def get_external_api_token(
 
             # 6. Store in Redis cache based on expires_in value
             try:
-                if isinstance(expires_in, (int, float)):
-                    expire_seconds = int(expires_in)
-                elif isinstance(expires_in, str) and expires_in.isdigit():
+                if isinstance(expires_in, (int, float)) or (isinstance(expires_in, str) and expires_in.isdigit()):
                     expire_seconds = int(expires_in)
                 else:
                     expire_seconds = 15552000
@@ -431,7 +429,7 @@ async def get_external_api_token(
             logger.error("Exception getting external API token", extra=error_details, exc_info=True)
 
             raise BusinessError(
-                message=f"Exception getting external API token: {str(e)}",
+                message=f"Exception getting external API token: {e!s}",
                 message_key="error.external_api.token_error",
                 error_code="EXTERNAL_API_TOKEN_ERROR",
                 code=ServiceErrorCodes.HOST_OPERATION_FAILED,

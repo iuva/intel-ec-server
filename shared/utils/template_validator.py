@@ -99,7 +99,7 @@ class TemplateValidator:
         except BusinessError:
             raise
         except Exception as e:
-            logger.error(f"Template field validation exception: {str(e)}", exc_info=True)
+            logger.error(f"Template field validation exception: {e!s}", exc_info=True)
             raise BusinessError(
                 message="Template field validation failed",
                 error_code="VALIDATION_FAILED",

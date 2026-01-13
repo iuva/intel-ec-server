@@ -62,19 +62,21 @@ configure_logger(service_name=service_name)
 logger = get_logger(__name__)
 
 # Create service configuration
+from app.core.config import settings
+
+# ✅ Restore ServiceConfig for shared lifespan compatibility
 config = ServiceConfig.from_env(
     service_name=service_name,
     service_port_key="GATEWAY_SERVICE_PORT",
 )
 
 # ✅ Validate JWT secret key configuration (must be set in production environment)
-jwt_secret_key = os.getenv("JWT_SECRET_KEY", "")
+jwt_secret_key = settings.jwt_secret_key
 environment = os.getenv("ENVIRONMENT", "development").lower()
 if environment == "production":
     if not jwt_secret_key or jwt_secret_key in ("your-secret-key-here", "default_secret_key", ""):
         logger.error(
-            "Production environment must set JWT_SECRET_KEY environment variable, "
-            "and cannot use default value"
+            "Production environment must set JWT_SECRET_KEY environment variable, and cannot use default value"
         )
         raise ValueError(
             "Production environment must set JWT_SECRET_KEY environment variable. "
@@ -97,23 +99,13 @@ load_balance_strategy = os.getenv("LOAD_BALANCE_STRATEGY", "round_robin")
 # Initialize service discovery (before create_service_lifespan)
 # Note: Nacos manager will be initialized in lifespan (if enabled), initialize service discovery instance here first
 # If no Nacos, service discovery will use local multi-instance configuration (such as HOST_SERVICE_INSTANCES)
+# ✅ Inject configuration from settings
 service_discovery = init_service_discovery(
     nacos_manager=None,  # Nacos manager will be set later in lifespan
     cache_ttl=30,
     load_balance_strategy=load_balance_strategy,
+    service_config=settings.model_dump(),  # Pass full configuration
 )
-
-if config.enable_nacos:
-    logger.info(
-        "✅ Service discovery initialized (Nacos enabled, will connect in lifespan)",
-        extra={"load_balance_strategy": load_balance_strategy},
-    )
-else:
-    logger.info(
-        "✅ Service discovery initialized "
-        "(Nacos not enabled, will use local multi-instance configuration or fallback address)",
-        extra={"load_balance_strategy": load_balance_strategy},
-    )
 
 # Create FastAPI application
 app = FastAPI(
@@ -126,25 +118,25 @@ app = FastAPI(
 # Save service discovery instance in application state for use in routes
 app.state.service_discovery = service_discovery
 app.state.http_client_config = HTTPClientConfig(
-    timeout=config.http_timeout,
-    connect_timeout=config.http_connect_timeout,
-    max_keepalive_connections=config.http_max_keepalive_connections,
-    max_connections=config.http_max_connections,
-    max_retries=config.http_max_retries,
-    retry_delay=config.http_retry_delay,
-    client_name=f"{config.service_name}_http_client",
+    timeout=settings.http_timeout,
+    connect_timeout=settings.http_connect_timeout,
+    max_keepalive_connections=settings.http_max_keepalive_connections,
+    max_connections=settings.http_max_connections,
+    max_retries=settings.http_max_retries,
+    retry_delay=settings.http_retry_delay,
+    client_name=f"{settings.service_name}_http_client",
 )
 app.state.health_check_http_client_config = HTTPClientConfig(
-    timeout=config.health_check_timeout,
-    connect_timeout=config.health_check_connect_timeout,
-    max_keepalive_connections=config.health_check_max_keepalive_connections,
-    max_connections=config.health_check_max_connections,
-    max_retries=config.health_check_max_retries,
-    retry_delay=config.health_check_retry_delay,
-    client_name=f"{config.service_name}_health_check_client",
+    timeout=settings.health_check_timeout,
+    connect_timeout=settings.health_check_connect_timeout,
+    max_keepalive_connections=settings.health_check_max_keepalive_connections,
+    max_connections=settings.health_check_max_connections,
+    max_retries=settings.health_check_max_retries,
+    retry_delay=settings.health_check_retry_delay,
+    client_name=f"{settings.service_name}_health_check_client",
 )
 # ✅ Save WebSocket configuration
-app.state.max_websocket_connections = int(os.getenv("MAX_WEBSOCKET_CONNECTIONS", "1000"))
+app.state.max_websocket_connections = settings.websocket_max_connections
 
 # ✅ Add all middleware here immediately (before lifespan)
 # Add CORS middleware
@@ -210,3 +202,16 @@ app.include_router(api_router, prefix="/api/v1")
 async def root():
     """Root path"""
     return {"message": "Intel EC Gateway Service is running"}
+
+
+# ✅ Integrate custom OpenAPI aggregation
+try:
+    from app.core.openapi import custom_openapi
+
+    # Use lambda to ***REMOVED*** app instance, override default openapi method
+    app.openapi = lambda: custom_openapi(app)
+    logger.info("✅ Custom OpenAPI aggregation enabled")
+except ImportError:
+    logger.warning("❌ Failed to import custom_openapi, OpenAPI aggregation disabled")
+except Exception as e:
+    logger.warning(f"❌ Failed to setup custom OpenAPI: {e}")

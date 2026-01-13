@@ -14,27 +14,25 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 # Use try-except to handle path imports
 try:
+    from app.services.admin_appr_host_service import AdminApprHostService
+    from app.services.admin_host_service import AdminHostService
+    from app.services.admin_ota_service import AdminOtaService
     from app.services.browser_host_service import BrowserHostService
     from app.services.browser_vnc_service import BrowserVNCService
-    from app.services.host_discovery_service import HostDiscoveryService
     from app.services.file_manage_service import FileManageService
-    from app.services.admin_appr_host_service import AdminApprHostService
-    from app.services.admin_ota_service import AdminOtaService
-    from app.services.admin_host_service import AdminHostService
-
+    from app.services.host_discovery_service import HostDiscoveryService
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from app.services.browser_host_service import BrowserHostService
-    from app.services.browser_vnc_service import BrowserVNCService
-    from app.services.host_discovery_service import HostDiscoveryService
-    from app.services.file_manage_service import FileManageService
     from app.services.admin_appr_host_service import AdminApprHostService
     from app.services.admin_host_service import AdminHostService
     from app.services.admin_ota_service import AdminOtaService
-
+    from app.services.browser_host_service import BrowserHostService
+    from app.services.browser_vnc_service import BrowserVNCService
+    from app.services.file_manage_service import FileManageService
+    from app.services.host_discovery_service import HostDiscoveryService
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse

@@ -6,6 +6,8 @@ Provides API endpoints for host querying used by browser extensions.
 import os
 import sys
 
+from fastapi import APIRouter, Body, Depends, Request
+
 from app.api.v1.dependencies import get_host_discovery_service, get_host_service
 from app.schemas.host import (
     AvailableHostsListResponse,
@@ -17,13 +19,11 @@ from app.schemas.host import (
     RetryVNCListResponse,
 )
 from app.services.browser_host_service import BrowserHostService
-from fastapi import APIRouter, Body, Depends, Request
 
 # Use try-except to handle path imports
 try:
     from app.utils.logging_helpers import log_request_completed, log_request_received
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -32,7 +32,6 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.utils.logging_helpers import log_request_completed, log_request_received
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger

@@ -77,7 +77,7 @@ class FileManageService:
             )
         except Exception as e:
             logger.error(
-                f"Failed to create upload directory: {self.upload_dir}, error: {str(e)}",
+                f"Failed to create upload directory: {self.upload_dir}, error: {e!s}",
                 extra={"upload_dir": self.upload_dir, "error_type": type(e).__name__},
                 exc_info=True,
             )
@@ -176,7 +176,7 @@ class FileManageService:
                 exc_info=True,
             )
             raise BusinessError(
-                message=f"File upload failed: {str(e)}",
+                message=f"File upload failed: {e!s}",
                 error_code=ServiceErrorCodes.FILE_UPLOAD_FAILED,
             )
 

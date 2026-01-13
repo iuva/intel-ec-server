@@ -307,29 +307,28 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
                         f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
                         extra=response_log_data,
                     )
-            else:
-                # ✅ For error responses, even if unable to read body, also log warning
-                if is_error_response:
-                    logger.warning(
-                        (
-                            f"HTTP Error Response: {method} {path} - {status_code} "
-                            f"({duration * 1000:.2f}ms) - Unable to read response body"
+            # ✅ For error responses, even if unable to read body, also log warning
+            elif is_error_response:
+                logger.warning(
+                    (
+                        f"HTTP Error Response: {method} {path} - {status_code} "
+                        f"({duration * 1000:.2f}ms) - Unable to read response body"
+                    ),
+                    extra={
+                        **response_log_data,
+                        "hint": (
+                            "Response body may not be in JSON format, or response type "
+                            "doesn't support reading (e.g., StreamingResponse)"
                         ),
-                        extra={
-                            **response_log_data,
-                            "hint": (
-                                "Response body may not be in JSON format, or response type "
-                                "doesn't support reading (e.g., StreamingResponse)"
-                            ),
-                            "content_type": response.headers.get("content-type"),
-                        },
-                    )
-                else:
-                    # Even if unable to read body, still log response status code and duration
-                    logger.info(
-                        f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
-                        extra=response_log_data,
-                    )
+                        "content_type": response.headers.get("content-type"),
+                    },
+                )
+            else:
+                # Even if unable to read body, still log response status code and duration
+                logger.info(
+                    f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
+                    extra=response_log_data,
+                )
 
             return response
 
@@ -339,7 +338,7 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
 
             # Log exception (including full stack trace)
             logger.error(
-                f"HTTP Request Exception: {method} {path} - {type(e).__name__}: {str(e)} ({duration * 1000:.2f}ms)",
+                f"HTTP Request Exception: {method} {path} - {type(e).__name__}: {e!s} ({duration * 1000:.2f}ms)",
                 extra={
                     "method": method,
                     "path": path,

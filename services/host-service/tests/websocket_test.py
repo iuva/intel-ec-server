@@ -49,7 +49,7 @@ async def host_websocket_client():
                         "type": "command_response",
                         "command_id": data.get("command_id"),
                         "status": "success",
-                        'result': 'Command execution completed',
+                        "result": "Command execution completed",
                         "timestamp": int(time.time()),
                     }
                     await websocket.send(json.dumps(response))

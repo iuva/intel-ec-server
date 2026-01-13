@@ -20,6 +20,7 @@ from prometheus_client import (
     ProcessCollector,
     generate_latest,
 )
+
 from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
 
 logger = logging.getLogger(__name__)

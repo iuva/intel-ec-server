@@ -247,8 +247,7 @@ class WebSocketConnectionPool:
                 logger.debug("WebSocket connection closed", extra={"service_url": service_url})
             except Exception as e:
                 logger.warning(
-                    "Error closing WebSocket connection",
-                    extra={"service_url": service_url, "error": str(e)}
+                    "Error closing WebSocket connection", extra={"service_url": service_url, "error": str(e)}
                 )
             return
 

@@ -15,7 +15,6 @@ from starlette.status import HTTP_200_OK
 try:
     from app.utils.logging_helpers import log_request_completed, log_request_received
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -24,7 +23,6 @@ except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.utils.logging_helpers import log_request_completed, log_request_received
     from app.utils.response_helpers import create_success_result
-
     from shared.common.decorators import handle_api_errors
     from shared.common.i18n_dependencies import get_locale
     from shared.common.loguru_config import get_logger
@@ -50,8 +48,7 @@ router = APIRouter()
     status_code=HTTP_200_OK,
     summary="Report VNC connection result",
     description=(
-        "Process VNC connection result reported by browser extension, "
-        "update host status and manage execution logs"
+        "Process VNC connection result reported by browser extension, update host status and manage execution logs"
     ),
     responses={
         200: {

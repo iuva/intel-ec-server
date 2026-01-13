@@ -1091,20 +1091,19 @@ class HostDiscoveryService:
                     # Clear collected results, restart query
                     all_available_hosts = []
                     continue
-                else:
-                    # Retry count exhausted or not a connection lost error, re-raise exception
-                    logger.error(
-                        "Database query failed, cannot retry",
-                        extra={
-                            "attempt": attempt + 1,
-                            "max_retries": max_retries,
-                            "error_code": error_code,
-                            "error_message": str(e),
-                            "is_connection_lost": is_connection_lost,
-                        },
-                        exc_info=True,
-                    )
-                    raise
+                # Retry count exhausted or not a connection lost error, re-raise exception
+                logger.error(
+                    "Database query failed, cannot retry",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_retries": max_retries,
+                        "error_code": error_code,
+                        "error_message": str(e),
+                        "is_connection_lost": is_connection_lost,
+                    },
+                    exc_info=True,
+                )
+                raise
 
         # If all retries failed, return empty list (should not reach here as exception will be raised)
         logger.error(

@@ -18,8 +18,7 @@ except ImportError:
 
 
 def get_locale(
-    request: Request,
-    accept_language: Optional[str] = Header(None, description="Accept-Language header")
+    request: Request, accept_language: Optional[str] = Header(None, description="Accept-Language header")
 ) -> str:
     """Get language preference from request header
 

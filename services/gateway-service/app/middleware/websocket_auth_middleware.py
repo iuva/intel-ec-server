@@ -165,8 +165,7 @@ class WebSocketAuthMiddleware:
                     user_info["id"] = user_id
                 if not user_id:
                     self.logger.warning(
-                        "Token verification successful but id is empty",
-                        extra={"payload_keys": list(user_info.keys())}
+                        "Token verification successful but id is empty", extra={"payload_keys": list(user_info.keys())}
                     )
                     return None
                 self.logger.debug("Token verification successful", extra={"id": user_id})

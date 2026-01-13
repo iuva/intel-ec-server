@@ -5,15 +5,6 @@ Provides commonly used utility classes and helper functions in the project
 """
 
 from shared.utils.json_comparator import JSONComparator
-from shared.utils.pagination import (
-    CursorPaginationParams,
-    CursorPaginationResponse,
-    PaginationParams,
-    PaginationResponse,
-)
-from shared.utils.service_discovery import ServiceDiscovery, get_service_discovery, init_service_discovery
-from shared.utils.template_validator import TemplateValidator
-from shared.utils.token_extractor import TokenExtractor, get_token_extractor
 
 # Logging utilities
 from shared.utils.logging_utils import (
@@ -37,6 +28,15 @@ from shared.utils.logging_utils import (
     timed_operation_sync,
     with_request_logging,
 )
+from shared.utils.pagination import (
+    CursorPaginationParams,
+    CursorPaginationResponse,
+    PaginationParams,
+    PaginationResponse,
+)
+from shared.utils.service_discovery import ServiceDiscovery, get_service_discovery, init_service_discovery
+from shared.utils.template_validator import TemplateValidator
+from shared.utils.token_extractor import TokenExtractor, get_token_extractor
 
 # Host validation and query tools (lazy import to avoid circular dependencies)
 try:

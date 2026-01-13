@@ -238,7 +238,6 @@ def get_timeout_message(
     """
     if timeout_type == "case":
         return f"Host {host_id} test case execution timeout (exceeded {timeout_minutes} minutes)"
-    elif timeout_type == "vnc":
+    if timeout_type == "vnc":
         return f"Host {host_id} VNC connection timeout (exceeded {timeout_minutes} minutes)"
-    else:
-        return f"Host {host_id} timeout (exceeded {timeout_minutes} minutes)"
+    return f"Host {host_id} timeout (exceeded {timeout_minutes} minutes)"

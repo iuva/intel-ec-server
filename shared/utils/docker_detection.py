@@ -6,9 +6,9 @@ used for configuring database and service connection addresses.
 
 import logging
 import os
+from pathlib import Path
 import platform
 import socket
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +39,7 @@ def is_running_in_docker() -> bool:
             ***REMOVED***
 
     # Method 3: Check environment variables
-    if os.getenv("CONTAINER") or os.getenv("DOCKER_CONTAINER"):
-        return True
-
-    return False
+    return bool(os.getenv("CONTAINER") or os.getenv("DOCKER_CONTAINER"))
 
 
 def get_docker_host_for_database() -> str:
@@ -58,9 +55,8 @@ def get_docker_host_for_database() -> str:
     system = platform.system().lower()
     if system in ("darwin", "windows"):
         return "host.docker.internal"
-    else:
-        # Linux
-        return "172.17.0.1"
+    # Linux
+    return "172.17.0.1"
 
 
 def resolve_mariadb_host(default_in_docker: str = "mariadb") -> str:
@@ -85,22 +81,21 @@ def resolve_mariadb_host(default_in_docker: str = "mariadb") -> str:
     # Detect if in Docker container
     if is_running_in_docker():
         return default_in_docker
-    else:
-        # Local environment
-        # Try to detect if Docker container is running (via docker ps or checking common ports)
-        # If Docker database container is detected, use host.docker.internal
-        # Otherwise use localhost
+    # Local environment
+    # Try to detect if Docker container is running (via docker ps or checking common ports)
+    # If Docker database container is detected, use host.docker.internal
+    # Otherwise use localhost
 
-        # Prefer to try host.docker.internal (suitable for macOS/Windows)
-        # If user needs to connect to database in Docker, should explicitly set MARIADB_HOST
-        # Here provide a reasonable default: if possible, try host.docker.internal
+    # Prefer to try host.docker.internal (suitable for macOS/Windows)
+    # If user needs to connect to database in Docker, should explicitly set MARIADB_HOST
+    # Here provide a reasonable default: if possible, try host.docker.internal
 
-        # For macOS/Windows, if database is in Docker, recommend using host.docker.internal
-        # But here we are conservative, default to localhost, let user explicitly specify via environment variable
-        # This supports both:
-        # 1. Database is local (not Docker): use localhost
-        # 2. Database is in Docker: user sets MARIADB_HOST=host.docker.internal (macOS/Windows) or 172.17.0.1 (Linux)
-        return "localhost"
+    # For macOS/Windows, if database is in Docker, recommend using host.docker.internal
+    # But here we are conservative, default to localhost, let user explicitly specify via environment variable
+    # This supports both:
+    # 1. Database is local (not Docker): use localhost
+    # 2. Database is in Docker: user sets MARIADB_HOST=host.docker.internal (macOS/Windows) or 172.17.0.1 (Linux)
+    return "localhost"
 
 
 def resolve_redis_host(default_in_docker: str = "redis") -> str:
@@ -122,10 +117,9 @@ def resolve_redis_host(default_in_docker: str = "redis") -> str:
     # Detect if in Docker container
     if is_running_in_docker():
         return default_in_docker
-    else:
-        # Local environment, default to localhost
-        # If Redis is in Docker, user should set REDIS_HOST=host.docker.internal (macOS/Windows) or 172.17.0.1 (Linux)
-        return "localhost"
+    # Local environment, default to localhost
+    # If Redis is in Docker, user should set REDIS_HOST=host.docker.internal (macOS/Windows) or 172.17.0.1 (Linux)
+    return "localhost"
 
 
 def resolve_nacos_host() -> str:
@@ -150,9 +144,8 @@ def resolve_nacos_host() -> str:
     # Detect if in Docker container
     if is_running_in_docker():
         return "nacos"
-    else:
-        # Local environment, Nacos in Docker, use localhost (port mapped to host)
-        return "localhost"
+    # Local environment, Nacos in Docker, use localhost (port mapped to host)
+    return "localhost"
 
 
 def resolve_service_ip() -> str:
@@ -191,14 +184,7 @@ def resolve_service_ip() -> str:
 
                 # Verify if IP is a Docker network IP (172.20.0.x, 172.17.x.x or other Docker networks)
                 # These are common Docker network segments
-                if (
-                    container_ip.startswith("172.20.0.")
-                    or container_ip.startswith("172.17.")
-                    or container_ip.startswith("172.18.")
-                    or container_ip.startswith("172.19.")
-                    or container_ip.startswith("10.0.")
-                    or container_ip.startswith("192.168.")
-                ):
+                if container_ip.startswith(("172.20.0.", "172.17.", "172.18.", "172.19.", "10.0.", "192.168.")):
                     logger.info(
                         f"Auto-detected container IP: {container_ip}",
                         extra={"detection_method": "socket_connect"},
@@ -212,7 +198,7 @@ def resolve_service_ip() -> str:
 
         except Exception as e:
             # If acquisition fails, log warning but continue with default value
-            logger.debug(f"Auto-detection of container IP failed: {str(e)}")
+            logger.debug(f"Auto-detection of container IP failed: {e!s}")
 
         # Docker environment: if auto-detection fails, recommend configuration via environment variable
         # Note: In Docker Compose, the most reliable way is through ipv4_address configuration
@@ -227,6 +213,5 @@ def resolve_service_ip() -> str:
         )
         # Return a reasonable default value (not ideal but won't fail)
         return "127.0.0.1"
-    else:
-        # Local environment: use localhost
-        return "127.0.0.1"
+    # Local environment: use localhost
+    return "127.0.0.1"

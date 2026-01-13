@@ -53,7 +53,7 @@ class TestWebSocketConnection:
                 assert websocket.open, "Connection should be established"
         except Exception as e:
             # Connection failure is also acceptable
-            pytest.skip(f"Invalid Agent ID connection failed: {str(e)}")
+            pytest.skip(f"Invalid Agent ID connection failed: {e!s}")
 
     @pytest.mark.asyncio
     async def test_connection_close_handling(self, ws_url, sample_agent_id):
@@ -103,7 +103,7 @@ class TestWebSocketConnection:
                 assert ws_new.open, "Should be able to reconnect"
 
         except Exception as e:
-            pytest.skip(f"Abnormal disconnection test encountered error: {str(e)}")
+            pytest.skip(f"Abnormal disconnection test encountered error: {e!s}")
 
     @pytest.mark.asyncio
     async def test_multiple_connections_same_agent(self, ws_url, sample_agent_id):
@@ -180,7 +180,7 @@ class TestWebSocketConnection:
             async with websockets.connect(uri, ping_interval=None) as websocket:
                 assert websocket.open, f"Connection {i + 1} should be open"
                 # Close immediately
-                ***REMOVED***  # async with closes automatically
+                # async with closes automatically
 
         # Finally verify connection can still be made
         async with websockets.connect(uri, ping_interval=None) as websocket:

@@ -3,12 +3,12 @@
 Provides asynchronous email sending functionality, supporting multiple recipients.
 """
 
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import os
+import smtplib
 import sys
 from typing import Any, Dict, List
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 try:
     from shared.common.loguru_config import get_logger
@@ -99,7 +99,7 @@ async def send_email(
             sent_count += 1
 
         except Exception as e:
-            error_msg = f"Email sending failed: {email}, Error: {str(e)}"
+            error_msg = f"Email sending failed: {email}, Error: {e!s}"
             logger.warning(
                 "Email sending failed",
                 extra={

@@ -241,7 +241,7 @@ class TestWebSocketPerformance:
                     messages_sent.append(throughput)
                     return int(throughput)
             except Exception as e:
-                pytest.skip(f"Concurrent performance test failed: {str(e)}")
+                pytest.skip(f"Concurrent performance test failed: {e!s}")
                 return 0
 
         # Execute concurrently

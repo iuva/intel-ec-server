@@ -1,85 +1,169 @@
 """
-Gateway Service configuration module
+Gateway Service Configuration Module
+
+Provides configuration management for the gateway service, using Pydantic BaseModel for type validation and environment variable loading.
 """
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
+import os
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel
 
 
-class GatewayConfig(BaseSettings):
-    """Gateway service configuration class"""
+class GatewaySettings(BaseModel):
+    """Gateway Service Configuration
 
-    # Basic service configuration
-    service_name: str = Field(default="gateway-service", description="Service name")
-    service_port: int = Field(default=8000, description="Service port")
-    service_ip: str = Field(default="172.20.0.100", description="Service IP")
+    Contains configuration items for service discovery, HTTP client, WebSocket connection, etc.
+    Supports exporting as dictionary via model_dump() for injection into service discovery modules.
+    """
 
-    # Nacos configuration
-    nacos_server_addr: str = Field(default="http://intel-nacos:8848", description="Nacos server address")
-    nacos_namespace: str = Field(default="public", description="Nacos namespace")
-    nacos_group: str = Field(default="DEFAULT_GROUP", description="Nacos group")
+    # Basic Service Configuration
+    service_name: str = "gateway-service"
+    service_port: int = 8000
+    deploy_mode: str = "local"  # "local" or "docker"
 
-    # Redis configuration
-    redis_url: str = Field(default="redis://intel-redis:6379/0", description="Redis connection URL")
+    # Service Host Configuration (for service discovery)
+    gateway_service_host: str = "127.0.0.1"
+    auth_service_host: str = "127.0.0.1"
+    host_service_host: str = "127.0.0.1"
 
-    # JWT configuration
-    jwt_secret_key: str = Field(
-        default="", description="JWT secret key (must be set in production, otherwise will raise exception)"
-    )
-    jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
+    # Service Port Configuration
+    auth_service_port: int = 8001
+    host_service_port: int = 8003
 
-    # Authentication service configuration
-    auth_service_url: str = Field(default="http://auth-service:8001", description="Authentication service URL")
-    auth_service_host: str = Field(
-        default="auth-service", description="Authentication service hostname (for local development override)"
-    )
-    auth_service_port: int = Field(default=8001, description="Authentication service port")
+    # JWT Configuration
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
 
-    # Authentication middleware HTTP client configuration
-    auth_middleware_timeout: float = Field(
-        default=10.0, description="Authentication middleware request timeout (seconds)"
-    )
-    auth_middleware_connect_timeout: float = Field(
-        default=5.0, description="Authentication middleware connection timeout (seconds)"
-    )
+    # HTTP Client Configuration
+    http_timeout: float = 15.0
+    http_connect_timeout: float = 5.0
+    http_max_keepalive_connections: int = 20
+    http_max_connections: int = 100
+    http_max_retries: int = 0
+    http_retry_delay: float = 0.0
 
-    # Service port mapping (for service discovery fallback address)
-    service_port_auth: int = Field(default=8001, description="Authentication service port")
-    service_port_host: int = Field(default=8003, description="Host service port")
+    # Health Check HTTP Client Configuration
+    health_check_timeout: float = 5.0
+    health_check_connect_timeout: float = 2.0
+    health_check_max_keepalive_connections: int = 5
+    health_check_max_connections: int = 10
+    health_check_max_retries: int = 1
+    health_check_retry_delay: float = 0.0
 
-    # Logging configuration
-    log_level: str = Field(default="INFO", description="Log level")
+    # WebSocket Configuration
+    websocket_max_connections: int = 1000
 
-    # Timeout configuration
-    request_timeout: int = Field(default=30, description="Request timeout (seconds)")
+    # Auth Middleware Configuration
+    auth_service_url: str = "http://127.0.0.1:8001"
+    auth_middleware_timeout: float = 10.0
+    auth_middleware_connect_timeout: float = 5.0
 
-    # Rate limiting configuration
-    rate_limit_enabled: bool = Field(default=False, description="Whether rate limiting is enabled")
-    rate_limit_requests: int = Field(default=100, description="Rate limit requests")
-    rate_limit_period: int = Field(default=60, description="Rate limit time window (seconds)")
+    # Host Service API Configuration
+    host_service_url: str = "http://127.0.0.1:8003"
 
-    # HTTP client configuration (optimized: supports 2000 concurrent connections)
-    http_timeout: float = Field(default=30.0, description="Gateway forwarding request timeout (seconds)")
-    http_connect_timeout: float = Field(default=10.0, description="Gateway forwarding connection timeout (seconds)")
-    http_max_keepalive_connections: int = Field(default=1000, description="HTTP client keepalive connections")
-    http_max_connections: int = Field(default=2500, description="HTTP client maximum connections")
-    http_max_retries: int = Field(default=0, description="HTTP client maximum retry count")
-    http_retry_delay: float = Field(default=0.0, description="HTTP client retry delay (seconds)")
+    # Service Instance Lists (Used for documentation aggregation)
+    auth_service_urls: Any = []  # List[str]
+    host_service_urls: Any = []  # List[str]
 
-    # Health check HTTP client configuration
-    health_check_timeout: float = Field(default=5.0, description="Health check request timeout (seconds)")
-    health_check_connect_timeout: float = Field(default=2.0, description="Health check connection timeout (seconds)")
-    health_check_max_keepalive_connections: int = Field(default=5, description="Health check keepalive connections")
-    health_check_max_connections: int = Field(default=10, description="Health check maximum connections")
-    health_check_max_retries: int = Field(default=1, description="Health check maximum retry count")
-    health_check_retry_delay: float = Field(default=0.0, description="Health check retry delay (seconds)")
+    # Service Name Mapping (short name -> full name)
+    service_name_map: Dict[str, str] = {}
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "case_sensitive": False,
-    }
+    @classmethod
+    def from_env(cls) -> "GatewaySettings":
+        """Load configuration from environment variables"""
+
+        def parse_bool(value: Optional[str], default: bool = False) -> bool:
+            if value is None:
+                return default
+            return value.lower() in ("true", "1", "yes", "on")
+
+        def parse_int(value: Optional[str], default: int) -> int:
+            if value is None:
+                return default
+            try:
+                return int(value)
+            except ValueError:
+                return default
+
+        def parse_float(value: Optional[str], default: float) -> float:
+            if value is None:
+                return default
+            try:
+                return float(value)
+            except ValueError:
+                return default
+
+        # Detect deployment mode
+        is_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") is not None
+        deploy_mode = "docker" if is_docker else "local"
+
+        # Service Host Configuration
+        if is_docker:
+            gateway_host = os.getenv("GATEWAY_SERVICE_IP", "gateway-service")
+            auth_host = os.getenv("SERVICE_HOST_AUTH", "auth-service")
+            host_host = os.getenv("SERVICE_HOST_HOST", "host-service")
+        else:
+            gateway_host = os.getenv("GATEWAY_SERVICE_IP", "127.0.0.1")
+            auth_host = os.getenv("SERVICE_HOST_AUTH", "127.0.0.1")
+            host_host = os.getenv("SERVICE_HOST_HOST", "127.0.0.1")
+
+        return cls(
+            # Basic Configuration
+            service_name=os.getenv("GATEWAY_SERVICE_NAME", "gateway-service"),
+            service_port=parse_int(os.getenv("GATEWAY_SERVICE_PORT"), 8000),
+            deploy_mode=deploy_mode,
+            # Service Hosts
+            gateway_service_host=gateway_host,
+            auth_service_host=auth_host,
+            host_service_host=host_host,
+            # Service Ports
+            auth_service_port=parse_int(os.getenv("AUTH_SERVICE_PORT"), 8001),
+            host_service_port=parse_int(os.getenv("HOST_SERVICE_PORT"), 8003),
+            # JWT
+            jwt_secret_key=os.getenv("JWT_SECRET_KEY", ""),
+            jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
+            # HTTP Client
+            http_timeout=parse_float(os.getenv("HTTP_TIMEOUT"), 15.0),
+            http_connect_timeout=parse_float(os.getenv("HTTP_CONNECT_TIMEOUT"), 5.0),
+            http_max_keepalive_connections=parse_int(os.getenv("HTTP_MAX_KEEPALIVE_CONNECTIONS"), 20),
+            http_max_connections=parse_int(os.getenv("HTTP_MAX_CONNECTIONS"), 100),
+            http_max_retries=parse_int(os.getenv("HTTP_MAX_RETRIES"), 0),
+            http_retry_delay=parse_float(os.getenv("HTTP_RETRY_DELAY"), 0.0),
+            # Health Check
+            health_check_timeout=parse_float(os.getenv("HEALTH_CHECK_TIMEOUT"), 5.0),
+            health_check_connect_timeout=parse_float(os.getenv("HEALTH_CHECK_CONNECT_TIMEOUT"), 2.0),
+            health_check_max_keepalive_connections=parse_int(os.getenv("HEALTH_CHECK_MAX_KEEPALIVE_CONNECTIONS"), 5),
+            health_check_max_connections=parse_int(os.getenv("HEALTH_CHECK_MAX_CONNECTIONS"), 10),
+            health_check_max_retries=parse_int(os.getenv("HEALTH_CHECK_MAX_RETRIES"), 1),
+            health_check_retry_delay=parse_float(os.getenv("HEALTH_CHECK_RETRY_DELAY"), 0.0),
+            # WebSocket
+            websocket_max_connections=parse_int(os.getenv("WEBSOCKET_MAX_CONNECTIONS"), 1000),
+            # Auth Middleware
+            auth_service_url=f"http://{auth_host}:{parse_int(os.getenv('AUTH_SERVICE_PORT'), 8001)}",
+            auth_middleware_timeout=parse_float(os.getenv("AUTH_MIDDLEWARE_TIMEOUT"), 10.0),
+            auth_middleware_connect_timeout=parse_float(os.getenv("AUTH_MIDDLEWARE_CONNECT_TIMEOUT"), 5.0),
+            # Host Service API
+            host_service_url=f"http://{host_host}:{parse_int(os.getenv('HOST_SERVICE_PORT'), 8003)}",
+            # Service Instance Lists (Support Multi-Instance Aggregation)
+            auth_service_urls=(
+                [f"http://{x.strip()}" for x in os.getenv("AUTH_SERVICE_INSTANCES").split(",")]
+                if os.getenv("AUTH_SERVICE_INSTANCES")
+                else [f"http://{auth_host}:{parse_int(os.getenv('AUTH_SERVICE_PORT'), 8001)}"]
+            ),
+            host_service_urls=(
+                [f"http://{x.strip()}" for x in os.getenv("HOST_SERVICE_INSTANCES").split(",")]
+                if os.getenv("HOST_SERVICE_INSTANCES")
+                else [f"http://{host_host}:{parse_int(os.getenv('HOST_SERVICE_PORT'), 8003)}"]
+            ),
+            # Service Name Mapping
+            service_name_map={
+                "auth": "auth-service",
+                "host": "host-service",
+                "gateway": "gateway-service",
+            },
+        )
 
 
-# Create global configuration instance
-settings = GatewayConfig()
+# Global settings instance
+settings = GatewaySettings.from_env()

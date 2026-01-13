@@ -3,9 +3,9 @@ Prometheus Metrics Collection Module
 Provides unified metrics collection and export functionality
 """
 
+from functools import wraps
 import sys
 import time
-from functools import wraps
 from typing import Any, Awaitable, Callable, Optional
 
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram, Info, generate_latest

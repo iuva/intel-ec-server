@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from shared.common.loguru_config import get_logger
 from shared.monitoring.metrics import (
-    db_slow_query_duration_seconds,
     db_slow_queries_total,
+    db_slow_query_duration_seconds,
 )
 
 logger = get_logger(__name__)

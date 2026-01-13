@@ -2,21 +2,29 @@
 MariaDB Database Manager - Asynchronous SQLAlchemy Integration
 """
 
+from datetime import datetime
 import logging
 import os
 import random
 import ssl
 import time
-from datetime import datetime
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import BigInteger, DateTime, SmallInteger, func
-from sqlalchemy.ext.asyncio import AsyncEngine  # type: ignore[attr-defined]
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase  # type: ignore[attr-defined]
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import BigInteger, DateTime, SmallInteger, event, func
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,  # type: ignore[attr-defined]
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import (
+    DeclarativeBase,  # type: ignore[attr-defined]
+    Mapped,
+    mapped_column,
+)
 
 from shared.common.cache import redis_manager
+from shared.monitoring.sql_performance import SQLPerformanceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -241,8 +249,6 @@ class MariaDBManager:
             # Initialize SQL performance monitor
             if enable_sql_monitoring:
                 try:
-                    from shared.monitoring.sql_performance import SQLPerformanceMonitor
-
                     self._sql_monitor = SQLPerformanceMonitor(
                         slow_query_threshold=slow_query_threshold,
                         enabled=True,
@@ -254,8 +260,7 @@ class MariaDBManager:
                     )
                 except Exception as e:
                     logger.warning(
-                        f"SQL performance monitoring initialization failed: {e!s}, continuing...",
-                        exc_info=True
+                        f"SQL performance monitoring initialization failed: {e!s}, continuing...", exc_info=True
                     )
 
             self._is_connected = True
@@ -443,9 +448,8 @@ class MariaDBManager:
     ) -> async_sessionmaker[AsyncSession]:
         """Create monitored session factory, tracking connection acquisition time
 
-        Use SQLAlchemy event listener to monitor connection checkout, which is more reliable and non-intrusive.
+        # Use SQLAlchemy event listener to monitor connection checkout, which is more reliable and non-intrusive.
         """
-        from sqlalchemy import event
 
         # Ensure engine exists
         if not self.engine:

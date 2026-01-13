@@ -34,7 +34,7 @@ try:
     from shared.utils.service_discovery import ServiceDiscovery
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
     # Compatible with different versions of httpx
     from httpx import ConnectError, TimeoutException
 
@@ -97,36 +97,40 @@ class ProxyService:
         self.service_discovery = service_discovery
 
         # HTTP client configuration (must be initialized before creating client)
-        # ✅ Optimization: Support environment variable configuration, improve flexibility and performance
+        from app.core.config import settings
+
+        # ✅ Read configuration from settings
         self.http_client_config = http_client_config or HTTPClientConfig(
-            timeout=float(os.getenv("PROXY_HTTP_TIMEOUT", "30.0")),  # Increase timeout
-            connect_timeout=float(os.getenv("PROXY_CONNECT_TIMEOUT", "5.0")),
-            max_keepalive_connections=int(os.getenv("PROXY_MAX_KEEPALIVE", "50")),  # Increase connection reuse
-            max_connections=int(os.getenv("PROXY_MAX_CONNECTIONS", "200")),  # Increase concurrency support
-            max_retries=0,
-            retry_delay=0.0,
+            timeout=float(os.getenv("PROXY_HTTP_TIMEOUT", str(settings.http_timeout))),
+            connect_timeout=float(os.getenv("PROXY_CONNECT_TIMEOUT", str(settings.http_connect_timeout))),
+            max_keepalive_connections=int(
+                os.getenv("PROXY_MAX_KEEPALIVE", str(settings.http_max_keepalive_connections))
+            ),
+            max_connections=int(os.getenv("PROXY_MAX_CONNECTIONS", str(settings.http_max_connections))),
+            max_retries=int(os.getenv("PROXY_MAX_RETRIES", str(settings.http_max_retries))),
+            retry_delay=float(os.getenv("PROXY_RETRY_DELAY", str(settings.http_retry_delay))),
             client_name="gateway_proxy_http_client",
         )
 
         self.health_check_client_config = health_check_client_config or HTTPClientConfig(
-            timeout=float(os.getenv("PROXY_HEALTH_TIMEOUT", "5.0")),
-            connect_timeout=float(os.getenv("PROXY_HEALTH_CONNECT_TIMEOUT", "2.0")),
-            max_keepalive_connections=5,
-            max_connections=10,
-            max_retries=1,
-            retry_delay=0.0,
+            timeout=float(os.getenv("PROXY_HEALTH_TIMEOUT", str(settings.health_check_timeout))),
+            connect_timeout=float(
+                os.getenv("PROXY_HEALTH_CONNECT_TIMEOUT", str(settings.health_check_connect_timeout))
+            ),
+            max_keepalive_connections=settings.health_check_max_keepalive_connections,
+            max_connections=settings.health_check_max_connections,
+            max_retries=settings.health_check_max_retries,
+            retry_delay=settings.health_check_retry_delay,
             client_name="gateway_proxy_health_check_client",
         )
 
         # Service name mapping (short name -> full service name)
-        self.service_name_map = {
-            "auth": "auth-service",
-            "host": "host-service",
-        }
+        # ✅ Read mapping from settings
+        self.service_name_map = settings.service_name_map
 
-        # ✅ WebSocket connection management (supports environment variable configuration)
+        # ✅ WebSocket connection management (read from settings)
         self.max_websocket_connections = max_websocket_connections or int(
-            os.getenv("PROXY_MAX_WEBSOCKET_CONNECTIONS", "1000")
+            os.getenv("PROXY_MAX_WEBSOCKET_CONNECTIONS", str(settings.websocket_max_connections))
         )
         self.active_websocket_connections: Dict[str, Any] = {}  # Track active connections
         self._websocket_connection_lock: Optional[asyncio.Lock] = None  # Connection limit lock (lazy creation)
@@ -184,12 +188,7 @@ class ProxyService:
         else:
             # ✅ Fix: Use fallback address when no service discovery (local development environment)
             fallback_discovery = ServiceDiscovery()
-            fallback_url = fallback_discovery._get_fallback_url(full_service_name)
-            # logger.warning(
-            #     f"Service discovery not configured, using fallback address: {service_name} -> {fallback_url}",
-            #     extra={"service_name": service_name, "fallback_url": fallback_url},
-            # )
-            return fallback_url
+            return fallback_discovery._get_fallback_url(full_service_name)
 
     def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
         """Clean request headers - remove headers that may cause issues
@@ -886,7 +885,7 @@ class ProxyService:
                     else:
                         logger.warning(
                             "Connection closed abnormally",
-                            extra={"direction": direction, "code": e.code, "reason": e.reason}
+                            extra={"direction": direction, "code": e.code, "reason": e.reason},
                         )
                     break
                 except WebSocketDisconnect as e:
@@ -898,7 +897,7 @@ class ProxyService:
                         reason = e.reason if hasattr(e, "reason") else "No reason"
                         logger.warning(
                             "Client disconnected abnormally",
-                            extra={"direction": direction, "code": e.code, "reason": reason}
+                            extra={"direction": direction, "code": e.code, "reason": reason},
                         )
                     break
                 except Exception as e:
@@ -906,7 +905,7 @@ class ProxyService:
                     error_type = type(e).__name__
                     logger.error(
                         "Message forwarding failed",
-                        extra={"direction": direction, "error_type": error_type, "error": str(e)}
+                        extra={"direction": direction, "error_type": error_type, "error": str(e)},
                     )
                     break
 
@@ -917,8 +916,7 @@ class ProxyService:
             # Outer catch: forwarding exception
             error_type = type(e).__name__
             logger.error(
-                "Forwarding exception",
-                extra={"direction": direction, "error_type": error_type, "error": str(e)}
+                "Forwarding exception", extra={"direction": direction, "error_type": error_type, "error": str(e)}
             )
         finally:
             # ✅ Ensure destination WebSocket connection is closed

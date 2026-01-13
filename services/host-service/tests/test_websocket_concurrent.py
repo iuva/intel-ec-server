@@ -39,7 +39,7 @@ class TestWebSocketConcurrent:
                 connections.append((agent_id, ws))
                 return True
             except Exception as e:
-                pytest.skip(f"Agent {agent_id} connection failed: {str(e)}")
+                pytest.skip(f"Agent {agent_id} connection failed: {e!s}")
 
         # Concurrently connect all Agents
         tasks = [connect_agent(agent_id) for agent_id in agents]
@@ -111,7 +111,7 @@ class TestWebSocketConcurrent:
                     assert websocket.open, f"Agent {agent_id} connection should remain open"
                     return True
             except Exception as e:
-                pytest.skip(f"Agent {agent_id} connection failed: {str(e)}")
+                pytest.skip(f"Agent {agent_id} connection failed: {e!s}")
                 return False
 
         # Concurrently create all clients
@@ -142,7 +142,7 @@ class TestWebSocketConcurrent:
                 ws = await websockets.connect(uri, ping_interval=None)
                 connections.append(ws)
             except Exception as e:
-                pytest.skip(f"Connection creation failed: {str(e)}")
+                pytest.skip(f"Connection creation failed: {e!s}")
 
         # Verify all connections are open
         assert all(ws.open for ws in connections), "All connections should be open"
@@ -176,7 +176,7 @@ class TestWebSocketConcurrent:
                 ws = await websockets.connect(uri, ping_interval=None)
                 connections[agent_id] = ws
             except Exception as e:
-                pytest.skip(f"Connection creation failed: {str(e)}")
+                pytest.skip(f"Connection creation failed: {e!s}")
 
         # Interleaved send messages
         async def send_messages(agent_id: str, count: int):
@@ -223,7 +223,7 @@ class TestWebSocketConcurrent:
                         # Auto close
                         return True
                 except Exception as e:
-                    pytest.skip(f"Cycle operation failed: {str(e)}")
+                    pytest.skip(f"Cycle operation failed: {e!s}")
                     return False
 
             tasks = [connect_and_disconnect(agent_id) for agent_id in agents]

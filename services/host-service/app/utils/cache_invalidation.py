@@ -105,11 +105,10 @@ async def invalidate_sys_conf_cache(conf_key: str) -> bool:
     """
     if conf_key == "ota":
         return await invalidate_ota_config_cache()
-    elif conf_key == "hw_temp":
+    if conf_key == "hw_temp":
         return await invalidate_hardware_template_cache()
-    else:
-        logger.warning(
-            "Unknown conf_key, cannot clear cache",
-            extra={"conf_key": conf_key},
-        )
-        return False
+    logger.warning(
+        "Unknown conf_key, cannot clear cache",
+        extra={"conf_key": conf_key},
+    )
+    return False

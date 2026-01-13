@@ -11,9 +11,9 @@ Design principles:
 """
 
 import asyncio
+from contextlib import asynccontextmanager, suppress
 import inspect
 import os
-from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 from urllib.parse import quote_plus
 
@@ -497,7 +497,6 @@ class ServiceLifecycleManager:
 
     async def _monitor_pool_status(self) -> None:
         """Regularly monitor database connection pool status"""
-        from shared.common.database import mariadb_manager
 
         while True:
             try:
@@ -528,10 +527,9 @@ class ServiceLifecycleManager:
             # 0. Stop connection pool monitoring task
             if self.pool_monitor_task and not self.pool_monitor_task.done():
                 self.pool_monitor_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await self.pool_monitor_task
-                except asyncio.CancelledError:
-                    ***REMOVED***
+
                 logger.info("Database connection pool monitoring task stopped")
 
             # 1. Execute custom shutdown handlers

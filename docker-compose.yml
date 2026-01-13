@@ -178,37 +178,9 @@ services:
     container_name: gateway-service
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.docker
     environment:
       - PYTHONPATH=/install/lib/python3.8/site-packages:/app
-      - SERVICE_NAME=${SERVICE_NAME:-gateway-service}
-      - SERVICE_PORT=${SERVICE_PORT:-8000}
-      - GATEWAY_SERVICE_PORT=${GATEWAY_SERVICE_PORT:-8000}
-      - SERVICE_IP=${GATEWAY_SERVICE_IP:-172.20.0.100}
-      - GATEWAY_SERVICE_IP=${GATEWAY_SERVICE_IP:-gateway-service}
-      - AUTH_SERVICE_IP=${AUTH_SERVICE_IP:-auth-service}
-      - AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
-      - HOST_SERVICE_IP=${HOST_SERVICE_IP:-host-service}
-      - HOST_SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
-      - MARIADB_HOST=${MARIADB_HOST:-intel-mariadb}
-      - MARIADB_PORT=${MARIADB_PORT:-3306}
-      - MARIADB_USER=${MARIADB_USER:-intel_user}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-intel_cw}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${REDIS_DB:-0}
-      - NACOS_SERVER_ADDR=${NACOS_SERVER_ADDR:-http://nacos:8848}
-      - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
-      - NACOS_PASSWORD=${NACOS_PASSWORD:-nacos}
-      - NACOS_NAMESPACE=${NACOS_NAMESPACE:-public}
-      - NACOS_GROUP=${NACOS_GROUP:-DEFAULT_GROUP}
-      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-jaeger:4317}
-      - ENABLE_NACOS=${ENABLE_NACOS:-true}
-      - ENABLE_JAEGER=${ENABLE_JAEGER:-true}
-      - ENABLE_PROMETHEUS=${ENABLE_PROMETHEUS:-true}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
@@ -224,13 +196,7 @@ services:
     #   jaeger:
     #     condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\\'SERVICE_PORT\\', \\'8000\\')}/health')",
-        ]
+      test: [ "CMD", "python", "-c", "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\\'SERVICE_PORT\\', \\'8000\\')}/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -252,40 +218,9 @@ services:
     container_name: auth-service
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.docker
     environment:
       - PYTHONPATH=/install/lib/python3.8/site-packages:/app
-      - SERVICE_NAME=${AUTH_SERVICE_NAME:-auth-service}
-      - SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
-      - AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
-      - SERVICE_IP=${AUTH_SERVICE_IP:-172.20.0.101}
-      - GATEWAY_SERVICE_IP=${GATEWAY_SERVICE_IP:-gateway-service}
-      - GATEWAY_SERVICE_PORT=${GATEWAY_SERVICE_PORT:-8000}
-      - AUTH_SERVICE_IP=${AUTH_SERVICE_IP:-auth-service}
-      - HOST_SERVICE_IP=${HOST_SERVICE_IP:-host-service}
-      - HOST_SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
-      - MARIADB_HOST=${MARIADB_HOST:-intel-mariadb}
-      - MARIADB_PORT=${MARIADB_PORT:-3306}
-      - MARIADB_USER=${MARIADB_USER:-intel_user}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-intel_cw}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${AUTH_REDIS_DB:-1}
-      - NACOS_SERVER_ADDR=${NACOS_SERVER_ADDR:-http://nacos:8848}
-      - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
-      - NACOS_PASSWORD=${NACOS_PASSWORD:-nacos}
-      - NACOS_NAMESPACE=${NACOS_NAMESPACE:-public}
-      - NACOS_GROUP=${NACOS_GROUP:-DEFAULT_GROUP}
-      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-jaeger:4317}
-      - ENABLE_NACOS=${ENABLE_NACOS:-true}
-      - ENABLE_JAEGER=${ENABLE_JAEGER:-true}
-      - ENABLE_PROMETHEUS=${ENABLE_PROMETHEUS:-true}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      - JWT_REFRESH_TOKEN_EXPIRE_DAYS=${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
@@ -301,7 +236,7 @@ services:
     #   jaeger:
     #     condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${SERVICE_PORT:-8001}/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:${SERVICE_PORT:-8001}/health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -318,37 +253,9 @@ services:
     container_name: host-service
     restart: unless-stopped
     env_file:
-      - .env
+      - .env.docker
     environment:
       - PYTHONPATH=/install/lib/python3.8/site-packages:/app
-      - SERVICE_NAME=${HOST_SERVICE_NAME:-host-service}
-      - SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
-      - HOST_SERVICE_PORT=${HOST_SERVICE_PORT:-8003}
-      - SERVICE_IP=${HOST_SERVICE_IP:-172.20.0.103}
-      - GATEWAY_SERVICE_IP=${GATEWAY_SERVICE_IP:-gateway-service}
-      - GATEWAY_SERVICE_PORT=${GATEWAY_SERVICE_PORT:-8000}
-      - AUTH_SERVICE_IP=${AUTH_SERVICE_IP:-auth-service}
-      - AUTH_SERVICE_PORT=${AUTH_SERVICE_PORT:-8001}
-      - HOST_SERVICE_IP=${HOST_SERVICE_IP:-host-service}
-      - MARIADB_HOST=${MARIADB_HOST:-intel-mariadb}
-      - MARIADB_PORT=${MARIADB_PORT:-3306}
-      - MARIADB_USER=${MARIADB_USER:-intel_user}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
-      - MARIADB_DATABASE=${MARIADB_DATABASE:-intel_cw}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${HOST_REDIS_DB:-3}
-      - NACOS_SERVER_ADDR=${NACOS_SERVER_ADDR:-http://nacos:8848}
-      - NACOS_USERNAME=${NACOS_USERNAME:-nacos}
-      - NACOS_PASSWORD=${NACOS_PASSWORD:-nacos}
-      - NACOS_NAMESPACE=${NACOS_NAMESPACE:-public}
-      - NACOS_GROUP=${NACOS_GROUP:-DEFAULT_GROUP}
-      - JAEGER_ENDPOINT=${JAEGER_ENDPOINT:-jaeger:4317}
-      - ENABLE_NACOS=${ENABLE_NACOS:-true}
-      - ENABLE_JAEGER=${ENABLE_JAEGER:-true}
-      - ENABLE_PROMETHEUS=${ENABLE_PROMETHEUS:-true}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_HARDWARE_MOCK=${USE_HARDWARE_MOCK:-false}
@@ -369,13 +276,7 @@ services:
     #   jaeger:
     #     condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\\'SERVICE_PORT\\', \\'8003\\')}/health')",
-        ]
+      test: [ "CMD", "python", "-c", "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\\'SERVICE_PORT\\', \\'8003\\')}/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3

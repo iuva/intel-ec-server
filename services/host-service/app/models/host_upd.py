@@ -31,9 +31,7 @@ class HostUpd(BaseDBModel):
 
     # Host primary key; host_rec table primary key
     host_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger,
-        nullable=True,
-        comment="Host primary key; host_rec table primary key"
+        BigInteger, nullable=True, comment="Host primary key; host_rec table primary key"
     )
 
     # Application key
@@ -51,8 +49,7 @@ class HostUpd(BaseDBModel):
         default=0,
         nullable=False,
         comment=(
-            "Update state; {pre-upd: 0, pre-update. updating: 1, updating. "
-            "success: 2, success. failed: 3, failed.}"
+            "Update state; {pre-upd: 0, pre-update. updating: 1, updating. success: 2, success. failed: 3, failed.}"
         ),
     )
 

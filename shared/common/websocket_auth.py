@@ -6,15 +6,16 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 # Handle path imports using try-except
 try:
-    import httpx
     from fastapi import WebSocket, status
+    import httpx
+    import jwt
 
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import get_service_discovery
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-    import httpx
     from fastapi import WebSocket, status
+    import httpx
 
     from shared.common.loguru_config import get_logger
     from shared.utils.service_discovery import get_service_discovery
@@ -114,8 +115,6 @@ async def verify_websocket_token(
 
         if token:
             try:
-                import jwt
-
                 # Do not verify signature, only decode to get information
                 decoded = jwt.decode(token, options={"verify_signature": False})
 
@@ -174,7 +173,7 @@ async def verify_websocket_token(
         if env_url:
             candidate_urls.append(env_url)
 
-        service_discovery_instance: Optional["ServiceDiscovery"] = None
+        service_discovery_instance: Optional[ServiceDiscovery] = None
         try:
             service_discovery_instance = get_service_discovery()
             discovered_url = await service_discovery_instance.get_service_url("auth-service")
@@ -286,26 +285,24 @@ async def verify_websocket_token(
                             },
                         )
                         return True, user_info
-                    else:
-                        logger.warning(
-                            "WebSocket token active=False",
-                            extra={
-                                "data": data,
-                                "auth_service_url": base_url,
-                            },
-                        )
-                        # Continue trying other addresses
-                        continue
-                else:
                     logger.warning(
-                        "WebSocket token validation response error",
+                        "WebSocket token active=False",
                         extra={
-                            "status_code": response.status_code,
+                            "data": data,
                             "auth_service_url": base_url,
                         },
                     )
                     # Continue trying other addresses
                     continue
+                logger.warning(
+                    "WebSocket token validation response error",
+                    extra={
+                        "status_code": response.status_code,
+                        "auth_service_url": base_url,
+                    },
+                )
+                # Continue trying other addresses
+                continue
 
             except httpx.RequestError as e:
                 logger.debug(
@@ -389,7 +386,7 @@ async def verify_token_string(
     if env_url:
         candidate_urls.append(env_url)
 
-    service_discovery: Optional["ServiceDiscovery"] = None
+    service_discovery: Optional[ServiceDiscovery] = None
     try:
         service_discovery = get_service_discovery()
         discovered_url = await service_discovery.get_service_url("auth-service")

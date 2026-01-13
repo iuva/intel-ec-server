@@ -4,14 +4,14 @@ Provides a unified asynchronous HTTP client supporting connection pooling, timeo
 retry mechanisms and metrics collection.
 """
 
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 import json
 import os
-from dataclasses import dataclass
-from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Any, AsyncGenerator, Dict, Optional, Set
 
-from httpx import AsyncClient, Limits, RequestError, Timeout, ConnectError, TimeoutException
+from httpx import AsyncClient, ConnectError, Limits, RequestError, Timeout, TimeoutException
 
 try:
     from shared.common.loguru_config import get_logger

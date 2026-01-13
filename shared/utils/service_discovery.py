@@ -8,6 +8,7 @@ Provides functionality to dynamically acquire service addresses from Nacos, supp
 """
 
 import os
+import random
 import sys
 import time
 from typing import Any, Dict, List, Optional
@@ -40,20 +41,20 @@ class ServiceDiscovery:
         nacos_manager: Optional[NacosManager] = None,
         cache_ttl: int = 30,
         load_balance_strategy: str = "round_robin",
+        service_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize service discovery
 
         Args:
             nacos_manager: Nacos manager instance (optional)
             cache_ttl: Cache expiration time (seconds), default 30 seconds
-            load_balance_strategy: Load balancing strategy, optional values:
-                - "round_robin": Round-robin (default)
-                - "random": Random
-                - "weighted_random": Weighted random
+            load_balance_strategy: Load balancing strategy
+            service_config: Service configuration injection (optional)
         """
         self.nacos_manager = nacos_manager
         self.cache_ttl = cache_ttl
         self.load_balance_strategy = load_balance_strategy
+        self.service_config = service_config or {}
 
         # Service address cache: {service_name: {"url": "http://...", "timestamp": 123456}}
         self._cache: Dict[str, Dict[str, Any]] = {}
@@ -64,28 +65,26 @@ class ServiceDiscovery:
         # Round-robin counter: {service_name: current_index}
         self._round_robin_index: Dict[str, int] = {}
 
-        # Whether running in Docker environment (affects default fallback IP)
-        self._is_docker = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
+        # ✅ Use deploy_mode from config instead of file detection
+        deploy_mode = self.service_config.get("deploy_mode", "local")
+        self._is_docker = deploy_mode == "docker"
 
-        # Fallback static service addresses (environment variables take precedence)
-        self._service_ip_envs = {
-            "gateway-service": os.getenv("GATEWAY_SERVICE_IP"),
-            "auth-service": os.getenv("AUTH_SERVICE_IP"),
-            "host-service": os.getenv("HOST_SERVICE_IP"),
-        }
-
-        # Docker default service names (for inter-container communication)
+        # ✅ Service hosts from config (already resolved based on deploy_mode)
         self._default_service_hosts = {
-            "gateway-service": "gateway-service",
-            "auth-service": "auth-service",
-            "host-service": "host-service",
+            "gateway-service": self.service_config.get("gateway_service_host")
+            or ("ec-gateway-service" if self._is_docker else "127.0.0.1"),
+            "auth-service": self.service_config.get("auth_service_host")
+            or ("ec-auth-service" if self._is_docker else "127.0.0.1"),
+            "host-service": self.service_config.get("host_service_host")
+            or ("ec-host-service" if self._is_docker else "127.0.0.1"),
         }
 
-        # ✅ Read service port mapping from environment variables (for fallback addresses)
+        # ✅ Service port mapping (config takes precedence -> environment variables -> default)
         self._service_ports = {
-            "gateway-service": int(os.getenv("GATEWAY_SERVICE_PORT", "8000")),
-            "auth-service": int(os.getenv("AUTH_SERVICE_PORT", "8001")),
-            "host-service": int(os.getenv("HOST_SERVICE_PORT", "8003")),
+            "gateway-service": self.service_config.get("service_port")
+            or int(os.getenv("GATEWAY_SERVICE_PORT", "8000")),
+            "auth-service": self.service_config.get("auth_service_port") or int(os.getenv("AUTH_SERVICE_PORT", "8001")),
+            "host-service": self.service_config.get("host_service_port") or int(os.getenv("HOST_SERVICE_PORT", "8003")),
         }
 
         # ✅ Read local multi-instance configuration from environment variables
@@ -99,7 +98,8 @@ class ServiceDiscovery:
                 "nacos_enabled": nacos_manager is not None,
                 "cache_ttl": cache_ttl,
                 "load_balance_strategy": load_balance_strategy,
-                "service_ip_envs": self._service_ip_envs,
+                "deploy_mode": deploy_mode,
+                "default_service_hosts": self._default_service_hosts,
                 "local_instances": {service: len(instances) for service, instances in self._local_instances.items()},
             },
         )
@@ -476,15 +476,12 @@ class ServiceDiscovery:
 
         if self.load_balance_strategy == "round_robin":
             return self._select_instance_round_robin(instances, service_name)
-        elif self.load_balance_strategy == "random":
-            import random
-
+        if self.load_balance_strategy == "random":
             return random.choice(instances)
-        elif self.load_balance_strategy == "weighted_random":
+        if self.load_balance_strategy == "weighted_random":
             return self._select_instance_weighted_random(instances)
-        else:
-            # Default to round-robin
-            return self._select_instance_round_robin(instances, service_name)
+        # Default to round-robin
+        return self._select_instance_round_robin(instances, service_name)
 
     def _select_instance_round_robin(self, instances: List[Dict[str, Any]], service_name: str) -> Dict[str, Any]:
         """Round-robin select instance
@@ -530,7 +527,6 @@ class ServiceDiscovery:
         Returns:
             Selected instance
         """
-        import random
 
         # Calculate total weight
         total_weight = sum(inst.get("weight", 1.0) for inst in instances)
@@ -584,9 +580,9 @@ class ServiceDiscovery:
             if instances_str:
                 instances = []
                 for instance_str in instances_str.split(","):
-                    instance_str = instance_str.strip()
-                    if ":" in instance_str:
-                        ip, port_str = instance_str.rsplit(":", 1)
+                    instance_str_tmp = instance_str.strip()
+                    if ":" in instance_str_tmp:
+                        ip, port_str = instance_str_tmp.rsplit(":", 1)
                         try:
                             port = int(port_str)
                             instances.append(
@@ -599,13 +595,13 @@ class ServiceDiscovery:
                             )
                         except ValueError:
                             logger.warning(
-                                f"Invalid port number: {instance_str}",
-                                extra={"env_key": env_key, "instance_str": instance_str},
+                                f"Invalid port number: {instance_str_tmp}",
+                                extra={"env_key": env_key, "instance_str": instance_str_tmp},
                             )
                     else:
                         logger.warning(
-                            f"Invalid instance format (missing port): {instance_str}",
-                            extra={"env_key": env_key, "instance_str": instance_str},
+                            f"Invalid instance format (missing port): {instance_str_tmp}",
+                            extra={"env_key": env_key, "instance_str": instance_str_tmp},
                         )
 
                 if instances:
@@ -656,16 +652,8 @@ class ServiceDiscovery:
         # If a short name is ***REMOVED***ed, map to full service name first
         full_service_name = short_to_full.get(service_name, service_name)
 
-        # Get fallback hostname
-        ip_override = self._service_ip_envs.get(full_service_name)
-        if ip_override:
-            fallback_host = ip_override
-        else:
-            if self._is_docker:
-                fallback_host = self._default_service_hosts.get(full_service_name, full_service_name)
-            else:
-                fallback_host = "127.0.0.1"
-
+        # ✅ Get fallback hostname from _default_service_hosts (already resolved based on deploy_mode)
+        fallback_host = self._default_service_hosts.get(full_service_name, "127.0.0.1")
         port = self._service_ports.get(full_service_name, 8000)
 
         return f"http://{fallback_host}:{port}"
@@ -719,16 +707,15 @@ def init_service_discovery(
     nacos_manager: Optional[NacosManager] = None,
     cache_ttl: int = 30,
     load_balance_strategy: str = "round_robin",
+    service_config: Optional[Dict[str, Any]] = None,
 ) -> ServiceDiscovery:
     """Initialize global service discovery instance
 
     Args:
         nacos_manager: Nacos manager instance
         cache_ttl: Cache expiration time (seconds)
-        load_balance_strategy: Load balancing strategy, optional values:
-            - "round_robin": Round-robin (default)
-            - "random": Random
-            - "weighted_random": Weighted random
+        load_balance_strategy: Load balancing strategy
+        service_config: Service configuration injection (optional)
 
     Returns:
         ServiceDiscovery instance
@@ -739,6 +726,7 @@ def init_service_discovery(
         nacos_manager=nacos_manager,
         cache_ttl=cache_ttl,
         load_balance_strategy=load_balance_strategy,
+        service_config=service_config,
     )
 
     logger.info(

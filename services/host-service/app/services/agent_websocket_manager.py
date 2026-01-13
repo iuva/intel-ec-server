@@ -1739,8 +1739,11 @@ class AgentWebSocketManager:
                 time_since_warning = (current_time - warning_sent_time).total_seconds()
 
                 logger.debug(
-                    f"Heartbeat warning check | Agent: {agent_id} | Time since warning: {time_since_warning:.2f}s | "
-                    f"Warning wait time: {self.heartbeat_warning_wait_time}s",
+                    (
+                        f"Heartbeat warning check | Agent: {agent_id} | "
+                        f"Time since warning: {time_since_warning:.2f}s | "
+                        f"Warning wait time: {self.heartbeat_warning_wait_time}s"
+                    ),
                     extra={
                         "agent_id": agent_id,
                         "time_since_warning": round(time_since_warning, 2),
@@ -2036,7 +2039,6 @@ class AgentWebSocketManager:
             - Keep this method to avoid breaking existing code
         """
         # This method is no longer used, unified heartbeat check task handles all connections
-        ***REMOVED***
 
     # ========== Query methods ==========
 

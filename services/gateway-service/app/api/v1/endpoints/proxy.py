@@ -11,11 +11,11 @@ from typing import Any, Dict, Optional, Union
 
 # Use try-except to handle path imports
 try:
-    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
+    from fastapi import APIRouter, Depends, Path, Request, Response, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
+    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
@@ -24,11 +24,11 @@ try:
 except ImportError:
     # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
-    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
-    from fastapi import APIRouter, Depends, Path, Request, WebSocket, Response
+    from fastapi import APIRouter, Depends, Path, Request, Response, WebSocket
     from fastapi.responses import JSONResponse
     from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
+    from app.services.proxy_service import ProxyService, get_proxy_service, get_proxy_service_ws
     from shared.common.exceptions import BusinessError, ServiceNotFoundError, ValidationError
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
@@ -457,8 +457,7 @@ async def proxy_request(
                         logger.debug("Request body parsed successfully", extra={"body_size_bytes": len(raw_body)})
                     except (json.JSONDecodeError, UnicodeDecodeError) as e:
                         logger.warning(
-                            "Request body is not valid JSON, will forward as raw data",
-                            extra={"error": str(e)}
+                            "Request body is not valid JSON, will forward as raw data", extra={"error": str(e)}
                         )
                         # If not JSON, keep as None, use raw data
                         body = None

@@ -49,7 +49,7 @@ class HostRec(Base):
         comment=(
             "Approval status;{disable: 0, disabled. "
             "enable: 1, enabled. new: 1, new addition. change: 2, changes exist.}"
-        )
+        ),
     )
     host_state: Mapped[Optional[int]] = mapped_column(
         SmallInteger,
@@ -63,8 +63,7 @@ class HostRec(Base):
     # Time fields
     subm_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="Submission time")
     hw_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger,
-        comment="Hardware record table primary key; host_hw_rec table primary key"
+        BigInteger, comment="Hardware record table primary key; host_hw_rec table primary key"
     )
     agent_ver: Mapped[Optional[str]] = mapped_column(String(10), comment="Agent version number")
 

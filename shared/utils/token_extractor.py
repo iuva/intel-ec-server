@@ -10,14 +10,14 @@ from typing import Any, Dict, Optional, Tuple
 
 # Use try-except to handle path imports
 try:
-    import httpx
     from fastapi import Request
+    import httpx
 
     from shared.common.loguru_config import get_logger
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    import httpx
     from fastapi import Request
+    import httpx
 
     from shared.common.loguru_config import get_logger
 

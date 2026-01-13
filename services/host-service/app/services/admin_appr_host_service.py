@@ -138,7 +138,7 @@ class AdminApprHostService:
                 )
             return request.host_ids
 
-        elif request.diff_type == 1:
+        if request.diff_type == 1:
             # When diff_type = 1, if host_ids is provided, return directly
             if request.host_ids and len(request.host_ids) > 0:
                 return request.host_ids
@@ -148,11 +148,13 @@ class AdminApprHostService:
             async with session_factory() as temp_session:
                 hw_query_stmt = (
                     select(HostHwRec.host_id)
+                    .join(HostRec, HostRec.id == HostHwRec.host_id)
                     .where(
                         and_(
                             HostHwRec.sync_state == 1,
                             HostHwRec.diff_state == 1,
                             HostHwRec.del_flag == 0,
+                            HostRec.del_flag == 0,  # Ensure host is valid
                         )
                     )
                     .distinct()
@@ -334,8 +336,7 @@ class AdminApprHostService:
                                     "host_state": host_rec.host_state,
                                     "existing_hardware_id": existing_hw_id,
                                     "note": (
-                                        "Pending activation state should call create API, "
-                                        "ignoring existing hardware_id"
+                                        "Pending activation state should call create API, ignoring existing hardware_id"
                                     ),
                                 },
                             )
@@ -376,6 +377,8 @@ class AdminApprHostService:
                             "api_type": api_type,
                             "hardware_id": hardware_id,
                             "host_name": host_name,
+                            "host_update_has_host_no": "host_no" in host_update,
+                            "host_update_host_no": host_update.get("host_no"),
                             "is_new": api_hardware_id is None,
                         },
                     )
@@ -386,7 +389,7 @@ class AdminApprHostService:
                         exc_info=True,
                     )
                     raise BusinessError(
-                        message=f"External API call failed: {str(e)}",
+                        message=f"External API call failed: {e!s}",
                         code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                         http_status_code=500,
                     )
@@ -554,8 +557,7 @@ class AdminApprHostService:
                                 "existing_hardware_id": existing_hardware_id,
                                 "diff_type": "hardware_change_approval",
                                 "note": (
-                                    "Pending activation state should call create API, "
-                                    "ignoring existing hardware_id"
+                                    "Pending activation state should call create API, ignoring existing hardware_id"
                                 ),
                             },
                         )
@@ -591,6 +593,7 @@ class AdminApprHostService:
                         "api_type": api_type,
                         "hardware_id": hardware_id,
                         "host_name": host_name,
+                        "will_update_host_no": bool(host_name and host_name.strip()),
                         "is_new": api_hardware_id is None,
                     },
                 )
@@ -607,7 +610,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"Failed to call external hardware API: {str(e)}",
+                    message=f"Failed to call external hardware API: {e!s}",
                     message_key="error.hardware.api_call_failed",
                     error_code="HARDWARE_API_CALL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -672,7 +675,7 @@ class AdminApprHostService:
         session: Any,
         host_updates: Dict[int, Dict[str, Any]],
     ) -> None:
-        """Bulk update host_rec table (optimization: group by update fields)
+        """Bulk update host_rec table (Changed to iterative update for robustness)
 
         Args:
             session: Database session
@@ -681,52 +684,21 @@ class AdminApprHostService:
         if not host_updates:
             return
 
-        # Separate records that need host_no update and records that only update other fields
-        hosts_with_host_no: Dict[int, Dict[str, Any]] = {}
-        hosts_without_host_no: Dict[int, Dict[str, Any]] = {}
-
+        # Changed to iterative update to avoid potential issues with bulk_update_mappings and heterogeneous keys
         for host_id, update_values in host_updates.items():
-            if "host_no" in update_values:
-                hosts_with_host_no[host_id] = update_values
-            else:
-                hosts_without_host_no[host_id] = update_values
+            if not update_values:
+                continue
 
-        # Bulk update (with host_no)
-        if hosts_with_host_no:
-            bulk_update_data = [
-                {"id": host_id, **update_values} for host_id, update_values in hosts_with_host_no.items()
-            ]
+            stmt = update(HostRec).where(HostRec.id == host_id).values(**update_values)
+            await session.execute(stmt)
 
-            def _bulk_update_with_host_no(sync_session: Any) -> None:
-                sync_session.bulk_update_mappings(HostRec, bulk_update_data)
-
-            await session.run_sync(_bulk_update_with_host_no)
-
-            logger.debug(
-                "Bulk update host records (including host_no)",
-                extra={
-                    "count": len(hosts_with_host_no),
-                    "host_ids": list(hosts_with_host_no.keys())[:10],  # Only log first 10
-                },
-            )
-
-        # Bulk update (without host_no)
-        if hosts_without_host_no:
-            bulk_update_data = [
-                {"id": host_id, **update_values} for host_id, update_values in hosts_without_host_no.items()
-            ]
-
-            def _bulk_update_without_host_no(sync_session: Any) -> None:
-                sync_session.bulk_update_mappings(HostRec, bulk_update_data)
-
-            await session.run_sync(_bulk_update_without_host_no)
-
-            logger.debug(
-                "Bulk update host records (excluding host_no)",
-                extra={
-                    "count": len(hosts_without_host_no),
-                },
-            )
+        logger.debug(
+            "Iterative update host records completed",
+            extra={
+                "count": len(host_updates),
+                "host_ids": list(host_updates.keys())[:10],
+            },
+        )
 
     async def _bulk_update_hardware_records(
         self,
@@ -1004,7 +976,7 @@ class AdminApprHostService:
                 return host_info_list, pagination_response
         except Exception as e:
             logger.error(
-                f"Database operation failed: {type(e).__name__}: {str(e)}",
+                f"Database operation failed: {type(e).__name__}: {e!s}",
                 extra={
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -1264,7 +1236,7 @@ class AdminApprHostService:
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": f"Processing failed: {str(e)}",
+                                    "message": f"Processing failed: {e!s}",
                                 }
                             )
                             failed_count += 1
@@ -1282,91 +1254,90 @@ class AdminApprHostService:
                         results=results,
                     )
 
-                else:
-                    # Hardware change approval (diff_type == 1 or 2)
-                    # Batch query hardware records
-                    hw_recs_by_host = await self._query_hardware_records(
-                        session, host_ids_to_process, sync_state=SYNC_STATE_WAIT, need_latest_only=False
-                    )
+                # Hardware change approval (diff_type == 1 or 2)
+                # Batch query hardware records
+                hw_recs_by_host = await self._query_hardware_records(
+                    session, host_ids_to_process, sync_state=SYNC_STATE_WAIT, need_latest_only=False
+                )
 
-                    logger.debug(
-                        "Batch query hardware records completed",
-                        extra={
-                            "host_ids_count": len(host_ids_to_process),
-                            "found_hosts_count": len(hw_recs_by_host),
-                        },
-                    )
+                logger.debug(
+                    "Batch query hardware records completed",
+                    extra={
+                        "host_ids_count": len(host_ids_to_process),
+                        "found_hosts_count": len(hw_recs_by_host),
+                    },
+                )
 
-                    # Process each host
-                    for host_id in host_ids_to_process:
-                        try:
-                            # Validate host exists
-                            host_rec = self._validate_host_exists(host_id, host_recs_map, locale)
-                            if not host_rec:
-                                error_message = t("error.host.not_found", locale=locale, host_id=host_id)
-                                results.append(
-                                    {
-                                        "host_id": host_id,
-                                        "success": False,
-                                        "message": error_message,
-                                    }
-                                )
-                                failed_count += 1
-                                continue
-
-                            # Process hardware change approval
-                            hw_recs = hw_recs_by_host.get(host_id, [])
-                            process_result = await self._process_hardware_change_approval(
-                                host_id, host_rec, hw_recs, appr_by, http_request, locale, session
-                            )
-
-                            host_updates[host_id] = process_result["host_update"]
-                            hw_updates.update(process_result["hw_updates"])
-                            results.append(
-                                {
-                                    "host_id": process_result["host_id"],
-                                    "success": process_result["success"],
-                                    "message": process_result["message"],
-                                    "hw_id": process_result["hw_id"],
-                                    "hardware_id": process_result["hardware_id"],
-                                }
-                            )
-                            success_count += 1
-
-                        except BusinessError:
-                            # Business errors are raised directly
-                            raise
-                        except Exception as e:
-                            logger.error(
-                                "Exception occurred while processing host",
-                                extra={
-                                    "host_id": host_id,
-                                    "error": str(e),
-                                    "error_type": type(e).__name__,
-                                },
-                                exc_info=True,
-                            )
+                # Process each host
+                for host_id in host_ids_to_process:
+                    try:
+                        # Validate host exists
+                        host_rec = self._validate_host_exists(host_id, host_recs_map, locale)
+                        if not host_rec:
+                            error_message = t("error.host.not_found", locale=locale, host_id=host_id)
                             results.append(
                                 {
                                     "host_id": host_id,
                                     "success": False,
-                                    "message": t(
-                                        "error.host.process_failed",
-                                        locale=locale,
-                                        host_id=host_id,
-                                        error=str(e),
-                                        default=f"Processing failed: {str(e)}",
-                                    ),
+                                    "message": error_message,
                                 }
                             )
                             failed_count += 1
                             continue
 
-                    # Bulk update hardware records
-                    await self._bulk_update_hardware_records(session, hw_updates, now, appr_by)
+                        # Process hardware change approval
+                        hw_recs = hw_recs_by_host.get(host_id, [])
+                        process_result = await self._process_hardware_change_approval(
+                            host_id, host_rec, hw_recs, appr_by, http_request, locale, session
+                        )
 
-                    # Bulk update host records
-                    await self._bulk_update_host_records(session, host_updates)
+                        host_updates[host_id] = process_result["host_update"]
+                        hw_updates.update(process_result["hw_updates"])
+                        results.append(
+                            {
+                                "host_id": process_result["host_id"],
+                                "success": process_result["success"],
+                                "message": process_result["message"],
+                                "hw_id": process_result["hw_id"],
+                                "hardware_id": process_result["hardware_id"],
+                            }
+                        )
+                        success_count += 1
+
+                    except BusinessError:
+                        # Business errors are raised directly
+                        raise
+                    except Exception as e:
+                        logger.error(
+                            "Exception occurred while processing host",
+                            extra={
+                                "host_id": host_id,
+                                "error": str(e),
+                                "error_type": type(e).__name__,
+                            },
+                            exc_info=True,
+                        )
+                        results.append(
+                            {
+                                "host_id": host_id,
+                                "success": False,
+                                "message": t(
+                                    "error.host.process_failed",
+                                    locale=locale,
+                                    host_id=host_id,
+                                    error=str(e),
+                                    default=f"Processing failed: {e!s}",
+                                ),
+                            }
+                        )
+                        failed_count += 1
+                        continue
+
+                # Bulk update hardware records
+                await self._bulk_update_hardware_records(session, hw_updates, now, appr_by)
+
+                # Bulk update host records
+                await self._bulk_update_host_records(session, host_updates)
 
                 # Commit transaction
                 await session.commit()
@@ -1420,7 +1391,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"Failed to approve hosts: {str(e)}",
+                    message=f"Failed to approve hosts: {e!s}",
                     message_key="error.host.approve_failed",
                     error_code="APPROVE_HOST_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -1584,7 +1555,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"Failed to set maintain notification email: {str(e)}",
+                    message=f"Failed to set maintain notification email: {e!s}",
                     message_key="error.email.set_failed",
                     error_code="SET_MAINTAIN_EMAIL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
@@ -1669,7 +1640,7 @@ class AdminApprHostService:
                     exc_info=True,
                 )
                 raise BusinessError(
-                    message=f"Failed to get maintain notification email: {str(e)}",
+                    message=f"Failed to get maintain notification email: {e!s}",
                     message_key="error.email.get_failed",
                     error_code="GET_MAINTAIN_EMAIL_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,

@@ -509,15 +509,14 @@ class CaseTimeoutTaskService:
                             success_count += 1
                             # Notification sent, wait for Agent to process, do not cleanup immediately
                             continue
-                        else:
-                            logger.warning(
-                                "VNC connection timeout offline notification failed, Agent may have disconnected",
-                                extra={
-                                    "host_id": host_id,
-                                    "host_id_str": host_id_str,
-                                },
-                            )
-                            # Notification failed, perform cleanup
+                        logger.warning(
+                            "VNC connection timeout offline notification failed, Agent may have disconnected",
+                            extra={
+                                "host_id": host_id,
+                                "host_id_str": host_id_str,
+                            },
+                        )
+                    # Notification failed, perform cleanup
                     else:
                         logger.info(
                             "Agent is not online, skip notification, perform cleanup directly",
@@ -861,16 +860,15 @@ class CaseTimeoutTaskService:
                         },
                     )
                     return True
-                else:
-                    logger.error(
-                        "Timeout email notification failed",
-                        extra={
-                            "host_id": exec_log.host_id,
-                            "log_id": exec_log.id,
-                            "errors": email_result.get("errors", []),
-                        },
-                    )
-                    return False
+                logger.error(
+                    "Timeout email notification failed",
+                    extra={
+                        "host_id": exec_log.host_id,
+                        "log_id": exec_log.id,
+                        "errors": email_result.get("errors", []),
+                    },
+                )
+                return False
 
         except Exception as e:
             logger.error(

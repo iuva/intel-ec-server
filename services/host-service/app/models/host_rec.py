@@ -35,7 +35,7 @@ class HostRec(BaseDBModel):
         VARCHAR(64),
         nullable=True,
         index=True,
-        comment="Host primary key; corresponds to mongo database host primary key"
+        comment="Host primary key; corresponds to mongo database host primary key",
     )
 
     # Unique machine GUID
@@ -43,9 +43,7 @@ class HostRec(BaseDBModel):
 
     # Hardware record table primary key; host_hw_rec table primary key
     hw_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger,
-        nullable=True,
-        comment="Hardware record table primary key; host_hw_rec table primary key"
+        BigInteger, nullable=True, comment="Hardware record table primary key; host_hw_rec table primary key"
     )
 
     # MongoDB primary key; mongo db hardware id
@@ -73,10 +71,7 @@ class HostRec(BaseDBModel):
         SmallInteger,
         nullable=True,
         index=True,
-        comment=(
-            "Approval state; {disable: 0, disabled. enable: 1, enabled. "
-            "new: 1, new. change: 2, has changes.}"
-        ),
+        comment=("Approval state; {disable: 0, disabled. enable: 1, enabled. new: 1, new. change: 2, has changes.}"),
     )
 
     # TCP online state; {close: 0, closed. wait: 1, waiting. lsn: 2, listening.}

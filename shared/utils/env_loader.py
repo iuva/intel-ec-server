@@ -17,35 +17,80 @@ except ImportError:
         return False
 
 
+def is_docker_environment() -> bool:
+    """Detect if running in Docker environment
+
+    Detection methods:
+    1. Check if /.dockerenv file exists
+    2. Check DOCKER_CONTAINER environment variable
+    3. Check if /proc/1/cgroup contains docker keyword
+
+    Returns:
+        True if running in Docker, False otherwise
+    """
+    # Method 1: Check /.dockerenv file
+    if Path("/.dockerenv").exists():
+        return True
+
+    # Method 2: Check environment variable
+    if os.getenv("DOCKER_CONTAINER"):
+        return True
+
+    # Method 3: Check cgroup (Linux)
+    try:
+        cgroup_path = Path("/proc/1/cgroup")
+        if cgroup_path.exists():
+            content = cgroup_path.read_text()
+            if "docker" in content or "kubepods" in content:
+                return True
+    except (OSError, PermissionError):
+        ***REMOVED***
+
+    return False
+
+
 def load_env_file(env_file: Optional[str] = None) -> bool:
     """Load .env file into environment variables
 
-    Priority lookup for .env files at the following locations:
+    Search priority for .env files:
     1. Specified env_file path
-    2. .env file in project root directory
-    3. .env file in current working directory
+    2. Automatically select .env.docker or .env.local based on environment
+    3. .env file in project root directory (compatible with old config)
+    4. .env file in current working directory
 
     Args:
-        env_file: .env file path (optional)
+        env_file: Path to .env file (optional)
 
     Returns:
-        Whether the .env file was loaded successfully
+        True if .env file is successfully loaded, False otherwise
     """
     env_paths = []
 
-    # 1. If a path is specified, use it first
+    # 1. If path is specified, use it first
     if env_file:
         env_paths.append(Path(env_file).resolve())
 
-    # 2. Look for .env in project root directory (search up to 5 levels)
+    # 2. Automatically select configuration file based on environment
+    is_docker = is_docker_environment()
+    auto_env_file = ".env.docker" if is_docker else ".env.local"
+
+    # Search in project root directory (search up 5 levels)
     current_dir = Path.cwd()
     for _ in range(5):
+        # Prioritize finding environment-specific config file
+        auto_env_path = current_dir / auto_env_file
+        if auto_env_path.exists():
+            env_paths.append(auto_env_path.resolve())
+            break
+
+        # Compatible with old .env file
         env_path = current_dir / ".env"
         if env_path.exists():
             env_paths.append(env_path.resolve())
             break
+
         parent = current_dir.parent
-        if parent == current_dir:  # Already reached root directory
+        if parent == current_dir:  # Reached root directory
             break
         current_dir = parent
 

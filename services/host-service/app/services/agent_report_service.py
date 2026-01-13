@@ -518,11 +518,10 @@ class AgentReportService:
             if session:
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
-            else:
-                session_factory = self.session_factory
-                async with session_factory() as new_session:
-                    result = await new_session.execute(stmt)
-                    return result.scalar_one_or_none()
+            session_factory = self.session_factory
+            async with session_factory() as new_session:
+                result = await new_session.execute(stmt)
+                return result.scalar_one_or_none()
 
         except Exception as e:
             logger.error(
@@ -1555,10 +1554,7 @@ class AgentReportService:
             maintain_emails = await self._get_maintain_emails()
             if not maintain_emails:
                 logger.warning(
-                    (
-                        "Maintenance personnel email not configured, "
-                        "skipping hardware change email notification"
-                    )
+                    "Maintenance personnel email not configured, skipping hardware change email notification"
                 )
                 return
 

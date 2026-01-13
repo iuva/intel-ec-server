@@ -5,9 +5,9 @@ Provides unified error handling, monitoring and logging decorators
 """
 
 import asyncio
+from functools import wraps
 import time
 import traceback
-from functools import wraps
 from typing import Any, Callable, Dict, Optional, TypeVar
 
 from fastapi import HTTPException
@@ -115,7 +115,7 @@ def _log_service_error(func_name: str, error: Exception, args: tuple, kwargs: di
     extra["kwargs_count"] = len(kwargs)
 
     # Build detailed error message
-    error_msg = f"{func_name} execution failed: {type(error).__name__} - {str(error)}"
+    error_msg = f"{func_name} execution failed: {type(error).__name__} - {error!s}"
     if error_location:
         error_msg += (
             f"\nError location: {error_location['filename']}:{error_location['lineno']} in {error_location['function']}"
@@ -358,7 +358,7 @@ def _handle_unexpected_error(error: Exception, func_name: str) -> HTTPException:
         extra["error_code_line"] = error_location["code"]
 
     # Build detailed error message
-    error_msg = f"API exception: {func_name} - {type(error).__name__}: {str(error)}"
+    error_msg = f"API exception: {func_name} - {type(error).__name__}: {error!s}"
     if error_location:
         error_msg += (
             f"\nError location: {error_location['filename']}:{error_location['lineno']} in {error_location['function']}"
@@ -484,20 +484,19 @@ def _log_operation_result(
 
     if status == "success":
         logger.info(f"{operation_name} completed", extra=extra)
+    # ✅ Log complete stack trace information on failure
+    elif error and hasattr(error, "__traceback__") and error.__traceback__:
+        logger.error(
+            f"{operation_name} failed",
+            extra=extra,
+            exc_info=(type(error), error, error.__traceback__),  # Pass exception info
+        )
     else:
-        # ✅ Log complete stack trace information on failure
-        if error and hasattr(error, "__traceback__") and error.__traceback__:
-            logger.error(
-                f"{operation_name} failed",
-                extra=extra,
-                exc_info=(type(error), error, error.__traceback__),  # Pass exception info
-            )
-        else:
-            logger.error(
-                f"{operation_name} failed",
-                extra=extra,
-                exc_info=True,  # Use current exception context
-            )
+        logger.error(
+            f"{operation_name} failed",
+            extra=extra,
+            exc_info=True,  # Use current exception context
+        )
 
 
 def monitor_operation(

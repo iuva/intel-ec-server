@@ -22,7 +22,7 @@ try:
     from shared.common.response import ErrorResponse
 except ImportError:
     # If import fails, add project root directory to Python path
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
     from starlette.responses import JSONResponse
@@ -92,20 +92,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/host/hosts",  # Browser plugin - host management interface (includes /hosts/vnc/*)
         ]
 
-        # ✅ Read authentication service URL and port from configuration (compatible with Docker and local development)
-        # Priority: AUTH_SERVICE_URL > (AUTH_SERVICE_IP + AUTH_SERVICE_PORT) > auto-detect (Docker/local)
-        auth_service_url = os.getenv("AUTH_SERVICE_URL")
-        if auth_service_url:
-            # If full URL is set, use it directly
-            self.auth_service_url = auth_service_url.rstrip("/")
-        else:
-            # Otherwise build from IP and port (automatically select default based on runtime environment)
-            is_docker_env = os.getenv("DOCKER_ENV") == "true" or os.path.exists("/.dockerenv")
+        # ✅ Read authentication service URL from unified configuration
+        from app.core.config import settings
 
-            auth_service_host = os.getenv("AUTH_SERVICE_IP") or ("auth-service" if is_docker_env else "127.0.0.1")
-            auth_service_port = int(os.getenv("AUTH_SERVICE_PORT", "8001"))
-
-            self.auth_service_url = f"http://{auth_service_host}:{auth_service_port}"
+        self.auth_service_url = settings.auth_service_url.rstrip("/")
 
         logger.info(
             "Authentication middleware initialization completed",
@@ -114,10 +104,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        # ✅ Read HTTP client timeout configuration from config
-        auth_timeout = float(os.getenv("AUTH_MIDDLEWARE_TIMEOUT", "10.0"))
-        auth_connect_timeout = float(os.getenv("AUTH_MIDDLEWARE_CONNECT_TIMEOUT", "5.0"))
-        self.timeout = httpx.Timeout(auth_timeout, connect=auth_connect_timeout)
+        # ✅ Read HTTP client timeout configuration from unified config
+        self.timeout = httpx.Timeout(settings.auth_middleware_timeout, connect=settings.auth_middleware_connect_timeout)
 
     async def dispatch(self, request: Request, call_next):
         """Handle request
@@ -309,8 +297,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "method": request.method,
                     "hint": "Token may be expired or invalid, please login again to get new token",
                     "troubleshooting": (
-                        "Please check 'reason' field in Gateway and Auth Service logs "
-                        "for detailed error cause"
+                        "Please check 'reason' field in Gateway and Auth Service logs for detailed error cause"
                     ),
                 },
             )
@@ -338,10 +325,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         "path": request.url.path,
                         "method": request.method,
                         "service": "auth-service",
-                        "hint": (
-                            "Authentication service is currently responding slowly, "
-                            "please try again later"
-                        ),
+                        "hint": ("Authentication service is currently responding slowly, please try again later"),
                     },
                 )
 
@@ -413,9 +397,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 details={
                     "path": request.url.path,
                     "method": request.method,
-                    "hint": (
-                        "System internal error, please contact system administrator"
-                    ),
+                    "hint": ("System internal error, please contact system administrator"),
                 },
             )
 
@@ -615,9 +597,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                     "message": result.get("message"),
                                     "data_keys": list(data.keys()) if isinstance(data, dict) else [],
                                 },
-                                "hint": (
-                                    "Token may be expired, blacklisted, or malformed"
-                                ),
+                                "hint": ("Token may be expired, blacklisted, or malformed"),
                             },
                         )
                     else:
