@@ -179,7 +179,7 @@ async def call_hardware_api(
                 url_path = "/api/v1/hardware/"
                 request_body = {
                     "name": "dmr_config_schema",
-                    "hardware_config": hw_info.get("hardware_config", hw_info.get("dmr_config", {})),
+                    "hardware_config": hw_info.get("hardware_config", hw_info.get("dmr_config", hw_info)),
                     "updated_by": str(user_id) if user_id else "",
                 }
 
@@ -308,7 +308,7 @@ async def call_hardware_api(
 
             url_path = f"/api/v1/hardware/{valid_hardware_id}"
             request_body = {
-                "hardware_config": hw_info.get("hardware_config", hw_info.get("dmr_config", {})),
+                "hardware_config": hw_info.get("hardware_config", hw_info.get("dmr_config", hw_info)),
                 "updated_by": str(user_id) if user_id else "",
             }
 
