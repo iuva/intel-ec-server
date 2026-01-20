@@ -621,12 +621,24 @@ class AdminApprHostService:
                     },
                 )
         else:
-            logger.warning(
-                "Hardware record missing hw_info, skipping external hardware API call",
+            logger.error(
+                "Hardware record missing hw_info, cannot approve",
                 extra={
                     "host_id": host_id,
                     "hw_rec_id": latest_hw_id,
                 },
+            )
+            raise BusinessError(
+                message=t(
+                    "error.host.hardware_info_empty",
+                    locale=locale,
+                    host_id=host_id,
+                    default=f"Hardware information is empty, cannot approve (ID: {host_id})",
+                ),
+                message_key="error.host.hardware_info_empty",
+                error_code="HARDWARE_INFO_EMPTY",
+                code=ServiceErrorCodes.VALIDATION_ERROR,
+                http_status_code=400,
             )
 
         # Build update data
@@ -637,7 +649,7 @@ class AdminApprHostService:
             "appr_state": APPR_STATE_ENABLE,
             "host_state": HOST_STATE_FREE,
             "hw_id": latest_hw_id,
-            "subm_time": now,
+            "subm_time": func.now(),
         }
         if hardware_id:
             host_update["hardware_id"] = hardware_id
@@ -884,9 +896,21 @@ class AdminApprHostService:
                 total = count_result.scalar() or 0
 
                 # 2. Paginated query: Order by created_time descending, LEFT JOIN to get diff_state
-                # Optimization: Directly join host_hw_rec table, no subquery needed
-                # (assuming each host has at most one sync_state=1 record)
+                # Optimization: Join the latest host_hw_rec record for each host
                 pagination_params = PaginationParams(page=request.page, page_size=request.page_size)
+
+                # Subquery to get the latest HostHwRec ID for each host with pending sync state
+                latest_hw_subquery = (
+                    select(HostHwRec.host_id, func.max(HostHwRec.id).label("max_id"))
+                    .where(
+                        and_(
+                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1 (pending sync)
+                            HostHwRec.del_flag == 0,
+                        )
+                    )
+                    .group_by(HostHwRec.host_id)
+                    .subquery()
+                )
 
                 stmt = (
                     select(
@@ -897,14 +921,8 @@ class AdminApprHostService:
                         HostRec.subm_time,
                         HostHwRec.diff_state,
                     )
-                    .outerjoin(
-                        HostHwRec,
-                        and_(
-                            HostHwRec.host_id == HostRec.id,
-                            HostHwRec.sync_state == SYNC_STATE_WAIT,  # sync_state = 1 (pending sync)
-                            HostHwRec.del_flag == 0,
-                        ),
-                    )
+                    .outerjoin(latest_hw_subquery, latest_hw_subquery.c.host_id == HostRec.id)
+                    .outerjoin(HostHwRec, HostHwRec.id == latest_hw_subquery.c.max_id)
                     .where(and_(*base_conditions))
                     .order_by(HostRec.created_time.desc())
                     .offset(pagination_params.offset)

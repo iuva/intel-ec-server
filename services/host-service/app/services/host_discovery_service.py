@@ -56,6 +56,15 @@ class HostDiscoveryService:
     supports cursor pagination and external API integration.
     """
 
+    # Circuit Breaker State (Shared across all instances)
+    _last_failure_time = 0.0
+    _consecutive_failures = 0
+    _circuit_open = False
+
+    # Circuit Breaker Configuration
+    CB_FAILURE_THRESHOLD = 5
+    CB_RECOVERY_TIMEOUT = 60.0
+
     def __init__(self, hardware_api_url: Optional[str] = None):
         """Initialize Host Discovery Service
 
@@ -391,63 +400,6 @@ class HostDiscoveryService:
         # Step 7: Perform pagination slice - return first page_size records
         paginated_hosts = all_available_hosts[: request.page_size]
 
-        # ✅ If return is empty, query valid data from database
-        if not paginated_hosts:
-            logger.info(
-                "Query result is empty, fallback query database valid data",
-                extra={
-                    "tc_id": request.tc_id,
-                    "cycle_name": request.cycle_name,
-                },
-            )
-
-            # Query valid hosts from local database
-            # Conditions: host_state=0 (free), appr_state=1 (enabled), del_flag=0 (not deleted), tcp_state=2 (listening)
-            session_factory = self.session_factory
-            async with session_factory() as session:
-                fallback_stmt = (
-                    select(HostRec)
-                    .where(
-                        and_(
-                            HostRec.host_state == HOST_STATE_FREE,
-                            HostRec.appr_state == APPR_STATE_ENABLE,
-                            HostRec.del_flag == 0,
-                            HostRec.tcp_state == TCP_STATE_LISTEN,
-                        )
-                    )
-                    .limit(request.page_size)  # Get one page of data
-                )
-
-                fallback_result = await session.execute(fallback_stmt)
-                fallback_hosts: List[HostRec] = fallback_result.scalars().all()
-
-                if fallback_hosts:
-                    paginated_hosts = [
-                        AvailableHostInfo(
-                            host_rec_id=str(h.id),  # Use alias host_rec_id
-                            user_name=h.host_no or "",  # Use host_no instead of host_acct
-                            host_ip=h.host_ip or "",
-                        )
-                        for h in fallback_hosts
-                    ]
-                    # Update total count
-                    all_available_hosts = paginated_hosts
-
-                    logger.info(
-                        "Fallback query succeeded, obtained valid hosts",
-                        extra={
-                            "count": len(paginated_hosts),
-                            "first_host_id": paginated_hosts[0].id if paginated_hosts else None,
-                        },
-                    )
-                else:
-                    logger.warning(
-                        "Fallback query found no valid hosts",
-                        extra={
-                            "tc_id": request.tc_id,
-                        },
-                    )
-
         # Step 8: Determine if there is next page
         has_next = len(all_available_hosts) > request.page_size
 
@@ -486,156 +438,13 @@ class HostDiscoveryService:
             )
 
         # Build response object
-        response = AvailableHostsListResponse(
+        return AvailableHostsListResponse(
             hosts=paginated_hosts,
             total=len(all_available_hosts),  # Total discovered in this query
             page_size=request.page_size,
             has_next=has_next,
             last_id=last_id,
         )
-
-        return response
-
-    def _get_mock_hardware_hosts(
-        self,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> List[HardwareHostData]:
-        """Get Mock hardware host data
-
-        Args:
-            skip: Number of records to skip
-            limit: Number of records to return
-
-        Returns:
-            Mock hardware host list
-        """
-        # Mock data: Based on user provided format
-        # Note: First two records correspond to database records,
-        # need to ensure hardware_id field in database is updated
-        # First: id=1846557388006625421, mg_id='test', host_ip='127.0.0.1', mac_addr='123'
-        # Second: id=1847395771312739675, mg_id='test123', host_ip='192.168.1.1', mac_addr='234'
-        mock_data = [
-            {
-                "hardware_id": "test-hardware-1",
-                "name": "Test Host 1 (127.0.0.1)",
-                "dmr_config": {
-                    "revision": 1,
-                    "mainboard": {
-                        "plt_meta_data": {
-                            "platform": "DMR",
-                            "label_plt_cfg": "test_config",
-                        },
-                        "board": {
-                            "board_meta_data": {
-                                "board_name": "SHMRCDMR",
-                                "host_name": "test-host-1",
-                                "host_ip": "127.0.0.1",
-                            },
-                        },
-                    },
-                },
-                "updated_time": "2025-10-21T02:39:14Z",
-                "updated_by": "test@intel.com",
-                "tags": ["test", "dmr"],
-            },
-            {
-                "hardware_id": "test-hardware-2",
-                "name": "Test Host 2 (192.168.1.1)",
-                "dmr_config": {
-                    "revision": 1,
-                    "mainboard": {
-                        "plt_meta_data": {
-                            "platform": "DMR",
-                            "label_plt_cfg": "test123_config",
-                        },
-                        "board": {
-                            "board_meta_data": {
-                                "board_name": "SHMRCDMR",
-                                "host_name": "test-host-2",
-                                "host_ip": "192.168.1.1",
-                            },
-                        },
-                    },
-                },
-                "updated_time": "2025-10-30T08:44:59Z",
-                "updated_by": "test@intel.com",
-                "tags": ["test", "dmr"],
-            },
-            {
-                "hardware_id": "abc123",
-                "name": "Test Server Config",
-                "dmr_config": {
-                    "revision": 1,
-                    "mainboard": {
-                        "plt_meta_data": {
-                            "platform": "DMR",
-                            "label_plt_cfg": "config_label",
-                        },
-                        "board": {
-                            "board_meta_data": {
-                                "board_name": "SHMRCDMR",
-                                "host_name": "test-host",
-                                "host_ip": "10.239.168.169",
-                            },
-                        },
-                    },
-                },
-                "updated_time": "2025-09-17T10:00:00Z",
-                "updated_by": "user@intel.com",
-                "tags": ["test", "dmr"],
-            },
-            {
-                "hardware_id": "def456",
-                "name": "Test Server Config 2",
-                "dmr_config": {
-                    "revision": 1,
-                    "mainboard": {
-                        "plt_meta_data": {
-                            "platform": "DMR",
-                            "label_plt_cfg": "config_label_2",
-                        },
-                        "board": {
-                            "board_meta_data": {
-                                "board_name": "SHMRCDMR",
-                                "host_name": "test-host-2",
-                                "host_ip": "10.239.168.170",
-                            },
-                        },
-                    },
-                },
-                "updated_time": "2025-09-17T11:00:00Z",
-                "updated_by": "user2@intel.com",
-                "tags": ["test", "dmr", "production"],
-            },
-            {
-                "hardware_id": "ghi789",
-                "name": "Test Server Config 3",
-                "dmr_config": {
-                    "revision": 2,
-                    "mainboard": {
-                        "plt_meta_data": {
-                            "platform": "DMR",
-                            "label_plt_cfg": "config_label_3",
-                        },
-                        "board": {
-                            "board_meta_data": {
-                                "board_name": "SHMRCDMR",
-                                "host_name": "test-host-3",
-                                "host_ip": "10.239.168.171",
-                            },
-                        },
-                    },
-                },
-                "updated_time": "2025-09-17T12:00:00Z",
-                "updated_by": "user3@intel.com",
-                "tags": ["test"],
-            },
-        ]
-
-        # Apply pagination
-        paginated_data = mock_data[skip : skip + limit]
-        return [HardwareHostData(**item) for item in paginated_data]
 
     async def _fetch_hardware_hosts(
         self,
@@ -674,38 +483,31 @@ class HostDiscoveryService:
                 - Response data format does not meet expectations
 
         Note:
-            - If USE_HARDWARE_MOCK environment variable is set to true, will return mock data
-            - Token acquisition supports Redis cache to avoid duplicate requests
-            - SSL verification configuration controlled through HTTP_CLIENT_VERIFY_SSL env var
+            - Circuit Breaker pattern implemented (Threshold: 5 failures, Recovery: 60s)
         """
-        # ✅ Check if use Mock data (controlled through environment variable)
-        use_mock = os.getenv("USE_HARDWARE_MOCK", "false").lower() in ("true", "1", "yes")
-
-        if use_mock:
-            # Reduce Mock log frequency: only log on first call or every 10 calls
-            # Use module-level variable to track call count
-            # (simple solution, production can consider more elegant implementation)
-            if not hasattr(self, "_mock_call_count"):
-                self._mock_call_count = 0
-            self._mock_call_count += 1
-
-            # Only log on first call or every 10 calls
-            if self._mock_call_count == 1 or self._mock_call_count % 10 == 0:
-                logger.debug(
-                    "Using Mock hardware API data",
+        # ✅ Circuit Breaker Check
+        current_time = time.time()
+        if HostDiscoveryService._circuit_open:
+            if current_time - HostDiscoveryService._last_failure_time < HostDiscoveryService.CB_RECOVERY_TIMEOUT:
+                logger.warning(
+                    "Hardware API circuit breaker is OPEN, rejecting request",
                     extra={
                         "tc_id": tc_id,
-                        "skip": skip,
-                        "limit": limit,
-                        "call_count": self._mock_call_count,
+                        "last_failure_time": HostDiscoveryService._last_failure_time,
+                        "recovery_timeout": HostDiscoveryService.CB_RECOVERY_TIMEOUT,
                     },
                 )
-            return self._get_mock_hardware_hosts(skip=skip, limit=limit)
+                raise BusinessError(
+                    message="Hardware API service is temporarily unavailable (Circuit Breaker Open)",
+                    error_code="HOST_HARDWARE_API_CIRCUIT_BREAKER_OPEN",
+                    code=ServiceErrorCodes.HOST_HARDWARE_API_CIRCUIT_BREAKER_OPEN,
+                    http_status_code=503,
+                )
+            logger.info("Hardware API circuit breaker entering HALF-OPEN state", extra={"tc_id": tc_id})
 
         try:
             # ✅ Use unified external API client (supports authentication and SSL configuration)
-            # url_path = "/api/v1/hardware/hosts"
-            url_path = "/api/v1/hardware/mock_hosts"
+            url_path = "/api/v1/hardware/hosts"
             params = {
                 "tc_id": tc_id,
                 "skip": skip,
@@ -725,36 +527,102 @@ class HostDiscoveryService:
             # ✅ Use unified external API call method (automatically handles token acquisition and authentication)
             # If email is provided, will directly use this email to get token without querying database
             # ✅ Optimization: Reduce timeout from 30s to 10s, fail fast to avoid blocking
-            response = await call_external_api(
-                method="GET",
-                url_path=url_path,
-                request=request,
-                user_id=user_id,
-                email=email,  # ✅ Pass email parameter
-                params=params,
-                timeout=10.0,  # ✅ Optimization: Reduced from 30.0 to 10.0
-            )
+            try:
+                response = await call_external_api(
+                    method="GET",
+                    url_path=url_path,
+                    request=request,
+                    user_id=user_id,
+                    email=email,  # ✅ Pass email parameter
+                    params=params,
+                    timeout=10.0,  # ✅ Optimization: Reduced from 30.0 to 10.0
+                )
+            except (asyncio.TimeoutError, httpx.TimeoutException):
+                # ❌ Circuit Breaker: Record Failure (Timeout)
+                HostDiscoveryService._consecutive_failures += 1
+                if HostDiscoveryService._consecutive_failures >= HostDiscoveryService.CB_FAILURE_THRESHOLD:
+                    HostDiscoveryService._circuit_open = True
+                    HostDiscoveryService._last_failure_time = time.time()
+                    logger.error(
+                        "Hardware API circuit breaker TRIPPED (OPEN) due to timeout",
+                        extra={"failures": HostDiscoveryService._consecutive_failures},
+                    )
+
+                logger.error(
+                    "Hardware API call timeout",
+                    extra={
+                        "tc_id": tc_id,
+                        "url_path": url_path,
+                        "timeout": 10.0,
+                    },
+                )
+                raise BusinessError(
+                    message="Hardware API call timed out, please try again later",
+                    error_code="HOST_HARDWARE_API_TIMEOUT",
+                    code=ServiceErrorCodes.HOST_HARDWARE_API_TIMEOUT,
+                    http_status_code=504,  # Gateway Timeout
+                )
+            except Exception:
+                # ❌ Circuit Breaker: Record Failure (Other errors)
+                HostDiscoveryService._consecutive_failures += 1
+                if HostDiscoveryService._consecutive_failures >= HostDiscoveryService.CB_FAILURE_THRESHOLD:
+                    HostDiscoveryService._circuit_open = True
+                    HostDiscoveryService._last_failure_time = time.time()
+                    logger.error(
+                        "Hardware API circuit breaker TRIPPED (OPEN) due to exception",
+                        extra={"failures": HostDiscoveryService._consecutive_failures},
+                    )
+                raise
 
             status_code = response.get("status_code")
             response_body = response.get("body")
 
             if status_code != 200:
+                # ❌ Circuit Breaker: Record Failure (Non-200)
+                HostDiscoveryService._consecutive_failures += 1
+                if HostDiscoveryService._consecutive_failures >= HostDiscoveryService.CB_FAILURE_THRESHOLD:
+                    HostDiscoveryService._circuit_open = True
+                    HostDiscoveryService._last_failure_time = time.time()
+                    logger.error(
+                        f"Hardware API circuit breaker TRIPPED (OPEN) due to status {status_code}",
+                        extra={"failures": HostDiscoveryService._consecutive_failures},
+                    )
+
                 error_msg = (
-                    response_body.get("message", "Unknown error")
-                    if isinstance(response_body, dict)
-                    else str(response_body)
+                    response.get("body", {}).get("message", "Unknown error")
+                    if isinstance(response.get("body"), dict)
+                    else str(response.get("body"))
                 )
+
+                # Check for 504 Gateway Timeout from external service
+                if status_code == 504:
+                    raise BusinessError(
+                        message="Hardware API gateway timeout",
+                        error_code="HOST_HARDWARE_API_TIMEOUT",
+                        code=ServiceErrorCodes.HOST_HARDWARE_API_TIMEOUT,
+                        http_status_code=504,
+                    )
+
                 raise BusinessError(
                     message=f"Hardware API call failed: {error_msg}",
                     error_code="HOST_HARDWARE_API_ERROR",
-                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    code=ServiceErrorCodes.HOST_HARDWARE_API_ERROR,
                     http_status_code=status_code or 500,
                 )
+
+            # ✅ Circuit Breaker: Success (Reset)
+            if HostDiscoveryService._circuit_open or HostDiscoveryService._consecutive_failures > 0:
+                logger.info(
+                    "Hardware API circuit breaker CLOSED (Recovered)",
+                    extra={"failures_reset": HostDiscoveryService._consecutive_failures},
+                )
+                HostDiscoveryService._circuit_open = False
+                HostDiscoveryService._consecutive_failures = 0
 
             # Parse response data
             data = response_body if response_body else {}
             hardware_hosts: List[HardwareHostData] = []
-            skipped_count = 0  # Record count of skipped invalid records
+            skipped_count = 0  # ✅ Initialize counter
 
             if isinstance(data, list):
                 # Response format: direct array
@@ -850,7 +718,7 @@ class HostDiscoveryService:
             return hardware_hosts
 
         except BusinessError:
-            # ✅ Re-raise business exception (call_external_api already handled and converted to BusinessError)
+            # ✅ Re-raise business exception
             raise
         except Exception as e:
             # ✅ Catch other unexpected exceptions

@@ -9,6 +9,7 @@ Records detailed information for all HTTP requests and responses, including:
 """
 
 import json
+import os  # ✅ Fix NameError: Ensure os is imported
 import time
 from typing import Any, Optional
 
@@ -241,10 +242,6 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         query_params = dict(request.query_params)
         client_ip = request.client.host if request.client else "unknown"
 
-        # Read request body (JSON format)
-        request_body = await self._read_request_body(request)
-
-        # Log request
         request_log_data = {
             "method": method,
             "path": path,
@@ -252,17 +249,22 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
             "client_ip": client_ip,
         }
 
+        # ✅ Optimization: Skip logging body by default to improve performance
+        # Only log body if explicitly enabled via environment variable
+        log_body = os.getenv("ENABLE_HTTP_BODY_LOGGING", "false").lower() in ("true", "1", "yes")
+
+        request_body = None
+        if log_body:
+            # Read request body (JSON format)
+            request_body = await self._read_request_body(request)
+
         if request_body is not None:
             request_log_data["body"] = request_body
-            logger.info(
-                f"HTTP Request: {method} {path}",
-                extra=request_log_data,
-            )
-        else:
-            logger.info(
-                f"HTTP Request: {method} {path}",
-                extra=request_log_data,
-            )
+
+        logger.info(
+            f"HTTP Request: {method} {path}",
+            extra=request_log_data,
+        )
 
         try:
             # Process request
@@ -274,10 +276,6 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
             # Extract response information
             status_code = response.status_code
 
-            # ✅ Read response body (JSON format)
-            # Using improved _read_response_body method
-            response_body = await self._read_response_body(response)
-
             # Log response
             response_log_data = {
                 "method": method,
@@ -286,12 +284,17 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
                 "duration_ms": round(duration * 1000, 2),
             }
 
-            # ✅ For error responses (4xx, 5xx), always try to log response body, even if reading fails log warning
+            # ✅ For error responses (4xx, 5xx), try to log response body for debugging
+            # For success responses, skip body logging to save resources
             is_error_response = status_code >= 400
+
+            response_body = None
+            if is_error_response or log_body:
+                # ✅ Read response body (JSON format)
+                response_body = await self._read_response_body(response)
 
             if response_body is not None:
                 response_log_data["body"] = response_body
-                # ✅ For error responses, use WARNING level and highlight error information
                 if is_error_response:
                     # Extract key error information
                     error_summary = self._extract_error_summary(response_body)

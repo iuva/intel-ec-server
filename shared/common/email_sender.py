@@ -75,21 +75,27 @@ async def send_email(
             msg.attach(MIMEText(content, "html", "utf-8"))
 
             smtp_server = os.getenv("SMTP_SERVER", "smtp.example.com")
-            smtp_port = int(os.getenv("SMTP_PORT", "587"))
+            smtp_port_str = os.getenv("SMTP_PORT", "587")
+            try:
+                smtp_port = int(smtp_port_str)
+            except ValueError:
+                raise ValueError(f"Invalid SMTP port: {smtp_port_str}")
+
             smtp_user = os.getenv("SMTP_USER")
             smtp_***REMOVED***word = os.getenv("SMTP_PASSWORD")
 
             if not smtp_user or not smtp_***REMOVED***word:
                 raise ValueError("SMTP_USER or SMTP_PASSWORD environment variable not set")
 
-            server = smtplib.SMTP(smtp_server, smtp_port)
+            # Connect with timeout
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
             server.starttls()
             server.login(smtp_user, smtp_***REMOVED***word)
             server.send_message(msg)
             server.quit()
 
             logger.info(
-                "Email sent successfully (simulation)",
+                "Email sent successfully",
                 extra={
                     "to": email,
                     "subject": subject,
@@ -98,16 +104,40 @@ async def send_email(
             )
             sent_count += 1
 
+        except smtplib.SMTPAuthenticationError:
+            error_msg = f"Email sending failed: {email}, Authentication failed (Check SMTP username/***REMOVED***word)"
+            errors.append(error_msg)
+            failed_count += 1
+            logger.error(error_msg)
+        except smtplib.SMTPConnectError:
+            error_msg = f"Email sending failed: {email}, Could not connect to SMTP server"
+            errors.append(error_msg)
+            failed_count += 1
+            logger.error(error_msg)
+        except smtplib.SMTPSenderRefused:
+            error_msg = f"Email sending failed: {email}, Sender address refused"
+            errors.append(error_msg)
+            failed_count += 1
+            logger.error(error_msg)
+        except smtplib.SMTPRecipientsRefused:
+            error_msg = f"Email sending failed: {email}, Recipient address refused"
+            errors.append(error_msg)
+            failed_count += 1
+            logger.error(error_msg)
+        except (smtplib.SMTPException, OSError) as e:
+            error_msg = f"Email sending failed: {email}, Network or SMTP error: {e!s}"
+            errors.append(error_msg)
+            failed_count += 1
+            logger.error(error_msg)
         except Exception as e:
-            error_msg = f"Email sending failed: {email}, Error: {e!s}"
-            logger.warning(
-                "Email sending failed",
+            error_msg = f"Email sending failed: {email}, Unexpected error: {e!s}"
+            logger.error(
+                "Email sending failed with unexpected error",
                 extra={
                     "to": email,
                     "subject": subject,
                     "error": str(e),
                     "error_type": type(e).__name__,
-                    "locale": locale,
                 },
                 exc_info=True,
             )

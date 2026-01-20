@@ -116,7 +116,7 @@ class AgentMessageHandler:
                             HostExecLog.del_flag == 0,
                         )
                     )
-                    .order_by(HostExecLog.created_at.desc())
+                    .order_by(HostExecLog.created_time.desc())
                     .limit(1)
                 )
 
@@ -269,7 +269,7 @@ class AgentMessageHandler:
                             HostExecLog.del_flag == 0,
                         )
                     )
-                    .order_by(HostExecLog.created_at.desc())
+                    .order_by(HostExecLog.created_time.desc())
                     .limit(1)
                 )
 

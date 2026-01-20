@@ -217,6 +217,12 @@ class MariaDBManager:
             else:
                 logger.debug("MariaDB SSL not enabled")
 
+            # Set session timezone
+            db_timezone = os.getenv("MARIADB_TIMEZONE", "+08:00")
+            if db_timezone:
+                connect_args["init_command"] = f"SET time_zone = '{db_timezone}'"
+                logger.info("Setting database session timezone", extra={"timezone": db_timezone})
+
             # Save connection pool config for monitoring
             self._pool_size = pool_size
             self._max_overflow = max_overflow

@@ -10,7 +10,7 @@ export default function () {
     // 模拟不同用户的请求
     const userId = __VU; // Virtual User ID
     const payload = JSON.stringify({
-        tc_id: `perf_test_${userId}`,
+        tc_id: "perf_test_001",
         cycle_name: "perf_cycle",
         user_name: `load_tester_${userId}`,
         page_size: 20,
@@ -24,6 +24,12 @@ export default function () {
     };
 
     const res = http.post(url, payload, params);
+
+    // 添加调试日志
+    if (res.status !== 200) {
+        console.log(`Error Status: ${res.status}`);
+        console.log(`Error Body: ${res.body}`); // 看看返回了什么
+    }
 
     check(res, {
         'status is 200': (r) => r.status === 200,

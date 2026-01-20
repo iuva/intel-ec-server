@@ -143,6 +143,8 @@ class ServiceErrorCodes:
     HOST_OPERATION_TIMEOUT = 53007  # Host operation timeout
     HOST_INVALID_STATE = 53008  # Host state invalid
     HOST_HARDWARE_API_ERROR = 53009  # Hardware API error
+    HOST_HARDWARE_API_TIMEOUT = 53034  # ✅ Hardware API call timeout
+    HOST_HARDWARE_API_CIRCUIT_BREAKER_OPEN = 53035  # ✅ Hardware API circuit breaker open
     HOST_VNC_CONNECTION_FAILED = 53010  # VNC connection failed
     HOST_VNC_INFO_NOT_FOUND = 53011  # VNC information not found
     HOST_OPERATION_FAILED = 53012  # Host operation failed

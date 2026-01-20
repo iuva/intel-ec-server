@@ -18,6 +18,7 @@ from sqlalchemy import and_, select, update
 # Use try-except to handle path imports
 try:
     from app.constants.host_constants import (
+        CASE_STATE_SUCCESS,
         HOST_STATE_FREE,
         HOST_STATE_LOCKED,
         HOST_STATE_OCCUPIED,
@@ -30,13 +31,16 @@ try:
     from shared.common.cache import redis_manager
     from shared.common.database import generate_snowflake_id, mariadb_manager
     from shared.common.email_sender import send_email
+    from shared.common.i18n import t
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
     from shared.utils.json_comparator import JSONComparator
     from shared.utils.template_validator import TemplateValidator
+    from shared.utils.time_utils import get_db_timezone
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.constants.host_constants import (
+        CASE_STATE_SUCCESS,
         HOST_STATE_FREE,
         HOST_STATE_LOCKED,
         HOST_STATE_OCCUPIED,
@@ -53,6 +57,7 @@ except ImportError:
     from shared.common.loguru_config import get_logger
     from shared.utils.json_comparator import JSONComparator
     from shared.utils.template_validator import TemplateValidator
+    from shared.utils.time_utils import get_db_timezone
 
 logger = get_logger(__name__)
 
@@ -83,7 +88,10 @@ class AgentReportService:
         # Initialize JSON comparator tool
         self.json_comparator = JSONComparator()
         # Initialize template validator
+        # Initialize template validator
         self.template_validator = TemplateValidator()
+        # Keep track of background tasks to prevent GC
+        self._background_tasks = set()
         # ✅ Optimization: Cache session factory to avoid calling get_session() on every operation
         self._session_factory = None
 
@@ -308,17 +316,15 @@ class AgentReportService:
                 },
             )
 
-            ota_configs = []
-            for record in records:
-                conf_data = record.conf_json or {}
-                ota_configs.append(
-                    {
-                        "conf_name": record.conf_name,
-                        "conf_ver": record.conf_ver,
-                        "conf_url": conf_data.get("conf_url"),
-                        "conf_md5": conf_data.get("conf_md5"),
-                    }
-                )
+            ota_configs = [
+                {
+                    "conf_name": record.conf_name,
+                    "conf_ver": record.conf_ver,
+                    "conf_url": (record.conf_json or {}).get("conf_url"),
+                    "conf_md5": (record.conf_json or {}).get("conf_md5"),
+                }
+                for record in records
+            ]
 
             # Store in cache, expires in 5 minutes
             try:
@@ -659,7 +665,7 @@ class AgentReportService:
 
                     # 4. Send hardware change email notification (async, non-blocking main flow)
                     if host_rec:
-                        asyncio.create_task(
+                        task = asyncio.create_task(
                             self._send_hardware_change_notification(
                                 host_id=host_id,
                                 hardware_id=host_rec.hardware_id or "Unknown",
@@ -668,6 +674,9 @@ class AgentReportService:
                                 hw_rec_id=new_hw_rec.id,
                             )
                         )
+                        # Save reference to avoid GC
+                        self._background_tasks.add(task)
+                        task.add_done_callback(self._background_tasks.discard)
 
                     return {
                         "status": "hardware_changed",
@@ -685,7 +694,7 @@ class AgentReportService:
                         host_id=host_id,
                         hardware_data=hardware_data,
                         hw_ver=str(current_revision),
-                        diff_state=None,
+                        diff_state=self.DIFF_STATE_CONTENT,
                         sync_state=self.SYNC_STATE_WAIT,  # Awaiting approval
                     )
 
@@ -957,7 +966,8 @@ class AgentReportService:
         """
         try:
             # Calculate actual expected end time (current time + minutes)
-            now = datetime.now(timezone.utc)
+            # ✅ Use configured database timezone matching timeout task logic
+            now = datetime.now(get_db_timezone())
             due_time = now + timedelta(minutes=due_time_minutes)
 
             logger.info(
@@ -1163,9 +1173,35 @@ class AgentReportService:
                         )
 
                 elif vnc_state == 2:  # Connection disconnected/failed
+                    # ✅ Check if there are any execution logs for this host
+                    # If there are valid execution logs (del_flag=0), do NOT reset host state
+                    exec_log_stmt = (
+                        select(HostExecLog)
+                        .where(
+                            and_(
+                                HostExecLog.host_id == host_id,
+                                HostExecLog.case_state < CASE_STATE_SUCCESS,
+                                HostExecLog.del_flag == 0,
+                            )
+                        )
+                        .limit(1)
+                    )
+                    exec_log_result = await session.execute(exec_log_stmt)
+                    has_exec_log = exec_log_result.scalar_one_or_none()
+
+                    if has_exec_log:
+                        logger.info(
+                            "VNC connection disconnected/failed, but host has execution logs, keep original state",
+                            extra={
+                                "host_id": host_id,
+                                "current_host_state": current_host_state,
+                                "vnc_state": vnc_state,
+                                "exec_log_id": has_exec_log.id,
+                            },
+                        )
                     # ✅ Only hosts in business state (< 5) will be reset to free, "
                     # avoid affecting hosts in pending/registration state
-                    if current_host_state is not None and current_host_state < 5:
+                    elif current_host_state is not None and current_host_state < 5:
                         new_host_state = HOST_STATE_FREE  # 0 = Free
                         updated = True
                         logger.info(
@@ -1566,8 +1602,12 @@ class AgentReportService:
             change_type = change_type_map.get(diff_state, "Unknown change")
 
             # 3. Build email subject and content
-            subject = f"Hardware change notification - Host ID: {host_id}"
-            content = self._build_hardware_change_email_content(
+            # Externalize email subject and content using i18n
+            subject = t("email.hardware.change.subject", locale="zh_CN", host_id=host_id)
+
+            content = t(
+                "email.hardware.change.content",
+                locale="zh_CN",
                 host_id=host_id,
                 hardware_id=hardware_id,
                 host_ip=host_ip,
@@ -1669,139 +1709,6 @@ class AgentReportService:
                 exc_info=True,
             )
             return []
-
-    def _build_hardware_change_email_content(
-        self,
-        host_id: int,
-        hardware_id: str,
-        host_ip: str,
-        change_type: str,
-        hw_rec_id: int,
-    ) -> str:
-        """Build hardware change email content (HTML format)
-
-        Args:
-            host_id: Host ID
-            hardware_id: Hardware ID
-            host_ip: Host IP
-            change_type: Change type
-            hw_rec_id: Hardware record ID
-
-        Returns:
-            HTML formatted email content
-        """
-        return f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            background-color: #4CAF50;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 5px 5px 0 0;
-        }}
-        .content {{
-            background-color: #f9f9f9;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-top: none;
-        }}
-        .section {{
-            margin: 20px 0;
-            background-color: white;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #e0e0e0;
-        }}
-        .section-title {{
-            font-size: 16px;
-            font-weight: bold;
-            color: #4CAF50;
-            margin-bottom: 10px;
-            padding-bottom: 5px;
-            border-bottom: 2px solid #4CAF50;
-        }}
-        .info-item {{
-            margin: 10px 0;
-            padding: 8px;
-            background-color: #f5f5f5;
-            border-radius: 3px;
-        }}
-        .info-label {{
-            font-weight: bold;
-            color: #555;
-            display: inline-block;
-            width: 120px;
-        }}
-        .info-value {{
-            color: #333;
-        }}
-        .footer {{
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            color: #888;
-            font-size: 12px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2 style="margin: 0;">Hardware Change Notification</h2>
-    </div>
-    <div class="content">
-        <p style="font-size: 16px; margin-top: 0;">Dear Maintenance Staff:</p>
-
-        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
-            Host hardware information changes detected, please pay attention.
-        </p>
-
-        <div class="section">
-            <div class="section-title">Change Information</div>
-            <div class="info-item">
-                <span class="info-label">Host ID:</span>
-                <span class="info-value">{host_id}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Hardware ID:</span>
-                <span class="info-value">{hardware_id}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Host IP:</span>
-                <span class="info-value">{host_ip}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Change Type:</span>
-                <span class="info-value">{change_type}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Hardware Record ID:</span>
-                <span class="info-value">{hw_rec_id}</span>
-            </div>
-        </div>
-
-        <p style="margin-top: 25px; color: #555;">
-            Please log in to the system to view details and approve.
-        </p>
-
-        <div class="footer">
-            This email is automatically sent by the system, please do not reply.
-        </div>
-    </div>
-</body>
-</html>
-"""
 
 
 # Global service instance (singleton pattern)

@@ -12,9 +12,11 @@ Features:
 """
 
 import asyncio
+import contextlib
 from datetime import datetime, timedelta, timezone
 import os
 import sys
+import time
 from typing import List, Optional
 
 from sqlalchemy import and_, or_, select, update
@@ -33,6 +35,7 @@ try:
     from shared.common.email_sender import send_email
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
+    from shared.utils.time_utils import get_db_timezone
 except ImportError:
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
     from app.constants.host_constants import HOST_STATE_FREE, HOST_STATE_LOCKED
@@ -47,6 +50,7 @@ except ImportError:
     from shared.common.email_sender import send_email
     from shared.common.i18n import t
     from shared.common.loguru_config import get_logger
+    from shared.utils.time_utils import get_db_timezone
 
 logger = get_logger(__name__)
 
@@ -63,8 +67,12 @@ class CaseTimeoutTaskService:
         """Initialize scheduled task service"""
         self._task: Optional[asyncio.Task] = None
         self._running: bool = False
-        # Task execution interval: 10 minutes (600 seconds)
-        self.interval: int = 600
+        # Main loop interval: 1 minute (60 seconds)
+        self.loop_interval: int = 60
+        # Case timeout check interval: 10 minutes (600 seconds)
+        self.case_timeout_interval: int = 600
+        # Last case timeout check execution time
+        self.last_case_check_time: float = 0.0
         # Record whether configuration missing has been warned (avoid duplicate warnings)
         self._has_warned_missing_config: bool = False
         # ✅ Optimization: Cache session factory
@@ -91,9 +99,39 @@ class CaseTimeoutTaskService:
         logger.info(
             "Case timeout detection scheduled task started",
             extra={
-                "interval_seconds": self.interval,
-                "interval_minutes": self.interval // 60,
+                "loop_interval_seconds": self.loop_interval,
+                "case_check_interval_minutes": self.case_timeout_interval // 60,
+                "vnc_check_interval_minutes": self.loop_interval // 60,
             },
+        )
+
+    # Email content template constant (Use English as default)
+
+    def _build_timeout_email_content(
+        self,
+        hardware_id: str,
+        host_ip: str,
+        begin_time: datetime,
+        due_time: datetime,
+        tc_id: str,
+        log_id: int,
+    ) -> str:
+        """Builds the email content for a timeout notification."""
+        # Get locale preference from somewhere? Or default to en_US as requested
+        # Ideally, we should check system settings or default to en_US
+        # Since send_email is called with 'en_US', we should use 'en_US' here too
+        # But to support multi-language in future, we use t()
+
+        return t(
+            "email.case.timeout.content",
+            locale="en_US",
+            default=self.EMAIL_CASE_TIMEOUT_CONTENT_TEMPLATE,
+            hardware_id=hardware_id,
+            host_ip=host_ip,
+            begin_time=begin_time,
+            due_time=due_time,
+            tc_id=tc_id,
+            log_id=log_id,
         )
 
     async def stop(self) -> None:
@@ -105,10 +143,8 @@ class CaseTimeoutTaskService:
 
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                ***REMOVED***
 
         logger.info("Case timeout detection scheduled task stopped")
 
@@ -118,16 +154,43 @@ class CaseTimeoutTaskService:
         # Wait 60 seconds before executing first check, giving service time to establish connections
         await asyncio.sleep(60)
 
+        # Initialize last check time to ensure first check runs immediately (after initial delay)
+        self.last_case_check_time = 0.0
+
         while self._running:
             try:
-                # Execute timeout detection
-                await self._check_timeout_cases()
+                current_time = time.time()
 
-                # ✅ Execute VNC connection timeout detection
+                # 1. Execute Case timeout detection (Every 10 minutes)
+                if current_time - self.last_case_check_time >= self.case_timeout_interval:
+                    logger.info(
+                        "Triggering case timeout check",
+                        extra={
+                            "last_check_time": self.last_case_check_time,
+                            "current_time": current_time,
+                            "interval": self.case_timeout_interval,
+                        },
+                    )
+                    # Update time first to prevent repeated execution if task takes too long, or update after?
+                    # Updating after ensures interval is between completion and next start, but updating before ensures strict interval.
+                    # Let's update after successful call or before?
+                    # To avoid blocking, we update it *after* completion or *before*.
+                    # Updating *before* is safer to prevent immediate re-entry logic flaws if logic changes,
+                    # but here we are single threaded async.
+                    # Let's update it to current_time.
+                    self.last_case_check_time = current_time
+                    await self._check_timeout_cases()
+
+                # 2. Execute VNC connection timeout detection (Every 1 minute / every loop)
                 await self._check_vnc_connection_timeout()
 
-                # Wait for specified interval
-                await asyncio.sleep(self.interval)
+                # Wait for main loop interval
+                logger.debug(
+                    "Scheduled task loop sleeping",
+                    extra={"sleep_seconds": self.loop_interval},
+                )
+                await asyncio.sleep(self.loop_interval)
+                logger.debug("Scheduled task loop woke up")
 
             except asyncio.CancelledError:
                 logger.info("Scheduled task loop cancelled")
@@ -151,6 +214,7 @@ class CaseTimeoutTaskService:
                 "Detect timeout test cases",
                 logger_instance=logger,
             )
+            logger.info("Starting case timeout detection task")
 
             # 1. Get case_timeout configuration (with cache)
             timeout_minutes = await self._get_case_timeout_config()
@@ -178,7 +242,7 @@ class CaseTimeoutTaskService:
             if self._has_warned_missing_config:
                 self._has_warned_missing_config = False
 
-            logger.debug(
+            logger.info(
                 "Retrieved case_timeout configuration",
                 extra={"timeout_minutes": timeout_minutes},
             )
@@ -191,7 +255,7 @@ class CaseTimeoutTaskService:
             # 2. Query timeout host_exec_log records (prefer due_time, otherwise use case_timeout)
             timeout_cases = await self._query_timeout_cases(timeout_minutes)
             if not timeout_cases:
-                logger.debug("No timeout test cases found")
+                logger.info("No timeout test cases found")
                 return
 
             logger.info(
@@ -373,7 +437,8 @@ class CaseTimeoutTaskService:
             List of timeout execution log records (only includes unnotified records)
         """
         try:
-            now = datetime.now(timezone.utc)
+            # ✅ Use configured database timezone
+            now = datetime.now(get_db_timezone())
             timeout_threshold = now - timedelta(minutes=timeout_minutes)
 
             session_factory = self.session_factory
@@ -389,8 +454,7 @@ class CaseTimeoutTaskService:
                     select(HostExecLog)
                     .where(
                         and_(
-                            HostExecLog.host_state.in_([2, 3]),
-                            HostExecLog.case_state == 1,
+                            HostExecLog.case_state < 2,
                             HostExecLog.del_flag == 0,
                             HostExecLog.notify_state == 0,  # Only query unnotified records
                             or_(
@@ -406,6 +470,7 @@ class CaseTimeoutTaskService:
                         )
                     )
                     .order_by(HostExecLog.begin_time.asc())
+                    .limit(100)
                 )
 
                 result = await session.execute(stmt)
@@ -451,11 +516,15 @@ class CaseTimeoutTaskService:
                 "Detect VNC connection timeout",
                 logger_instance=logger,
             )
+            logger.info("Starting VNC connection timeout detection task")
+
+            # Define now for duration calculation
+            now = datetime.now(get_db_timezone())
 
             # 1. Query timeout hosts (host_state = 1 and subm_time - now() > 5 minutes)
             timeout_hosts = await self._query_vnc_timeout_hosts()
             if not timeout_hosts:
-                logger.debug("No VNC connection timeout hosts found")
+                logger.info("No VNC connection timeout hosts found")
                 return
 
             logger.info(
@@ -475,62 +544,90 @@ class CaseTimeoutTaskService:
                     host_id = host_rec.id
                     host_id_str = str(host_id)
 
+                    # Calculate duration since submission
+                    # Ensure timezone consistency (host_rec.subm_time usually naive from DB, assume system TZ matches DB or handle aware)
+                    subm_time = host_rec.subm_time
+                    if subm_time.tzinfo is None:
+                        # If DB time is naive, assume it's in db_timezone
+                        subm_time = subm_time.replace(tzinfo=get_db_timezone())
+
+                    details_duration = (now - subm_time).total_seconds()
+
+                    # Logic split:
+                    # 1. 5 min < Duration < 6 min: Try to notify first, give Agent 1 minute to disconnect gracefully.
+                    # 2. Duration >= 6 min: Timeout + Grace period exceeded, force cleanup.
+
+                    force_cleanup = details_duration >= 360  # 6 minutes
+
                     # 3.1 Try to notify Agent to go offline
                     offline_notification = {
                         "type": MessageType.HOST_OFFLINE_NOTIFICATION,
                         "host_id": host_id_str,
                         "message": "VNC connection timeout, Host is offline",
-                        "reason": "VNC connection timeout (exceeded 5 minutes without establishing connection)",
+                        "reason": f"VNC connection timeout (exceeded {int(details_duration // 60)} minutes without establishing connection)",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
 
-                    # Check if Agent is online
-                    is_agent_online = ws_manager.is_connected(host_id_str)
+                    # Always attempt to send notification (supports cross-instance via Redis)
+                    # We do NOT check is_connected() because it only checks local instance.
+                    logger.info(
+                        "Attempting to send offline notification (blind send)",
+                        extra={
+                            "host_id": host_id,
+                            "host_id_str": host_id_str,
+                            "duration_seconds": details_duration,
+                            "force_cleanup": force_cleanup,
+                        },
+                    )
 
-                    if is_agent_online:
-                        # Agent is online, send offline notification
+                    notification_sent = await ws_manager.send_to_host(host_id_str, offline_notification)
+
+                    if notification_sent:
                         logger.info(
-                            "Agent is online, sending offline notification",
+                            "VNC connection timeout offline notification sent (or published)",
                             extra={
                                 "host_id": host_id,
                                 "host_id_str": host_id_str,
                             },
                         )
-                        notification_sent = await ws_manager.send_to_host(host_id_str, offline_notification)
+                        success_count += 1
 
-                        if notification_sent:
+                        # If NOT force cleanup, we skip cleanup this time to give Agent time to react
+                        if not force_cleanup:
                             logger.info(
-                                "VNC connection timeout offline notification sent to Agent",
-                                extra={
-                                    "host_id": host_id,
-                                    "host_id_str": host_id_str,
-                                },
+                                "Grace period active, skipping cleanup to allow Agent to disconnect",
+                                extra={"host_id": host_id},
                             )
-                            success_count += 1
-                            # Notification sent, wait for Agent to process, do not cleanup immediately
                             continue
-                        logger.warning(
-                            "VNC connection timeout offline notification failed, Agent may have disconnected",
-                            extra={
-                                "host_id": host_id,
-                                "host_id_str": host_id_str,
-                            },
-                        )
-                    # Notification failed, perform cleanup
                     else:
-                        logger.info(
-                            "Agent is not online, skip notification, perform cleanup directly",
+                        logger.warning(
+                            "VNC connection timeout offline notification failed (Agent offline or Redis down)",
                             extra={
                                 "host_id": host_id,
                                 "host_id_str": host_id_str,
                             },
                         )
 
-                    # 3.2 Agent is not online or notification failed, perform cleanup
+                    # 3.2 Perform cleanup (if force_cleanup is True OR notification failed)
+                    # (Logic: If we couldn't send notify, we must clean up.
+                    #         If we sent notify but time > 6 min, we must clean up.)
+
+                    logger.info(
+                        "Performing VNC timeout host cleanup",
+                        extra={
+                            "host_id": host_id,
+                            "reason": "Force cleanup" if force_cleanup else "Notification failed",
+                        },
+                    )
+
                     cleanup_success = await self._cleanup_vnc_timeout_host(host_id)
 
                     if cleanup_success:
-                        success_count += 1
+                        # Only increment success count if we didn't already increment it for sending notification?
+                        # Or strictly track "handled" count?
+                        # Let's count it as success if we seemingly handled the situation.
+                        if not notification_sent:
+                            success_count += 1
                         logger.info(
                             "VNC connection timeout host cleanup completed",
                             extra={
@@ -591,7 +688,8 @@ class CaseTimeoutTaskService:
             List of VNC connection timeout hosts
         """
         try:
-            now = datetime.now(timezone.utc)
+            # ✅ Use configured database timezone
+            now = datetime.now(get_db_timezone())
             timeout_threshold = now - timedelta(minutes=5)  # 5 minutes timeout
 
             session_factory = self.session_factory
@@ -609,8 +707,22 @@ class CaseTimeoutTaskService:
                     .order_by(HostRec.subm_time.asc())  # Order by subm_time ascending, prioritize earliest timeout
                 )
 
+                stmt_str = str(stmt)
+                logger.info(
+                    "Query VNC connection timeout hosts SQL",
+                    extra={"sql": stmt_str},
+                )
+
                 result = await session.execute(stmt)
                 host_recs = result.scalars().all()
+
+                logger.info(
+                    "Query VNC connection timeout hosts Results",
+                    extra={
+                        "count": len(host_recs),
+                        "hosts": [{"id": h.id, "host_ip": h.host_ip} for h in host_recs],
+                    },
+                )
 
                 logger.debug(
                     "Query VNC connection timeout hosts",
@@ -768,13 +880,17 @@ class CaseTimeoutTaskService:
 
                 if not host_rec:
                     logger.warning(
-                        "Host record not found, skipping email notification",
+                        "Host record not found (deleted or invalid), skipping email notification and marking as processed",
                         extra={
                             "host_id": exec_log.host_id,
                             "log_id": exec_log.id,
                         },
                     )
-                    return False
+                    # Mark as processed to prevent infinite retries
+                    update_stmt = update(HostExecLog).where(HostExecLog.id == exec_log.id).values(notify_state=1)
+                    await session.execute(update_stmt)
+                    await session.commit()
+                    return True
 
                 hardware_id = host_rec.hardware_id or "-"
                 host_ip = host_rec.host_ip or "-"
@@ -822,7 +938,7 @@ class CaseTimeoutTaskService:
 
                 subject = t(
                     "email.case.timeout.subject",
-                    locale="zh_CN",
+                    locale="en_US",
                     default="Test case execution timeout notification",
                 )
 
@@ -840,7 +956,7 @@ class CaseTimeoutTaskService:
                     to_emails=email_list,
                     subject=subject,
                     content=content,
-                    locale="zh_CN",
+                    locale="en_US",
                 )
 
                 if email_result.get("sent_count", 0) > 0:
@@ -905,123 +1021,21 @@ class CaseTimeoutTaskService:
         Returns:
             HTML formatted email content
         """
-        return f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            background-color: #FF6B6B;
-            color: white;
-            padding: 20px;
-            border-radius: 5px 5px 0 0;
-            margin-bottom: 0;
-        }}
-        .content {{
-            background-color: #f9f9f9;
-            padding: 30px;
-            border: 1px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-        }}
-        .section {{
-            margin-bottom: 25px;
-        }}
-        .section-title {{
-            font-size: 16px;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #FF6B6B;
-        }}
-        .info-item {{
-            margin: 8px 0;
-            padding-left: 20px;
-            position: relative;
-        }}
-        .info-item::before {{
-            content: "•";
-            position: absolute;
-            left: 0;
-            color: #FF6B6B;
-            font-weight: bold;
-        }}
-        .info-label {{
-            font-weight: 600;
-            color: #555;
-        }}
-        .info-value {{
-            color: #333;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            font-size: 12px;
-            color: #888;
-            text-align: center;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2 style="margin: 0;">Test Case Execution Timeout Notification</h2>
-    </div>
-    <div class="content">
-        <p style="font-size: 16px; margin-top: 0;">Dear Maintenance Staff:</p>
+        # Get locale preference from somewhere? Or default to en_US as requested
+        # Ideally, we should check system settings or default to en_US
+        # Since send_email is called with 'en_US', we should use 'en_US' here too
+        # But to support multi-language in future, we use t()
 
-        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
-            Test case execution timeout detected, please pay attention.
-        </p>
-
-        <div class="section">
-            <div class="section-title">Timeout Task Information</div>
-            <div class="info-item">
-                <span class="info-label">Hardware ID：</span>
-                <span class="info-value">{hardware_id}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Host IP：</span>
-                <span class="info-value">{host_ip}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Test Case ID:</span>
-                <span class="info-value">{tc_id}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Execution Log ID:</span>
-                <span class="info-value">{log_id}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Start Time:</span>
-                <span class="info-value">{begin_time}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Expected End Time:</span>
-                <span class="info-value">{due_time}</span>
-            </div>
-        </div>
-
-        <p style="margin-top: 25px; color: #555;">
-            Please pay attention to the execution status of related tasks in a timely manner.
-        </p>
-
-        <div class="footer">
-            This email is automatically sent by the system, please do not reply.
-        </div>
-    </div>
-</body>
-</html>
-"""
+        return t(
+            "email.case.timeout.content",
+            locale="en_US",
+            hardware_id=hardware_id,
+            host_ip=host_ip,
+            begin_time=begin_time,
+            due_time=due_time,
+            tc_id=tc_id,
+            log_id=log_id,
+        )
 
 
 # Global scheduled task service instance (singleton)

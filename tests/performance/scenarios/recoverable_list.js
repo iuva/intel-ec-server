@@ -20,6 +20,12 @@ export default function () {
 
     const res = http.post(url, payload, params);
 
+    // 添加调试日志
+    if (res.status !== 200) {
+        console.log(`Error Status: ${res.status}`);
+        console.log(`Error Body: ${res.body}`); // 看看返回了什么
+    }
+
     check(res, {
         'status is 200': (r) => r.status === 200,
         'response time < 2s': (r) => r.timings.duration < 2000,

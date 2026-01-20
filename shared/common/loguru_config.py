@@ -233,23 +233,26 @@ def configure_logger(
 
                 # Check if there are exception information (if there are exceptions, don't format extra as JSON,
                 # let exception stack use original format)
-                has_exception = record.get("exception") is not None
+                # Always append extra information, even if there is an exception
+                # This ensures context (like host_id) is visible alongside the stack trace
+                try:
+                    # Format as key-value pairs
+                    extra_lines = []
+                    for k, v in extra_data.items():
+                        extra_lines.append(f"  {k}: {v}")
+                    extra_text = "\n".join(extra_lines)
 
-                if not has_exception:
-                    # Non-exception case, use JSON format
+                    # Only add when original message doesn't contain "extra information"
+                    if "extra information" not in str(original_message):
+                        # Ensure message doesn't have trailing newlines, then append extra information
+                        msg_clean = str(original_message).rstrip("\n")
+                        record["message"] = f"{msg_clean}\nExtra information:\n{extra_text}"
+                except Exception:
                     try:
-                        extra_json = json.dumps(extra_data, ensure_ascii=False, indent=2, default=str)
-                        # Only add when original message doesn't contain "extra information"
-                        if "extra information" not in str(original_message):
-                            # Ensure message doesn't have trailing newlines, then append extra information
-                            msg_clean = str(original_message).rstrip("\n")
-                            record["message"] = f"{msg_clean}\nExtra information:\n{extra_json}"
+                        msg_clean = str(original_message).rstrip("\n")
+                        record["message"] = f"{msg_clean}\nExtra information: {extra_data!s}"
                     except Exception:
-                        try:
-                            msg_clean = str(original_message).rstrip("\n")
-                            record["message"] = f"{msg_clean}\nExtra information: {extra_data!s}"
-                        except Exception:
-                            ***REMOVED***
+                        ***REMOVED***
         except Exception:
             # Silently handle exceptions, avoid affecting log output
             ***REMOVED***
@@ -297,6 +300,9 @@ def configure_logger(
                 "retention": retention,
                 "compression": compression,
                 "encoding": "utf-8",
+                "backtrace": True,  # Show traceback extending beyond catch point
+                "diagnose": True,  # Show variable values in traceback
+                "enqueue": True,  # ✅ Enable asynchronous writing to avoid blocking
             }
         )
 
@@ -314,6 +320,9 @@ def configure_logger(
                 "retention": "1 month",
                 "compression": compression,
                 "encoding": "utf-8",
+                "backtrace": True,  # Show traceback extending beyond catch point
+                "diagnose": True,  # Show variable values in traceback
+                "enqueue": True,  # ✅ Enable asynchronous writing to avoid blocking
             }
         )
 

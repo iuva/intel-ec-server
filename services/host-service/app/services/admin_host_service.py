@@ -1062,7 +1062,6 @@ class AdminHostService:
             # Build query conditions
             base_conditions = [
                 HostExecLog.host_id == request.host_id,
-                HostExecLog.del_flag == 0,
             ]
 
             # 1. Query total count

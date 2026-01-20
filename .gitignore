@@ -53,9 +53,9 @@ dmypy.json
 .ruff_cache/
 
 # Environment
-.env
-.env.local
-.env.*.local
+# .env
+# .env.local
+# .env.*.local
 
 # Logs
 *.log

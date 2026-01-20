@@ -320,7 +320,7 @@ class RedisManager:
         redis_url: str,
         encoding: str = "utf-8",
         decode_responses: bool = True,
-        max_connections: int = 50,
+        max_connections: Optional[int] = None,  # ✅ Default changed to None to support dynamic configuration
         ssl_ca_certs: Optional[str] = None,
         ssl_certfile: Optional[str] = None,
         ssl_keyfile: Optional[str] = None,
@@ -330,19 +330,18 @@ class RedisManager:
         """Connect to Redis server
 
         Args:
-            redis_url: Redis connection URL, format: redis://host:port/db or rediss://host:port/db (SSL)
+            redis_url: Redis connection URL
             encoding: Character encoding
             decode_responses: Whether to automatically decode responses
-            max_connections: Maximum connections
-            ssl_ca_certs: CA certificate file path (optional)
-            ssl_certfile: Client certificate file path (optional)
-            ssl_keyfile: Client private key file path (optional)
-            ssl_cert_reqs: SSL certificate verification requirement (optional, none/optional/required)
-            ssl_check_hostname: Whether to verify hostname (default False)
+            max_connections: Maximum connections (default None, will read from env REDIS_MAX_CONNECTIONS or default to 200)
         """
 
         # Mask URL for logging
         masked_url = mask_sensitive_info(redis_url)
+
+        # ✅ Read max_connections from environment variable if not provided
+        if max_connections is None:
+            max_connections = int(os.getenv("REDIS_MAX_CONNECTIONS", "200"))
 
         # Extract host and port from URL for diagnosis
         # Format: redis://[auth@]host:port/db or rediss://[auth@]host:port/db

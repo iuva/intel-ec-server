@@ -8,7 +8,7 @@ Provides VNC connection related business logic services for browser plugins, inc
 from datetime import datetime, timezone
 from typing import Optional, cast
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, func, select, update
 
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
@@ -290,7 +290,7 @@ class BrowserVNCService:
 
             # 3. Update host_rec table
             host_rec.host_state = 1  # Locked state
-            host_rec.subm_time = datetime.now(timezone.utc)
+            host_rec.subm_time = func.now()
 
             # Commit all changes
             await session.commit()
@@ -639,7 +639,7 @@ class BrowserVNCService:
                 # ✅ Update host state to locked (host_state = 1)
                 old_host_state = host_rec.host_state
                 host_rec.host_state = 1  # Locked state
-                host_rec.subm_time = datetime.now(timezone.utc)
+                host_rec.subm_time = func.now()
 
                 # Commit state update
                 await session.commit()

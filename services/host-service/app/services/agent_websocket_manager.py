@@ -713,7 +713,7 @@ class AgentWebSocketManager:
 
             # Batch concurrent sending
             for i in range(0, len(target_hosts), batch_size):
-                batch = target_hosts[i:i + batch_size]
+                batch = target_hosts[i : i + batch_size]
                 # Create concurrent tasks
                 tasks = [self._send_to_host_safe(host_id, message) for host_id in batch]
                 # Execute concurrently
@@ -1020,7 +1020,7 @@ class AgentWebSocketManager:
 
         # Batch concurrent sending
         for i in range(0, len(target_hosts), batch_size):
-            batch = target_hosts[i:i + batch_size]
+            batch = target_hosts[i : i + batch_size]
             tasks = [self._send_to_host_safe(host_id, message) for host_id in batch]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -1312,7 +1312,7 @@ class AgentWebSocketManager:
                             HostExecLog.del_flag == 0,
                         )
                     )
-                    .order_by(HostExecLog.created_at.desc())
+                    .order_by(HostExecLog.created_time.desc())
                     .limit(1)
                 )
 

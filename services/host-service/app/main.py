@@ -14,7 +14,7 @@ from app.api.v1 import api_router
 
 # Use try-except to handle path imports
 try:
-    from app.services.case_timeout_task import get_case_timeout_task_service
+    from app.tasks.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
@@ -25,7 +25,7 @@ try:
 except ImportError:
     # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from app.services.case_timeout_task import get_case_timeout_task_service
+    from app.tasks.case_timeout_task import get_case_timeout_task_service
     from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware

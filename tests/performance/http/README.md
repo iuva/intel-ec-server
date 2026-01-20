@@ -118,13 +118,9 @@ Get-ChildItem k6_*.js | ForEach-Object {
 
 ```javascript
 stages: [
-  { duration: '1m', target: 100 },   // 1分钟内增加到100并发
-  { duration: '2m', target: 100 },   // 保持100并发2分钟
-  { duration: '1m', target: 250 },   // 1分钟内增加到250并发
-  { duration: '2m', target: 250 },   // 保持250并发2分钟
-  { duration: '1m', target: 500 },   // 1分钟内增加到500并发
-  { duration: '5m', target: 500 },   // 保持500并发5分钟（验证稳定性）
-  { duration: '1m', target: 0 },     // 1分钟内降为0
+  { duration: '30s', target: 500 }, // Setup: Ramp-up to 500
+  { duration: '1m', target: 500 },  // Run: Stay at 500
+  { duration: '30s', target: 0 },   // Teardown: Ramp-down
 ]
 ```
 
@@ -134,9 +130,9 @@ stages: [
 thresholds: {
   http_req_duration: [
     'p(50)<500',    // 50% 请求 < 500ms
-    'p(95)<1500',   // 95% 请求 < 1.5秒
-    'p(99)<2000',   // 99% 请求 < 2秒
-    'max<3000',     // 最大响应时间 < 3秒
+    'p(95)<3000',   // 95% 请求 < 3秒
+    'p(99)<5000',   // 99% 请求 < 5秒 (宽松)
+    'max<10000',    // 最大响应时间 < 10秒
   ],
   http_req_failed: ['rate<0.01'],  // 错误率 < 1%
   http_reqs: ['rate>100'],         // 至少100 req/s

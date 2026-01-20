@@ -34,114 +34,6 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# Email content template constant
-EMAIL_HOST_APPROVE_CONTENT_TEMPLATE = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            background-color: #4CAF50;
-            color: white;
-            padding: 20px;
-            border-radius: 5px 5px 0 0;
-            margin-bottom: 0;
-        }}
-        .content {{
-            background-color: #f9f9f9;
-            padding: 30px;
-            border: 1px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-        }}
-        .section {{
-            margin-bottom: 25px;
-        }}
-        .section-title {{
-            font-size: 16px;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #4CAF50;
-        }}
-        .info-item {{
-            margin: 8px 0;
-            padding-left: 20px;
-            position: relative;
-        }}
-        .info-item::before {{
-            content: "•";
-            position: absolute;
-            left: 0;
-            color: #4CAF50;
-            font-weight: bold;
-        }}
-        .info-label {{
-            font-weight: 600;
-            color: #555;
-        }}
-        .info-value {{
-            color: #333;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            font-size: 12px;
-            color: #888;
-            text-align: center;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2 style="margin: 0;">Hardware Change Approval Notification</h2>
-    </div>
-    <div class="content">
-        <p style="font-size: 16px; margin-top: 0;">Dear Maintenance Personnel:</p>
-
-        <p style="font-size: 15px; color: #2c3e50; margin: 20px 0;">
-            The changed Host has ***REMOVED***ed hardware change approval.
-        </p>
-
-        <div class="section">
-            <div class="section-title">Approver Information</div>
-            <div class="info-item">
-                <span class="info-label">User Name:</span>
-                <span class="info-value">{user_name}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">Login Account:</span>
-                <span class="info-value">{user_account}</span>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">Changed Host Information</div>
-            {host_table}
-        </div>
-
-        <p style="margin-top: 25px; color: #555;">
-            Please pay attention to related changes in time.
-        </p>
-
-        <div class="footer">
-            This email is automatically sent by the system, please do not reply.
-        </div>
-    </div>
-</body>
-</html>
-"""
-
 
 class ApprovalEmailService:
     """Approval email service class
@@ -235,7 +127,6 @@ class ApprovalEmailService:
             content = t(
                 "email.host.approve.content",
                 locale=locale,
-                default=EMAIL_HOST_APPROVE_CONTENT_TEMPLATE,
                 user_name=user_name,
                 user_account=user_account,
                 host_table=host_table,

@@ -10,7 +10,7 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, desc, select, update
+from sqlalchemy import and_, desc, func, select, update
 
 # Use try-except to handle path imports
 try:
@@ -344,7 +344,8 @@ class AgentVncOtaReportService:
                         app_name=app_name,
                         app_ver=app_ver,
                         app_state=biz_state,
-                        created_time=datetime.now(timezone.utc),
+                        # ✅ Use database function func.now() to ensure time consistency
+                        created_time=func.now(),
                         del_flag=0,
                     )
                     session.add(host_upd)
