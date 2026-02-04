@@ -511,7 +511,7 @@
                                         "ip": "192.168.101.118",
                                         "port": "5900",
                                         "username": "neusoft",
-                                        "***REMOVED***word": "********"
+                                        "password": "********"
                                     }
                                 }
                             }
@@ -2164,7 +2164,7 @@
                                         "mac": "00:11:22:33:44:55",
                                         "ip": "192.168.1.100",
                                         "username": "admin",
-                                        "***REMOVED***word": "***REMOVED***",
+                                        "password": "decrypted_password",
                                         "port": 5900,
                                         "hw_info": {
                                             "cpu": "Intel i7",
@@ -2206,14 +2206,14 @@
                 }
             }
         },
-        "/api/v1/host/admin/host/***REMOVED***word": {
+        "/api/v1/host/admin/host/password": {
             "put": {
                 "tags": [
                     "管理后台-可用主机管理"
                 ],
                 "summary": "修改主机密码",
                 "description": "修改主机密码（AES加密后存储）",
-                "operationId": "update_host_***REMOVED***word_api_v1_host_admin_host_***REMOVED***word_put",
+                "operationId": "update_host_password_api_v1_host_admin_host_password_put",
                 "parameters": [
                     {
                         "name": "accept-language",
@@ -2276,7 +2276,7 @@
                                             "error_code": "HOST_NOT_FOUND"
                                         }
                                     },
-                                    "***REMOVED***word_update_failed": {
+                                    "password_update_failed": {
                                         "summary": "密码修改失败",
                                         "value": {
                                             "code": 53006,
@@ -2284,7 +2284,7 @@
                                             "error_code": "HOST_PASSWORD_UPDATE_FAILED"
                                         }
                                     },
-                                    "***REMOVED***word_encrypt_failed": {
+                                    "password_encrypt_failed": {
                                         "summary": "密码加密失败",
                                         "value": {
                                             "code": 53007,
@@ -3268,7 +3268,7 @@
                         "title": "Username",
                         "description": "主机账号（host_rec 表 host_acct）"
                     },
-                    "***REMOVED***word": {
+                    "password": {
                         "anyOf": [
                             {
                                 "type": "string"
@@ -3540,7 +3540,7 @@
                         "title": "Username",
                         "description": "主机账号（host_rec 表 host_acct）"
                     },
-                    "***REMOVED***word": {
+                    "password": {
                         "anyOf": [
                             {
                                 "type": "string"
@@ -3946,7 +3946,7 @@
                         "title": "Host Id",
                         "description": "主机ID（host_rec.id）"
                     },
-                    "***REMOVED***word": {
+                    "password": {
                         "type": "string",
                         "minLength": 1,
                         "title": "Password",
@@ -3956,7 +3956,7 @@
                 "type": "object",
                 "required": [
                     "host_id",
-                    "***REMOVED***word"
+                    "password"
                 ],
                 "title": "AdminHostUpdatePasswordRequest",
                 "description": "管理后台主机密码修改请求模式"
@@ -5921,7 +5921,7 @@
                         "title": "Username",
                         "description": "连接用户名"
                     },
-                    "***REMOVED***word": {
+                    "password": {
                         "type": "string",
                         "title": "Password",
                         "description": "连接密码"
@@ -5932,7 +5932,7 @@
                     "ip",
                     "port",
                     "username",
-                    "***REMOVED***word"
+                    "password"
                 ],
                 "title": "VNCConnectionInfo",
                 "description": "VNC 连接信息响应模式"

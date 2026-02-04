@@ -60,8 +60,8 @@ class HostRec(BaseDBModel):
     # Host account
     host_acct: Mapped[Optional[str]] = mapped_column(VARCHAR(32), nullable=True, comment="Host account")
 
-    # Host ***REMOVED***word
-    host_pwd: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, comment="Host ***REMOVED***word")
+    # Host password
+    host_pwd: Mapped[Optional[str]] = mapped_column(VARCHAR(64), nullable=True, comment="Host password")
 
     # MAC address
     mac_addr: Mapped[Optional[str]] = mapped_column(VARCHAR(255), nullable=True, comment="MAC address")

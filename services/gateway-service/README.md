@@ -10,7 +10,7 @@ Gateway Service is the system's API gateway, responsible for unified request ent
 - **Load Balancing**: Load balancing based on Nacos service discovery
 - **Authentication Validation**: Unified JWT token validation
 - **Rate Limiting & Circuit Breaking**: Protect backend services from overload
-- **Request Logging**: Record all requests ***REMOVED***ing through the gateway
+- **Request Logging**: Record all requests passing through the gateway
 
 ## Tech Stack
 
@@ -80,8 +80,6 @@ LOG_LEVEL=INFO
 ### Local Development
 
 > **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
-
-> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
 
 ```bash
 # Install dependencies

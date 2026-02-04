@@ -63,7 +63,7 @@ async def validate_host_exists(
         host_rec = await validate_host_exists(session, HostRec, host_id=123, raise_on_not_found=False)
         if not host_rec:
             # Handle case where host does not exist
-            ***REMOVED***
+            pass
         ```
     """
     stmt = select(host_model).where(
@@ -194,7 +194,7 @@ def parse_host_id(
             host_id_int = parse_host_id("invalid", raise_on_error=True)
         except BusinessError:
             # Handle error
-            ***REMOVED***
+            pass
         ```
     """
     try:

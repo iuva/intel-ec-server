@@ -25,7 +25,7 @@ class NacosManager:
         namespace: str = "public",
         group: str = "DEFAULT_GROUP",
         username: Optional[str] = None,
-        ***REMOVED***word: Optional[str] = None,
+        password: Optional[str] = None,
     ) -> None:
         """Initialize Nacos manager
 
@@ -34,20 +34,20 @@ class NacosManager:
             namespace: Namespace ID
             group: Group name
             username: Username (optional)
-            ***REMOVED***word: Password (optional)
+            password: Password (optional)
         """
         self.server_addresses = server_addresses
         self.namespace = namespace
         self.group = group
         self.username = username
-        self.***REMOVED***word = ***REMOVED***word
+        self.password = password
 
         # Initialize Nacos client
         self.client = nacos.NacosClient(
             server_addresses=server_addresses,
             namespace=namespace,
             username=username,
-            ***REMOVED***word=***REMOVED***word,
+            password=password,
         )
 
         # Heartbeat task
@@ -326,7 +326,7 @@ def init_nacos_manager(
     namespace: str = "public",
     group: str = "DEFAULT_GROUP",
     username: Optional[str] = None,
-    ***REMOVED***word: Optional[str] = None,
+    password: Optional[str] = None,
 ) -> NacosManager:
     """Initialize global Nacos manager
 
@@ -335,7 +335,7 @@ def init_nacos_manager(
         namespace: Namespace
         group: Group name
         username: Username
-        ***REMOVED***word: Password
+        password: Password
 
     Returns:
         Nacos manager instance
@@ -346,7 +346,7 @@ def init_nacos_manager(
         namespace=namespace,
         group=group,
         username=username,
-        ***REMOVED***word=***REMOVED***word,
+        password=password,
     )
     return nacos_manager
 

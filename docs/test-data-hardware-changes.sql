@@ -58,23 +58,23 @@ INSERT INTO host_rec (
     created_time, updated_time
 ) VALUES
 -- 主机1：版本号变化场景
-(generate_snowflake_id(), 'MG001', '00:11:22:33:44:55', '192.168.1.101', 22, 'admin', '***REMOVED***',
+(generate_snowflake_id(), 'MG001', '00:11:22:33:44:55', '192.168.1.101', 22, 'admin', 'password123',
  6, 2, 2, 0,
  NOW(), NOW()),
 -- 主机2：内容更改场景
-(generate_snowflake_id(), 'MG002', '00:11:22:33:44:56', '192.168.1.102', 22, 'admin', '***REMOVED***',
+(generate_snowflake_id(), 'MG002', '00:11:22:33:44:56', '192.168.1.102', 22, 'admin', 'password123',
  6, 2, 2, 0,
  NOW(), NOW()),
 -- 主机3：异常场景
-(generate_snowflake_id(), 'MG003', '00:11:22:33:44:57', '192.168.1.103', 22, 'admin', '***REMOVED***',
+(generate_snowflake_id(), 'MG003', '00:11:22:33:44:57', '192.168.1.103', 22, 'admin', 'password123',
  6, 2, 2, 0,
  NOW(), NOW()),
 -- 主机4：待激活状态（host_state = 5）
-(generate_snowflake_id(), 'MG004', '00:11:22:33:44:58', '192.168.1.104', 22, 'admin', '***REMOVED***',
+(generate_snowflake_id(), 'MG004', '00:11:22:33:44:58', '192.168.1.104', 22, 'admin', 'password123',
  5, 0, 0, 0,
  NOW(), NOW()),
 -- 主机5：手动停用状态（host_state = 7）
-(generate_snowflake_id(), 'MG005', '00:11:22:33:44:59', '192.168.1.105', 22, 'admin', '***REMOVED***',
+(generate_snowflake_id(), 'MG005', '00:11:22:33:44:59', '192.168.1.105', 22, 'admin', 'password123',
  7, 0, 0, 0,
  NOW(), NOW());
 
@@ -220,7 +220,7 @@ INSERT INTO host_rec (
     host_state, appr_state, tcp_state, del_flag,
     created_time, updated_time
 ) VALUES
-(generate_snowflake_id(), 'MG006', '00:11:22:33:44:60', '192.168.1.106', 22, 'admin', '***REMOVED***',
+(generate_snowflake_id(), 'MG006', '00:11:22:33:44:60', '192.168.1.106', 22, 'admin', 'password123',
  6, 2, 2, 0,
  NOW(), NOW());
 

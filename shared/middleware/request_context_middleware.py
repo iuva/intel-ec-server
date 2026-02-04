@@ -328,7 +328,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 if username:
                     _username_var.set(username)
             except (ValueError, TypeError):
-                ***REMOVED***
+                pass
 
         try:
             # Call the next handler

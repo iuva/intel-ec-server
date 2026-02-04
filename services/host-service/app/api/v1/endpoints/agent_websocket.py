@@ -52,9 +52,9 @@ async def _handle_websocket_connection(websocket: WebSocket, path_host_id: Optio
     user_info = None  # Initialize user_info
 
     if host_id:
-        # ✅ Gateway has verified token, directly use host_id ***REMOVED***ed by gateway
+        # ✅ Gateway has verified token, directly use host_id passed by gateway
         logger.info(
-            "WebSocket connection using host_id ***REMOVED***ed by gateway",
+            "WebSocket connection using host_id passed by gateway",
             extra={
                 "host_id": host_id,
                 "client": f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown",
@@ -174,7 +174,7 @@ async def websocket_endpoint_new(websocket: WebSocket):
 
     Note:
         - host_id is obtained from sub field in JWT token (host_rec.id stored during device login)
-        - No longer need to ***REMOVED*** host_id through path parameters
+        - No longer need to pass host_id through path parameters
 
     Args:
         websocket: WebSocket connection object

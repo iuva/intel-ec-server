@@ -1354,11 +1354,7 @@ class AgentWebSocketManager:
 
                 # Update host_state = 2 (occupied)
                 update_stmt = (
-<<<<<<< HEAD
                     update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=2)  # Occupied
-=======
-                    update(HostExecLog).where(HostExecLog.id == exec_log.id).values(host_state=2)  # 已占用
->>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
                 )
                 await session.execute(update_stmt)
                 await session.commit()
@@ -1990,7 +1986,7 @@ class AgentWebSocketManager:
                     # Other types of WebSocket connections, try ping detection
                     # Note: Don't actually send ping here, just check if connection object exists
                     # If connection is disconnected, will fail when sending message later and be cleaned up
-                    ***REMOVED***
+                    pass
             except Exception as e:
                 # Error checking connection state, connection may be invalid
                 logger.debug(

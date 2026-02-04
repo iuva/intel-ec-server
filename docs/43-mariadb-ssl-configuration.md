@@ -121,7 +121,7 @@ services:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb123}
       MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
       MARIADB_USER: ${MARIADB_USER:-intel_user}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_pass123}
       MARIADB_CHARSET: utf8mb4
       MARIADB_COLLATION: utf8mb4_unicode_ci
       MYSQL_MAX_CONNECTIONS: ${MYSQL_MAX_CONNECTIONS:-500}
@@ -250,7 +250,7 @@ async def connect(
     """连接到MariaDB数据库
     
     Args:
-        database_url: 数据库连接URL，格式：mysql+aiomysql://user:***REMOVED***@host:port/db
+        database_url: 数据库连接URL，格式：mysql+aiomysql://user:pass@host:port/db
         # ... 其他参数 ...
         ssl_ca: CA 证书文件路径
         ssl_cert: 客户端证书文件路径
@@ -333,9 +333,9 @@ def from_env(service_name: str, service_port_key: str = "SERVICE_PORT") -> "Serv
     ssl_verify_identity = os.getenv("MARIADB_SSL_VERIFY_IDENTITY", "false").lower() in ("true", "1", "yes")
     
     # 构建数据库 URL（不包含 SSL 参数）
-    encoded_***REMOVED***word = quote_plus(mariadb_***REMOVED***word)
+    encoded_password = quote_plus(mariadb_password)
     mariadb_url = (
-        f"mysql+aiomysql://{mariadb_user}:{encoded_***REMOVED***word}@{mariadb_host}:{mariadb_port}/{mariadb_database}"
+        f"mysql+aiomysql://{mariadb_user}:{encoded_password}@{mariadb_host}:{mariadb_port}/{mariadb_database}"
     )
     
     # 注意：SSL 配置通过 connect() 方法的参数传递，而不是 URL 参数
@@ -408,7 +408,7 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 engine = create_async_engine(
-    "mysql+aiomysql://user:***REMOVED***word@host:port/database",
+    "mysql+aiomysql://user:password@host:port/database",
     connect_args={
         "ssl": ssl_context  # ✅ 传递 SSLContext 对象
     }
@@ -425,7 +425,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import ssl
 
 # ✅ 不验证证书的 SSL 配置
-database_url = "mysql+aiomysql://user:***REMOVED***word@host:port/database"
+database_url = "mysql+aiomysql://user:password@host:port/database"
 
 # 创建不验证证书的 SSL 上下文
 ssl_context = ssl.create_default_context()
@@ -480,7 +480,7 @@ engine = create_async_engine(
 **错误方法（会导致报错）**：
 ```python
 # ❌ 错误：aiomysql 不支持 URL 参数 ssl_verify_cert
-database_url = "mysql+aiomysql://user:***REMOVED***word@host:port/database?ssl_verify_cert=false"
+database_url = "mysql+aiomysql://user:password@host:port/database?ssl_verify_cert=false"
 # 会报错：connect() got an unexpected keyword argument 'ssl_verify_cert'
 ```
 
@@ -525,7 +525,7 @@ async def test_ssl_connection():
     mariadb_host = os.getenv("MARIADB_HOST", "localhost")
     mariadb_port = os.getenv("MARIADB_PORT", "3306")
     mariadb_user = os.getenv("MARIADB_USER", "intel_user")
-    mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "your_***REMOVED***word")
+    mariadb_password = os.getenv("MARIADB_PASSWORD", "your_password")
     mariadb_database = os.getenv("MARIADB_DATABASE", "intel_cw")
     
     # SSL 配置
@@ -539,7 +539,7 @@ async def test_ssl_connection():
     from urllib.parse import quote_plus
     
     database_url = (
-        f"mysql+aiomysql://{mariadb_user}:{quote_plus(mariadb_***REMOVED***word)}"
+        f"mysql+aiomysql://{mariadb_user}:{quote_plus(mariadb_password)}"
         f"@{mariadb_host}:{mariadb_port}/{mariadb_database}"
     )
     
@@ -698,14 +698,14 @@ require-secure-transport=ON
 
 ```sql
 -- 创建仅允许 SSL 连接的用户
-CREATE USER 'ssl_user'@'%' IDENTIFIED BY 'secure_***REMOVED***word' REQUIRE SSL;
+CREATE USER 'ssl_user'@'%' IDENTIFIED BY 'secure_password' REQUIRE SSL;
 
 -- 或要求特定证书
-CREATE USER 'ssl_user'@'%' IDENTIFIED BY 'secure_***REMOVED***word' 
+CREATE USER 'ssl_user'@'%' IDENTIFIED BY 'secure_password' 
   REQUIRE X509;
 
 -- 或要求特定证书主题
-CREATE USER 'ssl_user'@'%' IDENTIFIED BY 'secure_***REMOVED***word' 
+CREATE USER 'ssl_user'@'%' IDENTIFIED BY 'secure_password' 
   REQUIRE SUBJECT '/C=CN/ST=Beijing/L=Beijing/O=Intel EC/CN=client';
 
 -- 授予权限
@@ -823,7 +823,7 @@ AttributeError: 'dict' object has no attribute 'wrap_bio'
 
 #### 🐛 问题描述
 
-使用 `mysql+aiomysql://user:***REMOVED***word@host:port/database?ssl_verify_cert=false` 时报错：
+使用 `mysql+aiomysql://user:password@host:port/database?ssl_verify_cert=false` 时报错：
 
 ```
 connect() got an unexpected keyword argument 'ssl_verify_cert'
@@ -937,9 +937,9 @@ def from_env(service_name: str, service_port_key: str = "SERVICE_PORT") -> "Serv
     ssl_verify_identity = os.getenv("MARIADB_SSL_VERIFY_IDENTITY", "false").lower() in ("true", "1", "yes") if ssl_enabled else False
     
     # 构建数据库 URL（不包含 SSL 参数）
-    encoded_***REMOVED***word = quote_plus(mariadb_***REMOVED***word)
+    encoded_password = quote_plus(mariadb_password)
     mariadb_url = (
-        f"mysql+aiomysql://{mariadb_user}:{encoded_***REMOVED***word}@{mariadb_host}:{mariadb_port}/{mariadb_database}"
+        f"mysql+aiomysql://{mariadb_user}:{encoded_password}@{mariadb_host}:{mariadb_port}/{mariadb_database}"
     )
     
     # ... 其余代码 ...

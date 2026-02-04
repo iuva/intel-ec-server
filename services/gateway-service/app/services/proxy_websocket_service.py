@@ -170,7 +170,7 @@ def is_connection_active(websocket: Any) -> bool:
         if hasattr(websocket, "application_state"):
             return websocket.application_state == WebSocketState.CONNECTED
     except ImportError:
-        ***REMOVED***
+        pass
 
     # websockets library
     if hasattr(websocket, "open"):

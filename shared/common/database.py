@@ -2,6 +2,7 @@
 MariaDB Database Manager - Asynchronous SQLAlchemy Integration
 """
 
+from datetime import datetime
 import logging
 import os
 import random
@@ -24,8 +25,6 @@ from sqlalchemy.orm import (
 
 from shared.common.cache import redis_manager
 from shared.monitoring.sql_performance import SQLPerformanceMonitor
-
-from shared.common.cache import redis_manager
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +124,7 @@ class MariaDBManager:
         """Connect to MariaDB database
 
         Args:
-            database_url: Database connection URL, format: mysql+aiomysql://user:***REMOVED***@host:port/db
+            database_url: Database connection URL, format: mysql+aiomysql://user:pass@host:port/db
             pool_size: Connection pool size
             max_overflow: Maximum overflow connections in the pool
             pool_pre_ping: Whether to check health before using connection
@@ -271,7 +270,7 @@ class MariaDBManager:
                     )
 
             self._is_connected = True
-            # Safely log connection info (hide ***REMOVED***word)
+            # Safely log connection info (hide password)
             url_parts = database_url.split("@")
             safe_url = url_parts[-1] if len(url_parts) > 1 else "unknown"
             logger.info(

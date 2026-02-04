@@ -13,8 +13,6 @@ import sys
 
 # Use try-except to handle path imports
 try:
-    from app.api.v1 import api_router
-    from app.middleware.auth_middleware import AuthMiddleware
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,8 +30,6 @@ try:
 except ImportError:
     # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from app.api.v1 import api_router
-    from app.middleware.auth_middleware import AuthMiddleware
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
@@ -56,7 +52,7 @@ try:
     ensure_env_loaded()
 except ImportError:
     # If unable to import, skip (may be in Docker environment)
-    ***REMOVED***
+    pass
 
 # Configure logging (before application startup)
 # Log level will be automatically read from environment variable LOG_LEVEL or DEBUG
@@ -78,29 +74,30 @@ config = ServiceConfig.from_env(
 jwt_secret_key = settings.jwt_secret_key
 environment = os.getenv("ENVIRONMENT", "development").lower()
 if environment == "production":
-    if not jwt_secret_key or jwt_secret_key in (
-        "your-secret-key-here",
-        "default_secret_key",
-        "",
-    ):
-        logger.error(
-            "Production environment must set JWT_SECRET_KEY environment variable, and cannot use default value"
-        )
+    if not jwt_secret_key or len(jwt_secret_key) < 32:
+        logger.error("Production environment must set JWT_SECRET_KEY environment variable with at least 32 characters")
         raise ValueError(
-            "Production environment must set JWT_SECRET_KEY environment variable. "
-            "Please set JWT_SECRET_KEY in .env file, or ***REMOVED*** through environment variable."
+            "Production environment must set JWT_SECRET_KEY environment variable (min 32 chars). "
+            "Please set JWT_SECRET_KEY in .env file, or pass through environment variable."
         )
-# Development environment: if not set, use default value and warn
-elif not jwt_secret_key or jwt_secret_key in (
-    "your-secret-key-here",
-    "default_secret_key",
-    "",
-):
+# Development environment: if not set or too short, warn
+elif not jwt_secret_key or len(jwt_secret_key) < 8:
     logger.warning(
-        "JWT_SECRET_KEY not set or using default value, "
+        "JWT_SECRET_KEY not set or too short, "
         "this is unsafe in production environment. "
         "Please set JWT_SECRET_KEY environment variable."
     )
+    # Note: Gateway might rely on the exact same key as Auth service to decode tokens.
+    # If Auth service auto-generates a random one in Dev, Gateway needs that same key.
+    # However, usually Gateway just validates validity if it shares the key.
+    # If they are separate processes, they MUST share config.
+    # For now, we just warn. If both are empty, they might fail to match if we randomize here too without sync.
+    # But usually in dev they share .env.
+    if not jwt_secret_key:
+        # If absolutely empty, use a fallback to avoid crash, but it won't match Auth's random one
+        # unless they both read from same source.
+        # Ideally user sets it.
+        pass
 
 # ✅ Fix: Always initialize service discovery, support local multi-instance configuration
 # Even if Nacos is not enabled, can use multi-instance configured by environment variables
@@ -177,12 +174,6 @@ else:
 
 # Add authentication middleware
 app.add_middleware(AuthMiddleware)
-logger.info("✓ 认证中间件注册成功")
-
-logger.info("=" * 80)
-logger.info("中间件注册完成")
-logger.info("中间件执行顺序（请求处理）：Auth → Metrics → CORS → 路由")
-logger.info("=" * 80)
 
 # ✅ Add HTTP request/response logging middleware (records detailed information of requests and responses)
 app.add_middleware(HTTPLoggingMiddleware)
@@ -226,7 +217,7 @@ async def root():
 try:
     from app.core.openapi import custom_openapi
 
-    # Use lambda to ***REMOVED*** app instance, override default openapi method
+    # Use lambda to pass app instance, override default openapi method
     app.openapi = lambda: custom_openapi(app)
     logger.info("✅ Custom OpenAPI aggregation enabled")
 except ImportError:

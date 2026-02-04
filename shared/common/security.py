@@ -1,7 +1,7 @@
 """
 Authentication and Security Tools Module
 
-Provides JWT token management, ***REMOVED***word encryption and verification security functions
+Provides JWT token management, password encryption and verification security functions
 """
 
 import base64
@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
-from ***REMOVED***lib.context import CryptContext
+from passlib.context import CryptContext
 
 logger = logging.getLogger(__name__)
 
@@ -281,45 +281,45 @@ def get_jwt_manager() -> JWTManager:
     return _jwt_manager
 
 
-def hash_***REMOVED***word(***REMOVED***word: str) -> str:
-    """Hash ***REMOVED***word
+def hash_password(password: str) -> str:
+    """Hash password
 
     Args:
-        ***REMOVED***word: Plain text ***REMOVED***word
+        password: Plain text password
 
     Returns:
-        Hashed ***REMOVED***word
+        Hashed password
     """
-    return pwd_context.hash(***REMOVED***word)
+    return pwd_context.hash(password)
 
 
-def verify_***REMOVED***word(plain_***REMOVED***word: str, hashed_***REMOVED***word: str) -> bool:
-    """Verify ***REMOVED***word
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password
 
     Args:
-        plain_***REMOVED***word: Plain text ***REMOVED***word
-        hashed_***REMOVED***word: Hashed ***REMOVED***word
+        plain_password: Plain text password
+        hashed_password: Hashed password
 
     Returns:
-        Whether ***REMOVED***words match
+        Whether passwords match
     """
     try:
-        return pwd_context.verify(plain_***REMOVED***word, hashed_***REMOVED***word)
+        return pwd_context.verify(plain_password, hashed_password)
     except Exception as e:
-        logger.error(f"Failed to verify ***REMOVED***word: {e!s}")
+        logger.error(f"Failed to verify password: {e!s}")
         return False
 
 
-def get_***REMOVED***word_hash(***REMOVED***word: str) -> str:
-    """Get ***REMOVED***word hash (alias for hash_***REMOVED***word)
+def get_password_hash(password: str) -> str:
+    """Get password hash (alias for hash_password)
 
     Args:
-        ***REMOVED***word: Plain text ***REMOVED***word
+        password: Plain text password
 
     Returns:
-        Hashed ***REMOVED***word
+        Hashed password
     """
-    return hash_***REMOVED***word(***REMOVED***word)
+    return hash_password(password)
 
 
 def aes_encrypt(plaintext: str) -> str:

@@ -19,7 +19,6 @@ try:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
-    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 except ImportError:
     # If import fails, add project root directory to Python path
     import sys
@@ -33,7 +32,6 @@ except ImportError:
     from shared.middleware.metrics_middleware import PrometheusMetricsMiddleware
     from shared.middleware.request_context_middleware import RequestContextMiddleware
     from shared.monitoring.metrics_endpoint import router as metrics_router
-    from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
 
 # Load .env file (if exists)
 try:
@@ -42,7 +40,7 @@ try:
     ensure_env_loaded()
 except ImportError:
     # If import fails, skip (may be in Docker environment)
-    ***REMOVED***
+    pass
 
 # Configure logging (before application startup)
 # Log level will be automatically read from environment variables LOG_LEVEL or DEBUG

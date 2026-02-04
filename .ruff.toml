@@ -112,13 +112,13 @@ ignore = [
     "PLR0912",
     # Boolean default positional argument (reasonable for service configuration)
     "FBT002",
-    # Hardcoded ***REMOVED***word string (reasonable for error codes and constants)
+    # Hardcoded password string (reasonable for error codes and constants)
     "S105",
-    # Hardcoded ***REMOVED***word argument (reasonable for token_type="bearer")
+    # Hardcoded password argument (reasonable for token_type="bearer")
     "S106",
     # Magic value comparison (reasonable for HTTP status codes)
     "PLR2004",
-    # Insecure hash function (MD5 reasonable for cache keys, not ***REMOVED***words)
+    # Insecure hash function (MD5 reasonable for cache keys, not passwords)
     "S324",
     # Non-cryptographic random (reasonable for load balancing)
     "S311",

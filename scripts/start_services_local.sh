@@ -92,7 +92,7 @@ check_mariadb() {
     MARIADB_HOST="${MARIADB_HOST:-127.0.0.1}"
     MARIADB_PORT="${MARIADB_PORT:-3306}"
     MARIADB_USER="${MARIADB_USER:-intel_user}"
-    MARIADB_PASSWORD="${MARIADB_PASSWORD:-intel_***REMOVED***}"
+    MARIADB_PASSWORD="${MARIADB_PASSWORD:-intel_pass123}"
     
     echo -e "${BLUE}🗄️  检查 MariaDB 连接...${NC}"
     echo "主机: $MARIADB_HOST:$MARIADB_PORT"

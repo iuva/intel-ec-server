@@ -5,7 +5,6 @@ Provides standardized API response formats, including success response, error re
 Supports multi-language messages.
 """
 
-import uuid
 from datetime import datetime, timezone
 import os
 import sys
@@ -51,8 +50,8 @@ class SuccessResponse(BaseModel):
 
         if message_key:
             # Extract format variables from kwargs (exclude defined fields and complex types)
-            # Only ***REMOVED*** basic types (str, int, float, bool, None) to translation function,
-            # avoid ***REMOVED***ing complex types like dict
+            # Only pass basic types (str, int, float, bool, None) to translation function,
+            # avoid passing complex types like dict
             message_kwargs = {
                 k: v
                 for k, v in data.items()
@@ -101,7 +100,7 @@ class SuccessResponse(BaseModel):
         """Serialize model
 
         Note: message_key field is excluded by default (because message is already translated),
-        but locale field is retained. If you need to exclude these fields, you can ***REMOVED*** the
+        but locale field is retained. If you need to exclude these fields, you can pass the
         exclude parameter when calling.
         """
         # ✅ Exclude message_key (because message is already translated), but retain locale
@@ -223,8 +222,8 @@ class ErrorResponse(BaseModel):
 
         if message_key:
             # Extract format variables from kwargs (exclude defined fields and complex types)
-            # Only ***REMOVED*** basic types (str, int, float, bool, None) to translation function,
-            # avoid ***REMOVED***ing complex types like dict
+            # Only pass basic types (str, int, float, bool, None) to translation function,
+            # avoid passing complex types like dict
             message_kwargs = {
                 k: v
                 for k, v in data.items()
@@ -263,7 +262,7 @@ class ErrorResponse(BaseModel):
         """Serialize model
 
         Note: message_key field is excluded by default (because message is already translated),
-        but locale field is retained. If you need to exclude these fields, you can ***REMOVED*** the
+        but locale field is retained. If you need to exclude these fields, you can pass the
         exclude parameter when calling.
         """
         # ✅ FIX: Exclude message_key (because message is already translated), but retain locale

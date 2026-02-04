@@ -31,10 +31,10 @@ from shared.common.response import (
 from shared.common.security import (
     JWTManager,
     get_jwt_manager,
-    get_***REMOVED***word_hash,
-    hash_***REMOVED***word,
+    get_password_hash,
+    hash_password,
     init_jwt_manager,
-    verify_***REMOVED***word,
+    verify_password,
 )
 
 __all__ = [
@@ -69,23 +69,15 @@ __all__ = [
     "get_db_session",
     "get_jwt_manager",
     "get_logger",
-<<<<<<< HEAD
-    "get_***REMOVED***word_hash",
+    "get_password_hash",
     # Decorators
     "handle_api_errors",
     "handle_service_errors",
-    "hash_***REMOVED***word",
-=======
-    "get_***REMOVED***word_hash",
-    # Decorators
-    "handle_api_errors",
-    "handle_service_errors",
-    "hash_***REMOVED***word",
->>>>>>> 8582c20 (chore(project-setup): 更新项目配置和文档结构)
+    "hash_password",
     "init_jwt_manager",
     "mariadb_manager",
     "monitor_operation",
     "redis_manager",
     "set_cache",
-    "verify_***REMOVED***word",
+    "verify_password",
 ]

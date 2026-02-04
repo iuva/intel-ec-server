@@ -433,7 +433,7 @@ if status == "offline":
     host_rec.host_state = 4  # 离线
 elif status == "online":
     # 在线状态不需要更新 host_state
-    ***REMOVED***
+    pass
 ```
 
 ---

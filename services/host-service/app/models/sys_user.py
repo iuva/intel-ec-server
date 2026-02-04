@@ -32,7 +32,7 @@ class SysUser(Base):
     # Basic fields
     user_name: Mapped[str] = mapped_column(String(32), comment="User name")
     user_account: Mapped[str] = mapped_column(String(32), comment="Login account")
-    user_pwd: Mapped[str] = mapped_column(String(128), comment="Login ***REMOVED***word")
+    user_pwd: Mapped[str] = mapped_column(String(128), comment="Login password")
     user_avatar: Mapped[Optional[str]] = mapped_column(String(32), comment="User avatar")
     email: Mapped[Optional[str]] = mapped_column(String(32), comment="Email")
 

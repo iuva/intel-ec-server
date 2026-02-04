@@ -101,7 +101,7 @@ async def get_latest_hw_record(
         latest_hw = await get_latest_hw_record(session, host_id=123)
         if latest_hw:
             # Process latest hardware record
-            ***REMOVED***
+            pass
         ```
     """
     stmt = build_pending_hw_records_query(

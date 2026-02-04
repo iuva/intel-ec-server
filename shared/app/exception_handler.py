@@ -45,7 +45,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
                 request_body_preview = body_str[:500] if len(body_str) > 500 else body_str
         except Exception:
             # If unable to read request body, ignore error
-            ***REMOVED***
+            pass
 
         logger.warning(
             "Parameter validation failed",
@@ -102,7 +102,7 @@ def setup_exception_handling(app: FastAPI, service_name: str = "unknown") -> Non
                     return JSONResponse(status_code=exc.status_code, content=detail)
             except (json.JSONDecodeError, TypeError):
                 # JSON parsing failed, continue with conversion logic
-                ***REMOVED***
+                pass
 
         # For non-unified format exceptions, convert to unified format
         error_code_map = {

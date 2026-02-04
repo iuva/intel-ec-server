@@ -82,15 +82,15 @@ async def send_email(
                 raise ValueError(f"Invalid SMTP port: {smtp_port_str}")
 
             smtp_user = os.getenv("SMTP_USER")
-            smtp_***REMOVED***word = os.getenv("SMTP_PASSWORD")
+            smtp_password = os.getenv("SMTP_PASSWORD")
 
-            if not smtp_user or not smtp_***REMOVED***word:
+            if not smtp_user or not smtp_password:
                 raise ValueError("SMTP_USER or SMTP_PASSWORD environment variable not set")
 
             # Connect with timeout
             server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
             server.starttls()
-            server.login(smtp_user, smtp_***REMOVED***word)
+            server.login(smtp_user, smtp_password)
             server.send_message(msg)
             server.quit()
 
@@ -105,7 +105,7 @@ async def send_email(
             sent_count += 1
 
         except smtplib.SMTPAuthenticationError:
-            error_msg = f"Email sending failed: {email}, Authentication failed (Check SMTP username/***REMOVED***word)"
+            error_msg = f"Email sending failed: {email}, Authentication failed (Check SMTP username/password)"
             errors.append(error_msg)
             failed_count += 1
             logger.error(error_msg)

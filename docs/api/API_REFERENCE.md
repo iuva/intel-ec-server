@@ -156,12 +156,12 @@ swagger-codegen generate -i auth-service-api.json -l typescript-angular -o clien
 # 错误的客户端凭据 - 应返回统一错误格式
 curl -X POST http://localhost:8001/api/v1/oauth2/admin/token \
   -H "Authorization: Basic d3JvbmdfY2xpZW50Ondyb25nX3NlY3JldA==" \
-  -d "grant_type=***REMOVED***word&username=admin&***REMOVED***word=wrong"
+  -d "grant_type=password&username=admin&password=wrong"
 
 # 缺少必需参数 - 应返回统一错误格式
 curl -X POST http://localhost:8001/api/v1/oauth2/admin/token \
   -H "Authorization: Basic YWRtaW5fY2xpZW50OmFkbWluX3NlY3JldA==" \
-  -d "grant_type=***REMOVED***word"
+  -d "grant_type=password"
 ```
 
 ##### 网关404响应
@@ -342,7 +342,7 @@ Content-Type: application/json
 
 {
   "username": "admin",
-  "***REMOVED***word": "your_***REMOVED***word"
+  "password": "your_password"
 }
 ```
 
@@ -410,7 +410,7 @@ Authorization: Bearer <access_token>
 POST /api/v1/oauth2/admin/token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=***REMOVED***word&username=admin&***REMOVED***word=***REMOVED***&scope=admin
+grant_type=password&username=admin&password=admin123&scope=admin
 ```
 
 #### 设备令牌
@@ -418,7 +418,7 @@ grant_type=***REMOVED***word&username=admin&***REMOVED***word=***REMOVED***&scop
 POST /api/v1/oauth2/device/token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=***REMOVED***word&username=device001&***REMOVED***word=device_secret&scope=device
+grant_type=password&username=device001&password=device_secret&scope=device
 ```
 
 ## 🖥️ 主机服务 (Host Service)
@@ -575,7 +575,7 @@ GET /metrics
 # 1. 获取访问令牌
 curl -X POST http://localhost:8001/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","***REMOVED***word":"***REMOVED***"}'
+  -d '{"username":"admin","password":"admin123"}'
 
 # 2. 使用令牌访问API
 curl -X GET http://localhost:8002/api/v1/users \
@@ -593,7 +593,7 @@ async def test_api():
         # 登录获取令牌
         response = await client.post(
             "http://localhost:8001/api/v1/auth/login",
-            json={"username": "admin", "***REMOVED***word": "***REMOVED***"}
+            json={"username": "admin", "password": "admin123"}
         )
         token_data = response.json()
         access_token = token_data["data"]["access_token"]

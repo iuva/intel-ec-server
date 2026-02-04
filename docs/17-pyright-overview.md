@@ -84,7 +84,7 @@ PYTHONPATH=$PWD pyright services/ shared/
 async def get_users(
     db: AsyncSession = Depends(get_db_session),  # Pyright 警告
 ):
-    ***REMOVED***
+    pass
 ```
 
 **解决方案：** 在 pyrightconfig.json 中设置 `"reportCallInDefaultInitializer": false`

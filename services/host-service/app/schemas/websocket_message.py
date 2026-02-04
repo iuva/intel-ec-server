@@ -197,7 +197,7 @@ class VersionUpdateMessage(BaseMessage):
     Agent reports current version number, used to update agent_ver field in host_rec table
 
     Note:
-        - agent_id is obtained from token when WebSocket connects, doesn't need to be ***REMOVED***ed in message
+        - agent_id is obtained from token when WebSocket connects, doesn't need to be passed in message
         - Message only needs to contain version field
     """
 

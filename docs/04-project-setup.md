@@ -52,7 +52,7 @@ intel-cw-ms/
 - **Web框架**: FastAPI 0.116.1, uvicorn
 - **数据库**: SQLAlchemy 2.0.35, aiomysql, asyncmy
 - **缓存**: redis 5.0.8
-- **认证**: python-jose, ***REMOVED***lib, bcrypt
+- **认证**: python-jose, passlib, bcrypt
 - **数据验证**: pydantic 2.10.6
 - **服务发现**: nacos-sdk-python
 - **分布式追踪**: opentelemetry (Jaeger)

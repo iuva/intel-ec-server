@@ -735,7 +735,7 @@ fetch('https://hsdes.intel.com/rest/user?expand=personal', {
     "ip": "192.168.101.118",
     "port": "5900",
     "username": "neusoft",
-    "***REMOVED***word": "********"
+    "password": "********"
 }
 ```
 
@@ -744,7 +744,7 @@ fetch('https://hsdes.intel.com/rest/user?expand=personal', {
 - `ip`: VNC服务器IP地址
 - `port`: VNC服务端口
 - `username`: 连接用户名
-- `***REMOVED***word`: 连接密码
+- `password`: 连接密码
 
 **VNC配置示例**：
 
@@ -993,9 +993,9 @@ if __name__ == '__main__':
 获取方式：
 
 ```python
-import get***REMOVED***
+import getpass
 
-username = get***REMOVED***.getuser()
+username = getpass.getuser()
 print(f"当前登录用户名: {username}")
 ```
 
@@ -2248,7 +2248,7 @@ GET /api/admin/v1/host/info?id=1852278641262084097
     "mac":"00-E0-1C-72-FB-AA",
     "ip":"192.168.121.1",
     "username":"test@intel.com",
-    "***REMOVED***word":"--",
+    "password":"--",
     "port":"3390",
     "hw_list": [
         {
@@ -2267,7 +2267,7 @@ GET /api/admin/v1/host/info?id=1852278641262084097
 - `mac`: MAC地址
 - `ip`: IP地址
 - `username`: 用户名
-- `***REMOVED***word`: 密码
+- `password`: 密码
 - `port`: 端口
 - `hw_list`: 硬件信息列表
 

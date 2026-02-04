@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def build_redis_url(
     host: str,
     port: int,
-    ***REMOVED***word: Optional[str] = None,
+    password: Optional[str] = None,
     db: int = 0,
     username: Optional[str] = None,
     ssl_enabled: bool = False,
@@ -31,12 +31,12 @@ def build_redis_url(
     """Build Redis Connection URL
 
     Build a Redis-compliant connection URL according to the provided parameters,
-    automatically handling special characters in ***REMOVED***words.
+    automatically handling special characters in passwords.
 
     Args:
         host: Redis host address
         port: Redis port
-        ***REMOVED***word: Redis ***REMOVED***word (optional)
+        password: Redis password (optional)
         db: Database number, default is 0
         username: Redis username (optional, Redis 6.0+)
         ssl_enabled: Whether to enable SSL/TLS (default False)
@@ -48,37 +48,37 @@ def build_redis_url(
         >>> build_redis_url("localhost", 6379)
         'redis://localhost:6379/0'
 
-        >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***")
-        'redis://:***REMOVED***@localhost:6379/0'
+        >>> build_redis_url("localhost", 6379, password="pass123")
+        'redis://:pass123@localhost:6379/0'
 
         >>> build_redis_url("localhost", 6379, ssl_enabled=True)
         'rediss://localhost:6379/0'
 
-        >>> build_redis_url("localhost", 6379, ***REMOVED***word="***REMOVED***", ssl_enabled=True)
+        >>> build_redis_url("localhost", 6379, password="p@ss!123", ssl_enabled=True)
         'rediss://:p%40ss%21123@localhost:6379/0'
 
-        >>> build_redis_url("localhost", 6379, username="user", ***REMOVED***word="***REMOVED***", ssl_enabled=True)
-        'rediss://user:***REMOVED***@localhost:6379/0'
+        >>> build_redis_url("localhost", 6379, username="user", password="pass", ssl_enabled=True)
+        'rediss://user:pass@localhost:6379/0'
     """
     # Select protocol: SSL uses rediss://, non-SSL uses redis://
     protocol = "rediss://" if ssl_enabled else "redis://"
 
     # Base URL
-    if ***REMOVED***word:
-        # URL encode special characters in ***REMOVED***word
-        encoded_***REMOVED***word = quote_plus(***REMOVED***word)
+    if password:
+        # URL encode special characters in password
+        encoded_password = quote_plus(password)
 
         if username:
-            # Username and ***REMOVED***word (Redis 6.0+)
+            # Username and password (Redis 6.0+)
             encoded_username = quote_plus(username)
-            auth_part = f"{encoded_username}:{encoded_***REMOVED***word}"
+            auth_part = f"{encoded_username}:{encoded_password}"
         else:
             # Password only (Redis 5.x and below)
-            auth_part = f":{encoded_***REMOVED***word}"
+            auth_part = f":{encoded_password}"
 
         return f"{protocol}{auth_part}@{host}:{port}/{db}"
 
-    # No ***REMOVED***word
+    # No password
     return f"{protocol}{host}:{port}/{db}"
 
 
@@ -142,7 +142,7 @@ def validate_redis_config(
 def mask_sensitive_info(url: str) -> str:
     """Mask sensitive information in URL
 
-    Replace the ***REMOVED***word part in Redis URL with ***, to protect sensitive information when logging.
+    Replace the password part in Redis URL with ***, to protect sensitive information when logging.
 
     Args:
         url: Redis connection URL
@@ -151,17 +151,17 @@ def mask_sensitive_info(url: str) -> str:
         Masked URL
 
     Examples:
-        >>> mask_sensitive_info("redis://:***REMOVED***@localhost:6379/0")
+        >>> mask_sensitive_info("redis://:password123@localhost:6379/0")
         'redis://:***@localhost:6379/0'
 
-        >>> mask_sensitive_info("redis://user:***REMOVED***word@localhost:6379/0")
+        >>> mask_sensitive_info("redis://user:password@localhost:6379/0")
         'redis://user:***@localhost:6379/0'
 
         >>> mask_sensitive_info("redis://localhost:6379/0")
         'redis://localhost:6379/0'
     """
-    # Match ***REMOVED***word part: ://[username]:***REMOVED***word@
-    # Capture group: (://[^:]*:) matches to colon, ([^@]+) matches ***REMOVED***word, (@) matches @
+    # Match password part: ://[username]:password@
+    # Capture group: (://[^:]*:) matches to colon, ([^@]+) matches password, (@) matches @
     pattern = r"(://[^:]*:)([^@]+)(@)"
     return re.sub(pattern, r"\1***\3", url)
 
@@ -233,10 +233,10 @@ async def diagnose_connection_error(
         suggestions.extend(
             [
                 "Check if REDIS_PASSWORD environment variable is correct",
-                "Verify require***REMOVED*** setting in Redis configuration",
-                "Confirm special characters in ***REMOVED***word are correctly encoded",
+                "Verify requirepass setting in Redis configuration",
+                "Confirm special characters in password are correctly encoded",
                 "Check if correct username is used (Redis 6.0+)",
-                "Try using redis-cli to manually connect and verify ***REMOVED***word",
+                "Try using redis-cli to manually connect and verify password",
             ]
         )
 
@@ -417,8 +417,8 @@ class RedisManager:
                     )
 
             # ✅ Fix: redis.from_url() doesn't accept ssl parameter
-            # Since URL uses rediss://, SSL is automatically enabled, no need to ***REMOVED*** ssl=True
-            # We only need to ***REMOVED*** certificate file paths (if provided)
+            # Since URL uses rediss://, SSL is automatically enabled, no need to pass ssl=True
+            # We only need to pass certificate file paths (if provided)
             # redis-py supports these parameters: ssl_ca_certs, ssl_certfile, ssl_keyfile, ssl_cert_reqs
 
             # Pass certificate file paths (if provided)

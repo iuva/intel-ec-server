@@ -49,7 +49,7 @@ export function setup() {
   const loginUrl = `${HOST}/api/v1/auth/admin/login`;
   const loginPayload = JSON.stringify({
     username: 'admin',
-    ***REMOVED***word: '***REMOVED***',
+    password: 'admin123',
   });
   
   const loginRes = http.post(loginUrl, loginPayload, {

@@ -8,11 +8,7 @@ Provides VNC connection related business logic services for browser plugins, inc
 from datetime import datetime, timezone
 from typing import Optional, cast
 
-<<<<<<< HEAD
 from sqlalchemy import and_, func, select, update
-=======
-from sqlalchemy import and_, select, update
->>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 
 from app.models.host_exec_log import HostExecLog
 from app.models.host_rec import HostRec
@@ -69,19 +65,19 @@ def _reverse_bits(byte_val: int) -> int:
     return result
 
 
-def _realvnc_encrypt_***REMOVED***word(***REMOVED***word: str) -> str:
-    """RealVNC ***REMOVED***word encryption algorithm
+def _realvnc_encrypt_password(password: str) -> str:
+    """RealVNC password encryption algorithm
 
-    This algorithm uses a fixed DES key to encrypt the ***REMOVED***word, ***REMOVED***word is divided into multiple 8-byte blocks:
-    1. First block: First 8 characters of ***REMOVED***word (pad with null bytes if less than 8)
-    2. Second block: Characters 9-16 of ***REMOVED***word (pad with null bytes if less than 8)
-    3. Third block: Characters 17-24 of ***REMOVED***word (pad with null bytes if less than 8)
+    This algorithm uses a fixed DES key to encrypt the password, password is divided into multiple 8-byte blocks:
+    1. First block: First 8 characters of password (pad with null bytes if less than 8)
+    2. Second block: Characters 9-16 of password (pad with null bytes if less than 8)
+    3. Third block: Characters 17-24 of password (pad with null bytes if less than 8)
 
     Args:
-        ***REMOVED***word: Password to encrypt
+        password: Password to encrypt
 
     Returns:
-        Hexadecimal string (length depends on ***REMOVED***word length)
+        Hexadecimal string (length depends on password length)
 
     Raises:
         BusinessError: When DES encryption library is not installed
@@ -103,21 +99,21 @@ def _realvnc_encrypt_***REMOVED***word(***REMOVED***word: str) -> str:
     # Create DES encryptor
     cipher = DES.new(reversed_key, DES.MODE_ECB)
 
-    # Divide ***REMOVED***word into 8-byte blocks for encryption
+    # Divide password into 8-byte blocks for encryption
     encrypted_blocks = []
 
     # Calculate number of blocks needed (at least 2 blocks, at most 3 blocks)
-    block_count = max(2, min(3, (len(***REMOVED***word) + 7) // 8))
+    block_count = max(2, min(3, (len(password) + 7) // 8))
 
     for i in range(block_count):
         start_pos = i * 8
         end_pos = start_pos + 8
 
-        # Get ***REMOVED***word chunk for current block
-        ***REMOVED***word_chunk = ***REMOVED***word[start_pos:end_pos]
+        # Get password chunk for current block
+        password_chunk = password[start_pos:end_pos]
 
         # Pad to 8 bytes
-        block = ***REMOVED***word_chunk.ljust(8, "\x00").encode("ascii")
+        block = password_chunk.ljust(8, "\x00").encode("ascii")
 
         # Encrypt current block
         encrypted_block = cipher.encrypt(block)
@@ -456,7 +452,7 @@ class BrowserVNCService:
                         "connection_status": vnc_report.connection_status,
                         "connection_status_lower": connection_status_lower,
                     },
-                    )
+                )
 
             return {
                 "host_id": vnc_report.host_id,
@@ -487,7 +483,7 @@ class BrowserVNCService:
                 "ip": "192.168.101.118",
                 "port": "5900",
                 "username": "neusoft",
-                "***REMOVED***word": "********"
+                "password": "********"
             }
 
         Raises:
@@ -515,7 +511,7 @@ class BrowserVNCService:
                 "ip": "10.239.168.184",
                 "port": "5900",
                 "username": "ccr\\sys_eval",
-                "***REMOVED***word": "***REMOVED***",  # Mock data for internal testing
+                "password": "7b21032ec8eff0519d3193d9d29028e990f28ed3c9752e18",  # Mock data for internal testing
             }
 
         try:
@@ -595,13 +591,13 @@ class BrowserVNCService:
                         http_status_code=400,
                     )
 
-                # Process ***REMOVED***word: AES decrypt -> RealVNC encrypt
-                vnc_***REMOVED***word = ""
+                # Process password: AES decrypt -> RealVNC encrypt
+                vnc_password = ""
                 if host_rec.host_pwd:
                     try:
-                        # 1. Use AES to decrypt ***REMOVED***word in database
-                        ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
-                        if ***REMOVED***:
+                        # 1. Use AES to decrypt password in database
+                        decrypted_password = aes_decrypt(host_rec.host_pwd)
+                        if decrypted_password:
                             logger.debug(
                                 "Password AES decryption succeeded",
                                 extra={
@@ -609,14 +605,14 @@ class BrowserVNCService:
                                 },
                             )
 
-                            # 2. Use RealVNC encryption algorithm to encrypt ***REMOVED***word
-                            vnc_***REMOVED***word = _realvnc_encrypt_***REMOVED***word(***REMOVED***)
+                            # 2. Use RealVNC encryption algorithm to encrypt password
+                            vnc_password = _realvnc_encrypt_password(decrypted_password)
                             logger.debug(
                                 "Password RealVNC encryption succeeded",
                                 extra={
                                     "host_rec_id": host_rec_id,
-                                    "***REMOVED***word_length": len(***REMOVED***),
-                                    "encrypted_length": len(vnc_***REMOVED***word),
+                                    "password_length": len(decrypted_password),
+                                    "encrypted_length": len(vnc_password),
                                 },
                             )
                         else:
@@ -637,8 +633,8 @@ class BrowserVNCService:
                             },
                             exc_info=True,
                         )
-                        # Return empty string when ***REMOVED***word processing fails, instead of raising exception
-                        vnc_***REMOVED***word = ""
+                        # Return empty string when password processing fails, instead of raising exception
+                        vnc_password = ""
 
                 # ✅ Update host state to locked (host_state = 1)
                 old_host_state = host_rec.host_state
@@ -689,7 +685,7 @@ class BrowserVNCService:
                     "ip": cast(str, host_rec.host_ip),
                     "port": (str(cast(int, host_rec.host_port)) if host_rec.host_port else "5900"),
                     "username": cast(str, host_rec.host_acct) or "",
-                    "***REMOVED***word": vnc_***REMOVED***word,  # Return RealVNC encrypted ***REMOVED***word
+                    "password": vnc_password,  # Return RealVNC encrypted password
                 }
 
                 logger.info(

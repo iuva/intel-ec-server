@@ -76,11 +76,11 @@ def _sanitize_headers(headers: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def get_user_id_from_request(request) -> Optional[int]:
-    """Get user_id from request headers (***REMOVED***ed by Gateway)
+    """Get user_id from request headers (passed by Gateway)
 
     Supports two methods:
     1. Parse from X-User-Info header (JSON format, contains user_id field)
-    2. Get from separate id or userid header (if Gateway ***REMOVED***ed it)
+    2. Get from separate id or userid header (if Gateway passed it)
 
     Args:
         request: FastAPI Request object
@@ -420,7 +420,7 @@ async def get_external_api_token(
                         }
                     )
                 except Exception:
-                    ***REMOVED***
+                    pass
 
             # ✅ Ensure detail field exists (for i18n use)
             if "detail" not in error_details:

@@ -95,9 +95,7 @@ class GatewaySettings(BaseModel):
                 return default
 
         # Detect deployment mode
-        is_docker = (
-            os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") is not None
-        )
+        is_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER") is not None
         deploy_mode = "docker" if is_docker else "local"
 
         # Service Host Configuration
@@ -128,63 +126,35 @@ class GatewaySettings(BaseModel):
             # HTTP Client
             http_timeout=parse_float(os.getenv("HTTP_TIMEOUT"), 15.0),
             http_connect_timeout=parse_float(os.getenv("HTTP_CONNECT_TIMEOUT"), 5.0),
-            http_max_keepalive_connections=parse_int(
-                os.getenv("HTTP_MAX_KEEPALIVE_CONNECTIONS"), 20
-            ),
+            http_max_keepalive_connections=parse_int(os.getenv("HTTP_MAX_KEEPALIVE_CONNECTIONS"), 20),
             http_max_connections=parse_int(os.getenv("HTTP_MAX_CONNECTIONS"), 100),
             http_max_retries=parse_int(os.getenv("HTTP_MAX_RETRIES"), 0),
             http_retry_delay=parse_float(os.getenv("HTTP_RETRY_DELAY"), 0.0),
             # Health Check
             health_check_timeout=parse_float(os.getenv("HEALTH_CHECK_TIMEOUT"), 5.0),
-            health_check_connect_timeout=parse_float(
-                os.getenv("HEALTH_CHECK_CONNECT_TIMEOUT"), 2.0
-            ),
-            health_check_max_keepalive_connections=parse_int(
-                os.getenv("HEALTH_CHECK_MAX_KEEPALIVE_CONNECTIONS"), 5
-            ),
-            health_check_max_connections=parse_int(
-                os.getenv("HEALTH_CHECK_MAX_CONNECTIONS"), 10
-            ),
-            health_check_max_retries=parse_int(
-                os.getenv("HEALTH_CHECK_MAX_RETRIES"), 1
-            ),
-            health_check_retry_delay=parse_float(
-                os.getenv("HEALTH_CHECK_RETRY_DELAY"), 0.0
-            ),
+            health_check_connect_timeout=parse_float(os.getenv("HEALTH_CHECK_CONNECT_TIMEOUT"), 2.0),
+            health_check_max_keepalive_connections=parse_int(os.getenv("HEALTH_CHECK_MAX_KEEPALIVE_CONNECTIONS"), 5),
+            health_check_max_connections=parse_int(os.getenv("HEALTH_CHECK_MAX_CONNECTIONS"), 10),
+            health_check_max_retries=parse_int(os.getenv("HEALTH_CHECK_MAX_RETRIES"), 1),
+            health_check_retry_delay=parse_float(os.getenv("HEALTH_CHECK_RETRY_DELAY"), 0.0),
             # WebSocket
-            websocket_max_connections=parse_int(
-                os.getenv("WEBSOCKET_MAX_CONNECTIONS"), 1000
-            ),
+            websocket_max_connections=parse_int(os.getenv("WEBSOCKET_MAX_CONNECTIONS"), 1000),
             # Auth Middleware
             auth_service_url=f"http://{auth_host}:{parse_int(os.getenv('AUTH_SERVICE_PORT'), 8001)}",
-            auth_middleware_timeout=parse_float(
-                os.getenv("AUTH_MIDDLEWARE_TIMEOUT"), 10.0
-            ),
-            auth_middleware_connect_timeout=parse_float(
-                os.getenv("AUTH_MIDDLEWARE_CONNECT_TIMEOUT"), 5.0
-            ),
+            auth_middleware_timeout=parse_float(os.getenv("AUTH_MIDDLEWARE_TIMEOUT"), 10.0),
+            auth_middleware_connect_timeout=parse_float(os.getenv("AUTH_MIDDLEWARE_CONNECT_TIMEOUT"), 5.0),
             # Host Service API
             host_service_url=f"http://{host_host}:{parse_int(os.getenv('HOST_SERVICE_PORT'), 8003)}",
             # Service Instance Lists (Support Multi-Instance Aggregation)
             auth_service_urls=(
-                [
-                    f"http://{x.strip()}"
-                    for x in os.getenv("AUTH_SERVICE_INSTANCES").split(",")
-                ]
+                [f"http://{x.strip()}" for x in os.getenv("AUTH_SERVICE_INSTANCES").split(",")]
                 if os.getenv("AUTH_SERVICE_INSTANCES")
-                else [
-                    f"http://{auth_host}:{parse_int(os.getenv('AUTH_SERVICE_PORT'), 8001)}"
-                ]
+                else [f"http://{auth_host}:{parse_int(os.getenv('AUTH_SERVICE_PORT'), 8001)}"]
             ),
             host_service_urls=(
-                [
-                    f"http://{x.strip()}"
-                    for x in os.getenv("HOST_SERVICE_INSTANCES").split(",")
-                ]
+                [f"http://{x.strip()}" for x in os.getenv("HOST_SERVICE_INSTANCES").split(",")]
                 if os.getenv("HOST_SERVICE_INSTANCES")
-                else [
-                    f"http://{host_host}:{parse_int(os.getenv('HOST_SERVICE_PORT'), 8003)}"
-                ]
+                else [f"http://{host_host}:{parse_int(os.getenv('HOST_SERVICE_PORT'), 8003)}"]
             ),
             # Service Name Mapping
             service_name_map={

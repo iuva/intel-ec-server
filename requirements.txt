@@ -15,7 +15,7 @@ hiredis==2.3.2
 
 # 认证和安全
 python-jose[cryptography]==3.3.0
-***REMOVED***lib[bcrypt]==1.7.4
+passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
 pycryptodome==3.20.0
 

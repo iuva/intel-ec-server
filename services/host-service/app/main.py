@@ -41,7 +41,7 @@ try:
     ensure_env_loaded()
 except ImportError:
     # If cannot import, skip (may be in Docker environment)
-    ***REMOVED***
+    pass
 
 # Configure logger (before application startup)
 # Log level is automatically read from environment variable LOG_LEVEL or DEBUG
@@ -67,12 +67,7 @@ async def startup_case_timeout_task(app):
         app: FastAPI application instance (lifespan handler must accept this parameter)
     """
     # ✅ Check environment variable switch, disabled by default
-    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-        "on",
-    )
+    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
 
     if not enable_task:
         logger.info(
@@ -97,12 +92,7 @@ async def shutdown_case_timeout_task(app):
         app: FastAPI application instance (lifespan handler must accept this parameter)
     """
     # ✅ Check environment variable switch, if disabled then no need to stop
-    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-        "on",
-    )
+    enable_task = os.getenv("ENABLE_CASE_TIMEOUT_TASK", "false").lower() in ("true", "1", "yes", "on")
 
     if not enable_task:
         return

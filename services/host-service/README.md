@@ -51,7 +51,7 @@ SERVICE_PORT=8003
 SERVICE_IP=127.0.0.1
 
 # Database configuration
-MYSQL_URL=mysql+aiomysql://root:***REMOVED***word@localhost:3306/intel_cw
+MYSQL_URL=mysql+aiomysql://root:password@localhost:3306/intel_cw
 
 # Redis configuration
 REDIS_URL=redis://localhost:6379/3
@@ -79,8 +79,6 @@ pip install -r requirements.txt
 ### Start Service
 
 > **💡 Tip**: When starting locally, the code will automatically load the `.env` file from the project root directory.
-
-> **💡 提示**: 本地启动时，代码会自动加载项目根目录的 `.env` 文件。
 
 ```bash
 # Development mode (supports hot reload)
@@ -120,7 +118,7 @@ docker build -t host-service:latest -f services/host-service/Dockerfile .
 docker run -d \
   --name host-service \
   -p 8003:8003 \
-  -e MYSQL_URL=mysql+aiomysql://root:***REMOVED***word@mysql:3306/intel_cw \
+  -e MYSQL_URL=mysql+aiomysql://root:password@mysql:3306/intel_cw \
   -e REDIS_URL=redis://redis:6379/3 \
   -e NACOS_SERVER_ADDR=http://nacos:8848 \
   host-service:latest

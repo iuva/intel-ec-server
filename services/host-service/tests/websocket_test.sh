@@ -8,10 +8,10 @@ echo ""
 # 1. Admin Login
 echo "📝 Step 1: Admin Login"
 
-# Check if ***REMOVED***word is provided via environment variable
+# Check if password is provided via environment variable
 if [ -z "$ADMIN_PASSWORD" ]; then
     echo "❌ Error: ADMIN_PASSWORD environment variable is not set."
-    echo "Usage: ADMIN_PASSWORD=your_***REMOVED***word ./websocket_test.sh"
+    echo "Usage: ADMIN_PASSWORD=your_password ./websocket_test.sh"
     exit 1
 else
     echo "🔒 Using provided ADMIN_PASSWORD from environment."
@@ -19,7 +19,7 @@ fi
 
 ADMIN_RESPONSE=$(curl -s -X POST "http://localhost:8000/api/v1/auth/admin/login" \
   -H "Content-Type: application/json" \
-  -d "{\"username\": \"admin\", \"***REMOVED***word\": \"$ADMIN_PASSWORD\"}")
+  -d "{\"username\": \"admin\", \"password\": \"$ADMIN_PASSWORD\"}")
 
 ADMIN_TOKEN=$(echo $ADMIN_RESPONSE | jq -r '.data.access_token')
 echo "✅ Admin Token: ${ADMIN_TOKEN:0:50}..."

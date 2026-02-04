@@ -61,7 +61,7 @@ main() {
         -H "Content-Type: application/json" \
         -d '{
             "username": "admin",
-            "***REMOVED***word": "***REMOVED***"
+            "password": "Admin@123456"
         }')
 
     # 检查登录是否成功

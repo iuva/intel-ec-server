@@ -175,7 +175,7 @@ log_websocket_message(client_id="host_123", message_type="heartbeat", direction=
 log_auth_success(user_id="123", username="admin", auth_type="login")
 
 # 认证失败
-log_auth_failure(reason="invalid_***REMOVED***word", username="admin")
+log_auth_failure(reason="invalid_password", username="admin")
 ```
 
 ### 服务日志
@@ -263,7 +263,7 @@ logger.info("用户登录成功", extra={
     "user_id": user_id,
     "username": username,
     "ip_address": ip,
-    "login_method": "***REMOVED***word"
+    "login_method": "password"
 })
 
 # ❌ 错误：直接拼接字符串

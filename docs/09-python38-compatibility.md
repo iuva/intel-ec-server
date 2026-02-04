@@ -44,12 +44,12 @@ from typing import Optional, Union, List, Dict, Tuple
 mysql_host = os.getenv("MYSQL_HOST", "localhost")
 mysql_port = os.getenv("MYSQL_PORT", "3306")
 mysql_user = os.getenv("MYSQL_USER", "root")
-mysql_***REMOVED***word = os.getenv("MYSQL_PASSWORD", "***REMOVED***word")
+mysql_password = os.getenv("MYSQL_PASSWORD", "password")
 mysql_database = os.getenv("MYSQL_DATABASE", "intel_cw")
 
 from urllib.parse import quote_plus
-encoded_***REMOVED***word = quote_plus(mysql_***REMOVED***word)
-mysql_url = f"mysql+aiomysql://{mysql_user}:{encoded_***REMOVED***word}@{mysql_host}:{mysql_port}/{mysql_database}"
+encoded_password = quote_plus(mysql_password)
+mysql_url = f"mysql+aiomysql://{mysql_user}:{encoded_password}@{mysql_host}:{mysql_port}/{mysql_database}"
 ```
 
 ### SQLAlchemy 文本 SQL

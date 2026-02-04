@@ -36,7 +36,7 @@ curl -X POST "${GATEWAY_URL}/api/v1/auth/admin/login" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
-    "***REMOVED***word": "***REMOVED***"
+    "password": "admin123"
   }'
 
 # 响应示例
@@ -137,7 +137,7 @@ curl -X POST "${HOST_API_URL}/hosts/available" \
         "hardware_id": "HW001",
         "host_ip": "192.168.1.100",
         "host_acct": "neusoft",
-        "host_pwd": "***REMOVED***"
+        "host_pwd": "password123"
       }
     ],
     "total": 10,
@@ -356,7 +356,7 @@ curl -X POST "${HOST_API_URL}/vnc/connect" \
     "ip": "192.168.101.118",
     "port": "5900",
     "username": "neusoft",
-    "***REMOVED***word": "***REMOVED***"
+    "password": "f7e7925c3b79c4f05ab2cdc0badcaf13"
   },
   "locale": "zh-CN"
 }
@@ -524,7 +524,7 @@ curl -X PUT "${HOST_API_URL}/admin/host/${HOST_ID}" \
   -H "Content-Type: application/json" \
   -d '{
     "host_acct": "new_username",
-    "host_pwd": "new_***REMOVED***word",
+    "host_pwd": "new_password",
     "host_ip": "192.168.1.200"
   }'
 ```
@@ -587,17 +587,17 @@ curl -X POST "${HOST_API_URL}/admin/host/${HOST_ID}/force-offline" \
 ### 7. 更新主机密码
 
 **接口信息**
-- **路径**: `PUT /api/v1/host/admin/host/{host_id}/***REMOVED***word`
+- **路径**: `PUT /api/v1/host/admin/host/{host_id}/password`
 - **认证**: ✅ 需要认证
 
 **请求示例**
 
 ```bash
-curl -X PUT "${HOST_API_URL}/admin/host/${HOST_ID}/***REMOVED***word" \
+curl -X PUT "${HOST_API_URL}/admin/host/${HOST_ID}/password" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "new_***REMOVED***word": "new_***REMOVED***"
+    "new_password": "new_password123"
   }'
 ```
 
@@ -1041,7 +1041,7 @@ curl -X PUT "${HOST_API_URL}/admin/host/${HOST_ID}" \
   -H "Content-Type: application/json" \
   -d '{
     "host_acct": "new_username",
-    "host_pwd": "new_***REMOVED***word"
+    "host_pwd": "new_password"
   }'
 ```
 

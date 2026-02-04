@@ -5,7 +5,7 @@
 ### 登录信息
 - **URL**: http://localhost:3000
 - **用户名**: admin
-- **密码**: ***REMOVED*** (可在 .env 中通过 GRAFANA_ADMIN_PASSWORD 修改)
+- **密码**: admin123 (可在 .env 中通过 GRAFANA_ADMIN_PASSWORD 修改)
 
 ---
 
@@ -444,7 +444,7 @@ docker-compose restart grafana
 - ✅ 系统资源使用
 
 ### 访问信息
-- **Grafana**: http://localhost:3000 (admin/***REMOVED***)
+- **Grafana**: http://localhost:3000 (admin/admin123)
 - **Prometheus**: http://localhost:9090
 - **仪表板**: http://localhost:3000/d/intel-cw-microservices
 

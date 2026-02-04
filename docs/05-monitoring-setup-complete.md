@@ -205,7 +205,7 @@ docker-compose up -d prometheus grafana
 
 - **URL**: <http://localhost:3000>
 - **默认账号**: admin
-- **默认密码**: ***REMOVED*** (可在 .env 中修改)
+- **默认密码**: admin123 (可在 .env 中修改)
 - **功能**:
   - 查看预配置的仪表板
   - 创建自定义仪表板
@@ -516,6 +516,6 @@ curl http://localhost:3000/api/health
 **访问地址**:
 
 - Prometheus: <http://localhost:9090>
-- Grafana: <http://localhost:3000> (admin/***REMOVED***)
+- Grafana: <http://localhost:3000> (admin/admin123)
 
 🎉 **监控系统配置完成！可以开始监控所有微服务了！**

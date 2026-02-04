@@ -73,7 +73,7 @@ def translate(key: str, locale: Optional[str] = None, default: Optional[str] = N
         ```
     """
 
-    # Here return a closure function, locale needs to be ***REMOVED***ed in when actually used
+    # Here return a closure function, locale needs to be passed in when actually used
     def _translate(k: str, loc: Optional[str] = locale, **kw):
         return t(k, locale=loc, default=default, **kw)
 

@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, List, Optional, Set, cast
 
 import httpx
 from sqlalchemy import and_, select
-<<<<<<< HEAD
 from sqlalchemy.exc import OperationalError
 
 from app.constants.host_constants import (
@@ -21,9 +20,6 @@ from app.constants.host_constants import (
     HOST_STATE_FREE,
     TCP_STATE_LISTEN,
 )
-=======
-
->>>>>>> 0897239 (feat(host): 添加 Agent 硬件信息上报功能，添加 Agent Case 执行结果上报)
 from app.models.host_rec import HostRec
 from app.schemas.host import AvailableHostInfo, AvailableHostsListResponse, HardwareHostData, QueryAvailableHostsRequest
 
@@ -132,7 +128,7 @@ class HostDiscoveryService:
 
         Cursor Pagination:
         - First request: last_id = None, start from skip=0
-        - Subsequent requests: ***REMOVED*** last_id from previous page, system automatically calculates skip
+        - Subsequent requests: pass last_id from previous page, system automatically calculates skip
         - Avoid concurrent users interfering with each other
 
         Authentication Optimization:

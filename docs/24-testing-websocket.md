@@ -273,7 +273,7 @@ pytest services/host-service/tests/test_websocket_performance.py -v
 # ✅ 好
 async with websockets.connect(uri) as ws:
     # 测试逻辑
-    ***REMOVED***  # 自动关闭
+    pass  # 自动关闭
 
 # ❌ 不好
 ws = await websockets.connect(uri)

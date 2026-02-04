@@ -67,7 +67,7 @@ pip install ruff mypy black pytest pytest-asyncio pytest-cov
 mysql -h your_mysql_host -P 3306 -u your_username -p
 
 # 测试 Redis 连接
-redis-cli -h your_redis_host -p 6379 -a your_***REMOVED***word ping
+redis-cli -h your_redis_host -p 6379 -a your_password ping
 ```
 
 创建项目数据库：
@@ -281,7 +281,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 MARIADB_HOST=host.docker.internal \
 MARIADB_PORT=3306 \
 MARIADB_USER=intel_user \
-MARIADB_PASSWORD=intel_***REMOVED*** \
+MARIADB_PASSWORD=intel_pass123 \
 MARIADB_DATABASE=intel_cw \
 REDIS_HOST=host.docker.internal \
 REDIS_PORT=6379 \
@@ -405,7 +405,7 @@ curl http://localhost:8848/nacos/v1/ns/instance/list?serviceName=host-service
   - 指标采集和查询
 - **Grafana**: <http://localhost:3000>
   - 用户名: admin
-  - 密码: ***REMOVED***
+  - 密码: admin123
   - 详细说明：[Prometheus + Grafana 监控指南](prometheus-grafana-setup.md)
 
 ### 微服务
@@ -557,7 +557,7 @@ docker-compose logs gateway-service | grep -i mysql
 
 ```bash
 # 检查外部 Redis 服务状态
-redis-cli -h your_redis_host -p 6379 -a your_***REMOVED***word ping
+redis-cli -h your_redis_host -p 6379 -a your_password ping
 
 # 检查 .env 配置是否正确
 cat .env | grep REDIS

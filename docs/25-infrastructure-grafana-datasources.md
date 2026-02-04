@@ -50,7 +50,7 @@ yamllint infrastructure/grafana/provisioning/datasources/prometheus.yml
 docker-compose logs grafana | grep -i "provisioning"
 
 # 3. 验证数据源是否正确加载
-curl -u admin:***REMOVED*** http://localhost:3000/api/datasources
+curl -u admin:admin123 http://localhost:3000/api/datasources
 ```
 
 ### 不要使用
@@ -81,7 +81,7 @@ curl -u admin:***REMOVED*** http://localhost:3000/api/datasources
 ```bash
 docker-compose up -d grafana
 sleep 10
-curl -u admin:***REMOVED*** http://localhost:3000/api/datasources
+curl -u admin:admin123 http://localhost:3000/api/datasources
 ```
 
 ## ✅ 配置检查清单

@@ -260,7 +260,7 @@ HOST_SERVICE_IP=172.20.0.103
 MARIADB_HOST=intel-mariadb
 MARIADB_PORT=3306
 MARIADB_USER=intel_user
-MARIADB_PASSWORD=your_mariadb_***REMOVED***word_here
+MARIADB_PASSWORD=your_mariadb_password_here
 MARIADB_DATABASE=intel_cw
 
 # ==========================================
@@ -268,7 +268,7 @@ MARIADB_DATABASE=intel_cw
 # ==========================================
 REDIS_HOST=your_redis_host
 REDIS_PORT=6379
-REDIS_PASSWORD=your_redis_***REMOVED***word_here
+REDIS_PASSWORD=your_redis_password_here
 REDIS_DB=0
 AUTH_REDIS_DB=1
 HOST_REDIS_DB=3

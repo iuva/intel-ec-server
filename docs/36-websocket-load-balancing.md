@@ -333,7 +333,7 @@ async def websocket_proxy(
         elif user_id:
             session_key = str(user_id)
     except Exception:
-        ***REMOVED***
+        pass
     
     # ... 转发 WebSocket 时传递 session_key ...
     await proxy_service.forward_websocket(

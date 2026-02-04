@@ -201,7 +201,7 @@ class RateLimiter:
             message_size: Message size (bytes)
 
         Returns:
-            (Whether limit ***REMOVED***ed, error message)
+            (Whether limit passed, error message)
         """
         current_time = time.time()
 

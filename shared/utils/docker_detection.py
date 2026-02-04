@@ -36,7 +36,7 @@ def is_running_in_docker() -> bool:
             if "docker" in cgroup_content or "containerd" in cgroup_content:
                 return True
         except Exception:
-            ***REMOVED***
+            pass
 
     # Method 3: Check environment variables
     return bool(os.getenv("CONTAINER") or os.getenv("DOCKER_CONTAINER"))
@@ -202,7 +202,7 @@ def resolve_service_ip() -> str:
 
         # Docker environment: if auto-detection fails, recommend configuration via environment variable
         # Note: In Docker Compose, the most reliable way is through ipv4_address configuration
-        # and ***REMOVED***ing via environment variable SERVICE_IP
+        # and passing via environment variable SERVICE_IP
         logger.warning(
             (
                 "Unable to auto-detect Docker container IP, "

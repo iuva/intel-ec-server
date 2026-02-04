@@ -39,7 +39,7 @@ export default function () {
   const payload = JSON.stringify({
     tc_id: `test_case_${__VU}_${__ITER}`,
     state: state,
-    result_msg: state === 2 ? 'Test ***REMOVED***ed' : state === 3 ? 'Test failed' : 'Test running',
+    result_msg: state === 2 ? 'Test passed' : state === 3 ? 'Test failed' : 'Test running',
     log_url: state === 2 || state === 3 ? `http://logs.example.com/test_${__VU}_${__ITER}.log` : null,
   });
 

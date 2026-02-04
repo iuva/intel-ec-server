@@ -223,7 +223,7 @@ bash scripts/dev_docs.sh --restart
 python scripts/test_api.py
 
 # 指定不同URL或凭据
-python scripts/test_api.py --url http://localhost --username admin --***REMOVED***word ***REMOVED***
+python scripts/test_api.py --url http://localhost --username admin --password admin123
 ```
 
 **测试内容**:

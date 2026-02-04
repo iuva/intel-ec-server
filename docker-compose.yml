@@ -17,7 +17,7 @@ services:
   #     MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb123}
   #     MARIADB_DATABASE: ${MARIADB_DATABASE:-intel_cw}
   #     MARIADB_USER: ${MARIADB_USER:-intel_user}
-  #     MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_***REMOVED***}
+  #     MARIADB_PASSWORD: ${MARIADB_PASSWORD:-intel_pass123}
   #     MARIADB_CHARSET: utf8mb4
   #     MARIADB_COLLATION: utf8mb4_unicode_ci
   #     MYSQL_MAX_CONNECTIONS: ${MYSQL_MAX_CONNECTIONS:-500}
@@ -146,7 +146,7 @@ services:
   #   restart: unless-stopped
   #   environment:
   #     - GF_SECURITY_ADMIN_USER=admin
-  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-***REMOVED***}
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin123}
   #     - GF_USERS_ALLOW_SIGN_UP=false
   #     - GF_SERVER_ROOT_URL=http://localhost:3000
   #     - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource

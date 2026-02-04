@@ -15,7 +15,7 @@ docker-compose up -d prometheus grafana
 | 服务 | 地址 | 用途 | 凭据 |
 |------|------|------|------|
 | **Prometheus** | http://localhost:9090 | 指标采集和查询 | 无需认证 |
-| **Grafana** | http://localhost:3000 | 数据可视化 | admin / ***REMOVED*** |
+| **Grafana** | http://localhost:3000 | 数据可视化 | admin / admin123 |
 
 ## 📈 主要指标
 
@@ -143,7 +143,7 @@ docker-compose ps grafana
 
 **重置管理员密码**：
 ```bash
-docker-compose exec grafana grafana-cli admin reset-admin-***REMOVED***word new***REMOVED***word
+docker-compose exec grafana grafana-cli admin reset-admin-password newpassword
 ```
 
 ### 指标数据不显示

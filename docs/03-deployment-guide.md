@@ -71,7 +71,7 @@ cp .env.example .env
 MYSQL_HOST=your_mysql_host          # MySQL 主机地址
 MYSQL_PORT=3306                     # MySQL 端口
 MYSQL_USER=your_username            # MySQL 用户名
-MYSQL_PASSWORD=your_secure_***REMOVED***word # MySQL 密码
+MYSQL_PASSWORD=your_secure_password # MySQL 密码
 MYSQL_DATABASE=intel_cw             # 数据库名称
 ```
 
@@ -87,7 +87,7 @@ MYSQL_DATABASE=intel_cw             # 数据库名称
 # 配置您现有的 Redis 服务连接信息
 REDIS_HOST=your_redis_host          # Redis 主机地址
 REDIS_PORT=6379                     # Redis 端口
-REDIS_PASSWORD=your_redis_***REMOVED***word  # Redis 密码（如果有）
+REDIS_PASSWORD=your_redis_password  # Redis 密码（如果有）
 ```
 
 #### JWT 配置
@@ -604,8 +604,8 @@ services:
 
    ```yaml
    secrets:
-     mysql_root_***REMOVED***word:
-       file: ./secrets/mysql_root_***REMOVED***word.txt
+     mysql_root_password:
+       file: ./secrets/mysql_root_password.txt
    ```
 
 3. **限制端口暴露**

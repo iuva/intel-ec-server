@@ -187,7 +187,7 @@ class WebSocketAuthMiddleware:
             required_permissions: Required permissions list
 
         Returns:
-            Returns True if permission check ***REMOVED***es, False otherwise
+            Returns True if permission check passes, False otherwise
 
         Raises:
             AuthorizationError: Raises exception when permissions are insufficient

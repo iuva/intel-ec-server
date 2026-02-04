@@ -197,7 +197,7 @@ async def get_appr_host_detail(
     - `mac`: MAC address (host_rec table mac_addr)
     - `ip`: IP address (host_rec table host_ip)
     - `username`: Host account (host_rec table host_acct)
-    - `***REMOVED***word`: Host ***REMOVED***word (host_rec table host_pwd, decrypted)
+    - `password`: Host password (host_rec table host_pwd, decrypted)
     - `port`: Port (host_rec table host_port)
     - `host_state`: Host status (host_rec table host_state)
     - `diff_state`: Parameter status (host_hw_rec table diff_state, latest record; 1-version change,
@@ -355,7 +355,7 @@ async def approve_hosts(
         },
     )
 
-    # Get user ID from request header (***REMOVED***ed by Gateway)
+    # Get user ID from request header (passed by Gateway)
     from app.services.external_api_client import get_user_id_from_request
 
     appr_by = get_user_id_from_request(http_request)
@@ -368,7 +368,7 @@ async def approve_hosts(
         )
         appr_by = 0  # If unable to get user ID, use default value
 
-    # Call service layer to process (***REMOVED*** locale parameter and http_request object)
+    # Call service layer to process (pass locale parameter and http_request object)
     result = await admin_appr_host_service.approve_hosts(request, appr_by, locale=locale, http_request=http_request)
 
     logger.info(

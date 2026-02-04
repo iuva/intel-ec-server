@@ -89,7 +89,7 @@ class K6ReportAnalyzer:
                                 if self.end_time is None or time_obj > self.end_time:
                                     self.end_time = time_obj
                             except (ValueError, AttributeError):
-                                ***REMOVED***
+                                pass
 
                         self.points.append(point)
                         point_count += 1
@@ -476,16 +476,16 @@ class K6ReportAnalyzer:
                 ("Max < 3000ms", duration_data.get("max", 0) < 3000),
             ]
 
-            for threshold_name, ***REMOVED***ed in thresholds:
-                status = "✅ 通过" if ***REMOVED***ed else "❌ 失败"
+            for threshold_name, passed in thresholds:
+                status = "✅ 通过" if passed else "❌ 失败"
                 print(f"  {threshold_name}: {status}")
 
         # 检查错误率阈值
         if "http_req_failed" in metric_stats:
             failed_data = metric_stats["http_req_failed"]
             error_rate = failed_data.get("avg", 0)
-            ***REMOVED***ed = error_rate < 0.01
-            status = "✅ 通过" if ***REMOVED***ed else "❌ 失败"
+            passed = error_rate < 0.01
+            status = "✅ 通过" if passed else "❌ 失败"
             print(f"  错误率 < 1%: {status} (实际: {error_rate * 100:.2f}%)")
 
         print("\n" + "=" * 80)
@@ -507,8 +507,8 @@ class K6ReportAnalyzer:
         metric_stats = stats.get("metric_statistics", {})
 
         # 生成状态徽章
-        def get_status_badge(***REMOVED***ed: bool) -> str:
-            if ***REMOVED***ed:
+        def get_status_badge(passed: bool) -> str:
+            if passed:
                 return '<span class="badge badge-success">✅ 通过</span>'
             return '<span class="badge badge-danger">❌ 失败</span>'
 
@@ -523,23 +523,23 @@ class K6ReportAnalyzer:
                 ("Max < 3000ms", duration_data.get("max", 0), 3000),
             ]
             for name, value, threshold in thresholds:
-                ***REMOVED***ed = value < threshold
+                passed = value < threshold
                 threshold_results.append({
                     "name": name,
                     "value": value,
                     "threshold": threshold,
-                    "***REMOVED***ed": ***REMOVED***ed,
+                    "passed": passed,
                 })
 
         if "http_req_failed" in metric_stats:
             failed_data = metric_stats["http_req_failed"]
             error_rate = failed_data.get("avg", 0) * 100
-            ***REMOVED***ed = error_rate < 1.0
+            passed = error_rate < 1.0
             threshold_results.append({
                 "name": "错误率 < 1%",
                 "value": error_rate,
                 "threshold": 1.0,
-                "***REMOVED***ed": ***REMOVED***ed,
+                "passed": passed,
             })
 
         # 生成端点表格行
@@ -864,7 +864,7 @@ class K6ReportAnalyzer:
                     {''.join([f'''
                     <li>
                         <span>{result['name']}: {result['value']:.2f} {'ms' if 'ms' in result['name'] else '%'}</span>
-                        {get_status_badge(result['***REMOVED***ed'])}
+                        {get_status_badge(result['passed'])}
                     </li>
                     ''' for result in threshold_results])}
                 </ul>
@@ -980,15 +980,15 @@ class K6ReportAnalyzer:
                 ("Max < 3000ms", duration_data.get("max", 0), 3000),
             ]
             for name, value, threshold in thresholds:
-                ***REMOVED***ed = value < threshold
-                status = "✅ 通过" if ***REMOVED***ed else "❌ 失败"
+                passed = value < threshold
+                status = "✅ 通过" if passed else "❌ 失败"
                 md += f"| {name} | {value:.2f} ms | {threshold} ms | {status} |\n"
 
         if "http_req_failed" in metric_stats:
             failed_data = metric_stats["http_req_failed"]
             error_rate = failed_data.get("avg", 0) * 100
-            ***REMOVED***ed = error_rate < 1.0
-            status = "✅ 通过" if ***REMOVED***ed else "❌ 失败"
+            passed = error_rate < 1.0
+            status = "✅ 通过" if passed else "❌ 失败"
             md += f"| 错误率 < 1% | {error_rate:.2f}% | 1% | {status} |\n"
 
         md += """

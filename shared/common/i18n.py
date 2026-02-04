@@ -106,7 +106,7 @@ class I18nManager:
 
         # Format message (supports {variable} placeholders)
         # Only use basic types (str, int, float, bool, None) for formatting
-        # avoid ***REMOVED***ing complex types like dictionaries
+        # avoid passing complex types like dictionaries
         if kwargs:
             # Filter out complex types, only keep basic types
             format_kwargs = {k: v for k, v in kwargs.items() if isinstance(v, (str, int, float, bool, type(None)))}

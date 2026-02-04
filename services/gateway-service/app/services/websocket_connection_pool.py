@@ -365,7 +365,7 @@ class WebSocketConnectionPool:
             if self._monitor_task:
                 await self._monitor_task
         except asyncio.CancelledError:
-            ***REMOVED***
+            pass
 
     async def _cleanup_loop(self) -> None:
         """Periodic cleanup loop"""

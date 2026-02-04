@@ -72,7 +72,7 @@ function summarizeCheck(indent, check, decorate) {
     return decorate(indent + succMark + ' ' + check.name, palette.green)
   }
 
-  var succPercent = Math.floor((100 * check.***REMOVED***es) / (check.***REMOVED***es + check.fails))
+  var succPercent = Math.floor((100 * check.passes) / (check.passes + check.fails))
   return decorate(
     indent +
       failMark +
@@ -87,7 +87,7 @@ function summarizeCheck(indent, check, decorate) {
       '% — ' +
       succMark +
       ' ' +
-      check.***REMOVED***es +
+      check.passes +
       ' / ' +
       failMark +
       ' ' +
@@ -233,7 +233,7 @@ function nonTrendMetricValueForSum(metric, timeUnit) {
     case 'rate':
       return [
         humanizeValue(metric.values.rate, metric, timeUnit),
-        succMark + ' ' + metric.values.***REMOVED***es,
+        succMark + ' ' + metric.values.passes,
         failMark + ' ' + metric.values.fails,
       ]
     default:

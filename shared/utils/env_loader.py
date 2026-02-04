@@ -44,7 +44,7 @@ def is_docker_environment() -> bool:
             if "docker" in content or "kubepods" in content:
                 return True
     except (OSError, PermissionError):
-        ***REMOVED***
+        pass
 
     return False
 

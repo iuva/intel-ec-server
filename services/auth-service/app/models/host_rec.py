@@ -29,22 +29,18 @@ class HostRec(Base):
 
     # Primary key - Use Snowflake ID generator
     id: Mapped[int] = mapped_column(
-        BigInteger,
-        primary_key=True,
-        default=generate_snowflake_id,
-        comment="Primary key (Snowflake ID)",
+        BigInteger, primary_key=True, default=generate_snowflake_id, comment="Primary key (Snowflake ID)"
     )
 
     # Basic fields
     host_no: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        comment="Host primary key; corresponds to host primary key in mongo database",
+        String(64), comment="Host primary key; corresponds to host primary key in mongo database"
     )
     mg_id: Mapped[str] = mapped_column(String(128), comment="Unique boot ID")
     host_ip: Mapped[str] = mapped_column(String(32), comment="IP address")
     host_port: Mapped[Optional[int]] = mapped_column(Integer, comment="IP port")
     host_acct: Mapped[str] = mapped_column(String(32), comment="Host account")
-    host_pwd: Mapped[Optional[str]] = mapped_column(String(64), comment="Host ***REMOVED***word")
+    host_pwd: Mapped[Optional[str]] = mapped_column(String(64), comment="Host password")
     mac_addr: Mapped[Optional[str]] = mapped_column(String(255), comment="MAC address")
 
     # Status fields
@@ -67,18 +63,14 @@ class HostRec(Base):
     # Time fields
     subm_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), comment="Submission time")
     hw_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger,
-        comment="Hardware record table primary key; host_hw_rec table primary key",
+        BigInteger, comment="Hardware record table primary key; host_hw_rec table primary key"
     )
     agent_ver: Mapped[Optional[str]] = mapped_column(String(10), comment="Agent version number")
 
     # Audit fields - support automatic setting
     created_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="Created by (currently logged-in user ID)")
     created_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=func.now(),
-        nullable=False,
-        comment="Creation time",
+        DateTime(timezone=True), default=func.now(), nullable=False, comment="Creation time"
     )
     updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, comment="Updated by (currently logged-in user ID)")
     updated_time: Mapped[datetime] = mapped_column(
@@ -89,10 +81,7 @@ class HostRec(Base):
         comment="Update time",
     )
     del_flag: Mapped[int] = mapped_column(
-        SmallInteger,
-        default=0,
-        nullable=False,
-        comment="Deletion flag;{useing: 0, in use. del: 1, deleted.}",
+        SmallInteger, default=0, nullable=False, comment="Deletion flag;{useing: 0, in use. del: 1, deleted.}"
     )
 
     def __repr__(self) -> str:

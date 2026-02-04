@@ -1,27 +1,38 @@
-"""API v1 路由配置"""
+"""API v1 route configuration"""
+
+from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    admin_appr_host,
     admin_hosts,
-    agent_hardware,
+    admin_ota,
+    agent_report,
     agent_websocket,
     agent_websocket_management,
     browser_hosts,
     browser_vnc,
+    file_manage,
 )
-from fastapi import APIRouter
 
 api_router = APIRouter()
 
-# 注册浏览器插件端点路由
-api_router.include_router(browser_hosts.router, prefix="/hosts", tags=["浏览器插件-主机管理"])
-api_router.include_router(browser_vnc.router, prefix="", tags=["浏览器插件-VNC连接管理"])
+# Register browser extension endpoint routes
+api_router.include_router(browser_hosts.router, prefix="/hosts", tags=["Browser Extension-Host Management"])
+# ✅ VNC route registered under /hosts/vnc prefix, matches /api/v1/host/hosts/vnc/* path
+api_router.include_router(browser_vnc.router, prefix="/hosts/vnc", tags=["Browser Extension-VNC Connection Management"])
 
-# Agent HTTP API 路由
-api_router.include_router(agent_hardware.router, prefix="/agent", tags=["Agent-硬件信息上报"])
+# Agent HTTP API routes
+api_router.include_router(agent_report.router, prefix="/agent", tags=["Agent-Hardware Information Reporting"])
 
-# Agent WebSocket 路由
-api_router.include_router(agent_websocket.router, tags=["Agent-WebSocket连接"])
-api_router.include_router(agent_websocket_management.router, tags=["Agent-WebSocket管理"])
+# Agent WebSocket routes
+api_router.include_router(agent_websocket.router, tags=["Agent-WebSocket Connection"])
+api_router.include_router(agent_websocket_management.router, tags=["Agent-WebSocket Management"])
 
-# 管理后台路由
-api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["管理后台-主机管理"])
+# Admin backend routes
+api_router.include_router(admin_hosts.router, prefix="/admin/host", tags=["Admin Backend-Available Host Management"])
+api_router.include_router(
+    admin_appr_host.router, prefix="/admin/appr-host", tags=["Admin Backend-Pending Approval Host Management"]
+)
+api_router.include_router(admin_ota.router, prefix="/admin/ota", tags=["Admin Backend-OTA Management"])
+# File management routes
+api_router.include_router(file_manage.router, prefix="/file", tags=["File Management"])

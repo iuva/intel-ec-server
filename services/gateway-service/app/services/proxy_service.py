@@ -27,11 +27,7 @@ try:
         raise_protocol_error,
         raise_timeout_error,
     )
-    from shared.common.exceptions import (
-        BusinessError,
-        ServiceErrorCodes,
-        ServiceNotFoundError,
-    )
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
@@ -49,11 +45,7 @@ except ImportError:
         raise_protocol_error,
         raise_timeout_error,
     )
-    from shared.common.exceptions import (
-        BusinessError,
-        ServiceErrorCodes,
-        ServiceNotFoundError,
-    )
+    from shared.common.exceptions import BusinessError, ServiceErrorCodes, ServiceNotFoundError
     from shared.common.http_client import AsyncHTTPClient, HTTPClientConfig
     from shared.common.i18n import parse_accept_language, t
     from shared.common.loguru_config import get_logger
@@ -123,10 +115,7 @@ class ProxyService:
         self.health_check_client_config = health_check_client_config or HTTPClientConfig(
             timeout=float(os.getenv("PROXY_HEALTH_TIMEOUT", str(settings.health_check_timeout))),
             connect_timeout=float(
-                os.getenv(
-                    "PROXY_HEALTH_CONNECT_TIMEOUT",
-                    str(settings.health_check_connect_timeout),
-                )
+                os.getenv("PROXY_HEALTH_CONNECT_TIMEOUT", str(settings.health_check_connect_timeout))
             ),
             max_keepalive_connections=settings.health_check_max_keepalive_connections,
             max_connections=settings.health_check_max_connections,
@@ -141,10 +130,7 @@ class ProxyService:
 
         # ✅ WebSocket connection management (read from settings)
         self.max_websocket_connections = max_websocket_connections or int(
-            os.getenv(
-                "PROXY_MAX_WEBSOCKET_CONNECTIONS",
-                str(settings.websocket_max_connections),
-            )
+            os.getenv("PROXY_MAX_WEBSOCKET_CONNECTIONS", str(settings.websocket_max_connections))
         )
         self.active_websocket_connections: Dict[str, Any] = {}  # Track active connections
         self._websocket_connection_lock: Optional[asyncio.Lock] = None  # Connection limit lock (lazy creation)
@@ -190,10 +176,7 @@ class ProxyService:
         if self.service_discovery:
             try:
                 service_url = await self.service_discovery.get_service_url(full_service_name)
-                logger.debug(
-                    "Get service address",
-                    extra={"service_name": service_name, "service_url": service_url},
-                )
+                logger.debug("Get service address", extra={"service_name": service_name, "service_url": service_url})
                 return service_url
             except Exception as e:
                 logger.error(
@@ -252,132 +235,6 @@ class ProxyService:
     # - raise_timeout_error()
     # - raise_network_error()
     # - raise_protocol_error()
-
-    def _clean_headers(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
-        """清理请求头 - 移除可能导致问题的头部
-
-        Args:
-            headers: 原始请求头
-
-        Returns:
-            清理后的请求头
-        """
-        if not headers:
-            return {}
-
-        return {k: v for k, v in headers.items() if k.lower() not in EXCLUDED_HEADERS}
-
-    def _build_service_url(self, service_url: str, path: str, service_name: str = "") -> str:
-        """构建完整的服务 URL
-
-        Args:
-            service_url: 服务基础 URL
-            path: 请求路径/subpath (如 'ws/hosts', 'auth/admin/login')
-            service_name: 服务名称 (如 'auth', 'admin', 'host') - 仅用于识别服务，不包含在转发URL中
-
-        Returns:
-            完整的服务 URL (如 'http://host-service:8003/api/v1/ws/hosts')
-
-        说明:
-            Gateway接收的URL格式为 /api/v1/{service_name}/{subpath}
-            转发到后端服务时，去掉service_name，只转发subpath:
-            - Gateway接收: /api/v1/host/ws/hosts → 转发到: /api/v1/ws/hosts
-            - Gateway接收: /api/v1/auth/admin/login → 转发到: /api/v1/auth/admin/login
-        """
-        # ✅ 构建URL - 不包含service_name，直接转发subpath
-        # Gateway接收: /api/v1/{service_name}/{subpath}
-        # 转发到后端: /api/v1/{subpath}
-        # 示例:
-        #   Gateway接收: /api/v1/host/ws/hosts
-        #   转发到Host Service: /api/v1/ws/hosts ✅
-        return f"{service_url}{API_PREFIX}/{path}"
-
-    def _log_backend_error(self, service_name: str, method: str, path: str, error_type: str, error: str) -> None:
-        """记录后端错误日志
-
-        Args:
-            service_name: 服务名称
-            method: HTTP 方法
-            path: 请求路径
-            error_type: 错误类型
-            error: 错误信息
-        """
-        logger.error(
-            f"后端服务错误: {service_name} - {error_type}",
-            extra={
-                "service_name": service_name,
-                "method": method,
-                "path": path,
-                "error_type": error_type,
-                "error": error,
-            },
-            exc_info=True,
-        )
-
-    def _raise_connection_error(self, service_name: str, error: Exception) -> None:
-        """抛出连接错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-        """
-        self._log_backend_error(service_name, "", "", "CONNECTION_ERROR", str(error))
-        raise BusinessError(
-            message=f"无法连接到后端服务: {service_name}",
-            error_code="GATEWAY_CONNECTION_FAILED",
-            code=ServiceErrorCodes.GATEWAY_CONNECTION_FAILED,
-            http_status_code=502,
-            details={"original_error": str(error), "service_name": service_name},
-        )
-
-    def _raise_timeout_error(self, service_name: str, error: Exception) -> None:
-        """抛出超时错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-        """
-        self._log_backend_error(service_name, "", "", "TIMEOUT_ERROR", str(error))
-        raise BusinessError(
-            message=f"后端服务响应超时: {service_name}",
-            error_code="GATEWAY_TIMEOUT",
-            code=ServiceErrorCodes.GATEWAY_TIMEOUT,
-            http_status_code=504,
-            details={"original_error": str(error), "service_name": service_name, "timeout": True},
-        )
-
-    def _raise_network_error(self, service_name: str, error: Exception) -> None:
-        """抛出网络错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-        """
-        self._log_backend_error(service_name, "", "", "NETWORK_ERROR", str(error))
-        raise BusinessError(
-            message=f"后端服务网络错误: {service_name}",
-            error_code="GATEWAY_NETWORK_ERROR",
-            code=ServiceErrorCodes.GATEWAY_NETWORK_ERROR,
-            http_status_code=502,
-            details={"original_error": str(error), "service_name": service_name},
-        )
-
-    def _raise_protocol_error(self, service_name: str, error: Exception) -> None:
-        """抛出协议错误异常
-
-        Args:
-            service_name: 服务名称
-            error: 原始异常
-        """
-        error_type = type(error).__name__
-        self._log_backend_error(service_name, "", "", "PROTOCOL_ERROR", str(error))
-        raise BusinessError(
-            message=f"后端服务协议错误: {service_name}",
-            error_code="GATEWAY_PROTOCOL_ERROR",
-            code=ServiceErrorCodes.GATEWAY_PROTOCOL_ERROR,
-            http_status_code=502,
-            details={"original_error": str(error), "error_type": error_type, "service_name": service_name},
-        )
 
     async def forward_request(
         self,
@@ -538,7 +395,7 @@ class ProxyService:
             raise
 
         except BusinessError:
-            # ✅ Re-raise business exception (error from backend service, should be directly ***REMOVED***ed through)
+            # ✅ Re-raise business exception (error from backend service, should be directly passed through)
             raise
 
         except HTTPStatusError as e:
@@ -761,12 +618,9 @@ class ProxyService:
                     try:
                         await task
                     except asyncio.CancelledError:
-                        ***REMOVED***
+                        pass
                     except Exception as e:
-                        logger.warning(
-                            "Exception occurred while canceling task",
-                            extra={"error": str(e)},
-                        )
+                        logger.warning("Exception occurred while canceling task", extra={"error": str(e)})
 
                 # ✅ Ensure WebSocket connection is properly closed
                 try:
@@ -805,7 +659,7 @@ class ProxyService:
                 elif not getattr(client_websocket, "closed", True):
                     await client_websocket.close()
             except Exception:
-                ***REMOVED***
+                pass
             raise
         except websockets.exceptions.InvalidURI as e:
             logger.error(
@@ -820,7 +674,7 @@ class ProxyService:
                 elif not getattr(client_websocket, "closed", True):
                     await client_websocket.close()
             except Exception:
-                ***REMOVED***
+                pass
 
             # Get language preference
             accept_language = (
@@ -843,11 +697,7 @@ class ProxyService:
             if "HTTP 403" in error_msg or "403 Forbidden" in error_msg:
                 logger.warning(
                     "WebSocket authentication failed",
-                    extra={
-                        "service_name": service_name,
-                        "path": path,
-                        "error_msg": error_msg,
-                    },
+                    extra={"service_name": service_name, "path": path, "error_msg": error_msg},
                 )
                 # ✅ Ensure client WebSocket is closed even in exception cases
                 try:
@@ -857,7 +707,7 @@ class ProxyService:
                     elif not getattr(client_websocket, "closed", True):
                         await client_websocket.close()
                 except Exception:
-                    ***REMOVED***
+                    pass
 
                 # Get language preference
                 accept_language = (
@@ -877,11 +727,7 @@ class ProxyService:
             if "HTTP 401" in error_msg or "401 Unauthorized" in error_msg:
                 logger.warning(
                     "WebSocket unauthorized",
-                    extra={
-                        "service_name": service_name,
-                        "path": path,
-                        "error_msg": error_msg,
-                    },
+                    extra={"service_name": service_name, "path": path, "error_msg": error_msg},
                 )
                 # ✅ Ensure client WebSocket is closed even in exception cases
                 try:
@@ -891,7 +737,7 @@ class ProxyService:
                     elif not getattr(client_websocket, "closed", True):
                         await client_websocket.close()
                 except Exception:
-                    ***REMOVED***
+                    pass
 
                 # Get language preference
                 accept_language = (
@@ -910,11 +756,7 @@ class ProxyService:
             # ✅ Other WebSocket connection errors
             logger.error(
                 "WebSocket connection exception",
-                extra={
-                    "service_name": service_name,
-                    "path": path,
-                    "error_msg": error_msg,
-                },
+                extra={"service_name": service_name, "path": path, "error_msg": error_msg},
             )
             # ✅ Ensure client WebSocket is closed even in exception cases
             try:
@@ -924,7 +766,7 @@ class ProxyService:
                 elif not getattr(client_websocket, "closed", True):
                     await client_websocket.close()
             except Exception:
-                ***REMOVED***
+                pass
 
             # Get language preference
             accept_language = (
@@ -943,12 +785,7 @@ class ProxyService:
         except Exception as e:
             logger.error(
                 "WebSocket forwarding exception",
-                extra={
-                    "service_name": service_name,
-                    "path": path,
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                },
+                extra={"service_name": service_name, "path": path, "error_type": type(e).__name__, "error": str(e)},
                 exc_info=True,
             )
             # ✅ Ensure client WebSocket is closed even in exception cases
@@ -959,7 +796,7 @@ class ProxyService:
                 elif not getattr(client_websocket, "closed", True):
                     await client_websocket.close()
             except Exception:
-                ***REMOVED***
+                pass
 
             # Get language preference
             accept_language = (
@@ -1044,37 +881,23 @@ class ProxyService:
                 except websockets.exceptions.ConnectionClosed as e:
                     # Normal close: 1000-1001, 1005 (no status code)
                     if e.code in (1000, 1001, 1005, None):
-                        logger.info(
-                            "Connection closed normally",
-                            extra={"direction": direction, "code": e.code},
-                        )
+                        logger.info("Connection closed normally", extra={"direction": direction, "code": e.code})
                     else:
                         logger.warning(
                             "Connection closed abnormally",
-                            extra={
-                                "direction": direction,
-                                "code": e.code,
-                                "reason": e.reason,
-                            },
+                            extra={"direction": direction, "code": e.code, "reason": e.reason},
                         )
                     break
                 except WebSocketDisconnect as e:
                     # FastAPI WebSocketDisconnect - client disconnected normally
                     if e.code in (1000, 1001, 1005, None):
-                        logger.info(
-                            "Client disconnected normally",
-                            extra={"direction": direction, "code": e.code},
-                        )
+                        logger.info("Client disconnected normally", extra={"direction": direction, "code": e.code})
                     else:
                         # Get close reason
                         reason = e.reason if hasattr(e, "reason") else "No reason"
                         logger.warning(
                             "Client disconnected abnormally",
-                            extra={
-                                "direction": direction,
-                                "code": e.code,
-                                "reason": reason,
-                            },
+                            extra={"direction": direction, "code": e.code, "reason": reason},
                         )
                     break
                 except Exception as e:
@@ -1082,30 +905,18 @@ class ProxyService:
                     error_type = type(e).__name__
                     logger.error(
                         "Message forwarding failed",
-                        extra={
-                            "direction": direction,
-                            "error_type": error_type,
-                            "error": str(e),
-                        },
+                        extra={"direction": direction, "error_type": error_type, "error": str(e)},
                     )
                     break
 
         except websockets.exceptions.ConnectionClosed as e:
             # Outer catch: connection closed normally
-            logger.debug(
-                "Source connection closed",
-                extra={"direction": direction, "code": e.code},
-            )
+            logger.debug("Source connection closed", extra={"direction": direction, "code": e.code})
         except Exception as e:
             # Outer catch: forwarding exception
             error_type = type(e).__name__
             logger.error(
-                "Forwarding exception",
-                extra={
-                    "direction": direction,
-                    "error_type": error_type,
-                    "error": str(e),
-                },
+                "Forwarding exception", extra={"direction": direction, "error_type": error_type, "error": str(e)}
             )
         finally:
             # ✅ Ensure destination WebSocket connection is closed
@@ -1121,10 +932,7 @@ class ProxyService:
                     # websockets.WebSocketClientProtocol
                     await destination.close()
             except Exception as e:
-                logger.debug(
-                    "Error closing destination WebSocket",
-                    extra={"direction": direction, "error": str(e)},
-                )
+                logger.debug("Error closing destination WebSocket", extra={"direction": direction, "error": str(e)})
 
             # ✅ Ensure source WebSocket connection is also closed (if possible)
             try:
@@ -1134,10 +942,7 @@ class ProxyService:
                     if hasattr(source, "closed") and not source.closed:
                         await source.close()
             except Exception as e:
-                logger.debug(
-                    "Error closing source WebSocket",
-                    extra={"direction": direction, "error": str(e)},
-                )
+                logger.debug("Error closing source WebSocket", extra={"direction": direction, "error": str(e)})
 
     async def _handle_backend_http_error_from_response(
         self,
@@ -1371,7 +1176,7 @@ class ProxyService:
             },
         )
 
-        # ✅ Directly ***REMOVED*** through backend service's error information, including code, message,
+        # ✅ Directly pass through backend service's error information, including code, message,
         # error_code, message_key and locale
         # Use backend service's HTTP status code (e.g., 401), not 502
         raise BusinessError(
@@ -1556,7 +1361,7 @@ class ProxyService:
             },
         )
 
-        # Directly ***REMOVED*** through all HTTP status codes
+        # Directly pass through all HTTP status codes
         # Use backend service's custom error code (e.g., 53009), not HTTP status code (502)
         raise BusinessError(
             message=error_message,
@@ -1601,10 +1406,7 @@ class ProxyService:
             return is_healthy
 
         except ServiceNotFoundError:
-            logger.warning(
-                "Health check failed: Service not found",
-                extra={"service_name": service_name},
-            )
+            logger.warning("Health check failed: Service not found", extra={"service_name": service_name})
             return False
 
         except Exception as e:

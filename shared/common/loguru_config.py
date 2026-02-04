@@ -1,99 +1,133 @@
 """
-日志配置模块
+Log Configuration Module
 
-基于Loguru提供统一的日志配置和管理功能
+Provides unified log configuration and management functions based on Loguru
+Supports traditional format log output, complete exception stack traces, and environment variable configuration
 """
 
 import json
 import logging
 import os
 import sys
+import traceback
 from typing import Any, Dict, Optional
 
 from loguru import logger
 
 
 def _rename_old_log_files(log_dir: str, service_name: str) -> None:
-    """重命名旧的日志文件，添加日期后缀
-    
+    """Rename old log files, adding date suffix
+
     Args:
-        log_dir: 日志目录
-        service_name: 服务名称
+        log_dir: Log directory
+        service_name: Service name
     """
     try:
         from datetime import datetime
 
-        log_file = os.path.join(log_dir, f"{service_name}.log")
-        error_log_file = os.path.join(log_dir, f"{service_name}_error.log")
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        # 检查普通日志文件
-        if os.path.exists(log_file):
-            # 获取文件的修改时间
+        # Uniformly handle regular log files and error log files
+        log_files = [
+            (f"{service_name}.log", f"{service_name}-{{date}}.log"),
+            (f"{service_name}_error.log", f"{service_name}_error-{{date}}.log"),
+        ]
+
+        for log_file_name, new_name_template in log_files:
+            log_file = os.path.join(log_dir, log_file_name)
+            if not os.path.exists(log_file):
+                continue
+
+            # Get file modification time
             file_mtime = datetime.fromtimestamp(os.path.getmtime(log_file))
-            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            
-            # 如果文件是昨天的或更早的，重命名它
             file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # If file is from yesterday or earlier, rename it
             if file_date < today:
                 date_str = file_date.strftime("%Y-%m-%d")
-                new_name = os.path.join(log_dir, f"{service_name}-{date_str}.log")
-                
-                # 如果目标文件已存在，跳过（可能已经被处理过）
+                new_name = os.path.join(log_dir, new_name_template.format(date=date_str))
+
+                # If target file already exists, skip (may have been processed already)
                 if not os.path.exists(new_name):
                     os.rename(log_file, new_name)
-
-        # 检查错误日志文件
-        if os.path.exists(error_log_file):
-            file_mtime = datetime.fromtimestamp(os.path.getmtime(error_log_file))
-            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            
-            file_date = file_mtime.replace(hour=0, minute=0, second=0, microsecond=0)
-            if file_date < today:
-                date_str = file_date.strftime("%Y-%m-%d")
-                new_name = os.path.join(log_dir, f"{service_name}_error-{date_str}.log")
-                
-                if not os.path.exists(new_name):
-                    os.rename(error_log_file, new_name)
     except Exception:
-        # 静默处理异常，避免影响服务启动
-        ***REMOVED***
+        # Silently handle exceptions, avoid affecting service startup
+        pass
+
+
+def _get_log_level_from_env() -> str:
+    """Read log level from environment variables
+
+    Priority:
+    1. LOG_LEVEL environment variable
+    2. DEBUG environment variable (if true, use DEBUG)
+    3. Default INFO
+
+    Returns:
+        Log level string (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
+    # Prioritize reading LOG_LEVEL
+    log_level = os.getenv("LOG_LEVEL", "").upper()
+
+    # If LOG_LEVEL is empty, check DEBUG environment variable
+    if not log_level:
+        if os.getenv("DEBUG", "").lower() in ("true", "1", "yes", "on"):
+            log_level = "DEBUG"
+        else:
+            log_level = "INFO"
+
+    # Validate log level validity
+    valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    if log_level not in valid_levels:
+        log_level = "INFO"
+
+    return log_level
 
 
 def configure_logger(
     service_name: str = "service",
-    log_level: str = "INFO",
+    log_level: Optional[str] = None,
     log_dir: Optional[str] = None,
-    rotation: str = "00:00",  # 每天午夜轮转（按日期切片）
-    retention: str = "30 days",  # 保留30天日志
+    rotation: str = "00:00",  # Rotate at midnight daily (by date slicing)
+    retention: str = "30 days",  # Retain logs for 30 days
     compression: str = "zip",
     enable_console: bool = True,
     enable_file: bool = True,
     enable_error_file: bool = True,
-    json_format: bool = False,
 ) -> None:
-    """配置Loguru日志系统
+    """Configure Loguru logging system
 
     Args:
-        service_name: 服务名称
-        log_level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）
-        log_dir: 日志目录（None时自动检测：Docker环境使用 /app/logs，本地环境使用 ./logs）
-        rotation: 日志轮转策略（默认 "00:00" 每天午夜轮转，也可使用 "10 MB" 按大小、"1 day" 按天）
-        retention: 日志保留时间（默认 "30 days" 保留30天，也可使用 "1 week"）
-        compression: 日志压缩格式（如 "zip", "gz"）
-        enable_console: 是否启用控制台输出
-        enable_file: 是否启用文件输出
-        enable_error_file: 是否启用错误日志文件
-        json_format: 是否使用JSON格式
+        service_name: Service name
+        log_level: Log level (when None, read from environment variables: LOG_LEVEL or DEBUG)
+        log_dir: Log directory (when None, auto-detect: Docker environment uses /app/logs,
+            local environment uses ./logs)
+        rotation: Log rotation strategy (default "00:00" rotates at midnight daily,
+            can also use "10 MB" by size, "1 day" by day)
+        retention: Log retention time (default "30 days" retains for 30 days, can also use "1 week")
+        compression: Log compression format (e.g. "zip", "gz")
+        enable_console: Whether to enable console output
+        enable_file: Whether to enable file output
+        enable_error_file: Whether to enable error log file
     """
-    # 自动检测日志目录
+    # Read log level from environment variables (if not specified)
+    if log_level is None:
+        log_level = _get_log_level_from_env()
+    else:
+        log_level = log_level.upper()
+        valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+        if log_level not in valid_levels:
+            log_level = "INFO"
+
+    # Auto-detect log directory
     if log_dir is None:
-        # 检查是否在Docker环境中（/app目录存在且可写）
+        # Check if in Docker environment (/app directory exists and is writable)
         docker_log_dir = "/app/logs"
         if os.path.exists("/app") and os.access("/app", os.W_OK):
             log_dir = docker_log_dir
         else:
-            # 本地环境：使用项目根目录下的 logs 目录
-            # 从当前文件位置向上查找项目根目录（包含 .git 或 docker-compose.yml）
+            # Local environment: Use logs directory under project root
+            # Find project root directory from current file location upward (containing .git or docker-compose.yml)
             current_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = current_dir
             max_depth = 10
@@ -106,356 +140,274 @@ def configure_logger(
                     break
                 parent_dir = os.path.dirname(project_root)
                 if parent_dir == project_root:
-                    # 已到根目录，使用当前目录下的logs
+                    # Reached root directory, use logs under current directory
                     log_dir = os.path.join(os.getcwd(), "logs")
                     break
                 project_root = parent_dir
                 depth += 1
             else:
-                # 如果找不到项目根，使用当前工作目录下的logs
+                # If project root not found, use logs under current working directory
                 log_dir = os.path.join(os.getcwd(), "logs")
 
-    # 移除默认的日志处理器
+    # Remove default log handlers
     logger.remove()
 
-    # 创建日志目录
+    # Create log directory
     if enable_file or enable_error_file:
         from pathlib import Path
 
         try:
             Path(log_dir).mkdir(parents=True, exist_ok=True)
         except (PermissionError, OSError):
-            # 如果没有权限创建日志目录，使用控制台输出并记录警告
-            # 此时 logger 还未初始化，仅在启动时输出一次
+            # If no permission to create log directory, use console output and log warning
             enable_file = False
             enable_error_file = False
 
-    # 启用stdlib拦截，让所有logging.getLogger()调用都通过loguru
-    # 使用loguru的intercept_stdlib()方法
-    # 清除所有现有的logging处理器，避免冲突
+    # ✅ Enable stdlib interception, make all logging.getLogger() calls go through loguru
+    # Clear all existing logging handlers, avoid conflicts
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # 配置loguru拦截标准logging
+    # ✅ Configure loguru to intercept standard logging (including uvicorn)
+    # Intercept all standard library logging calls, use loguru format uniformly
+    class InterceptHandler(logging.Handler):
+        """Handler that intercepts standard logging, forward logs to loguru"""
 
-    # 使用 patcher 在消息中追加 extra 信息
-    # 注意：必须在 configure 之前应用 patcher
+        def emit(self, record: logging.LogRecord) -> None:
+            # Get corresponding loguru level
+            try:
+                level = logger.level(record.levelname).name
+            except ValueError:
+                level = str(record.levelno)
+
+            # Find caller information
+            frame, depth = sys._getframe(6), 6
+            while frame and frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            # Forward to loguru
+            logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+    # Set interceptors for uvicorn and uvicorn.access
+    logging.getLogger("uvicorn").handlers = [InterceptHandler()]
+    logging.getLogger("uvicorn.access").handlers = [InterceptHandler()]
+    logging.getLogger("uvicorn.error").handlers = [InterceptHandler()]
+
+    # Set interceptors for other common libraries
+    logging.getLogger("fastapi").handlers = [InterceptHandler()]
+
+    # Set root logger level
+    root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+
+    # Use patcher to append extra information and request context to messages
     def patcher(record: Any) -> None:
-        """修改记录，在消息后追加 extra 信息"""
-        # Loguru 的 record 对象在 patcher 中是一个字典
-        # extra 参数中的键值对会被直接添加到 record 字典中
+        """Modify record, append extra information and request context after message"""
         try:
-            # Loguru 的标准字段列表
-            standard_fields = {
-                "time", "level", "message", "name", "function", "line", "file",
-                "process", "thread", "exception", "elapsed", "extra", "record",
-                "module", "pathname", "exc_info", "exc_text", "stack", "created",
-                "msecs", "relativeCreated", "threadName", "threadId", "taskName",
-            }
+            # ✅ Automatically inject request context
+            try:
+                from shared.middleware.request_context_middleware import (
+                    get_request_context,
+                )
 
-            # 收集 extra 字段（所有非标准字段）
+                request_context = get_request_context()
+                if request_context:
+                    # Inject request context into extra
+                    for key, value in request_context.items():
+                        if key not in record["extra"]:
+                            record["extra"][key] = value
+            except ImportError:
+                # If request context middleware not imported, skip
+                pass
+
+            # Collect extra fields (exclude service_name and name, as they are already displayed in format)
             extra_data = {}
+            for key, value in record["extra"].items():
+                if key not in ("service_name", "name"):
+                    extra_data[key] = value
 
-            # record 在 patcher 中是字典类型
-            if isinstance(record, dict):
-                # 优先从 record['extra'] 中获取（如果是通过 bind() 绑定的）
-                if "extra" in record and isinstance(record["extra"], dict):
-                    extra_data.update(record["extra"])
-                
-                # 也可以从 record 根级别获取（某些情况下）
-                for key, value in record.items():
-                    # 跳过标准字段和以 _ 开头的内部字段
-                    if key not in standard_fields and not key.startswith("_"):
-                        extra_data[key] = value
+            # If there are extra information, append to message
+            if extra_data:
+                original_message = record.get("message", "")
 
-            # 如果 extra 数据不为空，且消息中还没有包含额外信息，则追加到消息中
-            original_message = record.get("message", "")
-            
-            # 仅在 DEBUG 或 ERROR/CRITICAL 级别显示额外信息
-            # 这样可以保证调试方便，同时异常发生时也能看到上下文
-            allowed_levels = ("DEBUG", "ERROR", "CRITICAL")
-            if extra_data and len(extra_data) > 0 and record["level"].name in allowed_levels:
-                # 检查消息中是否已经包含这些数据的 JSON 表示（简单的去重检查）
-                # 这里只做简单的检查，避免明显的重复
-                msg_str = str(original_message)
-                
-                # 定义 JSON 序列化辅助函数，处理不可序列化类型
-                def default_serializer(obj):
-                    if isinstance(obj, bytes):
-                        return "<bytes>"
-                    return str(obj)
-
+                # Check if there are exception information (if there are exceptions, don't format extra as JSON,
+                # let exception stack use original format)
+                # Always append extra information, even if there is an exception
+                # This ensures context (like host_id) is visible alongside the stack trace
                 try:
-                    # 使用 indent=2 格式化 JSON
-                    extra_json = json.dumps(extra_data, default=default_serializer, ensure_ascii=False, indent=2)
-                    
-                    # 只有当原始消息不包含"额外信息"且看起来不像已经包含了这个JSON时才添加
-                    if "额外信息" not in msg_str:
-                        record["message"] = f"{msg_str}\n额外信息:\n{extra_json}"
+                    # Format as key-value pairs
+                    extra_lines = []
+                    for k, v in extra_data.items():
+                        extra_lines.append(f"  {k}: {v}")
+                    extra_text = "\n".join(extra_lines)
+
+                    # Only add when original message doesn't contain "extra information"
+                    if "extra information" not in str(original_message):
+                        # Ensure message doesn't have trailing newlines, then append extra information
+                        msg_clean = str(original_message).rstrip("\n")
+                        record["message"] = f"{msg_clean}\nExtra information:\n{extra_text}"
                 except Exception:
                     try:
-                        record["message"] = f"{msg_str}\n额外信息: {str(extra_data)}"
+                        msg_clean = str(original_message).rstrip("\n")
+                        record["message"] = f"{msg_clean}\nExtra information: {extra_data!s}"
                     except Exception:
-                        ***REMOVED***
+                        pass
         except Exception:
-            # 静默处理异常，避免影响日志输出
-            ***REMOVED***
+            # Silently handle exceptions, avoid affecting log output
+            pass
 
-    # 在 configure 之前应用 patcher
-    # logger.patch(patcher)  <-- 移除这行，改用 configure 参数
+    # Traditional format log template
+    # Format: Time Level [Service Name] Module:Function:Line - Message
+    # Automatically append complete stack trace on exceptions
+    traditional_format = (
+        "{time:YYYY-MM-DD HH:mm:ss.SSS} "
+        "{level: <8} "
+        "[{extra[service_name]}] "
+        "{name}:{function}:{line} - "
+        "{message}"
+        "{exception}"
+    )
 
-    # 构建处理器配置，使用自定义 sink 函数确保多行消息正确显示
-    def console_sink(message: Any) -> None:
-        """自定义控制台 sink 函数，确保多行消息正确显示且格式美观
+    # Build handler configuration
+    handlers_config: Any = []
 
-        优化特性：
-        1. 正确处理多行消息，后续行自动添加缩进，保持对齐
-        2. 保留 JSON 格式的额外信息，确保完整显示
-        3. 异常堆栈信息也会正确格式化并添加缩进
-        4. 单行消息直接显示，性能最优
-        """
-        try:
-            record = message.record
+    # Console output (traditional format)
+    if enable_console:
+        handlers_config.append(
+            {
+                "sink": sys.stdout,
+                "format": traditional_format,
+                "level": log_level,
+                "colorize": True,  # Enable color output
+            }
+        )
 
-            # 提取记录信息
-            time_str = record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            level = record["level"].name
-            name = record["name"]
-            function = record["function"]
-            line = record["line"]
-            msg_text = record["message"]
-            exception = record.get("exception")
-
-            # 构建日志头部（固定格式）
-            # 时间 | 级别(补齐8位) | 服务名 | 模块:函数:行号 | 
-            header = f"{time_str} | {level: <8} | {service_name} | {name}:{function}:{line} | "
-            
-            # 计算缩进字符串
-            indent_str = " " * len(header)
-
-            # 处理消息文本
-            formatted_lines = []
-            
-            if "\n" in msg_text:
-                # 分割多行消息
-                lines = msg_text.split("\n")
-                
-                # 第一行包含 header
-                formatted_lines.append(header + lines[0])
-                
-                # 后续行添加缩进
-                for line in lines[1:]:
-                    if line: # 非空行
-                        formatted_lines.append(indent_str + line)
-                    else: # 空行
-                        formatted_lines.append("")
-            else:
-                # 单行消息
-                formatted_lines.append(header + msg_text)
-
-            # 最终拼接
-            formatted = "\n".join(formatted_lines)
-
-            # 添加异常信息（如果有）
-            if exception:
-                # Loguru 的 exception 字段是一个特殊的对象
-                # message 已经包含了异常信息的摘要，这里主要是堆栈
-                # 但通常 loguru 会自动处理异常显示，如果我们在 sink 中只打印 message，
-                # 可能需要手动获取格式化的异常信息
-                # 这里简单起见，如果 message 末尾没有异常信息，由于 patcher 也没法很好处理 exception 对象
-                # 我们依赖 message.record["exception"] 存在时，
-                # Loguru 默认的 sink 行为是会打印堆栈的。
-                # 但在我们自定义 sink 中，我们需要自己处理。
-                # message 参数其实是一个字符串（FormattedMessage），但也包含了 record 属性
-                # 如果直接打印 message，通常包含了格式化好的异常信息（如果 format 参数配置了 {exception}）
-                # 但我们需要自定义格式。
-                
-                # 实际上，如果 format 中包含了 {exception}，那么 msg_text 可能已经包含了堆栈信息（取决于实现）
-                # 只有当 format 字符串包含 {exception} 时，Loguru 才会把异常栈拼接到 message 中。
-                # 我们的 console_sink 使用的是 raw message (from record["message"])，
-                # 它不包含堆栈，除非我们在 patcher 里处理了（但 patcher 里很难处理堆栈格式化）。
-                
-                # 在自定义 sink 中，我们需要显式处理异常
-                # 获取格式化的异常堆栈
-                exc = record["exception"]
-                if exc:
-                    # 使用 loguru 内部的方法格式化异常（比较复杂），或者直接用 traceback
-                    # 简单方式：
-                    import traceback
-                    exc_lines = traceback.format_exception(exc.type, exc.value, exc.traceback)
-                    exc_str = "".join(exc_lines)
-                    
-                    # 对堆栈信息每行加缩进
-                    for exc_line in exc_str.split("\n"):
-                        if exc_line:
-                            formatted += f"\n{indent_str}{exc_line}"
-
-            # 输出到控制台
-            print(formatted, file=sys.stdout, flush=True)
-
-        except Exception as e:
-            # 如果格式化失败，直接输出原始消息
-            print(str(message), file=sys.stdout, flush=True)
-            # 避免死循环，不再打印错误日志
-            print(f"Logging Error: {e}", file=sys.stderr)
-
-    handlers_config: Any = [
-        {
-            "sink": console_sink,
-            "level": log_level,
-            "colorize": False, 
-            # console_sink 不需要 format 参数，因为它直接处理 message.record
-        }
-    ]
-
-    # 添加文件处理器（如果启用）
+    # File output (traditional format)
     if enable_file:
-        # 当天日志使用固定文件名，轮转后的旧日志才添加日期后缀
-        # 当天文件：service_name.log
-        # 历史文件：service_name-YYYY-MM-DD.log
+        # Today's logs use fixed filename, only rotated old logs add date suffix
         log_file_path = os.path.join(log_dir, f"{service_name}.log")
 
-        # 在启动时检查并重命名旧的日志文件（如果存在且不是今天的）
+        # At startup, check and rename old log files (if they exist and are not from today)
         _rename_old_log_files(log_dir, service_name)
 
         handlers_config.append(
             {
                 "sink": log_file_path,
-                "format": (
-                    "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                    "{level: <8} | "
-                    f"{service_name} | "
-                    "{name}:{function}:{line} | "
-                    "{message}"
-                    "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
-                ),
+                "format": traditional_format,
                 "level": log_level,
-                "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
+                "rotation": rotation,  # Rotate at midnight daily (default "00:00")
                 "retention": retention,
                 "compression": compression,
                 "encoding": "utf-8",
+                "backtrace": True,  # Show traceback extending beyond catch point
+                "diagnose": True,  # Show variable values in traceback
+                "enqueue": True,  # ✅ Enable asynchronous writing to avoid blocking
             }
         )
 
-    # 添加错误文件处理器（如果启用）
+    # Error file output (ERROR and above levels only)
     if enable_error_file:
-        # 当天错误日志使用固定文件名，轮转后的旧日志才添加日期后缀
-        # 当天文件：service_name_error.log
-        # 历史文件：service_name_error-YYYY-MM-DD.log
+        # Today's error logs use fixed filename, only rotated old logs add date suffix
         error_log_file_path = os.path.join(log_dir, f"{service_name}_error.log")
-        
+
         handlers_config.append(
             {
                 "sink": error_log_file_path,
-                "format": (
-                    "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-                    "{level: <8} | "
-                    f"{service_name} | "
-                    "{name}:{function}:{line} | "
-                    "{message}"
-                    "{exception}"  # 添加异常堆栈信息（仅在异常时显示）
-                ),
-                "level": "ERROR",
-                "rotation": rotation,  # 每天午夜轮转（默认 "00:00"）
+                "format": traditional_format,
+                "level": "ERROR",  # Only record ERROR and above levels
+                "rotation": rotation,  # Rotate at midnight daily (default "00:00")
                 "retention": "1 month",
                 "compression": compression,
                 "encoding": "utf-8",
+                "backtrace": True,  # Show traceback extending beyond catch point
+                "diagnose": True,  # Show variable values in traceback
+                "enqueue": True,  # ✅ Enable asynchronous writing to avoid blocking
             }
         )
 
-    # 使用类型安全的配置调用
-    # 注意：patcher 已经在 configure 之前应用
-    logger.configure(handlers=handlers_config, patcher=patcher)
+    # Configure logger, bind service name to extra, and apply patcher
+    logger.configure(
+        handlers=handlers_config,
+        extra={"service_name": service_name},  # Bind service name to extra
+        patcher=patcher,  # Apply patcher to append extra information to message
+    )
 
-    # 配置常用库的日志级别（uvicorn日志由各服务单独处理）
+    # ✅ Set log levels for common libraries (already intercepted via InterceptHandler, use loguru format uniformly)
+    logging.getLogger("uvicorn").setLevel(getattr(logging, log_level.upper(), logging.INFO))
+    logging.getLogger("uvicorn.access").setLevel(getattr(logging, log_level.upper(), logging.INFO))
+    logging.getLogger("uvicorn.error").setLevel(getattr(logging, log_level.upper(), logging.INFO))
     logging.getLogger("fastapi").setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
-    logger.info(f"日志系统初始化完成 - 服务: {service_name}, 级别: {log_level}")
+    logger.info(f"Log system initialization completed - Service: {service_name}, Level: {log_level}")
 
 
 def get_logger(name: Optional[str] = None) -> Any:
-    """获取日志记录器
+    """Get logger
 
     Args:
-        name: 日志记录器名称（通常使用 __name__）
+        name: Logger name (usually use __name__)
 
     Returns:
-        配置好的日志记录器
+        Configured logger
     """
     if name:
         return logger.bind(name=name)
     return logger
 
 
-def log_function_call(func_name: str, args: tuple, kwargs: dict) -> None:
-    """记录函数调用
-
-    Args:
-        func_name: 函数名
-        args: 位置参数
-        kwargs: 关键字参数
-    """
-    logger.debug(
-        f"函数调用: {func_name}",
-        extra={"function": func_name, "args": str(args), "kwargs": str(kwargs)},
-    )
-
-
-def log_exception(exception: Exception, context: Optional[dict] = None) -> None:
-    """记录异常信息
-
-    Args:
-        exception: 异常对象
-        context: 上下文信息
-    """
-    logger.exception(f"异常发生: {type(exception).__name__}: {exception!s}", extra=context or {})
-
-
-def log_request(
-    method: str,
-    path: str,
-    status_code: int,
-    duration_ms: float,
-    user_id: Optional[str] = None,
+def log_with_context(
+    level: str,
+    message: str,
+    extra: Optional[Dict[str, Any]] = None,
+    logger_instance: Optional[Any] = None,
 ) -> None:
-    """记录HTTP请求
+    """Context-aware logging
+
+    Automatically inject request context (request_id, user_id, etc.) into logs.
 
     Args:
-        method: HTTP方法
-        path: 请求路径
-        status_code: 响应状态码
-        duration_ms: 请求耗时（毫秒）
-        user_id: 用户ID
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        message: Log message
+        extra: Additional log fields
+        logger_instance: Custom logger instance, if None use default logger
     """
-    logger.info(
-        f"HTTP请求: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
-        extra={
-            "method": method,
-            "path": path,
-            "status_code": status_code,
-            "duration_ms": duration_ms,
-            "user_id": user_id,
-        },
-    )
+    log = logger_instance or logger
+    log_extra = extra.copy() if extra else {}
+
+    # Try to inject request context
+    try:
+        from shared.middleware.request_context_middleware import get_request_context
+
+        request_context = get_request_context()
+        if request_context:
+            for key, value in request_context.items():
+                if key not in log_extra:
+                    log_extra[key] = value
+    except ImportError:
+        pass
+
+    # Record log
+    log.log(level.upper(), message, extra=log_extra)
 
 
-def log_database_query(query: str, duration_ms: float, rows_affected: Optional[int] = None) -> None:
-    """记录数据库查询
+def set_log_level(level: str) -> None:
+    """Dynamically set log level
 
     Args:
-        query: SQL查询语句
-        duration_ms: 查询耗时（毫秒）
-        rows_affected: 影响的行数
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    logger.debug(
-        f"数据库查询: {query[:100]}... ({duration_ms:.2f}ms)",
-        extra={
-            "query": query,
-            "duration_ms": duration_ms,
-            "rows_affected": rows_affected,
-        },
-    )
+    valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    level = level.upper()
+    if level not in valid_levels:
+        logger.warning(f"Invalid log level: {level}, keeping current level")
+        return
+
+    # Update levels of all handlers
+    for handler_id in logger._core.handlers:
+        logger._core.handlers[handler_id]._levelno = logger.level(level).no
+
+    logger.info(f"Log level updated to: {level}")
 
 
 def log_slow_query(
@@ -466,26 +418,24 @@ def log_slow_query(
     sql_hash: str,
     parameters: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """记录慢查询
+    """Record slow query
 
     Args:
-        sql: SQL语句
-        duration_ms: 执行时间（毫秒）
-        operation: 操作类型（select, insert, update, delete等）
-        table: 表名
-        sql_hash: SQL哈希值（用于去重）
-        parameters: SQL参数（可选）
+        sql: SQL statement
+        duration_ms: Execution time (milliseconds)
+        operation: Operation type (select, insert, update, delete, etc.)
+        table: Table name
+        sql_hash: SQL hash value (for deduplication)
+        parameters: SQL parameters (optional)
     """
-    import traceback
-
-    # 获取调用堆栈（排除当前函数和监控模块）
+    # Get call stack (excluding current function and monitoring module)
     stack_trace = []
-    for frame in traceback.extract_stack()[:-2]:  # 排除当前函数和监控函数
+    for frame in traceback.extract_stack()[:-2]:  # Exclude current function and monitoring function
         if "sql_performance" not in frame.filename:
             stack_trace.append(f"{frame.filename}:{frame.lineno} in {frame.name}")
 
     logger.warning(
-        f"慢查询检测: {operation.upper()} on {table} ({duration_ms:.2f}ms)",
+        f"Slow query detected: {operation.upper()} on {table} ({duration_ms:.2f}ms)",
         extra={
             "sql": sql,
             "duration_ms": duration_ms,
@@ -494,60 +444,6 @@ def log_slow_query(
             "table": table,
             "sql_hash": sql_hash,
             "parameters": parameters,
-            "stack_trace": stack_trace[-5:],  # 只保留最近5层堆栈
-        },
-    )
-
-
-def log_cache_operation(
-    operation: str,
-    key: str,
-    hit: Optional[bool] = None,
-    duration_ms: Optional[float] = None,
-) -> None:
-    """记录缓存操作
-
-    Args:
-        operation: 操作类型（get, set, delete）
-        key: 缓存键
-        hit: 是否命中（仅用于get操作）
-        duration_ms: 操作耗时（毫秒）
-    """
-    if hit is not None:
-        status = "命中" if hit else "未命中"
-        logger.debug(
-            f"缓存{operation}: {key} - {status}",
-            extra={
-                "operation": operation,
-                "key": key,
-                "hit": hit,
-                "duration_ms": duration_ms,
-            },
-        )
-    else:
-        logger.debug(
-            f"缓存{operation}: {key}",
-            extra={"operation": operation, "key": key, "duration_ms": duration_ms},
-        )
-
-
-def log_service_call(service_name: str, endpoint: str, method: str, status_code: int, duration_ms: float) -> None:
-    """记录服务间调用
-
-    Args:
-        service_name: 服务名称
-        endpoint: 端点路径
-        method: HTTP方法
-        status_code: 响应状态码
-        duration_ms: 调用耗时（毫秒）
-    """
-    logger.info(
-        f"服务调用: {service_name} {method} {endpoint} - {status_code} ({duration_ms:.2f}ms)",
-        extra={
-            "service_name": service_name,
-            "endpoint": endpoint,
-            "method": method,
-            "status_code": status_code,
-            "duration_ms": duration_ms,
+            "stack_trace": stack_trace[-5:],  # Only retain recent 5 stack frames
         },
     )

@@ -300,8 +300,8 @@ class AdminApprHostService:
             if latest_hw_rec and latest_hw_rec.hw_info:
                 try:
                     # ✅ Determine whether to call create or update API based on host_state
-                    # host_state = 5 (pending activation): New host, call create API (***REMOVED*** None)
-                    # host_state = 6 (hardware changed): Existing host, call update API (***REMOVED*** hardware_id)
+                    # host_state = 5 (pending activation): New host, call create API (pass None)
+                    # host_state = 6 (hardware changed): Existing host, call update API (pass hardware_id)
                     api_hardware_id: Optional[str] = None
                     if host_rec.host_state == 6:
                         # Hardware changed: Use existing hardware_id to call update API
@@ -514,8 +514,8 @@ class AdminApprHostService:
         if latest_hw_rec.hw_info:
             try:
                 # ✅ Determine whether to call create or update API based on host_state
-                # host_state = 5 (pending activation): New host, call create API (***REMOVED*** None)
-                # host_state = 6 (hardware changed): Existing host, call update API (***REMOVED*** hardware_id)
+                # host_state = 5 (pending activation): New host, call create API (pass None)
+                # host_state = 6 (hardware changed): Existing host, call update API (pass hardware_id)
                 existing_hardware_id = host_rec.hardware_id
                 api_hardware_id: Optional[str] = None
                 if host_rec.host_state == 6:
@@ -1053,12 +1053,12 @@ class AdminApprHostService:
             hw_result = await session.execute(hw_stmt)
             hw_recs = hw_result.scalars().all()
 
-            # 3. Decrypt ***REMOVED***word (AES encrypted)
-            ***REMOVED*** = None
+            # 3. Decrypt password (AES encrypted)
+            decrypted_password = None
             if host_rec.host_pwd:
                 try:
-                    ***REMOVED*** = aes_decrypt(host_rec.host_pwd)
-                    if ***REMOVED***:
+                    decrypted_password = aes_decrypt(host_rec.host_pwd)
+                    if decrypted_password:
                         logger.debug(
                             "Password decryption succeeded",
                             extra={
@@ -1083,7 +1083,7 @@ class AdminApprHostService:
                         },
                     )
                     # Return None when decryption fails, instead of raising exception
-                    ***REMOVED*** = None
+                    decrypted_password = None
 
             # 4. Build hardware information list
             hw_list: List[AdminApprHostHwInfo] = []
@@ -1107,7 +1107,7 @@ class AdminApprHostService:
                 mac=host_rec.mac_addr,
                 ip=host_rec.host_ip,
                 username=host_rec.host_acct,
-                ***REMOVED***word=***REMOVED***,
+                password=decrypted_password,
                 port=host_rec.host_port,
                 host_state=host_rec.host_state,
                 diff_state=diff_state,
@@ -1119,7 +1119,7 @@ class AdminApprHostService:
                 extra={
                     "host_id": host_id,
                     "hw_list_count": len(hw_list),
-                    "has_***REMOVED***word": ***REMOVED*** is not None,
+                    "has_password": decrypted_password is not None,
                 },
             )
 

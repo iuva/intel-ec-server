@@ -228,7 +228,7 @@ app = create_service_app(
 from shared.common.database import mariadb_manager
 
 await mariadb_manager.connect(
-    database_url="mysql+aiomysql://user:***REMOVED***@host:port/db",
+    database_url="mysql+aiomysql://user:pass@host:port/db",
     enable_sql_monitoring=True,
     slow_query_threshold=2.0,
     service_name="host-service",

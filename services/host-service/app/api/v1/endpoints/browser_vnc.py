@@ -181,7 +181,7 @@ async def report_vnc_connection(
                             "ip": "192.168.101.118",
                             "port": "5900",
                             "username": "neusoft",
-                            "***REMOVED***word": "********",  # Sensitive data redated
+                            "password": "********",  # Sensitive data redated
                         },
                     }
                 }
@@ -238,7 +238,7 @@ async def get_vnc_connection(
     - `ip`: VNC server IP address
     - `port`: VNC service port
     - `username`: Connection username
-    - `***REMOVED***word`: Connection ***REMOVED***word
+    - `password`: Connection password
 
     ## Error codes
     - `INVALID_HOST_ID`: Host ID format is invalid (400)
@@ -264,7 +264,7 @@ async def get_vnc_connection(
         ip=vnc_info["ip"],
         port=vnc_info["port"],
         username=vnc_info["username"],
-        ***REMOVED***word=vnc_info["***REMOVED***word"],
+        password=vnc_info["password"],
     )
 
     logger.info(

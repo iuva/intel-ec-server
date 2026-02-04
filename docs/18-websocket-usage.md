@@ -202,7 +202,7 @@ curl -X POST 'http://localhost:8000/api/v1/auth/admin/login' \
   -H 'Content-Type: application/json' \
   -d '{
     "username": "admin",
-    "***REMOVED***word": "your_***REMOVED***word"
+    "password": "your_password"
   }'
 ```
 
@@ -252,7 +252,7 @@ async with websockets.connect(
     extra_headers={"Authorization": f"Bearer {token}"}
 ) as websocket:
     # 连接成功
-    ***REMOVED***
+    pass
 ```
 
 #### 方式3: X-Token Header
@@ -263,7 +263,7 @@ async with websockets.connect(
     extra_headers={"X-Token": token}
 ) as websocket:
     # 连接成功
-    ***REMOVED***
+    pass
 ```
 
 ### 认证错误处理
@@ -272,7 +272,7 @@ async with websockets.connect(
 try:
     async with websockets.connect(uri) as websocket:
         # 正常使用
-        ***REMOVED***
+        pass
 except websockets.exceptions.InvalidStatusCode as e:
     if e.status_code == 401:
         print("❌ 认证失败: Token无效或已过期")

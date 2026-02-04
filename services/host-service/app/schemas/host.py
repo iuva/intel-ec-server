@@ -49,8 +49,7 @@ class HostStatusUpdate(BaseModel):
         ),
     )
     appr_state: Optional[int] = Field(
-        default=None,
-        description="Approval state (0-disabled, 1-enabled/new, 2-has changes)",
+        default=None, description="Approval state (0-disabled, 1-enabled/new, 2-has changes)"
     )
 
 
@@ -84,14 +83,9 @@ class VNCConnectionReport(BaseModel):
     cycle_name: str = Field(..., description="Cycle name")
     user_name: str = Field(..., description="User name")
     host_id: str = Field(..., description="Host ID")
-    connection_status: str = Field(
-        ...,
-        description="Connection status (success/failed)",
-        pattern=r"^(success|failed)$",
-    )
+    connection_status: str = Field(..., description="Connection status (success/failed)", pattern=r"^(success|failed)$")
     connection_time: datetime = Field(
-        ...,
-        description="Connection time (supports formats: yyyy/MM/dd HH:mm:ss or ISO 8601)",
+        ..., description="Connection time (supports formats: yyyy/MM/dd HH:mm:ss or ISO 8601)"
     )
 
     model_config = {"from_attributes": True}
@@ -194,8 +188,7 @@ class AgentVNCConnectionReportResponse(BaseModel):
     host_id: int = Field(..., description="Host ID")
     host_state: int = Field(..., description="Updated host state (0=free, 1=locked, 2=occupied)")
     vnc_state: int = Field(
-        ...,
-        description="Reported VNC connection state (1=connection succeeded, 2=connection disconnected)",
+        ..., description="Reported VNC connection state (1=connection succeeded, 2=connection disconnected)"
     )
     updated: bool = Field(..., description="Whether update succeeded")
 
@@ -223,7 +216,7 @@ class QueryAvailableHostsRequest(BaseModel):
         default=None,
         description=(
             "ID of last record from previous page. null for first request, "
-            "subsequent requests need to ***REMOVED*** host_rec_id of last record from previous page"
+            "subsequent requests need to pass host_rec_id of last record from previous page"
         ),
     )
     email: Optional[str] = Field(
@@ -331,8 +324,7 @@ class AvailableHostsListResponse(BaseModel):
     page_size: int = Field(description="Page size")
     has_next: bool = Field(description="Whether there is next page")
     last_id: Optional[str] = Field(
-        default=None,
-        description="ID of last record in current page, used for next page request",
+        default=None, description="ID of last record in current page, used for next page request"
     )
 
     model_config = {"from_attributes": True}
@@ -352,7 +344,7 @@ class VNCConnectionInfo(BaseModel):
     ip: str = Field(description="VNC server IP address")
     port: str = Field(description="VNC service port")
     username: str = Field(description="Connection username")
-    ***REMOVED***word: str = Field(description="Connection ***REMOVED***word")
+    password: str = Field(description="Connection password")
 
     model_config = {"from_attributes": True}
 
@@ -412,12 +404,10 @@ class AdminHostListRequest(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number (starts from 1)")
     page_size: int = Field(default=20, ge=1, le=100, description="Page size (1-100)")
     mac: Optional[str] = Field(
-        default=None,
-        description="MAC address (optional search condition, corresponds to host_rec.mac_addr)",
+        default=None, description="MAC address (optional search condition, corresponds to host_rec.mac_addr)"
     )
     username: Optional[str] = Field(
-        default=None,
-        description="Host account (optional search condition, corresponds to host_rec.host_acct)",
+        default=None, description="Host account (optional search condition, corresponds to host_rec.host_acct)"
     )
     host_state: Optional[int] = Field(
         default=None,
@@ -429,12 +419,10 @@ class AdminHostListRequest(BaseModel):
         ),
     )
     mg_id: Optional[str] = Field(
-        default=None,
-        description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)",
+        default=None, description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)"
     )
     use_by: Optional[str] = Field(
-        default=None,
-        description="Used by (optional search condition, corresponds to host_exec_log.user_name)",
+        default=None, description="Used by (optional search condition, corresponds to host_exec_log.user_name)"
     )
 
     model_config = {"from_attributes": True}
@@ -447,10 +435,7 @@ class AdminHostInfo(BaseModel):
     username: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
     mg_id: Optional[str] = Field(default=None, description="Unique boot ID (host_rec table mg_id)")
     mac: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
-    use_by: Optional[str] = Field(
-        default=None,
-        description="Used by (host_exec_log table user_name, latest record)",
-    )
+    use_by: Optional[str] = Field(default=None, description="Used by (host_exec_log table user_name, latest record)")
     host_state: Optional[int] = Field(default=None, description="Host state (host_rec table host_state)")
     appr_state: Optional[int] = Field(default=None, description="Approval state (host_rec table appr_state)")
 
@@ -548,7 +533,7 @@ class AdminHostDetailResponse(BaseModel):
     mac: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
     ip: Optional[str] = Field(default=None, description="IP address (host_rec table host_ip)")
     username: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
-    ***REMOVED***word: Optional[str] = Field(default=None, description="Host ***REMOVED***word (host_rec table host_pwd, decrypted)")
+    password: Optional[str] = Field(default=None, description="Host password (host_rec table host_pwd, decrypted)")
     port: Optional[int] = Field(default=None, description="Port (host_rec table host_port)")
     hw_list: List[AdminHostHwDetailInfo] = Field(
         default_factory=list,
@@ -561,20 +546,18 @@ class AdminHostDetailResponse(BaseModel):
 
 
 class AdminHostUpdatePasswordRequest(BaseModel):
-    """Admin backend host ***REMOVED***word update request schema"""
+    """Admin backend host password update request schema"""
 
     host_id: int = Field(..., ge=1, description="Host ID (host_rec.id)")
-    ***REMOVED***word: str = Field(
-        ...,
-        min_length=1,
-        description="New ***REMOVED***word (plaintext, will be AES encrypted before storage)",
+    password: str = Field(
+        ..., min_length=1, description="New password (plaintext, will be AES encrypted before storage)"
     )
 
     model_config = {"from_attributes": True}
 
 
 class AdminHostUpdatePasswordResponse(BaseModel):
-    """Admin backend host ***REMOVED***word update response schema"""
+    """Admin backend host password update response schema"""
 
     id: str = Field(description="Host ID")
 
@@ -600,8 +583,7 @@ class AdminHostExecLogInfo(BaseModel):
     tc_id: Optional[str] = Field(default=None, description="Test execution ID (host_exec_log table tc_id)")
     use_by: Optional[str] = Field(default=None, description="Used by (host_exec_log table user_name)")
     case_state: Optional[int] = Field(
-        default=None,
-        description="Execution state (0-free, 1-started, 2-success, 3-failed)",
+        default=None, description="Execution state (0-free, 1-started, 2-success, 3-failed)"
     )
     result_msg: Optional[str] = Field(default=None, description="Execution result (host_exec_log table result_msg)")
     log_url: Optional[str] = Field(default=None, description="Execution log URL (host_exec_log table log_url)")
@@ -629,12 +611,10 @@ class AdminApprHostListRequest(BaseModel):
     page: int = Field(default=1, ge=1, description="Page number (starts from 1)")
     page_size: int = Field(default=20, ge=1, le=100, description="Page size (1-100)")
     mac: Optional[str] = Field(
-        default=None,
-        description="MAC address (optional search condition, corresponds to host_rec.mac_addr)",
+        default=None, description="MAC address (optional search condition, corresponds to host_rec.mac_addr)"
     )
     mg_id: Optional[str] = Field(
-        default=None,
-        description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)",
+        default=None, description="Unique boot ID (optional search condition, corresponds to host_rec.mg_id)"
     )
     host_state: Optional[int] = Field(
         default=None,
@@ -714,7 +694,7 @@ class AdminApprHostDetailResponse(BaseModel):
     mac: Optional[str] = Field(default=None, description="MAC address (host_rec table mac_addr)")
     ip: Optional[str] = Field(default=None, description="IP address (host_rec table host_ip)")
     username: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
-    ***REMOVED***word: Optional[str] = Field(default=None, description="Host ***REMOVED***word (host_rec table host_pwd, decrypted)")
+    password: Optional[str] = Field(default=None, description="Host password (host_rec table host_pwd, decrypted)")
     port: Optional[int] = Field(default=None, description="Port (host_rec table host_port)")
     host_state: Optional[int] = Field(
         default=None,
@@ -892,8 +872,7 @@ class HardwareReportResponse(BaseModel):
     status: str = Field(description="Status (first_report/hardware_changed/no_change)")
     hw_rec_id: Optional[int] = Field(default=None, description="Hardware record ID")
     diff_state: Optional[int] = Field(
-        default=None,
-        description="Difference state (1-version changed, 2-content changed)",
+        default=None, description="Difference state (1-version changed, 2-content changed)"
     )
     diff_details: Optional[Dict[str, Any]] = Field(default=None, description="Difference details")
     message: str = Field(description="Response message")
@@ -904,15 +883,9 @@ class HardwareReportResponse(BaseModel):
 class AgentOtaUpdateStatusRequest(BaseModel):
     """Agent OTA update status report request schema"""
 
-    app_name: str = Field(
-        ...,
-        description="Application name (corresponds to host_upd table app_name)",
-        min_length=1,
-    )
+    app_name: str = Field(..., description="Application name (corresponds to host_upd table app_name)", min_length=1)
     app_ver: str = Field(
-        ...,
-        description="Application version number (corresponds to host_upd table app_ver)",
-        min_length=1,
+        ..., description="Application version number (corresponds to host_upd table app_ver)", min_length=1
     )
     biz_state: int = Field(
         ...,
@@ -961,113 +934,5 @@ class ResetHostForTestResponse(BaseModel):
     host_state: int = Field(description="Host state (0=free)")
     subm_time: Optional[str] = Field(default=None, description="Submission time (null after reset)")
     deleted_log_count: int = Field(description="Number of deleted execution log records")
-
-    model_config = {"from_attributes": True}
-
-
-class GetVNCConnectionRequest(BaseModel):
-    """获取 VNC 连接信息请求模式"""
-
-    id: str = Field(description="主机ID (host_rec.id)")
-
-    model_config = {"from_attributes": True}
-
-
-class VNCConnectionInfo(BaseModel):
-    """VNC 连接信息响应模式"""
-
-    ip: str = Field(description="VNC服务器IP地址")
-    port: str = Field(description="VNC服务端口")
-    username: str = Field(description="连接用户名")
-    ***REMOVED***word: str = Field(description="连接密码")
-
-    model_config = {"from_attributes": True}
-
-
-class GetRetryVNCListRequest(BaseModel):
-    """获取重试 VNC 列表请求模式"""
-
-    user_id: str = Field(description="用户ID")
-
-    model_config = {"from_attributes": True}
-
-
-class RetryVNCHostInfo(BaseModel):
-    """重试 VNC 主机信息"""
-
-    host_id: int = Field(description="主机ID (host_rec.id)")
-    host_ip: str = Field(description="主机IP")
-    user_name: str = Field(description="主机账号 (host_acct)")
-
-    model_config = {"from_attributes": True}
-
-
-class RetryVNCListResponse(BaseModel):
-    """重试 VNC 列表响应模式"""
-
-    hosts: List[RetryVNCHostInfo] = Field(description="重试 VNC 主机列表")
-    total: int = Field(description="主机总数")
-
-    model_config = {"from_attributes": True}
-
-
-class ReleaseHostsRequest(BaseModel):
-    """释放主机请求模式"""
-
-    user_id: str = Field(description="用户ID")
-    host_list: List[str] = Field(description="主机ID列表")
-
-    model_config = {"from_attributes": True}
-
-
-class ReleaseHostsResponse(BaseModel):
-    """释放主机响应模式"""
-
-    updated_count: int = Field(description="更新的记录数（逻辑删除）")
-    user_id: str = Field(description="用户ID")
-    host_list: List[str] = Field(description="主机ID列表")
-
-    model_config = {"from_attributes": True}
-
-
-# ==================== 管理后台主机管理 Schema ====================
-
-
-class AdminHostListRequest(BaseModel):
-    """管理后台主机列表查询请求模式"""
-
-    page: int = Field(default=1, ge=1, description="页码（从1开始）")
-    page_size: int = Field(default=20, ge=1, le=100, description="每页大小（1-100）")
-    mac: Optional[str] = Field(default=None, description="MAC地址（可选搜索条件）")
-    username: Optional[str] = Field(default=None, description="主机账号（host_acct，可选搜索条件）")
-    host_state: Optional[int] = Field(default=None, description="主机状态（可选搜索条件）")
-    mg_id: Optional[str] = Field(default=None, description="唯一引导ID（可选搜索条件）")
-
-    model_config = {"from_attributes": True}
-
-
-class AdminHostInfo(BaseModel):
-    """管理后台主机信息响应模式"""
-
-    hardware_id: Optional[str] = Field(description="MongoDB 硬件ID")
-    host_acct: Optional[str] = Field(description="主机账号")
-    mg_id: Optional[str] = Field(description="唯一引导ID")
-    mac: Optional[str] = Field(description="MAC地址")
-    host_state: Optional[int] = Field(description="主机状态")
-    user_name: Optional[str] = Field(default=None, description="执行用户名称（来自host_exec_log）")
-
-    model_config = {"from_attributes": True}
-
-
-class AdminHostListResponse(BaseModel):
-    """管理后台主机列表响应模式"""
-
-    hosts: List[AdminHostInfo] = Field(description="主机列表")
-    total: int = Field(description="总记录数")
-    page: int = Field(description="当前页码")
-    page_size: int = Field(description="每页大小")
-    total_pages: int = Field(description="总页数")
-    has_next: bool = Field(description="是否有下一页")
-    has_prev: bool = Field(description="是否有上一页")
 
     model_config = {"from_attributes": True}

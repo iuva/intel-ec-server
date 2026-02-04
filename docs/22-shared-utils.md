@@ -703,7 +703,7 @@ async with session_factory() as session:
     )
     if not host_rec:
         # 处理主机不存在的情况
-        ***REMOVED***
+        pass
 
 # 构建主机查询语句
 stmt = build_host_query(

@@ -18,7 +18,7 @@ pydantic-settings==2.7.1
 
 # Authentication and security
 python-jose[cryptography]==3.3.0
-***REMOVED***lib[bcrypt]==1.7.4
+passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
 PyJWT==2.8.0
 

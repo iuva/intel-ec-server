@@ -649,7 +649,7 @@ class ServiceDiscovery:
             "host": "host-service",
         }
 
-        # If a short name is ***REMOVED***ed, map to full service name first
+        # If a short name is passed, map to full service name first
         full_service_name = short_to_full.get(service_name, service_name)
 
         # ✅ Get fallback hostname from _default_service_hosts (already resolved based on deploy_mode)

@@ -15,16 +15,16 @@ BFG 是专门用于删除大文件和敏感数据的工具。
     - Windows: `choco install bfg-repo-cleaner`
 
 2.  **准备敏感字符串文件**
-    创建一个包含要删除的敏感字符串的文件 `***REMOVED***words.txt`（每行一个）。
+    创建一个包含要删除的敏感字符串的文件 `passwords.txt`（每行一个）。
     ```text
-    ***REMOVED***
+    admin123
     your-secret-key-change-in-production
     q5W19H3LbGcAmjNqjvZE91I7yNYWmzvD
     ```
 
 3.  **执行清理**
     ```bash
-    bfg --replace-text ***REMOVED***words.txt
+    bfg --replace-text passwords.txt
     ```
 
 4.  **清理引用并修剪**

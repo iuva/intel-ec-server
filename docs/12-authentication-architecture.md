@@ -18,8 +18,8 @@
 
 ```text
 1. POST /api/v1/auth-service/api/v1/oauth2/admin/token
-   Authorization: Basic <base64(***REMOVED***)>
-   Body: grant_type=***REMOVED***word&username=admin&***REMOVED***word=secret&scope=admin
+   Authorization: Basic <base64(admin_client:admin_secret)>
+   Body: grant_type=password&username=admin&password=secret&scope=admin
 
 2. Auth Service → 验证客户端凭据 → 验证管理员凭据 → 生成OAuth令牌
 
@@ -208,8 +208,8 @@ POST /api/v1/auth-service/login → POST http://auth-service:8001/api/v1/auth/lo
 
 ```text
 1. POST /api/v1/auth-service/api/v1/oauth2/admin/token
-   Authorization: Basic YWRtaW5fY2xpZW50OmFkbWluX3NlY3JldA== (***REMOVED***)
-   Body: grant_type=***REMOVED***word&username=admin&***REMOVED***word=***REMOVED***&scope=admin
+   Authorization: Basic YWRtaW5fY2xpZW50OmFkbWluX3NlY3JldA== (admin_client:admin_secret)
+   Body: grant_type=password&username=admin&password=admin123&scope=admin
 
 2. Gateway → Auth Service 直接转发 (公开路径)
 

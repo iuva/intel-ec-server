@@ -38,7 +38,7 @@ async def test_502_error_handling():
     try:
         # We expect this to fail with 502 because the service doesn't exist
         # and fallback defaults (localhost:8000 etc) might not differ but
-        # let's try to ***REMOVED*** a port we know is closed or handled by logic
+        # let's try to pass a port we know is closed or handled by logic
 
         # Actually, ProxyService uses ServiceDiscovery.
         # If we ask for a service that isn't in the map, it might error earlier.

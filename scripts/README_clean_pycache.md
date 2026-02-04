@@ -40,7 +40,7 @@ scripts\clean_pycache.bat "C:\Your\Project\Path"
 #### 如果遇到执行策略限制
 ```powershell
 # 临时允许执行脚本（仅当前会话）
-Set-ExecutionPolicy -ExecutionPolicy By***REMOVED*** -Scope Process
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
 # 然后运行脚本
 .\scripts\clean_pycache.ps1
@@ -97,7 +97,7 @@ Set-ExecutionPolicy -ExecutionPolicy By***REMOVED*** -Scope Process
 
 ### PowerShell 脚本无法运行
 - 检查执行策略：`Get-ExecutionPolicy`
-- 临时允许执行：`Set-ExecutionPolicy -ExecutionPolicy By***REMOVED*** -Scope Process`
+- 临时允许执行：`Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process`
 
 ### 某些文件夹删除失败
 - 检查文件夹是否被其他程序占用

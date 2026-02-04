@@ -1222,7 +1222,7 @@ export function setup() {
   const loginUrl = `${HOST}/api/v1/auth/admin/login`;
   const loginPayload = JSON.stringify({
     username: 'admin',
-    ***REMOVED***word: '***REMOVED***',
+    password: 'admin123',
   });
   
   const loginRes = http.post(loginUrl, loginPayload, {
@@ -1467,7 +1467,7 @@ export function setup() {
   const loginUrl = `${HOST}/api/v1/auth/admin/login`;
   const loginPayload = JSON.stringify({
     username: 'admin',
-    ***REMOVED***word: '***REMOVED***',
+    password: 'admin123',
   });
   
   const loginRes = http.post(loginUrl, loginPayload, {
@@ -1858,7 +1858,7 @@ k6 run tests/performance/http/k6_query_available_hosts.js \
 
 ```bash
 # 连接到数据库
-docker-compose exec mariadb mysql -u intel_user -pintel_***REMOVED*** intel_cw
+docker-compose exec mariadb mysql -u intel_user -pintel_pass123 intel_cw
 
 # 执行索引创建
 CREATE INDEX IF NOT EXISTS idx_host_rec_filter ON host_rec(appr_state, host_state, tcp_state, del_flag);
@@ -1914,7 +1914,7 @@ docker-compose logs host-service | grep -i "pool_size\|max_overflow"
 
 ```bash
 # 查看当前数据库连接数
-docker-compose exec mariadb mysql -u intel_user -pintel_***REMOVED*** -e "SHOW STATUS LIKE 'Threads_connected';"
+docker-compose exec mariadb mysql -u intel_user -pintel_pass123 -e "SHOW STATUS LIKE 'Threads_connected';"
 ```
 
 #### 3. 查看压测结果

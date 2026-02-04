@@ -140,7 +140,7 @@ def host_to_dict(
 
     Args:
         host: Host record
-        include_sensitive: Whether to include sensitive fields (e.g., ***REMOVED***word)
+        include_sensitive: Whether to include sensitive fields (e.g., password)
 
     Returns:
         Dict[str, Any]: Host information dictionary

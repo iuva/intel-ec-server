@@ -124,7 +124,7 @@ docker run -d `
   -e MARIADB_ROOT_PASSWORD=mariadb123 `
   -e MARIADB_DATABASE=intel_cw `
   -e MARIADB_USER=intel_user `
-  -e MARIADB_PASSWORD=intel_***REMOVED*** `
+  -e MARIADB_PASSWORD=intel_pass123 `
   mariadb:10.11
 ```
 
@@ -142,7 +142,7 @@ docker run -d `
 3. **创建数据库**
    ```sql
    CREATE DATABASE intel_cw CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   CREATE USER 'intel_user'@'localhost' IDENTIFIED BY 'intel_***REMOVED***';
+   CREATE USER 'intel_user'@'localhost' IDENTIFIED BY 'intel_pass123';
    GRANT ALL PRIVILEGES ON intel_cw.* TO 'intel_user'@'localhost';
    FLUSH PRIVILEGES;
    ```
@@ -256,7 +256,7 @@ docker run -d \
   -e MARIADB_ROOT_PASSWORD=mariadb123 \
   -e MARIADB_DATABASE=intel_cw \
   -e MARIADB_USER=intel_user \
-  -e MARIADB_PASSWORD=intel_***REMOVED*** \
+  -e MARIADB_PASSWORD=intel_pass123 \
   mariadb:10.11
 ```
 
@@ -272,7 +272,7 @@ brew services start mariadb
 # 创建数据库
 mysql -u root -p
 CREATE DATABASE intel_cw CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'intel_user'@'localhost' IDENTIFIED BY 'intel_***REMOVED***';
+CREATE USER 'intel_user'@'localhost' IDENTIFIED BY 'intel_pass123';
 GRANT ALL PRIVILEGES ON intel_cw.* TO 'intel_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
@@ -386,7 +386,7 @@ SERVICE_HOST_HOST=127.0.0.1
 MARIADB_HOST=127.0.0.1
 MARIADB_PORT=3306
 MARIADB_USER=intel_user
-MARIADB_PASSWORD=intel_***REMOVED***
+MARIADB_PASSWORD=intel_pass123
 MARIADB_DATABASE=intel_cw
 
 # MariaDB SSL/TLS 配置（可选，开发环境通常不需要）
@@ -427,7 +427,7 @@ SERVICE_HOST_HOST=127.0.0.1
 MARIADB_HOST=127.0.0.1
 MARIADB_PORT=3306
 MARIADB_USER=intel_user
-MARIADB_PASSWORD=intel_***REMOVED***
+MARIADB_PASSWORD=intel_pass123
 MARIADB_DATABASE=intel_cw
 
 # MariaDB SSL/TLS 配置（可选，开发环境通常不需要）
@@ -474,7 +474,7 @@ docker exec -i intel-mariadb mysql -uroot -pmariadb123 intel_cw < docs/database/
 
 ```bash
 # 连接数据库
-mysql -h 127.0.0.1 -P 3306 -u intel_user -pintel_***REMOVED***
+mysql -h 127.0.0.1 -P 3306 -u intel_user -pintel_pass123
 
 # 导入初始化脚本
 source docs/database/db.sql

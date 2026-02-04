@@ -76,8 +76,8 @@ shared/
 - **主要类**:
   - `JWTManager`: JWT令牌管理器
 - **主要函数**:
-  - `hash_***REMOVED***word()`: 密码加密
-  - `verify_***REMOVED***word()`: 密码验证
+  - `hash_password()`: 密码加密
+  - `verify_password()`: 密码验证
   - `init_jwt_manager()`: 初始化JWT管理器
   - `get_jwt_manager()`: 获取JWT管理器
 
@@ -173,7 +173,7 @@ from shared.app.application import create_fastapi_app
 app = create_fastapi_app(
     service_name="my-service",
     service_version="1.0.0",
-    database_url="mysql+aiomysql://user:***REMOVED***@localhost:3306/db",
+    database_url="mysql+aiomysql://user:pass@localhost:3306/db",
     redis_url="redis://localhost:6379/0",
     jwt_secret_key="your-secret-key",
     jaeger_endpoint="http://localhost:4318/v1/traces",
@@ -295,7 +295,7 @@ from shared.common.decorators import (
 async def create_user(user_data: dict):
     """创建用户"""
     # 业务逻辑
-    ***REMOVED***
+    pass
 
 # API 层使用
 @router.post("/users")

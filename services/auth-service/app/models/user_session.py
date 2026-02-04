@@ -32,16 +32,10 @@ class UserSession(Base):
 
     # Association fields - now supports multiple entity types
     entity_id: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        index=True,
-        comment="Entity ID (admin user ID or device ID)",
+        Integer, nullable=False, index=True, comment="Entity ID (admin user ID or device ID)"
     )
     entity_type: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        index=True,
-        comment="Entity type (admin_user or device)",
+        String(50), nullable=False, index=True, comment="Entity type (admin_user or device)"
     )
 
     # Session fields
@@ -58,10 +52,7 @@ class UserSession(Base):
 
     # Time fields
     created_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=func.now(),
-        nullable=False,
-        comment="Creation time",
+        DateTime(timezone=True), default=func.now(), nullable=False, comment="Creation time"
     )
     updated_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

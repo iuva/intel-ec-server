@@ -43,7 +43,7 @@ if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
     echo "  ✅ Grafana 运行正常"
     echo "  🌐 访问地址: http://localhost:3000"
     echo "  👤 默认账号: admin"
-    echo "  🔑 默认密码: ***REMOVED***"
+    echo "  🔑 默认密码: admin123"
 else
     echo "  ❌ Grafana 未运行"
 fi

@@ -52,7 +52,7 @@ BEGIN
             CONCAT('MG-PERF-', LPAD(i, 4, '0')),    -- MG-ID
             CONCAT('192.168.', FLOOR(i/255), '.', (i % 255)), -- IP
             22, 
-            'root', '***REMOVED***word', 
+            'root', 'password', 
             CONCAT('00:00:00:00:', LPAD(HEX(i), 2, '0')), -- MAC
             1, -- 已审批
             0, -- Free (默认空闲，支持 available_list)

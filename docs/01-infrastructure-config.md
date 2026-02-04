@@ -26,7 +26,7 @@ cp .env.example .env
 MARIADB_HOST=your_mariadb_host    # MariaDB 主机地址
 MARIADB_PORT=3306                 # MariaDB 端口
 MARIADB_USER=your_username        # MariaDB 用户名
-MARIADB_PASSWORD=your_***REMOVED***word    # MariaDB 密码
+MARIADB_PASSWORD=your_password    # MariaDB 密码
 MARIADB_DATABASE=intel_cw         # 数据库名称
 
 # MariaDB SSL/TLS 配置（可选）
@@ -99,7 +99,7 @@ CREATE DATABASE IF NOT EXISTS intel_cw CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 
 ```sql
 -- 创建用户
-CREATE USER 'intel_user'@'%' IDENTIFIED BY 'intel_***REMOVED***';
+CREATE USER 'intel_user'@'%' IDENTIFIED BY 'intel_pass123';
 
 -- 授权
 GRANT ALL PRIVILEGES ON intel_cw.* TO 'intel_user'@'%';
@@ -333,7 +333,7 @@ HTTP_CLIENT_VERIFY_SSL=true
 mysql -h your_mariadb_host -P 3306 -u your_username -p
 
 # 测试 Redis 连接
-redis-cli -h your_redis_host -p 6379 -a your_***REMOVED***word ping
+redis-cli -h your_redis_host -p 6379 -a your_password ping
 ```
 
 ### 验证服务配置

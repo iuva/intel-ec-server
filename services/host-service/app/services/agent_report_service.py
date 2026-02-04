@@ -11,7 +11,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import os
 import sys
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, select, update
@@ -492,14 +491,14 @@ class AgentReportService:
         """
         # Use template validator utility class for validation
         self.template_validator.validate_required_fields(dmr_config, hw_template)
-        logger.info("Hardware information required fields validation ***REMOVED***ed")
+        logger.info("Hardware information required fields validation passed")
 
     async def _get_current_hardware_record(self, host_id: int, session: Optional[Any] = None) -> Optional[HostHwRec]:
         """Get current effective hardware record
 
         Query the latest hardware record from host_hw_rec table
 
-        ✅ Optimization: Support ***REMOVED***ing external session to avoid creating new session
+        ✅ Optimization: Support passing external session to avoid creating new session
 
         Args:
             host_id: Host ID
@@ -521,7 +520,7 @@ class AgentReportService:
                 .limit(1)
             )
 
-            # ✅ Optimization: If session is ***REMOVED***ed, use it directly, otherwise create new session
+            # ✅ Optimization: If session is passed, use it directly, otherwise create new session
             if session:
                 result = await session.execute(stmt)
                 return result.scalar_one_or_none()
@@ -1567,225 +1566,6 @@ class AgentReportService:
                 error_code="OTA_UPDATE_STATUS_REPORT_FAILED",
                 code=ServiceErrorCodes.HOST_OTA_UPDATE_STATUS_REPORT_FAILED,
                 http_status_code=500,
-            )
-
-    async def update_due_time(
-        self,
-        host_id: int,
-        tc_id: str,
-        due_time: datetime,
-    ) -> Dict[str, Any]:
-        """更新测试用例预期结束时间
-
-        Args:
-            host_id: 主机ID（从token中获取）
-            tc_id: 测试用例ID
-            due_time: 预期结束时间
-
-        Returns:
-            更新结果
-
-        Raises:
-            BusinessError: 业务逻辑错误
-        """
-        try:
-            logger.info(
-                "开始处理预期结束时间上报",
-                extra={
-                    "host_id": host_id,
-                    "tc_id": tc_id,
-                    "due_time": due_time.isoformat() if due_time else None,
-                },
-            )
-
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as session:
-                # 1. 查询执行中的最新执行日志记录
-                # 查询条件：host_id, tc_id, case_state=1（启动状态）, del_flag=0
-                stmt = (
-                    select(HostExecLog)
-                    .where(
-                        and_(
-                            HostExecLog.host_id == host_id,
-                            HostExecLog.tc_id == tc_id,
-                            HostExecLog.case_state == 1,  # 启动状态（执行中）
-                            HostExecLog.del_flag == 0,
-                        )
-                    )
-                    .order_by(HostExecLog.created_time.desc())
-                    .limit(1)
-                )
-
-                result = await session.execute(stmt)
-                exec_log = result.scalar_one_or_none()
-
-                if not exec_log:
-                    raise BusinessError(
-                        message=f"未找到主机 {host_id} 的测试用例 {tc_id} 执行中的记录",
-                        message_key="error.host.exec_log_not_found",
-                        error_code="EXEC_LOG_NOT_FOUND",
-                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                        http_status_code=400,
-                        details={"host_id": host_id, "tc_id": tc_id},
-                    )
-
-                logger.info(
-                    "找到执行中的日志记录",
-                    extra={
-                        "host_id": host_id,
-                        "tc_id": tc_id,
-                        "log_id": exec_log.id,
-                        "current_due_time": exec_log.due_time.isoformat() if exec_log.due_time else None,
-                    },
-                )
-
-                # 2. 更新 due_time
-                update_stmt = (
-                    update(HostExecLog)
-                    .where(HostExecLog.id == exec_log.id)
-                    .values(due_time=due_time)
-                )
-
-                await session.execute(update_stmt)
-                await session.commit()
-
-                logger.info(
-                    "预期结束时间更新完成",
-                    extra={
-                        "host_id": host_id,
-                        "tc_id": tc_id,
-                        "log_id": exec_log.id,
-                        "due_time": due_time.isoformat(),
-                    },
-                )
-
-                return {
-                    "host_id": str(host_id),
-                    "tc_id": tc_id,
-                    "due_time": due_time,
-                    "updated": True,
-                }
-
-        except BusinessError:
-            raise
-        except Exception as e:
-            logger.error(
-                "预期结束时间上报处理异常",
-                extra={
-                    "host_id": host_id,
-                    "tc_id": tc_id,
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                },
-                exc_info=True,
-            )
-            raise BusinessError(
-                message="预期结束时间上报处理失败",
-                error_code="DUE_TIME_UPDATE_FAILED",
-                code=500,
-            )
-
-    async def report_vnc_connection_success(self, host_id: int) -> Dict[str, Any]:
-        """Agent 上报 VNC 连接成功
-
-        业务逻辑：
-        1. 从 token 中解析 host_id（已在依赖注入中完成）
-        2. 更新对应的 host_rec 表的 host_state = 2（已占用）
-
-        Args:
-            host_id: 主机ID（从token中获取）
-
-        Returns:
-            更新结果，包含 host_id、host_state 和 updated 字段
-
-        Raises:
-            BusinessError: 业务逻辑错误
-        """
-        try:
-            logger.info(
-                "开始处理 Agent VNC 连接成功上报",
-                extra={
-                    "host_id": host_id,
-                },
-            )
-
-            session_factory = mariadb_manager.get_session()
-            async with session_factory() as session:
-                # 1. 查询 host_rec 表，验证主机是否存在
-                stmt = select(HostRec).where(
-                    and_(
-                        HostRec.id == host_id,
-                        HostRec.del_flag == 0,
-                    )
-                )
-                result = await session.execute(stmt)
-                host_rec = result.scalar_one_or_none()
-
-                if not host_rec:
-                    logger.warning(
-                        "主机不存在或已删除",
-                        extra={
-                            "host_id": host_id,
-                        },
-                    )
-                    raise BusinessError(
-                        message=f"主机不存在: {host_id}",
-                        error_code="HOST_NOT_FOUND",
-                        code=404,
-                    )
-
-                # 2. 记录更新前的状态
-                old_host_state = host_rec.host_state
-
-                # 3. 更新 host_rec 表的 host_state = 2（已占用）
-                update_stmt = (
-                    update(HostRec)
-                    .where(
-                        and_(
-                            HostRec.id == host_id,
-                            HostRec.del_flag == 0,
-                        )
-                    )
-                    .values(host_state=2)  # 2 = 已占用
-                )
-
-                await session.execute(update_stmt)
-                await session.commit()
-
-                # 4. 刷新对象以获取最新状态
-                await session.refresh(host_rec)
-
-                logger.info(
-                    "Agent VNC 连接成功上报处理完成",
-                    extra={
-                        "host_id": host_id,
-                        "old_host_state": old_host_state,
-                        "new_host_state": host_rec.host_state,
-                    },
-                )
-
-                return {
-                    "host_id": host_id,
-                    "host_state": host_rec.host_state,
-                    "updated": True,
-                }
-
-        except BusinessError:
-            raise
-        except Exception as e:
-            logger.error(
-                "Agent VNC 连接成功上报处理失败",
-                extra={
-                    "host_id": host_id,
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                },
-                exc_info=True,
-            )
-            raise BusinessError(
-                message="Agent VNC 连接成功上报处理失败",
-                error_code="VNC_CONNECTION_REPORT_FAILED",
-                code=500,
             )
 
     async def _send_hardware_change_notification(

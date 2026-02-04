@@ -45,7 +45,7 @@ class TestWebSocketMessages:
                 assert response is not None, "Should receive response"
             except asyncio.TimeoutError:
                 # If no immediate response, this is also acceptable
-                ***REMOVED***
+                pass
 
     @pytest.mark.asyncio
     async def test_invalid_json_message(self, ws_url, sample_agent_id):

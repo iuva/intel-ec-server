@@ -94,7 +94,7 @@ router = APIRouter()
     - `tags`: Tag list (optional)
 
     ## Business logic
-    1. **First report**: Directly insert hardware record, approval status is ***REMOVED***ed
+    1. **First report**: Directly insert hardware record, approval status is passed
     2. **Version change**: Mark as version change (diff_state=1), waiting for approval
     3. **Content change**: Mark as content change (diff_state=2), waiting for approval
     4. **No change**: Do not update record, return no change status
