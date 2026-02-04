@@ -181,7 +181,7 @@ async def report_vnc_connection(
                             "ip": "192.168.101.118",
                             "port": "5900",
                             "username": "neusoft",
-                            "***REMOVED***word": "***REMOVED***",
+                            "***REMOVED***word": "********",  # Sensitive data redated
                         },
                     }
                 }

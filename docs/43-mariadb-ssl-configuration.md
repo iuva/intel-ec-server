@@ -525,7 +525,7 @@ async def test_ssl_connection():
     mariadb_host = os.getenv("MARIADB_HOST", "localhost")
     mariadb_port = os.getenv("MARIADB_PORT", "3306")
     mariadb_user = os.getenv("MARIADB_USER", "intel_user")
-    mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "intel_***REMOVED***")
+    mariadb_***REMOVED***word = os.getenv("MARIADB_PASSWORD", "your_***REMOVED***word")
     mariadb_database = os.getenv("MARIADB_DATABASE", "intel_cw")
     
     # SSL 配置

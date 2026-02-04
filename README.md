@@ -149,10 +149,10 @@ Access the following addresses to confirm that services are running normally:
 
 | Service | Port | Access Address | Description |
 |------|------|---------|------|
-| Nacos | 8848 | <http://localhost:8848/nacos> | Service Discovery (username/***REMOVED***word: nacos/nacos) |
+| Nacos | 8848 | <http://localhost:8848/nacos> | Service Discovery (Default credentials refer to official docs) |
 | Jaeger | 16686 | <http://localhost:16686> | Distributed Tracing |
 | Prometheus | 9090 | <http://localhost:9090> | Metric Collection |
-| Grafana | 3000 | <http://localhost:3000> | Monitoring Visualization (username/***REMOVED***word: admin/***REMOVED***) | -->
+| Grafana | 3000 | <http://localhost:3000> | Monitoring Visualization (Default: admin/admin) | -->
 
 ## 🛠️ Development Tools
 
@@ -360,7 +360,7 @@ REDIS_PASSWORD=
 REDIS_DB=0
 
 # JWT configuration
-JWT_SECRET_KEY=your-secret-key-change-this-in-production
+JWT_SECRET_KEY=your_production_secret_key_********
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
@@ -372,7 +372,7 @@ LOG_LEVEL=INFO
 HARDWARE_API_URL=http://localhost:8080
 
 # AES key
-AES_ENCRYPTION_KEY=your_secure_32_byte_key_here_1234567890123456
+AES_ENCRYPTION_KEY=your_production_aes_key_********
 
 # File Upload Configuration
 FILE_UPLOAD_DIR=/Users/xiyeming/Downloads/uploads

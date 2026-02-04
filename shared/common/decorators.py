@@ -758,7 +758,7 @@ def _log_operation_result(
         extra["error"] = str(error)
 
     if status == "success":
-        logger.info(f"{operation_name} completed", extra=extra)
+        logger.debug(f"{operation_name} completed", extra=extra)
     # ✅ Log complete stack trace information on failure
     elif error and hasattr(error, "__traceback__") and error.__traceback__:
         logger.error(

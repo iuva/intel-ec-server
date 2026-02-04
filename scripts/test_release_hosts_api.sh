@@ -22,10 +22,17 @@ echo ""
 echo -e "${GREEN}步骤 1: 获取 JWT Token${NC}"
 echo "正在登录..."
 
+ADMIN_CLIENT_SECRET="${ADMIN_CLIENT_SECRET:-admin_secret}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-***REMOVED***}"
+
+if [ "$ADMIN_CLIENT_SECRET" = "admin_secret" ]; then
+    echo -e "${YELLOW}提示: 使用默认 admin_client_secret (可通过 ADMIN_CLIENT_SECRET 环境变量设置)${NC}"
+fi
+
 TOKEN_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/v1/auth/admin/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -u "***REMOVED***" \
-  -d "grant_type=***REMOVED***word&username=admin&***REMOVED***word=***REMOVED***")
+  -u "admin_client:$ADMIN_CLIENT_SECRET" \
+  -d "grant_type=***REMOVED***word&username=admin&***REMOVED***word=$ADMIN_PASSWORD")
 
 # 提取 access_token
 ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"access_token":"[^"]*"' | sed 's/"access_token":"\(.*\)"/\1/')

@@ -128,7 +128,7 @@ class AdminLoginRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "username": "admin",
-                "***REMOVED***word": "***REMOVED***",
+                "***REMOVED***word": "your_***REMOVED***word",
             }
         }
     }

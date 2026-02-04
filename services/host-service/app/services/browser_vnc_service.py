@@ -487,7 +487,7 @@ class BrowserVNCService:
                 "ip": "192.168.101.118",
                 "port": "5900",
                 "username": "neusoft",
-                "***REMOVED***word": "***REMOVED***"
+                "***REMOVED***word": "********"
             }
 
         Raises:
@@ -515,7 +515,7 @@ class BrowserVNCService:
                 "ip": "10.239.168.184",
                 "port": "5900",
                 "username": "ccr\\sys_eval",
-                "***REMOVED***word": "***REMOVED***",
+                "***REMOVED***word": "***REMOVED***",  # Mock data for internal testing
             }
 
         try:

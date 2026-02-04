@@ -123,35 +123,30 @@ class AuthService:
         jwt_secret_key = os.getenv("JWT_SECRET_KEY", "")
         environment = os.getenv("ENVIRONMENT", "development").lower()
         if environment == "production":
-            if not jwt_secret_key or jwt_secret_key in (
-                "your-secret-key-change-in-production",
-                "your-secret-key-here",
-                "default_secret_key",
-                "",
-            ):
+            # In production, key must be set and have sufficient length
+            if not jwt_secret_key or len(jwt_secret_key) < 32:
                 logger.error(
-                    "Production environment must set JWT_SECRET_KEY environment variable, and cannot use default value"
+                    "Production environment must set JWT_SECRET_KEY environment variable with at least 32 characters"
                 )
                 raise ValueError(
                     (
-                        "Production environment must set JWT_SECRET_KEY environment variable, "
-                        "please configure JWT_SECRET_KEY in .env or ***REMOVED*** through environment variable."
+                        "Production environment must set JWT_SECRET_KEY environment variable (min 32 chars). "
+                        "Please configure JWT_SECRET_KEY in .env or ***REMOVED*** through environment variable."
                     )
                 )
-        # Development environment: if not set, use default value and warn
-        elif not jwt_secret_key or jwt_secret_key in (
-            "your-secret-key-change-in-production",
-            "your-secret-key-here",
-            "default_secret_key",
-            "",
-        ):
+        # Development environment: if not set or too short, warn but proceed
+        elif not jwt_secret_key or len(jwt_secret_key) < 8:
             logger.warning(
                 (
-                    "JWT_SECRET_KEY not set or using default value, "
-                    "this is insecure in production environment, please set this environment variable."
+                    "JWT_SECRET_KEY not set or too short (unsafe), "
+                    "this is insecure in production environment. Using a temporary random key for dev."
                 )
             )
-            jwt_secret_key = "your-secret-key-change-in-production"
+            # Generate a random 32-char key for development if missing/weak
+            # This ensures even dev environment doesn't use a known constant string
+            import secrets
+
+            jwt_secret_key = secrets.token_urlsafe(32)
 
         self.jwt_manager = JWTManager(
             secret_key=jwt_secret_key,

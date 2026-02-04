@@ -342,7 +342,7 @@ Content-Type: application/json
 
 {
   "username": "admin",
-  "***REMOVED***word": "***REMOVED***"
+  "***REMOVED***word": "your_***REMOVED***word"
 }
 ```
 

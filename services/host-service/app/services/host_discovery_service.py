@@ -60,15 +60,6 @@ class HostDiscoveryService:
     supports cursor pagination and external API integration.
     """
 
-    # Circuit Breaker State (Shared across all instances)
-    _last_failure_time = 0.0
-    _consecutive_failures = 0
-    _circuit_open = False
-
-    # Circuit Breaker Configuration
-    CB_FAILURE_THRESHOLD = 5
-    CB_RECOVERY_TIMEOUT = 60.0
-
     def __init__(self, hardware_api_url: Optional[str] = None):
         """Initialize Host Discovery Service
 
@@ -486,29 +477,9 @@ class HostDiscoveryService:
                 - External API returned non-200 status code
                 - Response data format does not meet expectations
 
-        Note:
-            - Circuit Breaker pattern implemented (Threshold: 5 failures, Recovery: 60s)
+        note:
+            - Circuit breaker logic has been removed as per user request.
         """
-        # ✅ Circuit Breaker Check
-        current_time = time.time()
-        if HostDiscoveryService._circuit_open:
-            if current_time - HostDiscoveryService._last_failure_time < HostDiscoveryService.CB_RECOVERY_TIMEOUT:
-                logger.warning(
-                    "Hardware API circuit breaker is OPEN, rejecting request",
-                    extra={
-                        "tc_id": tc_id,
-                        "last_failure_time": HostDiscoveryService._last_failure_time,
-                        "recovery_timeout": HostDiscoveryService.CB_RECOVERY_TIMEOUT,
-                    },
-                )
-                raise BusinessError(
-                    message="Hardware API service is temporarily unavailable (Circuit Breaker Open)",
-                    error_code="HOST_HARDWARE_API_CIRCUIT_BREAKER_OPEN",
-                    code=ServiceErrorCodes.HOST_HARDWARE_API_CIRCUIT_BREAKER_OPEN,
-                    http_status_code=503,
-                )
-            logger.info("Hardware API circuit breaker entering HALF-OPEN state", extra={"tc_id": tc_id})
-
         try:
             # ✅ Use unified external API client (supports authentication and SSL configuration)
             url_path = "/api/v1/hardware/hosts"
@@ -542,24 +513,6 @@ class HostDiscoveryService:
                     timeout=10.0,  # ✅ Optimization: Reduced from 30.0 to 10.0
                 )
             except (asyncio.TimeoutError, httpx.TimeoutException):
-                # ❌ Circuit Breaker: Record Failure (Timeout)
-                HostDiscoveryService._consecutive_failures += 1
-                if HostDiscoveryService._consecutive_failures >= HostDiscoveryService.CB_FAILURE_THRESHOLD:
-                    HostDiscoveryService._circuit_open = True
-                    HostDiscoveryService._last_failure_time = time.time()
-                    logger.error(
-                        "Hardware API circuit breaker TRIPPED (OPEN) due to timeout",
-                        extra={"failures": HostDiscoveryService._consecutive_failures},
-                    )
-
-                logger.error(
-                    "Hardware API call timeout",
-                    extra={
-                        "tc_id": tc_id,
-                        "url_path": url_path,
-                        "timeout": 10.0,
-                    },
-                )
                 raise BusinessError(
                     message="Hardware API call timed out, please try again later",
                     error_code="HOST_HARDWARE_API_TIMEOUT",
@@ -567,31 +520,12 @@ class HostDiscoveryService:
                     http_status_code=504,  # Gateway Timeout
                 )
             except Exception:
-                # ❌ Circuit Breaker: Record Failure (Other errors)
-                HostDiscoveryService._consecutive_failures += 1
-                if HostDiscoveryService._consecutive_failures >= HostDiscoveryService.CB_FAILURE_THRESHOLD:
-                    HostDiscoveryService._circuit_open = True
-                    HostDiscoveryService._last_failure_time = time.time()
-                    logger.error(
-                        "Hardware API circuit breaker TRIPPED (OPEN) due to exception",
-                        extra={"failures": HostDiscoveryService._consecutive_failures},
-                    )
                 raise
 
             status_code = response.get("status_code")
             response_body = response.get("body")
 
             if status_code != 200:
-                # ❌ Circuit Breaker: Record Failure (Non-200)
-                HostDiscoveryService._consecutive_failures += 1
-                if HostDiscoveryService._consecutive_failures >= HostDiscoveryService.CB_FAILURE_THRESHOLD:
-                    HostDiscoveryService._circuit_open = True
-                    HostDiscoveryService._last_failure_time = time.time()
-                    logger.error(
-                        f"Hardware API circuit breaker TRIPPED (OPEN) due to status {status_code}",
-                        extra={"failures": HostDiscoveryService._consecutive_failures},
-                    )
-
                 error_msg = (
                     response.get("body", {}).get("message", "Unknown error")
                     if isinstance(response.get("body"), dict)
@@ -613,15 +547,6 @@ class HostDiscoveryService:
                     code=ServiceErrorCodes.HOST_HARDWARE_API_ERROR,
                     http_status_code=status_code or 500,
                 )
-
-            # ✅ Circuit Breaker: Success (Reset)
-            if HostDiscoveryService._circuit_open or HostDiscoveryService._consecutive_failures > 0:
-                logger.info(
-                    "Hardware API circuit breaker CLOSED (Recovered)",
-                    extra={"failures_reset": HostDiscoveryService._consecutive_failures},
-                )
-                HostDiscoveryService._circuit_open = False
-                HostDiscoveryService._consecutive_failures = 0
 
             # Parse response data
             data = response_body if response_body else {}

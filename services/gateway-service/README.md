@@ -64,7 +64,7 @@ NACOS_SERVER_ADDR=http://intel-nacos:8848
 REDIS_URL=redis://intel-redis:6379/0
 
 # JWT Configuration
-JWT_SECRET_KEY=your-secret-key-here
+JWT_SECRET_KEY=your_jwt_secret_key
 JWT_ALGORITHM=HS256
 
 # Authentication Service Configuration

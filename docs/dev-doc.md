@@ -735,7 +735,7 @@ fetch('https://hsdes.intel.com/rest/user?expand=personal', {
     "ip": "192.168.101.118",
     "port": "5900",
     "username": "neusoft",
-    "***REMOVED***word": "***REMOVED***"
+    "***REMOVED***word": "********"
 }
 ```
 
@@ -751,7 +751,7 @@ fetch('https://hsdes.intel.com/rest/user?expand=personal', {
 ```vnc
 Host=192.168.101.118::5900
 UserName=sendiyang
-Password=***REMOVED***
+Password=********
 ```
 
 #### 5.1.7 重试VNC连接（EC服务接口）
