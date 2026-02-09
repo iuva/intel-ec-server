@@ -85,6 +85,7 @@ class ServiceConfig:
         health_check_max_connections: int = 10,
         health_check_max_retries: int = 1,
         health_check_retry_delay: float = 0.0,
+        redis_name: Optional[str] = None,
     ):
         """
         Initialize service configuration
@@ -102,6 +103,7 @@ class ServiceConfig:
             enable_nacos: Whether to enable Nacos service discovery (default: True)
             enable_jaeger: Whether to enable Jaeger tracing (default: True)
             enable_prometheus: Whether to enable Prometheus monitoring (default: True)
+            redis_name: Redis client name (optional)
         """
         self.service_name = service_name
         self.service_port = service_port
@@ -109,6 +111,7 @@ class ServiceConfig:
         self.nacos_server_addr = nacos_server_addr
         self.mariadb_url = mariadb_url
         self.redis_url = redis_url
+        self.redis_name = redis_name
         self.jwt_secret_key = jwt_secret_key
 
         self.jaeger_endpoint = jaeger_endpoint
@@ -194,6 +197,7 @@ class ServiceConfig:
 
         # Redis SSL configuration
         redis_ssl_enabled = os.getenv("REDIS_SSL_ENABLED", "false").lower() in ("true", "1", "yes")
+        redis_name = os.getenv("REDIS_NAME")
 
         try:
             redis_host, redis_port, redis_db = validate_redis_config(redis_host, redis_port_str, redis_db_str)
@@ -300,6 +304,7 @@ class ServiceConfig:
             health_check_retry_delay=health_check_retry_delay,
             db_pool_size=db_pool_size,
             db_max_overflow=db_max_overflow,
+            redis_name=redis_name,
         )
 
 
@@ -367,6 +372,7 @@ class ServiceLifecycleManager:
                 enable_sql_monitoring=self.config.enable_sql_monitoring,
                 slow_query_threshold=self.config.slow_query_threshold,
                 service_name=self.config.service_name,
+                redis_name=self.config.redis_name,
             )
             logger.info("Database connection initialized successfully")
 

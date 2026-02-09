@@ -46,6 +46,15 @@ except ImportError:
     from shared.common.exceptions import BusinessError, ServiceErrorCodes
     from shared.common.loguru_config import get_logger
 
+try:
+    from app.utils.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+except ImportError:
+    # Handle case where utils might not be in path during tests if not set up correctly
+    import sys
+
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from app.utils.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+
 logger = get_logger(__name__)
 
 
@@ -66,6 +75,8 @@ class HostDiscoveryService:
         self._http_client: Optional[httpx.AsyncClient] = None
         # ✅ Optimization: Cache session factory
         self._session_factory = None
+        # ✅ Circuit Breaker: 5 failures in 30s triggers open state, 60s recovery timeout
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, failure_window=30.0, recovery_timeout=60.0)
 
     @property
     def session_factory(self):
@@ -499,7 +510,10 @@ class HostDiscoveryService:
             # If email is provided, will directly use this email to get token without querying database
             # ✅ Optimization: Reduce timeout from 30s to 10s, fail fast to avoid blocking
             try:
-                response = await call_external_api(
+                # ✅ Use Circuit Breaker to protect external API calls
+                # If 5 consecutive failures occur within 30s, circuit opens for 60s
+                response = await self.circuit_breaker.call(
+                    call_external_api,
                     method="GET",
                     url_path=url_path,
                     request=request,
@@ -507,6 +521,21 @@ class HostDiscoveryService:
                     email=email,  # ✅ Pass email parameter
                     params=params,
                     timeout=10.0,  # ✅ Optimization: Reduced from 30.0 to 10.0
+                )
+            except CircuitBreakerOpenError:
+                logger.warning(
+                    "Circuit breaker is OPEN, rejecting hardware API call",
+                    extra={
+                        "tc_id": tc_id,
+                        "failure_threshold": self.circuit_breaker.failure_threshold,
+                        "recovery_timeout": self.circuit_breaker.recovery_timeout,
+                    },
+                )
+                raise BusinessError(
+                    message="Hardware service is temporarily unavailable (Circuit Breaker Open)",
+                    error_code="HOST_HARDWARE_API_CIRCUIT_OPEN",
+                    code=ServiceErrorCodes.HOST_HARDWARE_API_TIMEOUT,  # Use similar error code
+                    http_status_code=503,  # Service Unavailable
                 )
             except (asyncio.TimeoutError, httpx.TimeoutException):
                 raise BusinessError(

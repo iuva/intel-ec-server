@@ -326,6 +326,7 @@ class RedisManager:
         ssl_keyfile: Optional[str] = None,
         ssl_cert_reqs: Optional[str] = None,
         ssl_check_hostname: bool = False,
+        client_name: Optional[str] = None,
     ) -> None:
         """Connect to Redis server
 
@@ -334,6 +335,7 @@ class RedisManager:
             encoding: Character encoding
             decode_responses: Whether to automatically decode responses
             max_connections: Maximum connections (default None, will read from env REDIS_MAX_CONNECTIONS or default to 200)
+            client_name: Client name (optional)
         """
 
         # Mask URL for logging
@@ -365,7 +367,7 @@ class RedisManager:
             ssl_check_hostname = os.getenv("REDIS_SSL_VERIFY_IDENTITY", "false").lower() in ("true", "1", "yes")
 
         # Build SSL parameters dictionary
-        ssl_params = {}
+        extra_params = {}
         if ssl_enabled:
             # Create SSL context
             ssl_context = ssl.create_default_context()
@@ -423,22 +425,22 @@ class RedisManager:
 
             # Pass certificate file paths (if provided)
             if ssl_ca_certs:
-                ssl_params["ssl_ca_certs"] = ssl_ca_certs
+                extra_params["ssl_ca_certs"] = ssl_ca_certs
             if ssl_certfile:
-                ssl_params["ssl_certfile"] = ssl_certfile
+                extra_params["ssl_certfile"] = ssl_certfile
             if ssl_keyfile:
-                ssl_params["ssl_keyfile"] = ssl_keyfile
+                extra_params["ssl_keyfile"] = ssl_keyfile
 
             # Pass certificate verification requirements
             # redis-py's ssl_cert_reqs accepts ssl.CERT_NONE, ssl.CERT_OPTIONAL, ssl.CERT_REQUIRED
             # or None (means no verification)
             if verify_mode_value == ssl.CERT_NONE:
-                ssl_params["ssl_cert_reqs"] = None  # Don't verify certificate
+                extra_params["ssl_cert_reqs"] = None  # Don't verify certificate
             else:
-                ssl_params["ssl_cert_reqs"] = verify_mode_value
+                extra_params["ssl_cert_reqs"] = verify_mode_value
 
             # Pass hostname verification setting
-            ssl_params["ssl_check_hostname"] = ssl_check_hostname if verify_mode_value != ssl.CERT_NONE else False
+            extra_params["ssl_check_hostname"] = ssl_check_hostname if verify_mode_value != ssl.CERT_NONE else False
 
             logger.info(
                 "Redis SSL enabled",
@@ -449,6 +451,11 @@ class RedisManager:
                 },
             )
 
+        # ✅ Pass client_name if provided and not empty
+        if client_name:
+            extra_params["client_name"] = client_name
+            logger.debug(f"Redis client name set to: {client_name}")
+
         try:
             # Log connection attempt
             logger.info(f"Connecting to Redis: {masked_url}")
@@ -458,7 +465,7 @@ class RedisManager:
                 encoding=encoding,
                 decode_responses=decode_responses,
                 max_connections=max_connections,
-                **ssl_params,  # ✅ Pass SSL parameters
+                **extra_params,  # ✅ Pass extra parameters (SSL + client_name)
             )
 
             # Test connection

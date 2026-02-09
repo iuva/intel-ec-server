@@ -183,6 +183,7 @@ services:
       - PYTHONPATH=/install/lib/python3.8/site-packages:/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REDIS_NAME=${REDIS_NAME}
     ports:
       - "${GATEWAY_SERVICE_PORT:-8000}:8000"
     networks:
@@ -223,6 +224,7 @@ services:
       - PYTHONPATH=/install/lib/python3.8/site-packages:/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REDIS_NAME=${REDIS_NAME}
     ports:
       - "${AUTH_SERVICE_PORT:-8001}:8001"
     networks:
@@ -258,6 +260,7 @@ services:
       - PYTHONPATH=/install/lib/python3.8/site-packages:/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REDIS_NAME=${REDIS_NAME}
       - USE_HARDWARE_MOCK=${USE_HARDWARE_MOCK:-false}
       - FILE_UPLOAD_DIR=${FILE_UPLOAD_DIR:-/app/uploads}
     ports:

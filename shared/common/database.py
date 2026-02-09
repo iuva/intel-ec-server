@@ -536,6 +536,7 @@ async def init_databases(
     connect_timeout: int = 10,
     read_timeout: int = 30,
     write_timeout: int = 30,
+    redis_name: Optional[str] = None,
 ) -> None:
     """Initialize database connection
 
@@ -553,6 +554,7 @@ async def init_databases(
                 # (Note: aiomysql does not support this, kept for backward compatibility)
         write_timeout: Write timeout (seconds), default 30s
                 # (Note: aiomysql does not support this, kept for backward compatibility)
+        redis_name: Redis client name (Optional)
     """
     try:
         # Connect to MariaDB
@@ -577,6 +579,7 @@ async def init_databases(
                 encoding="utf-8",
                 decode_responses=True,
                 max_connections=50,
+                client_name=redis_name,
             )
             logger.info("Redis connection initialized")
         else:
