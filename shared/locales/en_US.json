@@ -96,10 +96,10 @@
     "hardware": {
       "report_failed": "Hardware information reporting failed",
       "test_result_report_failed": "Test case result reporting failed",
-      "api_call_failed": "Failed to call external hardware API: {error}",
+      "api_call_failed": "Failed to call the Intel external hardware interface: {error}",
       "create_failed": "Failed to create hardware record",
       "update_failed": "Failed to update hardware record",
-      "api_error": "Hardware API call error, please try again later",
+      "api_error": "Intel hardware API call error, please try again later",
       "creation_in_progress": "Hardware record is being created, please try again later",
       "invalid_response": "Hardware API returned invalid response"
     },

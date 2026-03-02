@@ -96,10 +96,10 @@
     "hardware": {
       "report_failed": "硬件信息上报处理失败",
       "test_result_report_failed": "测试用例结果上报处理失败",
-      "api_call_failed": "调用外部硬件接口失败: {error}",
+      "api_call_failed": "调用 intel 外部硬件接口失败: {error}",
       "create_failed": "创建硬件记录失败",
       "update_failed": "更新硬件记录失败",
-      "api_error": "硬件接口调用异常，请稍后重试",
+      "api_error": "intel 硬件接口调用异常，请稍后重试",
       "creation_in_progress": "硬件记录正在创建中，请稍后重试",
       "invalid_response": "硬件接口返回了无效响应"
     },
