@@ -511,7 +511,7 @@ class BrowserVNCService:
                 "ip": "10.239.168.184",
                 "port": "5900",
                 "username": "ccr\\sys_eval",
-                "password": "7b21032ec8eff0519d3193d9d29028e990f28ed3c9752e18",  # Mock data for internal testing
+                "password": "",  # Mock data for internal testing
             }
 
         try:
