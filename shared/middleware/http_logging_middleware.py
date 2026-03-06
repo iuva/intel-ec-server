@@ -6,21 +6,20 @@ Records detailed information for all HTTP requests and responses, including:
 - Request body (JSON format)
 - Response status code, response body (JSON format)
 - Request duration
+
+Uses pure ASGI middleware (no BaseHTTPMiddleware) so all code runs in the same
+async context and avoids "no current event loop in thread" in worker threads (e.g. AnyIO).
 """
 
 import json
-import os  # ✅ Fix NameError: Ensure os is imported
+import os
 import time
-from typing import Any, Optional
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response, StreamingResponse
+from typing import Any, Callable, List, Optional
+from urllib.parse import parse_qs
 
 try:
     from shared.common.loguru_config import get_logger
 except ImportError:
-    import os
     import sys
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
@@ -29,26 +28,55 @@ except ImportError:
 logger = get_logger(__name__)
 
 
-class HTTPLoggingMiddleware(BaseHTTPMiddleware):
-    """
-    HTTP Request/Response Logging Middleware
+def _get_header(scope: dict, name: str) -> Optional[str]:
+    """Get header value from ASGI scope (case-insensitive)."""
+    name_lower = name.lower().encode("utf-8")
+    for k, v in scope.get("headers", []):
+        if k.lower() == name_lower:
+            return v.decode("utf-8", errors="replace")
+    return None
 
-    Automatically records detailed information for all HTTP requests and responses:
-    - Request method, path, query parameters
-    - Request body (JSON format)
-    - Response status code, response body (JSON format)
-    - Request duration
+
+def _parse_query_params(scope: dict) -> Optional[dict]:
+    """Parse query string from scope into a dict (first value per key)."""
+    qs = scope.get("query_string", b"")
+    if not qs:
+        return None
+    try:
+        parsed = parse_qs(qs.decode("utf-8", errors="replace"), keep_blank_values=True)
+        return {k: v[0] if len(v) == 1 else v for k, v in parsed.items()} or None
+    except Exception:
+        return None
+
+
+def _parse_json_body(body: bytes) -> Optional[dict]:
+    """Parse JSON from body bytes; return None if not JSON or invalid."""
+    if not body:
+        return None
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+class HTTPLoggingMiddleware:
+    """
+    HTTP Request/Response Logging Middleware (pure ASGI).
+
+    Automatically records detailed information for all HTTP requests and responses.
+    Does not inherit BaseHTTPMiddleware; runs entirely in the same async context
+    to avoid missing event loop in worker threads.
     """
 
     def __init__(self, app: Any, exclude_paths: Optional[list] = None) -> None:
         """
-        Initialize the middleware
+        Initialize the middleware.
 
         Args:
-            app: FastAPI application instance
-            exclude_paths: List of excluded paths (paths not to log, such as /health, /metrics)
+            app: ASGI application (next in chain)
+            exclude_paths: List of path prefixes to exclude from logging (e.g. /health, /metrics)
         """
-        super().__init__(app)
+        self.app = app
         self.exclude_paths = exclude_paths or [
             "/health",
             "/metrics",
@@ -58,299 +86,179 @@ class HTTPLoggingMiddleware(BaseHTTPMiddleware):
         ]
 
     def _should_log(self, path: str) -> bool:
-        """Determine whether to log
-
-        Args:
-            path: Request path
-
-        Returns:
-            Whether to log
-        """
-        # Remove query parameters
+        """Return True if this path should be logged."""
         clean_path = path.split("?")[0]
-
-        # Check if in exclusion list
         for exclude_path in self.exclude_paths:
             if clean_path.startswith(exclude_path):
                 return False
-
         return True
 
-    async def _read_request_body(self, request: Request) -> Optional[dict]:
-        """Read request body (JSON format)
-
-        Args:
-            request: FastAPI request object
-
-        Returns:
-            Parsed JSON object, return None if not in JSON format
-        """
-        try:
-            # Check Content-Type
-            content_type = request.headers.get("content-type", "").lower()
-            if "application/json" not in content_type:
-                return None
-
-            # Read body
-            body = await request.body()
-
-            # If body is empty, return None
-            if not body:
-                return None
-
-            # Try to parse JSON
-            try:
-                return json.loads(body.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                return None
-
-        except Exception:
-            # Return None when reading fails
-            return None
-
-    async def _read_response_body(self, response: Response) -> Optional[dict]:
-        """Read response body (JSON format)
-
-        Args:
-            response: FastAPI response object
-
-        Returns:
-            Parsed JSON object, return None if not in JSON format
-        """
-        try:
-            # Check Content-Type
-            content_type = response.headers.get("content-type", "").lower()
-            if "application/json" not in content_type:
-                return None
-
-            # If it's a StreamingResponse, unable to read body
-            if isinstance(response, StreamingResponse):
-                return None
-
-            # Method 1: Try to read from JSONResponse's body property (FastAPI/Starlette)
-            if hasattr(response, "body"):
-                body = response.body
-                if body:
-                    if isinstance(body, bytes):
-                        try:
-                            return json.loads(body.decode("utf-8"))
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            return None
-                    elif isinstance(body, str):
-                        try:
-                            return json.loads(body)
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            return None
-                    elif isinstance(body, (dict, list)):
-                        # If body is already a dictionary or list, return directly
-                        return body
-
-            # Method 2: Try to get content from JSONResponse's render method
-            # FastAPI's JSONResponse serializes the body when rendering
-            # Note: The render() method doesn't require parameters,
-            # but modifies the response object, so it's not used here
-            # Instead, read the body property directly in dispatch
-
-            # Method 3: Try to read from _content property (for certain response types)
-            if hasattr(response, "_content") and response._content:
-                body = response._content
-                if isinstance(body, bytes):
-                    try:
-                        return json.loads(body.decode("utf-8"))
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        return None
-
-            # ❌ Note: Don't try to read from body_iterator!
-            # body_iterator is part of the response stream, consuming it will break the response stream
-            # If attempting to recreate, an async iterator must be created, but this is complex and error-prone
-            # For JSONResponse, it should be possible to read from body or content property
-
-            return None
-
-        except Exception:
-            # Return None when reading fails
-            return None
-
     def _extract_error_summary(self, response_body: Any) -> str:
-        """Extract error summary information from response body
-
-        Args:
-            response_body: Response body (could be dictionary, list, or other type)
-
-        Returns:
-            Error summary string
-        """
+        """Extract a short error summary from response body for logging."""
         if not isinstance(response_body, dict):
-            # If it's a list, try to extract the first error
             if isinstance(response_body, list) and response_body:
-                first_error = response_body[0]
-                if isinstance(first_error, dict):
-                    return f"Validation error: {first_error.get('msg', 'Unknown error')}"
+                first = response_body[0]
+                if isinstance(first, dict):
+                    return f"Validation error: {first.get('msg', 'Unknown error')}"
             return "Unknown error format"
-
-        # Try to extract error information
         error_parts = []
-
-        # 1. Extract message field
         if "message" in response_body:
             error_parts.append(f"Message: {response_body['message']}")
-
-        # 2. Extract error_code field
         if "error_code" in response_body:
             error_parts.append(f"Error code: {response_body['error_code']}")
-
-        # 3. Extract validation errors from details (422 errors)
         if "details" in response_body and isinstance(response_body["details"], dict):
             details = response_body["details"]
-            # Check if there are errors fields (validation errors)
             if "errors" in details and isinstance(details["errors"], dict):
-                errors = details["errors"]
-                if errors:
-                    # Extract field validation errors
-                    field_errors = []
-                    for field, error_msg in errors.items():
-                        field_errors.append(f"{field}: {error_msg}")
-                    if field_errors:
-                        error_parts.append(f"Validation errors: {', '.join(field_errors)}")
-
-        # 4. If no information extracted, return keys from response body
+                errs = details["errors"]
+                if errs:
+                    field_errors = [f"{f}: {msg}" for f, msg in errs.items()]
+                    error_parts.append(f"Validation errors: {', '.join(field_errors)}")
         if not error_parts:
             error_parts.append(f"Response keys: {', '.join(response_body.keys())}")
-
         return " | ".join(error_parts)
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """Process request and log
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Args:
-            request: FastAPI request object
-            call_next: Next middleware or route handler
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        if not self._should_log(path):
+            await self.app(scope, receive, send)
+            return
 
-        Returns:
-            FastAPI response object
-        """
-        # Check whether to log
-        if not self._should_log(request.url.path):
-            return await call_next(request)
+        client = scope.get("client")
+        client_ip = client[0] if client else "unknown"
+        query_params = _parse_query_params(scope)
+        log_body = os.getenv("ENABLE_HTTP_BODY_LOGGING", "false").lower() in ("true", "1", "yes")
 
-        # Record start time
-        start_time = time.time()
+        # Optionally buffer request body for logging (must consume receive before calling app)
+        request_body_for_log: Optional[dict] = None
+        request_messages: List[dict] = []
 
-        # Extract request information
-        method = request.method
-        path = request.url.path
-        query_params = dict(request.query_params)
-        client_ip = request.client.host if request.client else "unknown"
+        if log_body and ((_get_header(scope, "content-type") or "").lower().startswith("application/json")):
+            while True:
+                message = await receive()
+                request_messages.append(message)
+                if not message.get("more_body", True):
+                    break
+            raw = b"".join(m.get("body", b"") for m in request_messages)
+            request_body_for_log = _parse_json_body(raw)
+
+        async def new_receive() -> dict:
+            if request_messages:
+                return request_messages.pop(0)
+            return await receive()
 
         request_log_data = {
             "method": method,
             "path": path,
-            "query_params": query_params if query_params else None,
+            "query_params": query_params,
             "client_ip": client_ip,
         }
+        if request_body_for_log is not None:
+            request_log_data["body"] = request_body_for_log
+        logger.info(f"HTTP Request: {method} {path}", extra=request_log_data)
 
-        # ✅ Optimization: Skip logging body by default to improve performance
-        # Only log body if explicitly enabled via environment variable
-        log_body = os.getenv("ENABLE_HTTP_BODY_LOGGING", "false").lower() in ("true", "1", "yes")
+        start_time = time.time()
+        response_status: Optional[int] = None
+        response_headers: List[tuple] = []
+        response_body_chunks: List[bytes] = []
+        response_body_complete = False
 
-        request_body = None
-        if log_body:
-            # Read request body (JSON format)
-            request_body = await self._read_request_body(request)
-
-        if request_body is not None:
-            request_log_data["body"] = request_body
-
-        logger.info(
-            f"HTTP Request: {method} {path}",
-            extra=request_log_data,
-        )
+        async def send_wrapped(message: dict) -> None:
+            nonlocal response_status, response_body_complete
+            if message["type"] == "http.response.start":
+                response_status = message.get("status")
+                response_headers.extend(message.get("headers", []))
+            elif message["type"] == "http.response.body":
+                response_body_chunks.append(message.get("body", b""))
+                if not message.get("more_body", True):
+                    response_body_complete = True
+            await send(message)
 
         try:
-            # Process request
-            response = await call_next(request)
-
-            # Calculate duration
-            duration = time.time() - start_time
-
-            # Extract response information
-            status_code = response.status_code
-
-            # Log response
-            response_log_data = {
-                "method": method,
-                "path": path,
-                "status_code": status_code,
-                "duration_ms": round(duration * 1000, 2),
-            }
-
-            # ✅ For error responses (4xx, 5xx), try to log response body for debugging
-            # For success responses, skip body logging to save resources
-            is_error_response = status_code >= 400
-
-            response_body = None
-            if is_error_response or log_body:
-                # ✅ Read response body (JSON format)
-                response_body = await self._read_response_body(response)
-
-            if response_body is not None:
-                response_log_data["body"] = response_body
-                if is_error_response:
-                    # Extract key error information
-                    error_summary = self._extract_error_summary(response_body)
-                    logger.warning(
-                        (
-                            f"HTTP Error Response: {method} {path} - {status_code} "
-                            f"({duration * 1000:.2f}ms) - {error_summary}"
-                        ),
-                        extra=response_log_data,
-                    )
-                else:
-                    logger.info(
-                        f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
-                        extra=response_log_data,
-                    )
-            # ✅ For error responses, even if unable to read body, also log warning
-            elif is_error_response:
-                logger.warning(
-                    (
-                        f"HTTP Error Response: {method} {path} - {status_code} "
-                        f"({duration * 1000:.2f}ms) - Unable to read response body"
-                    ),
-                    extra={
-                        **response_log_data,
-                        "hint": (
-                            "Response body may not be in JSON format, or response type "
-                            "doesn't support reading (e.g., StreamingResponse)"
-                        ),
-                        "content_type": response.headers.get("content-type"),
-                    },
-                )
-            else:
-                # Even if unable to read body, still log response status code and duration
-                logger.info(
-                    f"HTTP Response: {method} {path} - {status_code} ({duration * 1000:.2f}ms)",
-                    extra=response_log_data,
-                )
-
-            return response
-
+            await self.app(scope, new_receive, send_wrapped)
         except Exception as e:
-            # Calculate duration
-            duration = time.time() - start_time
-
-            # Log exception (including full stack trace)
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
-                f"HTTP Request Exception: {method} {path} - {type(e).__name__}: {e!s} ({duration * 1000:.2f}ms)",
+                f"HTTP Request Exception: {method} {path} - {type(e).__name__}: {e!s} ({duration_ms:.2f}ms)",
                 extra={
                     "method": method,
                     "path": path,
                     "error_type": type(e).__name__,
                     "error_message": str(e),
-                    "duration_ms": round(duration * 1000, 2),
+                    "duration_ms": round(duration_ms, 2),
                 },
-                exc_info=True,  # Record full stack trace
+                exc_info=True,
             )
-
-            # Re-raise exception
             raise
+
+        duration_ms = (time.time() - start_time) * 1000
+
+        status_code = response_status or 0
+        response_log_data = {
+            "method": method,
+            "path": path,
+            "status_code": status_code,
+            "duration_ms": round(duration_ms, 2),
+        }
+        is_error_response = status_code >= 400
+
+        if response_body_complete and response_body_chunks:
+            raw_response = b"".join(response_body_chunks)
+            content_type = next(
+                (v.decode("utf-8", errors="replace") for k, v in response_headers if k.lower() == b"content-type"),
+                "",
+            )
+            if "application/json" in content_type.lower():
+                response_body = _parse_json_body(raw_response)
+                if response_body is not None:
+                    response_log_data["body"] = response_body
+                    if is_error_response:
+                        summary = self._extract_error_summary(response_body)
+                        logger.warning(
+                            f"HTTP Error Response: {method} {path} - {status_code} ({duration_ms:.2f}ms) - {summary}",
+                            extra=response_log_data,
+                        )
+                    else:
+                        logger.info(
+                            f"HTTP Response: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
+                            extra=response_log_data,
+                        )
+                elif is_error_response:
+                    logger.warning(
+                        f"HTTP Error Response: {method} {path} - {status_code} ({duration_ms:.2f}ms) - Unable to read response body",
+                        extra={**response_log_data, "content_type": content_type},
+                    )
+                else:
+                    logger.info(
+                        f"HTTP Response: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
+                        extra=response_log_data,
+                    )
+            else:
+                if is_error_response:
+                    logger.warning(
+                        f"HTTP Error Response: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
+                        extra=response_log_data,
+                    )
+                else:
+                    logger.info(
+                        f"HTTP Response: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
+                        extra=response_log_data,
+                    )
+        else:
+            if is_error_response:
+                logger.warning(
+                    f"HTTP Error Response: {method} {path} - {status_code} ({duration_ms:.2f}ms) - Unable to read response body",
+                    extra={
+                        **response_log_data,
+                        "hint": "Response may be streaming or non-JSON",
+                    },
+                )
+            else:
+                logger.info(
+                    f"HTTP Response: {method} {path} - {status_code} ({duration_ms:.2f}ms)",
+                    extra=response_log_data,
+                )

@@ -273,12 +273,12 @@ class WebSocketConnectionTracker:
         if not self.can_accept():
             return False
 
-        import asyncio
+        import time
 
         self.active_connections[connection_id] = {
             "service_name": service_name,
             "path": path,
-            "created_at": asyncio.get_event_loop().time(),
+            "created_at": time.time(),
         }
         return True
 

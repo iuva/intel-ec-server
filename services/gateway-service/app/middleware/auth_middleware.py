@@ -1,73 +1,88 @@
 """
 Authentication middleware module
 
-Responsible for validating JWT tokens in requests, calling Auth Service for token verification
+Responsible for validating JWT tokens in requests, calling Auth Service for token verification.
+
+Uses pure ASGI (no BaseHTTPMiddleware) so all code runs in the same async context
+and avoids "no current event loop in thread" in worker threads (e.g. AnyIO).
 """
 
+import json
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import httpx
 
-# Use try-except to handle path imports
 try:
-    from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.requests import Request
-    from starlette.responses import JSONResponse
-
     from shared.common.cache import redis_manager
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
 except ImportError:
-    # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
-    from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.requests import Request
-    from starlette.responses import JSONResponse
-
     from shared.common.cache import redis_manager
     from shared.common.i18n import parse_accept_language
     from shared.common.loguru_config import get_logger
     from shared.common.response import ErrorResponse
 
-
 logger = get_logger(__name__)
 
 
-# ==================== Helper Functions ====================
+def _get_header(scope: dict, name: str) -> Optional[str]:
+    """Get header value from ASGI scope (case-insensitive)."""
+    name_lower = name.lower().encode("utf-8")
+    for k, v in scope.get("headers", []):
+        if k.lower() == name_lower:
+            return v.decode("utf-8", errors="replace")
+    return None
 
 
-def _get_locale_from_request(request: Request) -> str:
-    """Get language preference from request
-
-    Args:
-        request: Request object
-
-    Returns:
-        Language code (e.g., "zh_CN", "en_US")
-    """
-    accept_language = request.headers.get("Accept-Language")
+def _get_locale_from_scope(scope: dict) -> str:
+    """Get language preference from ASGI scope."""
+    accept_language = _get_header(scope, "Accept-Language")
     return parse_accept_language(accept_language)
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
-    """Authentication middleware
+async def _send_json_response(send: Callable, status: int, content: Dict[str, Any]) -> None:
+    """Send JSON response via ASGI."""
+    body = json.dumps(content, ensure_ascii=False).encode("utf-8")
+    headers = [(b"content-type", b"application/json; charset=utf-8")]
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.body", "body": body})
 
-    Intercepts all requests and validates JWT token validity
+
+def _build_error_body(
+    scope: dict,
+    code: int,
+    message: str,
+    error_code: str,
+    message_key: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build error response body for ASGI send."""
+    locale = _get_locale_from_scope(scope)
+    r = ErrorResponse(
+        code=code,
+        message=message,
+        message_key=message_key,
+        error_code=error_code,
+        details=details,
+        locale=locale,
+    )
+    return r.model_dump()
+
+
+class AuthMiddleware:
+    """Authentication middleware (pure ASGI).
+
+    Intercepts all requests and validates JWT token validity.
+    Does not inherit BaseHTTPMiddleware; runs in the same async context to avoid event loop issues.
+    Sets scope["auth_user"] on success; downstream should use request.scope.get("auth_user").
     """
 
-    def __init__(self, app):
-        """Initialize authentication middleware
-
-        Args:
-            app: FastAPI application instance
-        """
-        super().__init__(app)
-
-        # Public path whitelist (no authentication required)
-        self.public_paths = {
+    # Public path whitelist (no authentication required)
+    public_paths = {
             "/",
             "/health",
             "/health/detailed",
@@ -83,340 +98,152 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/refresh",  # ✅ Token refresh endpoint
             "/api/v1/auth/auto-refresh",  # ✅ Auto-renewal endpoint
             "/api/v1/auth/introspect",  # Token verification endpoint
-            # ⚠️ WebSocket routes need authentication check at route level,
-            # cannot be set as public path at middleware level, otherwise authentication cannot be enforced
+            # ⚠️ WebSocket routes need authentication check at route level
         }
 
-        # ✅ Browser plugin interface prefixes (all paths starting with these prefixes do not require authentication)
-        self.browser_plugin_prefixes = [
-            "/api/v1/host/hosts",  # Browser plugin - host management interface (includes /hosts/vnc/*)
-        ]
+    browser_plugin_prefixes = [
+        "/api/v1/host/hosts",  # Browser plugin - host management interface (includes /hosts/vnc/*)
+    ]
 
-        # ✅ Read authentication service URL from unified configuration
+    def __init__(self, app: Any) -> None:
+        self.app = app
         from app.core.config import settings
 
         self.auth_service_url = settings.auth_service_url.rstrip("/")
-
+        self.timeout = httpx.Timeout(
+            settings.auth_middleware_timeout,
+            connect=settings.auth_middleware_connect_timeout,
+        )
         logger.info(
             "Authentication middleware initialization completed",
-            extra={
-                "auth_service_url": self.auth_service_url,
-            },
+            extra={"auth_service_url": self.auth_service_url},
         )
 
-        # ✅ Read HTTP client timeout configuration from unified config
-        self.timeout = httpx.Timeout(settings.auth_middleware_timeout, connect=settings.auth_middleware_connect_timeout)
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
-    async def dispatch(self, request: Request, call_next):
-        """Handle request
+        path = scope.get("path", "")
+        method = scope.get("method", "")
 
-        Args:
-            request: Request object
-            call_next: Next middleware or route handler
-
-        Returns:
-            Response object
-        """
-        # ✅ Security measure: remove X-User-Info header from client (prevent forgery)
-        # Gateway will add its own X-User-Info header after verifying token
-        if "X-User-Info" in request.headers:
+        if _get_header(scope, "X-User-Info"):
+            client_host = (scope.get("client") or ("unknown",))[0]
             logger.warning(
                 "Detected X-User-Info header from client, removed (security measure)",
                 extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "client_host": request.client.host if request.client else "unknown",
-                    "hint": (
-                        "X-User-Info header can only be added by Gateway after token verification, "
-                        "client-sent headers will be removed"
-                    ),
+                    "path": path,
+                    "method": method,
+                    "client_host": client_host,
+                    "hint": "X-User-Info can only be added by Gateway after token verification",
                 },
             )
-            # Remove X-User-Info header from client
-            # Note: Starlette's headers are read-only, need to modify request object to remove
-            # We will handle this in proxy.py, only log here
 
-        # ✅ Handle OPTIONS preflight requests (CORS preflight requests)
-        # OPTIONS requests should pass through directly, handled by CORS middleware
-        if request.method == "OPTIONS":
-            logger.debug(
-                "OPTIONS preflight request, skipping authentication check",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                },
-            )
-            return await call_next(request)
+        if method == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
 
-        # Get Authorization header (use multiple methods to ensure compatibility)
-        # Starlette's headers object is case-insensitive, but use multiple methods for compatibility
-        auth_header = None
-
-        # Method 1: Standard method (Starlette headers are case-insensitive)
-        auth_header = request.headers.get("Authorization")
-
-        # Method 2: If method 1 fails, try lowercase key name
-        if not auth_header:
-            auth_header = request.headers.get("authorization")
-
-        # Method 3: If still not found, try iterating through all headers (handle special cases)
-        if not auth_header:
-            for key, value in request.headers.items():
-                if key.lower() == "authorization":
-                    auth_header = value
-                    logger.debug(
-                        "Found Authorization header from header iteration",
-                        extra={
-                            "header_key": key,
-                            "header_value": value,
-                            "header_value_preview": value[:20] + "..." if len(value) > 20 else value,
-                        },
-                    )
-                    break
-
+        auth_header = _get_header(scope, "Authorization")
         has_token = bool(auth_header)
+        is_public = self._is_public_path(path)
+        client_host = (scope.get("client") or ("unknown",))[0]
 
-        # Debug log: record all header keys (only when Authorization not found, for debugging)
-        if not auth_header:
-            all_header_keys = list(request.headers.keys())
-            logger.warning(
-                "Authorization header not found, recording all header keys for debugging",
-                extra={
-                    "all_header_keys": all_header_keys,
-                    "header_count": len(all_header_keys),
-                    "path": request.url.path,
-                    "method": request.method,
-                },
-            )
-
-        # Check if path is public
-        is_public = self._is_public_path(request.url.path)
-
-        # Detailed request log
         logger.info(
             "Authentication middleware processing request",
             extra={
-                "path": request.url.path,
-                "method": request.method,
+                "path": path,
+                "method": method,
                 "is_public_path": is_public,
                 "has_authorization_header": has_token,
-                "client_host": request.client.host if request.client else "unknown",
+                "client_host": client_host,
             },
         )
 
-        # If public path, skip authentication
         if is_public:
-            logger.info(
-                "Public path, skipping authentication check",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                },
-            )
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        # Check if Authorization header exists
         if not auth_header:
             logger.warning(
                 "Protected path missing Authorization header",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "client_host": request.client.host if request.client else "unknown",
-                },
+                extra={"path": path, "method": method, "client_host": client_host},
             )
-            return self._unauthorized_response(
-                request=request,
-                message="Missing authentication token",
-                message_key="error.auth.missing_token",
-                details={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "hint": "Please add Authorization: Bearer <token> to request headers",
-                },
+            body = _build_error_body(
+                scope, 401, "Missing authentication token",
+                "UNAUTHORIZED", message_key="error.auth.missing_token",
+                details={"path": path, "method": method, "hint": "Please add Authorization: Bearer <token>"},
             )
+            await _send_json_response(send, 401, body)
+            return
 
-        # Validate token format
         if not auth_header.startswith("Bearer "):
-            logger.warning(
-                "Invalid Authorization header format",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "auth_header_prefix": auth_header[:20] if len(auth_header) > 20 else auth_header,
-                },
+            body = _build_error_body(
+                scope, 401, "Invalid authentication token format",
+                "UNAUTHORIZED", message_key="error.auth.invalid_token_format",
+                details={"path": path, "method": method, "expected_format": "Bearer <token>"},
             )
-            return self._unauthorized_response(
-                request=request,
-                message="Invalid authentication token format",
-                message_key="error.auth.invalid_token_format",
-                details={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "hint": "Authorization header must use Bearer format",
-                    "expected_format": "Bearer <token>",
-                },
-            )
+            await _send_json_response(send, 401, body)
+            return
 
-        # Extract token
-        token = auth_header[7:]  # Remove "Bearer " prefix
+        token = auth_header[7:]
         token_preview = token[:8] + "..." if len(token) > 8 else token
+        user_info = await self._verify_token(token, path, method)
 
-        logger.debug(
-            "Starting token verification",
-            extra={
-                "path": request.url.path,
-                "method": request.method,
-                "token_preview": token_preview,
-            },
-        )
-
-        # Verify token
-        user_info = await self._verify_token(token, request.url.path, request.method)
-
-        # Handle verification result
         if not user_info:
-            # ✅ Enhanced logging with more diagnostic information
-            logger.warning(
-                "Token verification failed, access denied",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "token_preview": token_preview,
-                    "token_length": len(token) if token else 0,
-                    "auth_service_url": self.auth_service_url,
-                    "hint": "Please check Gateway and Auth Service logs for detailed error information",
-                },
+            body = _build_error_body(
+                scope, 401, "Invalid or expired authentication token",
+                "UNAUTHORIZED", message_key="error.auth.token_invalid_or_expired",
+                details={"path": path, "method": method, "hint": "Please login again to get new token"},
             )
-            return self._unauthorized_response(
-                request=request,
-                message="Invalid or expired authentication token",
-                message_key="error.auth.token_invalid_or_expired",
-                details={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "hint": "Token may be expired or invalid, please login again to get new token",
-                    "troubleshooting": (
-                        "Please check 'reason' field in Gateway and Auth Service logs for detailed error cause"
-                    ),
-                },
-            )
+            await _send_json_response(send, 401, body)
+            return
 
-        # Check if service error (timeout or connection error)
         if isinstance(user_info, dict) and "error_type" in user_info:
             error_type = user_info["error_type"]
-
             if error_type == "timeout":
-                logger.error(
-                    "Authentication service timeout, returning 504 error",
-                    extra={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "token_preview": token_preview,
-                    },
+                body = _build_error_body(
+                    scope, 504, "Authentication service response timeout, please try again later",
+                    "GATEWAY_TIMEOUT", message_key="error.auth.service_timeout",
+                    details={"path": path, "method": method, "service": "auth-service"},
                 )
-                return self._create_error_response(
-                    request=request,
-                    code=504,
-                    message="Authentication service response timeout, please try again later",
-                    message_key="error.auth.service_timeout",
-                    error_code="GATEWAY_TIMEOUT",
-                    details={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "service": "auth-service",
-                        "hint": ("Authentication service is currently responding slowly, please try again later"),
-                    },
-                )
-
+                await _send_json_response(send, 504, body)
+                return
             if error_type == "connection_error":
-                logger.error(
-                    "Unable to connect to authentication service, returning 503 error",
-                    extra={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "token_preview": token_preview,
-                    },
+                body = _build_error_body(
+                    scope, 503, "Authentication service temporarily unavailable, please try again later",
+                    "SERVICE_UNAVAILABLE", message_key="error.auth.service_unavailable",
+                    details={"path": path, "method": method, "service": "auth-service"},
                 )
-                return self._create_error_response(
-                    request=request,
-                    code=503,
-                    message="Authentication service temporarily unavailable, please try again later",
-                    message_key="error.auth.service_unavailable",
-                    error_code="SERVICE_UNAVAILABLE",
-                    details={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "service": "auth-service",
-                        "hint": (
-                            "Authentication service is currently unavailable, "
-                            "please contact system administrator or try again later"
-                        ),
-                    },
-                )
-
+                await _send_json_response(send, 503, body)
+                return
             if error_type == "request_error":
-                logger.error(
-                    "Authentication service request error, returning 502 error",
-                    extra={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "token_preview": token_preview,
-                    },
+                body = _build_error_body(
+                    scope, 502, "Authentication service request failed",
+                    "BAD_GATEWAY", message_key="error.auth.service_error",
+                    details={"path": path, "method": method, "service": "auth-service"},
                 )
-                return self._create_error_response(
-                    request=request,
-                    code=502,
-                    message="Authentication service request failed",
-                    message_key="error.auth.service_error",
-                    error_code="BAD_GATEWAY",
-                    details={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "service": "auth-service",
-                        "hint": "Gateway cannot get valid response from authentication service",
-                    },
-                )
-
-            # Other unknown error types, return 500
-            logger.error(
-                "Unknown error occurred during authentication",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "error_type": error_type,
-                    "token_preview": token_preview,
-                },
+                await _send_json_response(send, 502, body)
+                return
+            body = _build_error_body(
+                scope, 500, "Internal error occurred during authentication",
+                "INTERNAL_ERROR", message_key="error.internal",
+                details={"path": path, "method": method},
             )
-            return self._create_error_response(
-                request=request,
-                code=500,
-                message="Internal error occurred during authentication",
-                message_key="error.internal",
-                error_code="INTERNAL_ERROR",
-                details={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "hint": ("System internal error, please contact system administrator"),
-                },
-            )
+            await _send_json_response(send, 500, body)
+            return
 
-        # Add user information to request state
-        request.state.user = user_info
-
+        scope["auth_user"] = user_info
         logger.info(
             "Token verification successful, access allowed",
             extra={
-                "path": request.url.path,
-                "method": request.method,
+                "path": path,
+                "method": method,
                 "id": user_info.get("id"),
                 "username": user_info.get("username"),
                 "user_type": user_info.get("user_type"),
             },
         )
-
-        # Continue processing request
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
     def _is_public_path(self, path: str) -> bool:
         """Check if path is public
@@ -702,77 +529,3 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return None
 
-    def _create_error_response(
-        self,
-        request: Request,
-        code: int,
-        message: str,
-        error_code: str,
-        message_key: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-    ) -> JSONResponse:
-        """Create unified error response (supports i18n)
-
-        Args:
-            request: Request object (for getting language preference)
-            code: HTTP status code
-            message: Error message (fallback message)
-            error_code: Error type identifier
-            message_key: Translation key (optional)
-            details: Error details (optional)
-
-        Returns:
-            JSON response
-        """
-        locale = _get_locale_from_request(request)
-
-        error_response = ErrorResponse(
-            code=code,
-            message=message,  # Fallback message
-            message_key=message_key,
-            error_code=error_code,
-            details=details,
-            locale=locale,
-        )
-
-        logger.warning(
-            "Returning error response",
-            extra={
-                "status_code": code,
-                "error_code": error_code,
-                "message": message,
-                "request_id": error_response.request_id,
-            },
-        )
-
-        return JSONResponse(
-            status_code=code,
-            content=error_response.model_dump(),
-        )
-
-    def _unauthorized_response(
-        self,
-        request: Request,
-        message: str,
-        message_key: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
-    ) -> JSONResponse:
-        """Return unauthorized response (401) (supports i18n)
-
-        Args:
-            request: Request object (for getting language preference)
-            message: Error message (fallback message)
-            message_key: Translation key (optional)
-            details: Error details (optional)
-
-        Returns:
-            JSON response
-        """
-        return self._create_error_response(
-            request=request,
-            code=401,
-            message=message,
-            message_key=message_key,
-            error_code="UNAUTHORIZED",
-            details=details,
-        )

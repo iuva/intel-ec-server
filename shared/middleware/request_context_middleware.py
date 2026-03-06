@@ -3,6 +3,9 @@
 Generates a unique request_id for each request and injects it into the logging context.
 Supports reading an existing request_id from request headers (for distributed tracing).
 
+Uses pure ASGI (no BaseHTTPMiddleware) so context runs in the same async context
+and avoids "no current event loop in thread" in worker threads (e.g. AnyIO).
+
 Usage:
     from shared.middleware.request_context_middleware import (
         RequestContextMiddleware,
@@ -21,12 +24,11 @@ Usage:
 """
 
 import contextvars
+import json
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import uuid
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 try:
     from shared.common.loguru_config import get_logger
@@ -38,6 +40,16 @@ except ImportError:
     from shared.common.loguru_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_header(scope: dict, name: str) -> Optional[str]:
+    """Get header value from ASGI scope (case-insensitive)."""
+    name_lower = name.lower().encode("utf-8")
+    for k, v in scope.get("headers", []):
+        if k.lower() == name_lower:
+            return v.decode("utf-8", errors="replace")
+    return None
+
 
 # Request context variables
 _request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_id", default=None)
@@ -183,143 +195,87 @@ def clear_request_context() -> None:
     _request_start_time_var.set(None)
 
 
-class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Request Context Middleware
+# Paths to skip (health checks, etc.)
+_SKIP_PATHS = frozenset(
+    {
+        "/health",
+        "/metrics",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/favicon.ico",
+    }
+)
+
+
+def _extract_request_id_from_scope(scope: dict) -> str:
+    """Extract or generate request_id from ASGI scope. Priority: X-Request-ID, X-Trace-ID, then UUID."""
+    request_id = _get_header(scope, "X-Request-ID") or _get_header(scope, "X-Trace-ID")
+    if not request_id:
+        request_id = uuid.uuid4().hex
+    return request_id
+
+
+def _extract_client_ip_from_scope(scope: dict) -> str:
+    """Extract client IP from ASGI scope (proxy headers or client)."""
+    forwarded_for = _get_header(scope, "X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    real_ip = _get_header(scope, "X-Real-IP")
+    if real_ip:
+        return real_ip
+    client = scope.get("client")
+    if client:
+        return client[0]
+    return "unknown"
+
+
+class RequestContextMiddleware:
+    """Request Context Middleware (pure ASGI).
 
     Generates a unique request_id for each request and injects it into the logging context.
     Supports reading an existing request_id from request headers (for distributed tracing).
+    Does not inherit BaseHTTPMiddleware; runs in the same async context to avoid event loop issues.
 
-    Request header priority:
-    1. X-Request-ID
-    2. X-Trace-ID
-    3. Auto-generated UUID
+    Request header priority: X-Request-ID, X-Trace-ID, then auto-generated UUID.
     """
 
-    # Paths to skip (health checks, etc.)
-    SKIP_PATHS = frozenset(
-        {
-            "/health",
-            "/metrics",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/favicon.ico",
-        }
-    )
-
     def __init__(self, app: Any, log_requests: bool = True) -> None:
-        """Initialize the middleware
-
+        """
         Args:
-            app: FastAPI application instance
+            app: ASGI application (next in chain)
             log_requests: Whether to log requests (default True)
         """
-        super().__init__(app)
+        self.app = app
         self.log_requests = log_requests
 
-    def _generate_request_id(self) -> str:
-        """Generate a unique request ID
-
-        Returns:
-            32-character UUID (without hyphens)
-        """
-        return uuid.uuid4().hex
-
-    def _extract_request_id(self, request: Request) -> str:
-        """Extract or generate request_id from request
-
-        Priority from request headers:
-        1. X-Request-ID
-        2. X-Trace-ID
-        3. Auto-generated
-
-        Args:
-            request: FastAPI request object
-
-        Returns:
-            request_id string
-        """
-        # Try to get from request headers
-        request_id = request.headers.get("X-Request-ID") or request.headers.get("X-Trace-ID")
-
-        if not request_id:
-            request_id = self._generate_request_id()
-
-        return request_id
-
-    def _extract_client_ip(self, request: Request) -> str:
-        """Extract client IP from request
-
-        Priority from proxy headers (supports reverse proxy).
-
-        Args:
-            request: FastAPI request object
-
-        Returns:
-            Client IP address
-        """
-        # Try to get real IP from proxy headers
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            # X-Forwarded-For may contain multiple IPs, take the first one
-            return forwarded_for.split(",")[0].strip()
-
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-
-        # Directly connected client IP
-        if request.client:
-            return request.client.host
-
-        return "unknown"
-
     def _should_skip(self, path: str) -> bool:
-        """Determine whether to skip processing
-
-        Args:
-            path: Request path
-
-        Returns:
-            Whether to skip
-        """
         clean_path = path.split("?")[0]
-        return clean_path in self.SKIP_PATHS
+        return clean_path in _SKIP_PATHS
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """Process request
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Args:
-            request: FastAPI request object
-            call_next: Next middleware or route handler
+        path = scope.get("path", "")
+        if self._should_skip(path):
+            await self.app(scope, receive, send)
+            return
 
-        Returns:
-            Response object
-        """
-        # Skip health check and other paths
-        if self._should_skip(request.url.path):
-            return await call_next(request)
+        request_id = _extract_request_id_from_scope(scope)
+        client_ip = _extract_client_ip_from_scope(scope)
+        method = scope.get("method", "")
 
-        # Set request context
-        request_id = self._extract_request_id(request)
-        client_ip = self._extract_client_ip(request)
-        method = request.method
-        path = request.url.path
-        start_time = time.perf_counter()
-
-        # Set context variables
         _request_id_var.set(request_id)
         _client_ip_var.set(client_ip)
         _request_path_var.set(path)
         _request_method_var.set(method)
-        _request_start_time_var.set(start_time)
+        _request_start_time_var.set(time.perf_counter())
 
-        # Try to get user information from request headers (set by authentication middleware)
-        user_info_header = request.headers.get("X-User-Info")
+        user_info_header = _get_header(scope, "X-User-Info")
         if user_info_header:
             try:
-                import json
-
                 user_info = json.loads(user_info_header)
                 user_id = str(user_info.get("id") or user_info.get("sub", ""))
                 username = user_info.get("username")
@@ -330,17 +286,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             except (ValueError, TypeError):
                 pass
 
+        async def send_wrapped(message: dict) -> None:
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode("utf-8")))
+                message = {**message, "headers": headers}
+            await send(message)
+
         try:
-            # Call the next handler
-            response = await call_next(request)
-
-            # Add request_id to response headers
-            response.headers["X-Request-ID"] = request_id
-
-            return response
-
+            await self.app(scope, receive, send_wrapped)
         finally:
-            # Clear context (ensure it doesn't leak to other requests)
             clear_request_context()
 
 

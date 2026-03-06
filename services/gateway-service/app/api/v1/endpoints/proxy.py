@@ -507,8 +507,8 @@ async def proxy_request(
                 del headers[key]
                 logger.debug("Removed Content-Length header", extra={"header_key": key})
 
-        # ✅ Add user information to request headers (get from request.state.user)
-        user_info = getattr(request.state, "user", None)
+        # ✅ Add user information to request headers (from auth middleware: scope["auth_user"] or request.state.user)
+        user_info = request.scope.get("auth_user") or getattr(request.state, "user", None)
 
         # ✅ Enhanced logging: record user information status (for diagnosis)
         logger.debug(
@@ -578,7 +578,7 @@ async def proxy_request(
             )
         else:
             logger.warning(
-                "request.state.user does not exist, skipping X-User-Info header setting",
+                "auth_user not in scope/state, skipping X-User-Info header setting",
                 extra={
                     "service_name": service_name,
                     "subpath": subpath,

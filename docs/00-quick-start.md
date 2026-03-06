@@ -248,6 +248,8 @@ SERVICE_PORT=8003 HOST_SERVICE_PORT=8003 \
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
+**说明**：`--reload` 仅监视当前目录，修改项目根目录下 `shared/` 后需**手动重启**本进程才会生效（或从项目根目录启动并加 `--reload-dir shared`）。
+
 **访问地址**:
 
 - API 文档: <http://localhost:8003/docs>

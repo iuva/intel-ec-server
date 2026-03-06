@@ -152,18 +152,16 @@ def get_vnc_service() -> BrowserVNCService:
     return _browser_vnc_service_instance
 
 
-def get_host_discovery_service() -> HostDiscoveryService:
-    """Get host discovery service instance (singleton pattern)
+async def get_host_discovery_service() -> HostDiscoveryService:
+    """Get host discovery service instance (singleton pattern).
 
-    Reads hardware API URL configuration from environment variables and injects it into HostDiscoveryService.
-
-    Returns:
-        HostDiscoveryService: Host discovery service instance
+    Implemented as async so it runs in the main event loop; sync dependencies
+    are run in a thread pool (AnyIO worker thread) and can trigger
+    \"no current event loop in thread\" when downstream code uses asyncio.
     """
     global _host_discovery_service_instance
 
     if _host_discovery_service_instance is None:
-        # Read hardware API URL from environment variables
         hardware_api_url = os.getenv("HARDWARE_API_URL", "http://hardware-service:8000")
         _host_discovery_service_instance = HostDiscoveryService(hardware_api_url)
 

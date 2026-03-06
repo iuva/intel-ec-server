@@ -17,35 +17,19 @@ except ImportError:
     from shared.common.i18n import parse_accept_language, t
 
 
-def get_locale(
+async def get_locale(
     request: Request, accept_language: Optional[str] = Header(None, description="Accept-Language header")
 ) -> str:
-    """Get language preference from request header
+    """Get language preference from request header.
 
-    Args:
-        request: FastAPI request object
-        accept_language: Accept-Language header value
-
-    Returns:
-        Language code (e.g. "zh_CN", "en_US")
-
-    Example:
-        ```python
-        @app.get("/users")
-        async def list_users(locale: str = Depends(get_locale)):
-            message = t("success.query", locale=locale)
-            return SuccessResponse(message=message, data=users)
-        ```
+    Implemented as async so it runs in the main event loop; sync dependencies
+    are run in a thread pool (AnyIO worker thread) and can trigger
+    \"no current event loop in thread\" when downstream code uses asyncio.
     """
-    # Prioritize getting from request header
     if accept_language:
         return parse_accept_language(accept_language)
-
-    # Get from request object (if middleware has already parsed)
     if hasattr(request.state, "locale"):
         return request.state.locale
-
-    # Default language
     return "zh_CN"
 
 

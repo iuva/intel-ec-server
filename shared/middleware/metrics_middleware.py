@@ -1,13 +1,13 @@
 """
 Prometheus Metrics Collection Middleware
-Automatically collect metrics data for HTTP requests
+Automatically collect metrics data for HTTP requests.
+
+Uses pure ASGI (no BaseHTTPMiddleware) so all code runs in the same async context
+and avoids "no current event loop in thread" in worker threads (e.g. AnyIO).
 """
 
 import time
-from typing import Any
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from typing import Any, Callable
 
 from shared.common.loguru_config import get_logger
 from shared.monitoring.prometheus_metrics import (
@@ -21,115 +21,129 @@ from shared.monitoring.prometheus_metrics import (
 logger = get_logger(__name__)
 
 
-class PrometheusMetricsMiddleware(BaseHTTPMiddleware):
-    """
-    Prometheus Metrics Collection Middleware
+def _get_header(scope: dict, name: str) -> str:
+    """Get header value from ASGI scope (case-insensitive). Default ''."""
+    name_lower = name.lower().encode("utf-8")
+    for k, v in scope.get("headers", []):
+        if k.lower() == name_lower:
+            return v.decode("utf-8", errors="replace")
+    return ""
 
-    Automatically collects metrics for all HTTP requests:
-    - Total requests
-    - Request response time
-    - Request/response size
-    - In-progress requests count
+
+class PrometheusMetricsMiddleware:
+    """
+    Prometheus Metrics Collection Middleware (pure ASGI).
+
+    Automatically collects metrics for all HTTP requests.
+    Does not inherit BaseHTTPMiddleware; runs in the same async context to avoid event loop issues.
     """
 
     def __init__(self, app: Any, service_name: str) -> None:
         """
-        Initialize the middleware
-
         Args:
-            app: FastAPI application instance
-            service_name: Service name
+            app: ASGI application (next in chain)
+            service_name: Service name for metric labels
         """
-        super().__init__(app)
+        self.app = app
         self.service_name = service_name
         logger.info(f"✅ PrometheusMetricsMiddleware initialized: service_name={self.service_name}")
 
-    async def dispatch(self, request: Request, call_next: Any) -> Any:
-        """
-        Process request and collect metrics
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Args:
-            request: HTTP request
-            call_next: Next middleware or route handler
+        path = scope.get("path", "")
+        if path == "/metrics":
+            await self.app(scope, receive, send)
+            return
 
-        Returns:
-            HTTP response
-        """
-        # Skip /metrics endpoint itself
-        if request.url.path == "/metrics":
-            return await call_next(request)
+        method = scope.get("method", "")
+        endpoint = path
 
-        method = request.method
-        endpoint = request.url.path
-
-        # Increase in-progress requests count
         try:
-            http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).inc()
-            logger.debug(f"Incremented http_requests_in_progress for {method} {endpoint}")
+            http_requests_in_progress.labels(
+                method=method, endpoint=endpoint, service=self.service_name
+            ).inc()
         except Exception as e:
             logger.error(f"❌ Failed to increment http_requests_in_progress: {e!s}")
 
-        # Record request size
-        request_size = int(request.headers.get("content-length", 0))
+        request_size = 0
+        try:
+            cl = _get_header(scope, "content-length")
+            if cl:
+                request_size = int(cl)
+        except ValueError:
+            pass
         if request_size > 0:
-            http_request_size_bytes.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
-                request_size
-            )
-            logger.debug(f"Observed request size {request_size} for {method} {endpoint}")
+            try:
+                http_request_size_bytes.labels(
+                    method=method, endpoint=endpoint, service=self.service_name
+                ).observe(request_size)
+            except Exception as e:
+                logger.error(f"❌ Failed to observe request size: {e!s}")
 
-        # Record start time
         start_time = time.time()
-        logger.debug(f"Start time recorded for {method} {endpoint}")
+        response_status: int = 500
+        response_content_length: int = 0
+
+        async def send_wrapped(message: dict) -> None:
+            nonlocal response_status, response_content_length
+            if message.get("type") == "http.response.start":
+                response_status = message.get("status", 500)
+                for k, v in message.get("headers", []):
+                    if k.lower() == b"content-length":
+                        try:
+                            response_content_length = int(v.decode("utf-8", errors="replace"))
+                        except ValueError:
+                            pass
+                        break
+            await send(message)
 
         try:
-            # Process request
-            response = await call_next(request)
-            logger.debug(f"Request processed for {method} {endpoint}")
-
-            # Record response time
+            await self.app(scope, receive, send_wrapped)
             duration = time.time() - start_time
-            http_request_duration_seconds.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
-                duration
-            )
-            logger.debug(f"Observed duration {duration} for {method} {endpoint}")
-
-            # Record total requests
-            status = response.status_code
+            try:
+                http_request_duration_seconds.labels(
+                    method=method, endpoint=endpoint, service=self.service_name
+                ).observe(duration)
+            except Exception as e:
+                logger.error(f"❌ Failed to observe duration: {e!s}")
             try:
                 http_requests_total.labels(
                     method=method,
                     endpoint=endpoint,
-                    status=status,
+                    status=response_status,
                     service=self.service_name,
                 ).inc()
-                logger.debug(f"Incremented http_requests_total for {method} {endpoint} with status {status}")
             except Exception as e:
                 logger.error(f"❌ Failed to increment http_requests_total: {e!s}")
-
-            # Record response size
-            response_size = int(response.headers.get("content-length", 0))
-            if response_size > 0:
-                http_response_size_bytes.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
-                    response_size
-                )
-                logger.debug(f"Observed response size {response_size} for {method} {endpoint}")
-
-            return response
-
+            if response_content_length > 0:
+                try:
+                    http_response_size_bytes.labels(
+                        method=method, endpoint=endpoint, service=self.service_name
+                    ).observe(response_content_length)
+                except Exception as e:
+                    logger.error(f"❌ Failed to observe response size: {e!s}")
         except Exception:
-            # Record exception request
             duration = time.time() - start_time
-            http_request_duration_seconds.labels(method=method, endpoint=endpoint, service=self.service_name).observe(
-                duration
-            )
-            logger.info(f"Observed duration {duration} for {method} {endpoint} (exception)")
-
-            http_requests_total.labels(method=method, endpoint=endpoint, status=500, service=self.service_name).inc()
-            logger.info(f"Incremented http_requests_total for {method} {endpoint} with status 500 (exception)")
-
+            try:
+                http_request_duration_seconds.labels(
+                    method=method, endpoint=endpoint, service=self.service_name
+                ).observe(duration)
+            except Exception as e:
+                logger.error(f"❌ Failed to observe duration (exception): {e!s}")
+            try:
+                http_requests_total.labels(
+                    method=method, endpoint=endpoint, status=500, service=self.service_name
+                ).inc()
+            except Exception as e:
+                logger.error(f"❌ Failed to increment http_requests_total (exception): {e!s}")
             raise
-
         finally:
-            # Decrease in-progress requests count
-            http_requests_in_progress.labels(method=method, endpoint=endpoint, service=self.service_name).dec()
-            logger.debug(f"Decremented http_requests_in_progress for {method} {endpoint}")
+            try:
+                http_requests_in_progress.labels(
+                    method=method, endpoint=endpoint, service=self.service_name
+                ).dec()
+            except Exception as e:
+                logger.error(f"❌ Failed to decrement http_requests_in_progress: {e!s}")

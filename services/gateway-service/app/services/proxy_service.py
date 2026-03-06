@@ -7,6 +7,7 @@ Provides request forwarding functionality, proxying client requests to backend m
 import asyncio
 import json
 import os
+import time
 import re
 import sys
 from typing import Any, Dict, Optional
@@ -494,7 +495,7 @@ class ProxyService:
                 self.active_websocket_connections[connection_id] = {
                     "service_name": service_name,
                     "path": path,
-                    "created_at": asyncio.get_event_loop().time(),
+                    "created_at": time.time(),
                 }
 
             # ✅ If session key is provided, use session stickiness to select instance
