@@ -312,11 +312,12 @@ class AvailableHostsListResponse(BaseModel):
     """Query available host list response schema - cursor pagination response
 
     Field descriptions:
-    - hosts: Current page host list
+    - hosts: Current page available host list (valid/online)
     - total: Total available hosts discovered in this query (not global total)
     - page_size: Page size
     - has_next: Whether there is next page
     - last_id: ID of last record in current page, used for next page request
+    - offline_hosts: Hosts returned by external API but not in available list (same format as hosts)
     """
 
     hosts: List[AvailableHostInfo] = Field(description="Available host list")
@@ -325,6 +326,10 @@ class AvailableHostsListResponse(BaseModel):
     has_next: bool = Field(description="Whether there is next page")
     last_id: Optional[str] = Field(
         default=None, description="ID of last record in current page, used for next page request"
+    )
+    offline_hosts: List[AvailableHostInfo] = Field(
+        default_factory=list,
+        description="Offline list: external API hosts not in available list (id=hardware_id, user_name=name, host_ip)",
     )
 
     model_config = {"from_attributes": True}

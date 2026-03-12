@@ -9,7 +9,7 @@ Provides host discovery and query related business logic services, including:
 import asyncio
 import os
 import time
-from typing import TYPE_CHECKING, List, Optional, Set, cast
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple, cast
 
 import httpx
 from sqlalchemy import and_, select
@@ -191,6 +191,8 @@ class HostDiscoveryService:
         # This cache is only valid within a single request, does not cross requests
         seen_ids: Set[str] = set()
         all_available_hosts: List[AvailableHostInfo] = []
+        all_fetched_hardware_hosts: List[HardwareHostData] = []
+        all_matched_hardware_ids: Set[str] = set()
 
         # External API pagination parameters
         skip = initial_skip
@@ -313,8 +315,12 @@ class HostDiscoveryService:
                 # Step 4: Query host_rec table to get available hosts
                 # (Optimization: reuse session, reduce connection usage)
                 query_start_time = time.time()
-                available_hosts = await self._filter_available_hosts_in_session(session, hardware_ids)
+                available_hosts, matched_hardware_ids = await self._filter_available_hosts_in_session(
+                    session, hardware_ids
+                )
                 query_duration = time.time() - query_start_time
+                all_matched_hardware_ids.update(matched_hardware_ids)
+                all_fetched_hardware_hosts.extend(hardware_hosts)
 
                 # Record query performance (if query time exceeds threshold)
                 if query_duration > 0.5:  # Log warning if exceeds 500ms
@@ -439,6 +445,11 @@ class HostDiscoveryService:
                 },
             )
 
+        # Build offline list: external API hosts not in available list (same format as hosts)
+        offline_hosts = self._hardware_hosts_to_offline_list(
+            [h for h in all_fetched_hardware_hosts if h.hardware_id and h.hardware_id not in all_matched_hardware_ids]
+        )
+
         # Build response object
         return AvailableHostsListResponse(
             hosts=paginated_hosts,
@@ -446,6 +457,7 @@ class HostDiscoveryService:
             page_size=request.page_size,
             has_next=has_next,
             last_id=last_id,
+            offline_hosts=offline_hosts,
         )
 
     async def _fetch_hardware_hosts(
@@ -692,11 +704,35 @@ class HostDiscoveryService:
                 http_status_code=500,
             )
 
+    def _get_host_ip_from_hardware(self, h: HardwareHostData) -> str:
+        """Get host IP from HardwareHostData (dmr_config or ip field)."""
+        if h.dmr_config and h.dmr_config.mainboard and h.dmr_config.mainboard.board and h.dmr_config.mainboard.board.board_meta_data:
+            ip = h.dmr_config.mainboard.board.board_meta_data.host_ip
+            if ip:
+                return ip
+        if h.ip:
+            return h.ip
+        return ""
+
+    def _hardware_hosts_to_offline_list(
+        self, hardware_hosts: List[HardwareHostData]
+    ) -> List[AvailableHostInfo]:
+        """Convert external API hardware list to offline list in same format as available hosts."""
+        return [
+            AvailableHostInfo(
+                host_rec_id=h.hardware_id or "",
+                user_name=h.name or "",
+                host_ip=self._get_host_ip_from_hardware(h),
+            )
+            for h in hardware_hosts
+            if h.hardware_id
+        ]
+
     async def _filter_available_hosts_in_session(
         self,
         session: "AsyncSession",
         hardware_ids: List[str],
-    ) -> List[AvailableHostInfo]:
+    ) -> Tuple[List[AvailableHostInfo], Set[str]]:
         """Filter available hosts based on conditions (using existing session, optimize connection pool usage)
 
         This is an optimized version of _filter_available_hosts that accepts an existing session parameter,
@@ -707,14 +743,15 @@ class HostDiscoveryService:
             hardware_ids: Hardware ID list
 
         Returns:
-            Available host list
+            (Available host list, set of matched hardware_ids)
         """
         if not hardware_ids:
-            return []
+            return [], set()
 
         # Batch query optimization: if hardware_ids is too many, query in batches
         batch_size = 500
         all_available_hosts: List[AvailableHostInfo] = []
+        matched_hardware_ids: Set[str] = set()
 
         try:
             total_query_time = 0.0
@@ -758,17 +795,19 @@ class HostDiscoveryService:
                         },
                     )
 
-                # Convert to response format
-                batch_hosts: List[AvailableHostInfo] = [
-                    AvailableHostInfo(
-                        host_rec_id=str(host_rec.id),
-                        user_name=host_rec.host_no or "",  # Use host_no instead of host_acct
-                        host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
+                # Convert to response format and collect matched hardware_ids
+                batch_hosts: List[AvailableHostInfo] = []
+                for host_rec in host_recs:
+                    if not host_rec.hardware_id:
+                        continue
+                    matched_hardware_ids.add(host_rec.hardware_id)
+                    batch_hosts.append(
+                        AvailableHostInfo(
+                            host_rec_id=str(host_rec.id),
+                            user_name=host_rec.host_no or "",  # Use host_no instead of host_acct
+                            host_ip=cast(str, host_rec.host_ip) if host_rec.host_ip else "",
+                        )
                     )
-                    for host_rec in host_recs
-                    if host_rec.hardware_id  # Ensure hardware_id is not empty
-                ]
-
                 all_available_hosts.extend(batch_hosts)
 
             logger.debug(
@@ -785,7 +824,7 @@ class HostDiscoveryService:
                 },
             )
 
-            return all_available_hosts
+            return all_available_hosts, matched_hardware_ids
 
         except Exception as e:
             logger.error(
