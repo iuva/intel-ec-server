@@ -105,35 +105,6 @@ class CaseTimeoutTaskService:
             },
         )
 
-    # Email content template constant (Use English as default)
-
-    def _build_timeout_email_content(
-        self,
-        hardware_id: str,
-        host_ip: str,
-        begin_time: datetime,
-        due_time: datetime,
-        tc_id: str,
-        log_id: int,
-    ) -> str:
-        """Builds the email content for a timeout notification."""
-        # Get locale preference from somewhere? Or default to en_US as requested
-        # Ideally, we should check system settings or default to en_US
-        # Since send_email is called with 'en_US', we should use 'en_US' here too
-        # But to support multi-language in future, we use t()
-
-        return t(
-            "email.case.timeout.content",
-            locale="en_US",
-            default=self.EMAIL_CASE_TIMEOUT_CONTENT_TEMPLATE,
-            hardware_id=hardware_id,
-            host_ip=host_ip,
-            begin_time=begin_time,
-            due_time=due_time,
-            tc_id=tc_id,
-            log_id=log_id,
-        )
-
     async def stop(self) -> None:
         """Stop scheduled task"""
         if not self._running:
@@ -547,6 +518,10 @@ class CaseTimeoutTaskService:
                     # Calculate duration since submission
                     # Ensure timezone consistency (host_rec.subm_time usually naive from DB, assume system TZ matches DB or handle aware)
                     subm_time = host_rec.subm_time
+                    if subm_time is None:
+                        logger.warning("Host subm_time is None, skipping", extra={"host_id": host_id})
+                        failed_count += 1
+                        continue
                     if subm_time.tzinfo is None:
                         # If DB time is naive, assume it's in db_timezone
                         subm_time = subm_time.replace(tzinfo=get_db_timezone())
