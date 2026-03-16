@@ -871,6 +871,22 @@ class AdminOtaDeployResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AgentOfflineNotifyResponse(BaseModel):
+    """Response schema for agent offline notification API.
+
+    Returned when the system has processed an agent-offline notification
+    and updated host_rec.tcp_state to 0 (closed).
+    """
+
+    host_id: int = Field(..., description="Host ID (HostRec.id) that was updated")
+    tcp_state: int = Field(
+        default=0,
+        description="TCP state after update (0=closed, connection marked offline)",
+    )
+
+    model_config = {"from_attributes": True}
+
+
 class HardwareReportResponse(BaseModel):
     """Hardware report response schema"""
 

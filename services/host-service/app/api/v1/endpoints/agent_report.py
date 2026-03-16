@@ -16,6 +16,7 @@ try:
     from app.schemas.host import (
         AgentInitConfigItem,
         AgentInitConfigListResponse,
+        AgentOfflineNotifyResponse,
         AgentOtaUpdateStatusRequest,
         AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
@@ -42,6 +43,7 @@ except ImportError:
     from app.schemas.host import (
         AgentInitConfigItem,
         AgentInitConfigListResponse,
+        AgentOfflineNotifyResponse,
         AgentOtaUpdateStatusRequest,
         AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
@@ -276,6 +278,122 @@ async def report_hardware(
         message_key="success.hardware.report",
         locale=locale,
         default_message="Hardware information report succeeded",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent offline notification
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/offline/notify",
+    response_model=Result[AgentOfflineNotifyResponse],
+    status_code=HTTP_200_OK,
+    summary="Notify agent offline",
+    description="""
+    Receive agent-offline notification and set host TCP state to closed (0).
+
+    ## Purpose
+    When the system receives a notification that an agent has gone offline (e.g. graceful
+    shutdown, connection loss, or external heartbeat timeout), this endpoint is called
+    to update the host record so that `host_rec.tcp_state` is set to 0 (closed).
+    This keeps host availability and connection state consistent with actual agent status.
+
+    ## Function description
+    1. Caller is identified by JWT (Bearer token); host_id is taken from the token (agent id).
+    2. The service updates `host_rec.tcp_state` to 0 for that host_id.
+    3. Returns the updated host_id and tcp_state in the response.
+
+    ## Authentication requirements
+    - Valid JWT token in Authorization header: `Bearer <token>`.
+    - The token's subject/id is used as host_id (same as other agent report APIs).
+
+    ## Request body
+    - No body required; host identity is derived from the token.
+
+    ## Response
+    - On success: `host_id` and `tcp_state` (0) in the result data.
+    - If no matching host record exists or update fails, the operation still returns 200
+      with success false or unchanged; business logic may treat missing host as no-op.
+
+    ## Notes
+    - tcp_state values: 0=closed, 1=waiting, 2=listening. This API sets 0 (closed).
+    - Only non-deleted hosts (del_flag=0) are updated.
+    """,
+    responses={
+        200: {
+            "description": "Offline notification processed (tcp_state set to 0)",
+            "model": Result[AgentOfflineNotifyResponse],
+        },
+        401: {
+            "description": "Authentication failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 401,
+                        "message": "Missing valid authentication token",
+                        "error_code": "UNAUTHORIZED",
+                        "details": None,
+                        "timestamp": "2025-01-30T10:00:00Z",
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 500,
+                        "message": "Internal server error",
+                        "error_code": "INTERNAL_ERROR",
+                        "details": None,
+                        "timestamp": "2025-01-30T10:00:00Z",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def notify_agent_offline(
+    agent_info: Dict[str, Any] = Depends(get_current_agent),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[AgentOfflineNotifyResponse]:
+    """Process agent-offline notification and set host tcp_state to 0 (closed).
+
+    The caller (identified by JWT) is treated as the agent that has gone offline.
+    The service updates the corresponding host record's tcp_state to TCP_STATE_CLOSE (0)
+    so that the host is marked as disconnected. No request body is required;
+    host_id is taken from the token.
+
+    Args:
+        agent_info: Current agent information from JWT (must contain 'id' as host_id).
+        agent_report_service: Injected AgentReportService instance.
+        locale: Locale for response message (from dependency).
+
+    Returns:
+        Result containing AgentOfflineNotifyResponse with host_id and tcp_state=0
+        on success. Message may indicate success or that no row was updated.
+
+    Raises:
+        HTTPException: Handled by @handle_api_errors (e.g. 401 if token missing/invalid).
+    """
+    host_id = agent_info["id"]
+    log_request_received(
+        "notify_agent_offline",
+        extra={"host_id": host_id},
+        logger_instance=logger,
+    )
+    updated = await agent_report_service.notify_agent_offline(host_id=host_id)
+    response_data = AgentOfflineNotifyResponse(host_id=host_id, tcp_state=0)
+    return create_success_result(
+        data=response_data,
+        message_key="success.agent.offline_notify",
+        locale=locale,
+        default_message="Agent offline notification processed; tcp_state set to closed",
     )
 
 

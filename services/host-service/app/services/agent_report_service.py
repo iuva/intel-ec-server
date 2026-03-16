@@ -22,6 +22,7 @@ try:
         HOST_STATE_FREE,
         HOST_STATE_LOCKED,
         HOST_STATE_OCCUPIED,
+        TCP_STATE_CLOSE,
     )
     from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
@@ -44,6 +45,7 @@ except ImportError:
         HOST_STATE_FREE,
         HOST_STATE_LOCKED,
         HOST_STATE_OCCUPIED,
+        TCP_STATE_CLOSE,
     )
     from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
@@ -106,6 +108,50 @@ class AgentReportService:
         if self._session_factory is None:
             self._session_factory = mariadb_manager.get_session()
         return self._session_factory
+
+    async def notify_agent_offline(self, host_id: int) -> bool:
+        """Set host TCP state to closed (0) when receiving agent offline notification.
+
+        Updates host_rec.tcp_state to TCP_STATE_CLOSE (0) for the given host.
+        Used when the system receives an agent-offline notification (e.g. graceful
+        shutdown or connection loss) so that the host is marked as disconnected.
+
+        Args:
+            host_id: Host ID (HostRec.id, typically from agent token).
+
+        Returns:
+            True if the host record was found and tcp_state was updated;
+            False if no matching row or update failed.
+        """
+        try:
+            session_factory = self.session_factory
+            async with session_factory() as session:
+                stmt = (
+                    update(HostRec)
+                    .where(
+                        and_(
+                            HostRec.id == host_id,
+                            HostRec.del_flag == 0,
+                        )
+                    )
+                    .values(tcp_state=TCP_STATE_CLOSE)
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                if result.rowcount > 0:
+                    logger.info(
+                        "Agent offline notification applied: tcp_state set to 0",
+                        extra={"host_id": host_id},
+                    )
+                    return True
+                return False
+        except Exception as e:
+            logger.error(
+                "Failed to apply agent offline notification",
+                extra={"host_id": host_id, "error": str(e)},
+                exc_info=True,
+            )
+            return False
 
     async def report_hardware(
         self,
