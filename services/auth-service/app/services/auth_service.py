@@ -738,9 +738,8 @@ class AuthService:
                             code=403,
                         )
 
-                    # mg_id exists, update host_ip, username and updated_by
+                    # mg_id exists, update host_ip and updated_by (host_acct is no longer updated from login data)
                     host_rec.host_ip = login_data.host_ip
-                    host_rec.host_acct = login_data.username
                     host_rec.updated_time = datetime.now(timezone.utc)
                     host_rec.updated_by = current_user_id  # Set updater
 
@@ -758,7 +757,30 @@ class AuthService:
                 else:
                     # mg_id does not exist, insert new record
 
-                    # 1. Find default configuration (def_pwd, def_port)
+                    # 1. Find default host_acct configuration from sys_conf (state_flag = 0, del_flag = 0)
+                    host_acct_conf_stmt = (
+                        select(SysConf)
+                        .where(
+                            SysConf.conf_key == "host_acct",
+                            SysConf.state_flag == 0,
+                            SysConf.del_flag == 0,
+                        )
+                        .limit(1)
+                    )
+                    host_acct_result = await db_session.execute(host_acct_conf_stmt)
+                    host_acct_conf = host_acct_result.scalar_one_or_none()
+                    default_host_acct = host_acct_conf.conf_val if host_acct_conf and host_acct_conf.conf_val else None
+
+                    if default_host_acct is None:
+                        logger.warning(
+                            "host_acct configuration not found or empty, new HostRec will use null host_acct",
+                            extra={
+                                "operation": "device_login",
+                                "mg_id": login_data.mg_id,
+                            },
+                        )
+
+                    # 2. Find default configuration (def_pwd, def_port)
                     conf_stmt = select(SysConf).where(
                         SysConf.conf_key.in_(["def_pwd", "def_port"]), SysConf.del_flag == 0
                     )
@@ -790,7 +812,7 @@ class AuthService:
                     host_rec = HostRec(
                         mg_id=login_data.mg_id,
                         host_ip=login_data.host_ip,
-                        host_acct=login_data.username,
+                        host_acct=default_host_acct,
                         host_pwd=default_pwd,  # Set default password (already encrypted)
                         host_port=default_port,  # Set default port
                         appr_state=2,  # New
