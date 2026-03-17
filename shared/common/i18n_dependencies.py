@@ -30,7 +30,7 @@ async def get_locale(
         return parse_accept_language(accept_language)
     if hasattr(request.state, "locale"):
         return request.state.locale
-    return "zh_CN"
+    return "en_US"
 
 
 def translate(key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs):

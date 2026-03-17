@@ -223,7 +223,6 @@ class ServiceDiscovery:
         short_to_full = {
             "auth": "auth-service",
             "host": "host-service",
-            "admin": "admin-service",
             "gateway": "gateway-service",
         }
 
