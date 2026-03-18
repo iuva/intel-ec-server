@@ -22,6 +22,7 @@ try:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.services.browser_vnc_service import _realvnc_encrypt_password
     from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
     from shared.common.cache import redis_manager
@@ -44,6 +45,7 @@ except ImportError:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.services.browser_vnc_service import _realvnc_encrypt_password
     from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
     from shared.common.cache import redis_manager
@@ -905,6 +907,76 @@ class AdminHostService:
             )
 
             return detail
+
+    @handle_service_errors(
+        error_message="Failed to get host VNC credentials",
+        error_code="GET_HOST_VNC_CREDENTIALS_FAILED",
+    )
+    async def get_host_vnc_credentials(self, host_id: int) -> dict:
+        """Get host account and VNC password (RealVNC encrypted) by host_id.
+
+        Business logic:
+        1. Verify host exists and is not deleted
+        2. Read host_acct and host_pwd from host_rec
+        3. Decrypt host_pwd with AES
+        4. Convert plain password to RealVNC encrypted password (same as browser VNC flow)
+        5. Return host_acct and vnc_password
+
+        Args:
+            host_id: Host ID (host_rec.id)
+
+        Returns:
+            dict: {"host_id": str, "ip": str|None, "host_acct": str|None, "vnc_password": str|None}
+
+        Raises:
+            BusinessError: When host does not exist
+        """
+        logger.info(
+            "Start getting host VNC credentials",
+            extra={"host_id": host_id},
+        )
+
+        session_factory = self.session_factory
+        async with session_factory() as session:
+            host_rec = await validate_host_exists(session, HostRec, host_id, locale="zh_CN")
+
+            vnc_password = None
+            if host_rec.host_pwd:
+                try:
+                    decrypted_password = aes_decrypt(host_rec.host_pwd)
+                    if decrypted_password:
+                        vnc_password = _realvnc_encrypt_password(decrypted_password)
+                        logger.debug(
+                            "VNC password conversion succeeded (AES decrypt -> RealVNC encrypt)",
+                            extra={"host_id": host_id},
+                        )
+                except BusinessError:
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "VNC password conversion failed (AES decrypt or RealVNC encrypt)",
+                        extra={
+                            "host_id": host_id,
+                            "error": str(e),
+                            "error_type": type(e).__name__,
+                        },
+                    )
+
+            result = {
+                "host_id": str(host_id),
+                "ip": host_rec.host_ip,
+                "host_acct": host_rec.host_acct,
+                "vnc_password": vnc_password,
+            }
+            logger.info(
+                "Get host VNC credentials completed",
+                extra={
+                    "host_id": host_id,
+                    "has_host_acct": bool(host_rec.host_acct),
+                    "has_vnc_password": vnc_password is not None,
+                },
+            )
+            return result
 
     @handle_service_errors(
         error_message="Failed to update host password",

@@ -26,6 +26,7 @@ try:
         AdminHostListResponse,
         AdminHostUpdatePasswordRequest,
         AdminHostUpdatePasswordResponse,
+        AdminHostVncCredentialsResponse,
     )
     from app.services.admin_host_service import AdminHostService
     from app.utils.response_helpers import create_success_result
@@ -50,6 +51,7 @@ except ImportError:
         AdminHostListResponse,
         AdminHostUpdatePasswordRequest,
         AdminHostUpdatePasswordResponse,
+        AdminHostVncCredentialsResponse,
     )
     from app.services.admin_host_service import AdminHostService
     from app.utils.response_helpers import create_success_result
@@ -615,6 +617,79 @@ async def get_host_detail(
         message_key="success.host.detail_query",
         locale=locale,
         default_message="Query host detail successful",
+    )
+
+
+@router.get(
+    "/{host_id}/vnc-credentials",
+    response_model=Result[AdminHostVncCredentialsResponse],
+    summary="Get host VNC credentials",
+    description=(
+        "Get host_acct and VNC password by host_id. "
+        "Password is stored AES-encrypted; returned as RealVNC-encrypted (same algorithm as browser VNC connection)."
+    ),
+    responses={
+        200: {
+            "description": "Query successful",
+            "model": Result[AdminHostVncCredentialsResponse],
+        },
+        400: {
+            "description": "Host not found or invalid host_id",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 53001,
+                        "message": "Host does not exist or has been deleted (ID: 123)",
+                        "error_code": "HOST_NOT_FOUND",
+                    }
+                }
+            },
+        },
+    },
+)
+@handle_api_errors
+async def get_host_vnc_credentials(
+    host_id: int = Path(..., ge=1, description="Host ID (host_rec.id)"),
+    admin_host_service: AdminHostService = Depends(get_admin_host_service),
+    current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_locale),
+) -> Result[AdminHostVncCredentialsResponse]:
+    """Get host account and VNC password (RealVNC encrypted) by host_id.
+
+    Business logic:
+    1. Query host_rec by host_id (must exist and not deleted)
+    2. Return host_acct (host_rec.host_acct)
+    3. Decrypt host_pwd (AES) then convert to RealVNC encrypted password (same as browser VNC flow)
+
+    Returns:
+        host_id: Host ID
+        ip: Host IP
+        host_acct: Host account
+        vnc_password: RealVNC-encrypted password (hex string), or None if decrypt/encrypt fails
+    """
+    logger.info(
+        "Received admin backend host VNC credentials request",
+        extra={"host_id": host_id, "user_id": current_user.get("id")},
+    )
+
+    data = await admin_host_service.get_host_vnc_credentials(host_id)
+
+    logger.info(
+        "Admin backend host VNC credentials query completed",
+        extra={"host_id": host_id},
+    )
+
+    response_data = AdminHostVncCredentialsResponse(
+        host_id=data["host_id"],
+        ip=data.get("ip"),
+        host_acct=data.get("host_acct"),
+        vnc_password=data.get("vnc_password"),
+    )
+    return create_success_result(
+        data=response_data,
+        message_key="success.host.vnc_credentials_query",
+        locale=locale,
+        default_message="Query host VNC credentials successful",
     )
 
 
