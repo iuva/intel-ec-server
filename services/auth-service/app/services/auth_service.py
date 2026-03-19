@@ -291,6 +291,10 @@ class AuthService:
             # Generate new access token
             access_token = self.jwt_manager.create_access_token(data=token_data)
 
+            # ✅ Rotate refresh token: refresh must be paired with access token
+            # Old refresh token becomes single-use and is blacklisted below.
+            new_refresh_token = self.jwt_manager.create_refresh_token(data=token_data)
+
             # ✅ Use common method to add old token to blacklist
             await self._add_token_to_blacklist(refresh_data.refresh_token, payload, "refresh_token")
 
@@ -305,9 +309,10 @@ class AuthService:
 
             return TokenResponse(
                 access_token=access_token,
-                refresh_token=refresh_data.refresh_token,
+                refresh_token=new_refresh_token,
                 token_type="bearer",
                 expires_in=self.access_token_expire_minutes * 60,
+                refresh_expires_in=self.refresh_token_expire_days * 24 * 60 * 60,
             )
 
         except BusinessError:
