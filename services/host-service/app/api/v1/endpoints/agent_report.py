@@ -17,6 +17,7 @@ try:
         AgentInitConfigItem,
         AgentInitConfigListResponse,
         AgentOfflineNotifyResponse,
+        AgentOfflineSuccessNotifyResponse,
         AgentOtaUpdateStatusRequest,
         AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
@@ -44,6 +45,7 @@ except ImportError:
         AgentInitConfigItem,
         AgentInitConfigListResponse,
         AgentOfflineNotifyResponse,
+        AgentOfflineSuccessNotifyResponse,
         AgentOtaUpdateStatusRequest,
         AgentOtaUpdateStatusResponse,
         AgentVNCConnectionReportRequest,
@@ -394,6 +396,43 @@ async def notify_agent_offline(
         message_key="success.agent.offline_notify",
         locale=locale,
         default_message="Agent offline notification processed; tcp_state set to closed",
+    )
+
+
+@router.post(
+    "/offline/success",
+    response_model=Result[AgentOfflineSuccessNotifyResponse],
+    status_code=HTTP_200_OK,
+    summary="Notify offline success",
+    description="""
+    Receive offline-success notification from agent.
+
+    Business rule:
+    - Only when current `host_rec.host_state = 4` (offline), update to `host_state = 0` (free).
+    - For other states, keep unchanged.
+    """,
+)
+@handle_api_errors
+async def notify_offline_success(
+    agent_info: Dict[str, Any] = Depends(get_current_agent),
+    agent_report_service: AgentReportService = Depends(get_agent_report_service),
+    locale: str = Depends(get_locale),
+) -> Result[AgentOfflineSuccessNotifyResponse]:
+    """Process offline-success notification and reset state 4 -> 0."""
+    host_id = agent_info["id"]
+    log_request_received(
+        "notify_offline_success",
+        extra={"host_id": host_id},
+        logger_instance=logger,
+    )
+
+    result = await agent_report_service.notify_offline_success(host_id=host_id)
+    response_data = AgentOfflineSuccessNotifyResponse(**result)
+    return create_success_result(
+        data=response_data,
+        message_key="success.agent.offline_success_notify",
+        locale=locale,
+        default_message="Offline success notification processed",
     )
 
 

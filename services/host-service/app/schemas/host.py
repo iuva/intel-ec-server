@@ -901,6 +901,23 @@ class AgentOfflineNotifyResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AgentOfflineSuccessNotifyResponse(BaseModel):
+    """Response schema for offline-success notification API.
+
+    Returned when agent confirms offline completed and system tries to
+    reset host state from offline(4) to free(0).
+    """
+
+    host_id: int = Field(..., description="Host ID (HostRec.id)")
+    host_state: int = Field(default=0, description="Host state after processing (0=free)")
+    updated: bool = Field(
+        default=False,
+        description="Whether host_state changed from 4 to 0 in this request",
+    )
+
+    model_config = {"from_attributes": True}
+
+
 class HardwareReportResponse(BaseModel):
     """Hardware report response schema"""
 

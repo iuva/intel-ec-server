@@ -21,6 +21,7 @@ try:
         CASE_STATE_SUCCESS,
         HOST_STATE_FREE,
         HOST_STATE_LOCKED,
+        HOST_STATE_OFFLINE,
         HOST_STATE_OCCUPIED,
         TCP_STATE_CLOSE,
     )
@@ -44,6 +45,7 @@ except ImportError:
         CASE_STATE_SUCCESS,
         HOST_STATE_FREE,
         HOST_STATE_LOCKED,
+        HOST_STATE_OFFLINE,
         HOST_STATE_OCCUPIED,
         TCP_STATE_CLOSE,
     )
@@ -152,6 +154,84 @@ class AgentReportService:
                 exc_info=True,
             )
             return False
+
+    async def notify_offline_success(self, host_id: int) -> Dict[str, Any]:
+        """Handle offline-success notification and reset host state.
+
+        Only when current host_state is offline(4), it will be reset to free(0).
+        Otherwise keep current state unchanged.
+        """
+        try:
+            session_factory = self.session_factory
+            async with session_factory() as session:
+                host_stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,
+                    )
+                )
+                host_result = await session.execute(host_stmt)
+                host_rec = host_result.scalar_one_or_none()
+
+                if not host_rec:
+                    raise BusinessError(
+                        message=f"Host does not exist: {host_id}",
+                        error_code="HOST_NOT_FOUND",
+                        code=ServiceErrorCodes.HOST_NOT_FOUND,
+                        http_status_code=404,
+                    )
+
+                current_state = host_rec.host_state
+                if current_state == HOST_STATE_OFFLINE:
+                    update_stmt = (
+                        update(HostRec)
+                        .where(
+                            and_(
+                                HostRec.id == host_id,
+                                HostRec.del_flag == 0,
+                                HostRec.host_state == HOST_STATE_OFFLINE,
+                            )
+                        )
+                        .values(host_state=HOST_STATE_FREE)
+                    )
+                    update_result = await session.execute(update_stmt)
+                    await session.commit()
+
+                    updated = update_result.rowcount > 0
+                    final_state = HOST_STATE_FREE if updated else current_state
+                else:
+                    updated = False
+                    final_state = current_state
+
+                logger.info(
+                    "Processed offline-success notification",
+                    extra={
+                        "host_id": host_id,
+                        "current_host_state": current_state,
+                        "final_host_state": final_state,
+                        "updated": updated,
+                    },
+                )
+
+                return {
+                    "host_id": host_id,
+                    "host_state": final_state,
+                    "updated": updated,
+                }
+        except BusinessError:
+            raise
+        except Exception as e:
+            logger.error(
+                "Failed to process offline-success notification",
+                extra={"host_id": host_id, "error": str(e)},
+                exc_info=True,
+            )
+            raise BusinessError(
+                message="Offline success notification processing failed",
+                error_code="OFFLINE_SUCCESS_NOTIFY_FAILED",
+                code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                http_status_code=500,
+            )
 
     async def report_hardware(
         self,
