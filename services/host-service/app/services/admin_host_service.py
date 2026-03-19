@@ -1106,7 +1106,7 @@ class AdminHostService:
 
         Business logic:
         1. Query host_exec_log table based on host_id
-        2. Condition: del_flag = 0
+        2. Do not filter by del_flag (query all records, including logically deleted)
         3. Order by created_time descending
         4. Calculate exec_date (date part of begin_time, format %Y-%m-%d)
         5. Calculate exec_time (end_time - begin_time, format %H:%M:%S, if end_time is empty, use current time)

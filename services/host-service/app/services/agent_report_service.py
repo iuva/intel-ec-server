@@ -1306,7 +1306,9 @@ class AgentReportService:
                         .where(
                             and_(
                                 HostExecLog.host_id == host_id,
-                                HostExecLog.case_state < CASE_STATE_SUCCESS,
+                                # Only treat "started" as active execution.
+                                # Exclude case_state=0 (idle/free) from blocking reset.
+                                HostExecLog.case_state == 1,
                                 HostExecLog.del_flag == 0,
                             )
                         )
