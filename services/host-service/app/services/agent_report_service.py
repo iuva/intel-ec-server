@@ -23,7 +23,7 @@ try:
         HOST_STATE_LOCKED,
         HOST_STATE_OFFLINE,
         HOST_STATE_OCCUPIED,
-        TCP_STATE_CLOSE,
+        TCP_STATE_LISTEN,
     )
     from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
@@ -47,7 +47,7 @@ except ImportError:
         HOST_STATE_LOCKED,
         HOST_STATE_OFFLINE,
         HOST_STATE_OCCUPIED,
-        TCP_STATE_CLOSE,
+        TCP_STATE_LISTEN,
     )
     from app.models.host_exec_log import HostExecLog
     from app.models.host_hw_rec import HostHwRec
@@ -161,7 +161,7 @@ class AgentReportService:
                         )
                     )
                     .values(
-                        tcp_state=TCP_STATE_CLOSE,
+                        tcp_state=TCP_STATE_LISTEN,
                         host_state=target_host_state,
                     )
                 )
