@@ -449,6 +449,37 @@ class BrowserHostService:
             # Database operation failed, silently fail
             return False
 
+    async def restore_offline_to_free_on_heartbeat_silent(self, host_id: str) -> bool:
+        """If host is offline (4), set to free (0) — single conditional UPDATE, idempotent.
+
+        Used on Agent WebSocket heartbeat: proves the machine is back; avoids SELECT + UPDATE.
+        Returns True only when one row was updated (was offline).
+        """
+        try:
+            host_id_int = int(host_id)
+        except (ValueError, TypeError):
+            return False
+
+        try:
+            session_factory = self.session_factory
+            async with session_factory() as session:
+                stmt = (
+                    update(HostRec)
+                    .where(
+                        and_(
+                            HostRec.id == host_id_int,
+                            HostRec.del_flag == 0,
+                            HostRec.host_state == HOST_STATE_OFFLINE,
+                        )
+                    )
+                    .values(host_state=HOST_STATE_FREE)
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return bool(result.rowcount and result.rowcount > 0)
+        except Exception:
+            return False
+
     async def update_tcp_state(self, host_id: str, tcp_state: int) -> bool:
         """Update host TCP connection state
 

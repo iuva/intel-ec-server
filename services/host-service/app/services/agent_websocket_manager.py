@@ -1170,6 +1170,19 @@ class AgentWebSocketManager:
                 extra={"agent_id": agent_id},
             )
 
+            # Offline(4) -> free(0) when heartbeat proves Agent is alive (single conditional UPDATE, no SELECT)
+            try:
+                if await self.host_service.restore_offline_to_free_on_heartbeat_silent(agent_id):
+                    logger.info(
+                        "Heartbeat: host_state restored from offline(4) to free(0)",
+                        extra={"agent_id": agent_id},
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Offline->free on heartbeat skipped (non-fatal)",
+                    extra={"agent_id": agent_id, "error": str(e)},
+                )
+
             # Try to update heartbeat time in database (if host exists in database)
             # Use silent method, don't log ERROR on failure
             try:
