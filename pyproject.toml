@@ -1,3 +1,11 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# 单体仓库元项目：不打包业务代码，仅用于声明 dev / host-service 等 optional-dependencies
+packages = []
+
 [project]
 name = "intel-cw-ms"
 version = "1.0.0"
@@ -6,6 +14,10 @@ requires-python = ">=3.8.10,<3.9"
 dependencies = []
 
 [project.optional-dependencies]
+# 与 services/host-service/requirements*.txt 对齐：单独本地启动 host-service 时必须安装（Docker 镜像已通过 requirements-no-hash 安装）
+host-service = [
+    "pycryptodome==3.20.0",  # RealVNC 密码加密，浏览器 POST /hosts/vnc/connect 依赖 Crypto.Cipher.DES
+]
 dev = [
     "ruff>=0.8.4",           # 代码检查、格式化、导入排序（替代 Black + isort + Flake8）
     "mypy>=1.13.0",          # 静态类型检查

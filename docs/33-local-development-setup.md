@@ -352,8 +352,11 @@ source venv/bin/activate
 # 升级 pip
 pip install --upgrade pip
 
-# 安装项目依赖
+# 安装项目依赖（根目录 requirements.txt 已合并 gateway + auth + host 全部运行时依赖，一条命令即可）
 pip install -r requirements.txt
+
+# 若仅用某一服务的 requirements 文件安装（如 Docker 构建上下文），以对应 services/*/requirements.txt 为准
+# 可选：pip install ".[host-service]" 仅补装 pycryptodome 等与 extras 对齐的少量包
 
 # 安装开发工具（可选）
 pip install ruff mypy pyright pytest pytest-asyncio pytest-cov

@@ -19,6 +19,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
 PyJWT==2.8.0
+# RealVNC 密码（Docker 构建使用本文件）；浏览器 POST /hosts/vnc/connect 必需
 pycryptodome==3.20.0
 
 # Data validation

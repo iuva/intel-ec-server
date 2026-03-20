@@ -1,46 +1,59 @@
-# Web框架
-fastapi==0.116.1
-uvicorn[standard]==0.30.6
-python-multipart==0.0.9
+# =============================================================================
+# 根目录统一依赖（gateway + auth + host 三者并集）
+# 本地一条命令：pip install -r requirements.txt
+# 各服务 Docker 仍使用各自目录下的 requirements（构建上下文无需整个仓库）
+# =============================================================================
 
-# 数据库
-sqlalchemy==2.0.35
-# MariaDB 10.11 兼容的异步MySQL驱动
+# --- Web ---
+fastapi==0.116.1
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+# Python 3.8 / 当前 PyPI：websockets 最高 13.x（服务内曾写 14.1 在本环境无法解析）
+websockets==13.1
+
+# --- 数据库（MariaDB / SQLAlchemy 异步）---
+sqlalchemy[asyncio]==2.0.36
 aiomysql==0.2.0
 asyncmy==0.2.9
+pymysql==1.1.1
 
-# 缓存
-redis==5.0.8
+# --- 缓存 ---
+redis==5.2.1
 hiredis==2.3.2
 
-# 认证和安全
+# --- HTTP 客户端 ---
+httpx==0.28.1
+# Python 3.8：aiohttp 3.11+ 无 cp38 wheel；与 gateway 声明对齐到 3.10.x
+aiohttp==3.10.11
+requests==2.32.3
+
+# --- 认证与安全 ---
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
+# RealVNC：host 浏览器 POST /hosts/vnc/connect 依赖 Crypto.Cipher.DES
 pycryptodome==3.20.0
 
-# 数据验证
+# --- 数据校验 ---
 pydantic==2.10.6
-pydantic-settings==2.6.1
+pydantic-settings==2.7.1
 email-validator==2.2.0
 
-# HTTP客户端
-httpx==0.27.2
-
-# 服务发现
-nacos-sdk-python==0.1.7
-
-# 分布式追踪
-opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
-opentelemetry-instrumentation-fastapi==0.48b0
+# --- 可观测性（指标 / 追踪；与 auth OTLP、host/gateway Jaeger 对齐）---
+prometheus-client==0.21.1
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+opentelemetry-instrumentation-redis==0.50b0
+opentelemetry-instrumentation-sqlalchemy==0.50b0
+opentelemetry-instrumentation-httpx==0.50b0
+# Jaeger 导出器 PyPI 最高 1.21.x，与 1.29 SDK 常见组合可正常工作
 opentelemetry-exporter-jaeger==1.21.0
+opentelemetry-exporter-otlp==1.29.0
 
-# 监控指标
-prometheus-client==0.21.0
+# --- 服务发现（取各服务较新 pin）---
+nacos-sdk-python==1.0.0
 
-# 日志
-loguru==0.7.2
-
-# 工具类
+# --- 日志与配置 ---
+loguru==0.7.3
 python-dotenv==1.0.1
