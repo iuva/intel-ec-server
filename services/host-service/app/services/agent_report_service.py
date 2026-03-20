@@ -8,7 +8,7 @@ Processes information reported by Agent, including:
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import os
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -114,9 +114,11 @@ class AgentReportService:
     async def notify_agent_offline(self, host_id: int) -> bool:
         """Set host TCP state to closed (0) when receiving agent offline notification.
 
-        Updates host_rec.tcp_state to TCP_STATE_CLOSE (0) for the given host.
-        Used when the system receives an agent-offline notification (e.g. graceful
-        shutdown or connection loss) so that the host is marked as disconnected.
+        Logic update:
+        1. Query the latest HostExecLog record for this host (do NOT filter by del_flag in query).
+        2. If (case_state != 2) AND (del_flag == 0) then set host_rec.host_state = 2
+           else set host_rec.host_state = 0.
+        3. Always update host_rec.tcp_state = TCP_STATE_CLOSE (0) to mark the host disconnected.
 
         Args:
             host_id: Host ID (HostRec.id, typically from agent token).
@@ -128,7 +130,29 @@ class AgentReportService:
         try:
             session_factory = self.session_factory
             async with session_factory() as session:
-                stmt = (
+                # 1. Query latest exec log (no del_flag filter)
+                exec_stmt = (
+                    select(HostExecLog)
+                    .where(HostExecLog.host_id == host_id)
+                    .order_by(HostExecLog.created_time.desc())
+                    .limit(1)
+                )
+                exec_result = await session.execute(exec_stmt)
+                latest_exec_log = exec_result.scalar_one_or_none()
+
+                # 2. Decide target host_state based on latest log
+                #    Required condition:
+                #    - case_state != 2 AND del_flag == 0
+                #    Otherwise: host_state = 0
+                should_set_occupied = (
+                    latest_exec_log is not None
+                    and latest_exec_log.case_state != CASE_STATE_SUCCESS
+                    and latest_exec_log.del_flag == 0
+                )
+                target_host_state = HOST_STATE_OCCUPIED if should_set_occupied else HOST_STATE_FREE
+
+                # 3. Update host_rec: tcp_state always closed, host_state based on latest log
+                update_stmt = (
                     update(HostRec)
                     .where(
                         and_(
@@ -136,14 +160,24 @@ class AgentReportService:
                             HostRec.del_flag == 0,
                         )
                     )
-                    .values(tcp_state=TCP_STATE_CLOSE)
+                    .values(
+                        tcp_state=TCP_STATE_CLOSE,
+                        host_state=target_host_state,
+                    )
                 )
-                result = await session.execute(stmt)
+                result = await session.execute(update_stmt)
                 await session.commit()
+
                 if result.rowcount > 0:
                     logger.info(
-                        "Agent offline notification applied: tcp_state set to 0",
-                        extra={"host_id": host_id},
+                        "Agent offline notification applied",
+                        extra={
+                            "host_id": host_id,
+                            "host_state": target_host_state,
+                            "should_set_occupied": should_set_occupied,
+                            "latest_case_state": getattr(latest_exec_log, "case_state", None),
+                            "latest_log_del_flag": getattr(latest_exec_log, "del_flag", None),
+                        },
                     )
                     return True
                 return False
