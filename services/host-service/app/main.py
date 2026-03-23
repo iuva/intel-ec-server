@@ -15,7 +15,7 @@ from app.api.v1 import api_router
 # Use try-except to handle path imports
 try:
     from app.tasks.case_timeout_task import get_case_timeout_task_service
-    from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
+    from shared.app import ServiceConfig, create_service_lifespan, include_health_routes, setup_exception_handling
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
@@ -26,7 +26,7 @@ except ImportError:
     # If import fails, add project root directory to Python path
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
     from app.tasks.case_timeout_task import get_case_timeout_task_service
-    from shared.app import ServiceConfig, create_service_lifespan, include_health_routes
+    from shared.app import ServiceConfig, create_service_lifespan, include_health_routes, setup_exception_handling
     from shared.common.loguru_config import configure_logger, get_logger
     from shared.middleware.exception_middleware import UnifiedExceptionMiddleware
     from shared.middleware.http_logging_middleware import HTTPLoggingMiddleware
@@ -158,8 +158,8 @@ logger.info("✅ Request context middleware enabled")
 # Application has already started at this point, cannot add Jaeger middleware anymore
 
 # Note: Exception handlers are already registered in lifespan startup() (shared/app/service_factory.py:243-245)
-# So no need to call setup_exception_handling here
-# Calling it would cause exception handlers to be registered twice, potentially causing conflicts
+# Register unified FastAPI exception handlers for 422/405/HTTP errors
+setup_exception_handling(app, service_name=service_name)
 
 # Add health check routes
 include_health_routes(app)
