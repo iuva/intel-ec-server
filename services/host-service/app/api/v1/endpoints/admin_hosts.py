@@ -626,7 +626,7 @@ async def get_host_detail(
     summary="Get host VNC credentials",
     description=(
         "Get host_acct and VNC password by host_id. "
-        "Password is stored AES-encrypted; returned as RealVNC-encrypted (same algorithm as browser VNC connection)."
+        "Password is stored AES-encrypted; returned as decrypted password (same as host detail)."
     ),
     responses={
         200: {
@@ -654,18 +654,18 @@ async def get_host_vnc_credentials(
     current_user: dict = Depends(get_current_user),
     locale: str = Depends(get_locale),
 ) -> Result[AdminHostVncCredentialsResponse]:
-    """Get host account and VNC password (RealVNC encrypted) by host_id.
+    """Get host account and VNC password by host_id.
 
     Business logic:
     1. Query host_rec by host_id (must exist and not deleted)
     2. Return host_acct (host_rec.host_acct)
-    3. Decrypt host_pwd (AES) then convert to RealVNC encrypted password (same as browser VNC flow)
+    3. Decrypt host_pwd (AES) and return decrypted password (same as host detail)
 
     Returns:
         host_id: Host ID
         ip: Host IP
         host_acct: Host account
-        vnc_password: RealVNC-encrypted password (hex string), or None if decrypt/encrypt fails
+        vnc_password: Decrypted host password, or None if decrypt fails
     """
     logger.info(
         "Received admin backend host VNC credentials request",

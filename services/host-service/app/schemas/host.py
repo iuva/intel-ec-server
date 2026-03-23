@@ -551,14 +551,14 @@ class AdminHostDetailResponse(BaseModel):
 
 
 class AdminHostVncCredentialsResponse(BaseModel):
-    """Admin backend host VNC credentials response schema (host_acct + RealVNC encrypted password)"""
+    """Admin backend host VNC credentials response schema (host_acct + decrypted password)"""
 
     host_id: str = Field(description="Host ID (host_rec.id)")
     ip: Optional[str] = Field(default=None, description="IP address (host_rec table host_ip)")
     host_acct: Optional[str] = Field(default=None, description="Host account (host_rec table host_acct)")
     vnc_password: Optional[str] = Field(
         default=None,
-        description="VNC password (RealVNC encrypted, derived from host_rec.host_pwd: AES decrypt -> RealVNC encrypt)",
+        description="VNC password (decrypted from host_rec.host_pwd, same semantics as host detail password)",
     )
 
     model_config = {"from_attributes": True}

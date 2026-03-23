@@ -285,8 +285,16 @@ class AuthService:
                     error_code="AUTH_TOKEN_INVALID",
                 )
 
+            # ✅ Keep token identity fields (especially user_type) consistent after refresh
+            user_type = payload.get("user_type", "admin")
+
+            # Preserve all custom payload fields (e.g. mg_id/host_ip/roles/permissions)
+            # so downstream services can keep the same authorization logic.
+            excluded_keys = {"id", "sub", "username", "user_type", "exp", "type", "iat"}
+            extra_fields = {k: v for k, v in payload.items() if k not in excluded_keys}
+
             # ✅ Use common method to build token payload
-            token_data = self._build_token_payload(str(user_id), str(username))
+            token_data = self._build_token_payload(str(user_id), str(username), str(user_type), extra_fields)
 
             # Generate new access token
             access_token = self.jwt_manager.create_access_token(data=token_data)

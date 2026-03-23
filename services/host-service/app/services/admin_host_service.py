@@ -913,13 +913,13 @@ class AdminHostService:
         error_code="GET_HOST_VNC_CREDENTIALS_FAILED",
     )
     async def get_host_vnc_credentials(self, host_id: int) -> dict:
-        """Get host account and VNC password (RealVNC encrypted) by host_id.
+        """Get host account and VNC password by host_id.
 
         Business logic:
         1. Verify host exists and is not deleted
         2. Read host_acct and host_pwd from host_rec
         3. Decrypt host_pwd with AES
-        4. Convert plain password to RealVNC encrypted password (same as browser VNC flow)
+        4. Return decrypted password (same semantics as `/{host_id}/detail` password field)
         5. Return host_acct and vnc_password
 
         Args:
@@ -944,17 +944,19 @@ class AdminHostService:
             if host_rec.host_pwd:
                 try:
                     decrypted_password = aes_decrypt(host_rec.host_pwd)
-                    if decrypted_password:
-                        vnc_password = _realvnc_encrypt_password(decrypted_password)
+                    if decrypted_password is not None:
+                        # For admin usage, return decrypted host password directly.
+                        # This matches the "detail" endpoint behavior.
+                        vnc_password = decrypted_password
                         logger.debug(
-                            "VNC password conversion succeeded (AES decrypt -> RealVNC encrypt)",
+                            "VNC password decrypt succeeded (AES decrypt -> plaintext)",
                             extra={"host_id": host_id},
                         )
                 except BusinessError:
                     raise
                 except Exception as e:
                     logger.warning(
-                        "VNC password conversion failed (AES decrypt or RealVNC encrypt)",
+                        "VNC password decrypt failed (AES decrypt)",
                         extra={
                             "host_id": host_id,
                             "error": str(e),
