@@ -327,9 +327,16 @@ class AdminHostService:
     ) -> str:
         """Delete host (logical delete)
 
-        Logically delete host_rec table data based on host ID. After deletion,
-        need to synchronously notify external API.
-        If notification fails, rollback the delete operation.
+        Business logic:
+        1. Query host record to check existence and get hardware_id
+        2. If hardware_id exists, call external API first to delete hardware data
+        3. If external API succeeds (or no hardware_id), execute local logical delete
+        4. Add host_id to Redis blacklist for token invalidation
+
+        Transaction boundary:
+        - External API call is outside the database transaction
+        - Local delete (host_rec + host_hw_rec) is within a single transaction
+        - If external API fails, local data remains unchanged (no rollback needed)
 
         Args:
             host_id: Host ID (host_rec.id)
@@ -341,7 +348,7 @@ class AdminHostService:
             str: Deleted host ID (string format to avoid precision loss)
 
         Raises:
-            BusinessError: When host does not exist or deletion fails
+            BusinessError: When host does not exist, external API call fails, or deletion fails
         """
         logger.info(
             "Start deleting host",
@@ -372,101 +379,32 @@ class AdminHostService:
                     details={"host_id": host_id},
                 )
 
-            # 2. Execute logical delete (set del_flag = 1)
-            update_stmt = (
-                update(HostRec)
-                .where(
-                    and_(
-                        HostRec.id == host_id,
-                        HostRec.del_flag == 0,  # Only update non-deleted records
-                    )
-                )
-                .values(del_flag=1)  # Set as deleted
-            )
+            hardware_id = host_rec.hardware_id
 
             logger.info(
-                "Execute logical delete operation",
+                "Host record found",
                 extra={
                     "host_id": host_id,
-                    "operation": "UPDATE del_flag = 1",
+                    "hardware_id": hardware_id,
                 },
             )
 
-            # Execute update
-            result = await session.execute(update_stmt)
-            await session.commit()
-
-            updated_count = result.rowcount
-
-            if updated_count == 0:
-                logger.warning(
-                    "Logical delete failed, record may have been deleted",
-                    extra={
-                        "host_id": host_id,
-                    },
-                )
-                raise BusinessError(
-                    message=f"Host deletion failed, record may have been deleted (ID: {host_id})",
-                    message_key="error.host.delete_failed",
-                    error_code="HOST_DELETE_FAILED",
-                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
-                    http_status_code=400,
-                    details={"host_id": host_id},
-                )
-
-            logger.info(
-                "Host logical delete completed",
-                extra={
-                    "host_id": host_id,
-                    "updated_count": updated_count,
-                },
-            )
-
-            # 3. After successful deletion, add host_id to Redis blacklist
+        # 2. Call external API first (if hardware_id exists)
+        # This is outside the database transaction to avoid holding transaction during external call
+        if hardware_id:
             try:
-                deleted_host_key = f"deleted:host:{host_id}"
-                # Expiration time: 24 hours (consistent with token expiration time)
-                expire_seconds = 24 * 60 * 60
-                await redis_manager.set(deleted_host_key, True, expire=expire_seconds)
+                external_api_path = f"/api/v1/hardware/{hardware_id}"
 
                 logger.info(
-                    "Deleted host ID added to Redis blacklist",
+                    "Calling external API to delete hardware",
                     extra={
                         "host_id": host_id,
-                        "redis_key": deleted_host_key,
-                        "expire_seconds": expire_seconds,
-                    },
-                )
-            except Exception as redis_error:
-                # Log warning when Redis operation fails, but don't affect delete operation
-                logger.warning(
-                    "Failed to add host ID to Redis blacklist",
-                    extra={
-                        "host_id": host_id,
-                        "error": str(redis_error),
-                        "error_type": type(redis_error).__name__,
-                        "hint": (
-                            "When Redis is unavailable, deleted host tokens may still be usable until token expires"
-                        ),
-                    },
-                )
-
-            # 4. Notify external API
-            try:
-                # Build notification path (adjust according to actual external API interface)
-                external_api_path = f"/api/v1/hardware/{host_rec.hardware_id}"
-
-                logger.info(
-                    "Call external API to notify host deletion",
-                    extra={
-                        "host_id": host_id,
-                        "hardware_id": host_rec.hardware_id,
+                        "hardware_id": hardware_id,
                         "external_api_path": external_api_path,
                         "user_id": user_id,
                     },
                 )
 
-                # Call external API to notify host has been deleted
                 response = await call_external_api(
                     method="DELETE",
                     url_path=external_api_path,
@@ -475,14 +413,13 @@ class AdminHostService:
                     locale=locale,
                 )
 
-                # Determine if request succeeded: Check if response header :status or response body code is 200
+                # Determine if request succeeded
                 response_headers = response.get("headers", {})
                 response_body = response.get("body", {})
                 status_header = response_headers.get(":status") or response_headers.get("status")
                 status_code = response.get("status_code")
                 body_code = response_body.get("code") if isinstance(response_body, dict) else None
 
-                # Determine success: response header :status or status_code or response body code equals 200
                 is_success = (
                     (status_header and str(status_header) == "200")
                     or (status_code and status_code == 200)
@@ -495,71 +432,156 @@ class AdminHostService:
                         if isinstance(response_body, dict)
                         else str(response_body)
                     )
-                    raise Exception(f"External API notification failed: {error_msg}")
+                    raise BusinessError(
+                        message=f"External API deletion failed: {error_msg}",
+                        message_key="error.external_api.delete_failed",
+                        error_code="EXTERNAL_API_DELETE_FAILED",
+                        code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                        http_status_code=500,
+                        details={
+                            "host_id": host_id,
+                            "hardware_id": hardware_id,
+                            "status_code": status_code,
+                            "response_body": response_body,
+                        },
+                    )
 
                 logger.info(
-                    "External API notification succeeded",
+                    "External API deletion succeeded",
                     extra={
                         "host_id": host_id,
+                        "hardware_id": hardware_id,
                         "status_header": status_header,
                         "status_code": status_code,
-                        "body_code": body_code,
                     },
                 )
 
+            except BusinessError:
+                raise
             except Exception as e:
-                # 4. If external API notification fails, rollback delete operation
                 logger.error(
-                    "External API notification failed, starting rollback of delete operation",
+                    "External API call failed",
                     extra={
                         "host_id": host_id,
+                        "hardware_id": hardware_id,
                         "error": str(e),
                         "error_type": type(e).__name__,
                     },
                     exc_info=True,
                 )
-
-                # Rollback: Change del_flag back to 0
-                rollback_stmt = (
-                    update(HostRec).where(HostRec.id == host_id).values(del_flag=0)  # Restore to non-deleted state
-                )
-
-                rollback_result = await session.execute(rollback_stmt)
-                await session.commit()
-
-                rollback_count = rollback_result.rowcount
-
-                logger.info(
-                    "Delete operation rolled back",
-                    extra={
-                        "host_id": host_id,
-                        "rollback_count": rollback_count,
-                    },
-                )
-
-                # Raise business exception, return deletion failure
                 raise BusinessError(
-                    message=f"Host deletion failed: External API notification failed (ID: {host_id})",
+                    message=f"Failed to delete hardware from external API (ID: {host_id})",
                     message_key="error.host.delete_external_api_failed",
                     error_code="HOST_DELETE_EXTERNAL_API_FAILED",
                     code=ServiceErrorCodes.HOST_OPERATION_FAILED,
                     http_status_code=500,
                     details={
                         "host_id": host_id,
+                        "hardware_id": hardware_id,
                         "external_api_error": str(e),
-                        "rollback_success": rollback_count > 0,
                     },
                 )
-
-            # 5. Deletion succeeded
+        else:
             logger.info(
-                "Host deletion succeeded (including external API notification)",
+                "No hardware_id, skipping external API call",
                 extra={
                     "host_id": host_id,
                 },
             )
 
-            return str(host_id)  # ✅ Convert to string to avoid precision loss
+        # 3. Execute local logical delete within a transaction
+        async with session_factory() as session:
+            # 3.1 Delete host_rec
+            update_stmt = (
+                update(HostRec)
+                .where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,
+                    )
+                )
+                .values(del_flag=1)
+            )
+
+            result = await session.execute(update_stmt)
+            updated_count = result.rowcount
+
+            if updated_count == 0:
+                logger.warning(
+                    "Logical delete failed, record may have been deleted",
+                    extra={"host_id": host_id},
+                )
+                raise BusinessError(
+                    message=f"Host deletion failed, record may have been deleted (ID: {host_id})",
+                    message_key="error.host.delete_failed",
+                    error_code="HOST_DELETE_FAILED",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={"host_id": host_id},
+                )
+
+            # 3.2 Delete host_hw_rec (cascade logical delete)
+            hw_update_stmt = (
+                update(HostHwRec)
+                .where(
+                    and_(
+                        HostHwRec.host_id == host_id,
+                        HostHwRec.del_flag == 0,
+                    )
+                )
+                .values(del_flag=1)
+            )
+            hw_result = await session.execute(hw_update_stmt)
+            hw_updated_count = hw_result.rowcount
+
+            # 3.3 Commit transaction
+            await session.commit()
+
+            logger.info(
+                "Local logical delete completed",
+                extra={
+                    "host_id": host_id,
+                    "host_rec_updated": updated_count,
+                    "host_hw_rec_updated": hw_updated_count,
+                },
+            )
+
+        # 4. Add host_id to Redis blacklist (outside transaction, non-critical)
+        try:
+            deleted_host_key = f"deleted:host:{host_id}"
+            expire_seconds = 24 * 60 * 60  # 24 hours
+            await redis_manager.set(deleted_host_key, True, expire=expire_seconds)
+
+            logger.info(
+                "Deleted host ID added to Redis blacklist",
+                extra={
+                    "host_id": host_id,
+                    "redis_key": deleted_host_key,
+                    "expire_seconds": expire_seconds,
+                },
+            )
+        except Exception as redis_error:
+            logger.warning(
+                "Failed to add host ID to Redis blacklist",
+                extra={
+                    "host_id": host_id,
+                    "error": str(redis_error),
+                    "error_type": type(redis_error).__name__,
+                    "hint": (
+                        "When Redis is unavailable, deleted host tokens may still be usable until token expires"
+                    ),
+                },
+            )
+
+        logger.info(
+            "Host deletion succeeded",
+            extra={
+                "host_id": host_id,
+                "hardware_id": hardware_id,
+            },
+        )
+
+        return str(host_id)
 
     @handle_service_errors(
         error_message="Failed to disable host",

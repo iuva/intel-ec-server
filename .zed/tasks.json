@@ -1,0 +1,203 @@
+[
+  // ============================================
+  // 基础设施服务管理
+  // ============================================
+  {
+    "label": "🚀 启动基础设施 (Nacos + Jaeger)",
+    "command": "docker-compose up -d nacos jaeger",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🚀 启动所有 Docker 服务",
+    "command": "docker-compose up -d",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📊 查看服务状态",
+    "command": "docker-compose ps",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📝 查看 Nacos 日志",
+    "command": "docker-compose logs -f nacos",
+    "use_new_terminal": true
+  },
+  {
+    "label": "📝 查看 Jaeger 日志",
+    "command": "docker-compose logs -f jaeger",
+    "use_new_terminal": true
+  },
+  {
+    "label": "🛑 停止所有 Docker 服务",
+    "command": "docker-compose down",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🛑 停止并清理数据卷",
+    "command": "docker-compose down -v",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🔧 构建所有镜像",
+    "command": "docker-compose build",
+    "use_new_terminal": false
+  },
+
+  // ============================================
+  // 微服务本地开发启动
+  // ============================================
+  {
+    "label": "▶️ 启动 Gateway Service (端口 8000)",
+    "command": "source venv/bin/activate && cd services/gateway-service && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "use_new_terminal": true
+  },
+  {
+    "label": "▶️ 启动 Auth Service (端口 8001)",
+    "command": "source venv/bin/activate && cd services/auth-service && python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload",
+    "use_new_terminal": true
+  },
+  {
+    "label": "▶️ 启动 Host Service (端口 8003)",
+    "command": "source venv/bin/activate && cd services/host-service && python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload",
+    "use_new_terminal": true
+  },
+
+  // ============================================
+  // 代码质量检查
+  // ============================================
+  {
+    "label": "🔍 Ruff 代码检查",
+    "command": "source venv/bin/activate && ruff check services/ shared/",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🔧 Ruff 自动修复",
+    "command": "source venv/bin/activate && ruff check --fix services/ shared/",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📝 MyPy 类型检查",
+    "command": "source venv/bin/activate && mypy services/ shared/",
+    "use_new_terminal": false
+  },
+  {
+    "label": "✨ Black 代码格式化",
+    "command": "source venv/bin/activate && black services/ shared/",
+    "use_new_terminal": false
+  },
+  {
+    "label": "✅ 运行所有代码检查",
+    "command": "source venv/bin/activate && ruff check services/ shared/ && mypy services/ shared/ && black --check services/ shared/",
+    "use_new_terminal": false
+  },
+
+  // ============================================
+  // 测试
+  // ============================================
+  {
+    "label": "🧪 运行所有测试",
+    "command": "source venv/bin/activate && pytest",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🧪 运行测试并生成覆盖率报告",
+    "command": "source venv/bin/activate && pytest --cov=services --cov=shared --cov-report=html",
+    "use_new_terminal": false
+  },
+
+  // ============================================
+  // 服务验证
+  // ============================================
+  {
+    "label": "🏥 检查 Gateway 健康状态",
+    "command": "curl -s http://localhost:8000/health | python -m json.tool",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🏥 检查 Auth 健康状态",
+    "command": "curl -s http://localhost:8001/health | python -m json.tool",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🏥 检查 Host 健康状态",
+    "command": "curl -s http://localhost:8003/health | python -m json.tool",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🔍 检查 Nacos 服务注册",
+    "command": "echo 'Gateway:' && curl -s 'http://localhost:8848/nacos/v1/ns/instance/list?serviceName=gateway-service' | python -m json.tool && echo '\nAuth:' && curl -s 'http://localhost:8848/nacos/v1/ns/instance/list?serviceName=auth-service' | python -m json.tool && echo '\nHost:' && curl -s 'http://localhost:8848/nacos/v1/ns/instance/list?serviceName=host-service' | python -m json.tool",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🔍 检查 Nacos 健康状态",
+    "command": "curl -s http://localhost:8848/nacos/v1/console/health/readiness",
+    "use_new_terminal": false
+  },
+
+  // ============================================
+  // 依赖管理
+  // ============================================
+  {
+    "label": "📦 安装根目录依赖",
+    "command": "source venv/bin/activate && pip install -r requirements.txt",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📦 安装 Gateway Service 依赖",
+    "command": "source venv/bin/activate && pip install -r services/gateway-service/requirements.txt",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📦 安装 Auth Service 依赖",
+    "command": "source venv/bin/activate && pip install -r services/auth-service/requirements.txt",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📦 安装 Host Service 依赖",
+    "command": "source venv/bin/activate && pip install -r services/host-service/requirements.txt",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📦 安装开发工具",
+    "command": "source venv/bin/activate && pip install ruff mypy black pytest pytest-asyncio pytest-cov",
+    "use_new_terminal": false
+  },
+
+  // ============================================
+  // 故障排查
+  // ============================================
+  {
+    "label": "🔍 检查端口占用 (8848/16686/8000/8001/8003)",
+    "command": "echo 'Nacos (8848):' && lsof -i :8848 2>/dev/null || echo '  未占用' && echo 'Jaeger (16686):' && lsof -i :16686 2>/dev/null || echo '  未占用' && echo 'Gateway (8000):' && lsof -i :8000 2>/dev/null || echo '  未占用' && echo 'Auth (8001):' && lsof -i :8001 2>/dev/null || echo '  未占用' && echo 'Host (8003):' && lsof -i :8003 2>/dev/null || echo '  未占用'",
+    "use_new_terminal": false
+  },
+  {
+    "label": "🐳 查看 Gateway Service 日志",
+    "command": "docker-compose logs -f gateway-service",
+    "use_new_terminal": true
+  },
+  {
+    "label": "🐳 查看 Auth Service 日志",
+    "command": "docker-compose logs -f auth-service",
+    "use_new_terminal": true
+  },
+  {
+    "label": "🐳 查看 Host Service 日志",
+    "command": "docker-compose logs -f host-service",
+    "use_new_terminal": true
+  },
+
+  // ============================================
+  // 环境配置
+  // ============================================
+  {
+    "label": "⚙️ 生成 Nacos Token",
+    "command": "./scripts/generate_token.sh",
+    "use_new_terminal": false
+  },
+  {
+    "label": "📋 查看 .env 配置",
+    "command": "cat .env",
+    "use_new_terminal": false
+  }
+]
