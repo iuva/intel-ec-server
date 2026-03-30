@@ -225,14 +225,20 @@ async def get_vnc_connection(
 
     ## Request parameter description
     - `id`: Host ID, corresponds to host_rec.id (required)
+    - `user_id`: User ID for permission check (required)
 
     ## Business logic
     1. Verify host ID format
     2. Query host_rec table
     3. Check if host is enabled and not deleted
-    4. Check if VNC connection information is complete
-    5. Update host status to locked (host_state = 1)
-    6. Return VNC connection parameters
+    4. Check host state:
+       - If host_state=0 (FREE): proceed normally
+       - If host_state=2 (OCCUPIED) or 3 (EXECUTING): verify if current user is the owner
+         by checking the latest non-deleted host_exec_log record
+       - If host_state>=4: reject (non-business state)
+    5. Check if VNC connection information is complete
+    6. Update host status to locked (host_state = 1)
+    7. Return VNC connection parameters
 
     ## Return field description
     - `ip`: VNC server IP address
@@ -243,6 +249,9 @@ async def get_vnc_connection(
     ## Error codes
     - `INVALID_HOST_ID`: Host ID format is invalid (400)
     - `HOST_NOT_FOUND`: Host does not exist or is not enabled (404)
+    - `HOST_STATE_NOT_ALLOWED`: Host is in non-business state (400)
+    - `HOST_OCCUPIED_BY_OTHER`: Host is occupied by another user (400)
+    - `HOST_OCCUPIED_NO_LOG`: Host is occupied but no execution log found (400)
     - `VNC_INFO_INCOMPLETE`: VNC connection information is incomplete (400)
     - `VNC_GET_FAILED`: Get failed, service exception (500)
 
@@ -255,10 +264,10 @@ async def get_vnc_connection(
     """
     logger.info(
         "Received get VNC connection information request",
-        extra={"host_rec_id": request.id},
+        extra={"host_rec_id": request.id, "user_id": request.user_id},
     )
 
-    vnc_info = await vnc_service.get_vnc_connection_info(request.id)
+    vnc_info = await vnc_service.get_vnc_connection_info(request.id, request.user_id)
 
     vnc_connection_info = VNCConnectionInfo(
         ip=vnc_info["ip"],
@@ -271,6 +280,7 @@ async def get_vnc_connection(
         "Get VNC connection information completed",
         extra={
             "host_rec_id": request.id,
+            "user_id": request.user_id,
             "ip": vnc_info["ip"],
         },
     )

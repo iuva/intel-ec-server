@@ -339,6 +339,7 @@ class GetVNCConnectionRequest(BaseModel):
     """Get VNC connection information request schema"""
 
     id: str = Field(description="Host ID (host_rec.id)")
+    user_id: str = Field(description="User ID for permission check")
 
     model_config = {"from_attributes": True}
 

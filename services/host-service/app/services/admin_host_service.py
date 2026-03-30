@@ -22,6 +22,8 @@ try:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.schemas.websocket_message import MessageType
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.services.browser_vnc_service import _realvnc_encrypt_password
     from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
@@ -45,6 +47,8 @@ except ImportError:
         AdminHostInfo,
         AdminHostListRequest,
     )
+    from app.schemas.websocket_message import MessageType
+    from app.services.agent_websocket_manager import get_agent_websocket_manager
     from app.services.browser_vnc_service import _realvnc_encrypt_password
     from app.services.external_api_client import call_external_api
     from app.utils.logging_helpers import log_operation_completed, log_operation_start
@@ -590,6 +594,7 @@ class AdminHostService:
     async def disable_host(self, host_id: int) -> dict:
         """Disable host
 
+        Only hosts in FREE state (host_state=0) can be disabled.
         Update host_rec table's appr_state field to 0 (disabled) based on host ID,
         and set host_state to 7 (manually disabled).
 
@@ -600,7 +605,7 @@ class AdminHostService:
             dict: Contains updated host ID, approval state, and host state
 
         Raises:
-            BusinessError: When host does not exist or update fails
+            BusinessError: When host does not exist, host is not in FREE state, or update fails
         """
         logger.info(
             "Start disabling host",
@@ -630,13 +635,40 @@ class AdminHostService:
                     "host_state": 7,
                 }
 
-            # 3. Update approval state to disabled, and set host_state to 7 (manually disabled)
+            # 3. Check if host is in FREE state (host_state=0), only FREE state can be disabled
+            if host_rec.host_state != HOST_STATE_FREE:
+                logger.warning(
+                    "Host state does not allow disable",
+                    extra={
+                        "host_id": host_id,
+                        "current_host_state": host_rec.host_state,
+                        "required_host_state": HOST_STATE_FREE,
+                    },
+                )
+                raise BusinessError(
+                    message=(
+                        f"Host state does not allow disable, current state: {host_rec.host_state}, "
+                        f"required state: {HOST_STATE_FREE} (free)"
+                    ),
+                    message_key="error.host.disable_state_invalid",
+                    error_code="HOST_DISABLE_STATE_INVALID",
+                    code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                    http_status_code=400,
+                    details={
+                        "host_id": host_id,
+                        "current_host_state": host_rec.host_state,
+                        "required_host_state": HOST_STATE_FREE,
+                    },
+                )
+
+            # 4. Update approval state to disabled, and set host_state to 7 (manually disabled)
             update_stmt = (
                 update(HostRec)
                 .where(
                     and_(
                         HostRec.id == host_id,
                         HostRec.del_flag == 0,  # Only update non-deleted records
+                        HostRec.host_state == HOST_STATE_FREE,  # Ensure state is still FREE (prevent concurrent modification)
                     )
                 )
                 .values(appr_state=0, host_state=7)
@@ -704,8 +736,11 @@ class AdminHostService:
 
         Business logic:
         1. Check if host exists and is not deleted
-        2. Check if host state is 0 (free state), only free state can be taken offline
+        2. Check if host state is < 4 (business state), only business states can be taken offline
+           Business states: 0=FREE, 1=LOCKED, 2=OCCUPIED, 3=EXECUTING
+           Non-business states (>=4): 4=OFFLINE, 5=INACTIVE, 6=HW_CHANGE, 7=DISABLED, 8=UPDATING
         3. Update host_rec table's host_state field to 4 (offline state)
+        4. Send WebSocket notification to the host
 
         Args:
             host_id: Host ID (host_rec.id)
@@ -715,7 +750,7 @@ class AdminHostService:
             dict: Contains updated host ID and state
 
         Raises:
-            BusinessError: When host does not exist, host state is not free, or update fails
+            BusinessError: When host does not exist, host state is not business state, or update fails
         """
         logger.info(
             "Start forcing host offline",
@@ -729,20 +764,20 @@ class AdminHostService:
             # 1. Check if host exists and is not deleted (using utility function)
             host_rec = await validate_host_exists(session, HostRec, host_id, locale=locale)
 
-            # 2. Check if host state is 0 (free state), only free state can be taken offline
-            if host_rec.host_state != HOST_STATE_FREE:
+            # 2. Check if host state is < 4 (business state), only business states can be taken offline
+            if host_rec.host_state >= HOST_STATE_OFFLINE:
                 logger.warning(
                     "Host state does not allow force offline",
                     extra={
                         "host_id": host_id,
                         "current_host_state": host_rec.host_state,
-                        "required_host_state": HOST_STATE_FREE,
+                        "allowed_states": "0-3 (FREE, LOCKED, OCCUPIED, EXECUTING)",
                     },
                 )
                 raise BusinessError(
                     message=(
                         f"Host state does not allow force offline, current state: {host_rec.host_state}, "
-                        f"required state: {HOST_STATE_FREE} (free)"
+                        f"allowed states: 0-3 (FREE, LOCKED, OCCUPIED, EXECUTING)"
                     ),
                     message_key="error.host.force_offline_state_invalid",
                     error_code="HOST_FORCE_OFFLINE_STATE_INVALID",
@@ -751,7 +786,7 @@ class AdminHostService:
                     details={
                         "host_id": host_id,
                         "current_host_state": host_rec.host_state,
-                        "required_host_state": HOST_STATE_FREE,
+                        "allowed_states": "0-3 (FREE, LOCKED, OCCUPIED, EXECUTING)",
                     },
                 )
 
@@ -762,8 +797,7 @@ class AdminHostService:
                     and_(
                         HostRec.id == host_id,
                         HostRec.del_flag == 0,  # Only update non-deleted records
-                        HostRec.host_state
-                        == HOST_STATE_FREE,  # Ensure state is still 0 (prevent concurrent modification)
+                        HostRec.host_state < HOST_STATE_OFFLINE,  # Ensure state is still business state (prevent concurrent modification)
                     )
                 )
                 .values(host_state=HOST_STATE_OFFLINE)  # 4 = offline state
@@ -810,6 +844,55 @@ class AdminHostService:
                     "updated_count": updated_count,
                 },
             )
+
+            # 4. Send WebSocket notification to the host
+            try:
+                ws_manager = get_agent_websocket_manager()
+                host_id_str = str(host_id)
+
+                # Build offline notification message
+                offline_notification = {
+                    "type": MessageType.HOST_OFFLINE_NOTIFICATION,
+                    "host_id": host_id_str,
+                    "message": "Host has been force offline by admin",
+                    "reason": "admin_force_offline",
+                }
+
+                # Check if Agent is connected and send notification
+                if ws_manager.is_connected(host_id_str):
+                    success = await ws_manager.send_to_host(host_id_str, offline_notification)
+                    if success:
+                        logger.info(
+                            "Force offline notification sent to Agent",
+                            extra={
+                                "host_id": host_id_str,
+                                "message_type": MessageType.HOST_OFFLINE_NOTIFICATION,
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            "Failed to send force offline notification to Agent",
+                            extra={
+                                "host_id": host_id_str,
+                                "message_type": MessageType.HOST_OFFLINE_NOTIFICATION,
+                            },
+                        )
+                else:
+                    logger.info(
+                        "Agent not connected, skip sending force offline notification",
+                        extra={
+                            "host_id": host_id_str,
+                        },
+                    )
+            except Exception as e:
+                # Notification send failure does not affect main flow, only log warning
+                logger.error(
+                    "Error sending force offline notification",
+                    extra={
+                        "host_id": host_id,
+                        "error": str(e),
+                    },
+                )
 
             return {
                 "id": str(host_id),  # ✅ Convert to string to avoid precision loss

@@ -464,18 +464,24 @@ class BrowserVNCService:
         error_message="Failed to get VNC connection information",
         error_code="GET_VNC_CONNECTION_FAILED",
     )
-    async def get_vnc_connection_info(self, host_rec_id: str) -> dict:
+    async def get_vnc_connection_info(self, host_rec_id: str, user_id: str) -> dict:
         """Get VNC connection information for specified host
 
         Business logic:
         1. If host_rec_id = "1111111", return mock data (don't query database)
         2. Otherwise, query host_rec table based on host_rec_id
         3. Check data validity (del_flag=0, appr_state=1)
-        4. Update host state to locked (host_state = 1)
-        5. Return fields required for VNC connection
+        4. Check host state:
+           - If host_state=0 (FREE): proceed normally
+           - If host_state=2 (OCCUPIED) or 3 (EXECUTING): query host_exec_log
+             to verify if current user is the owner of the latest non-deleted log
+           - If host_state>=4: reject (non-business state)
+        5. Update host state to locked (host_state = 1)
+        6. Return fields required for VNC connection
 
         Args:
             host_rec_id: Host record ID
+            user_id: User ID for permission check
 
         Returns:
             Dictionary containing VNC connection information
@@ -487,7 +493,7 @@ class BrowserVNCService:
             }
 
         Raises:
-            BusinessError: When host does not exist or data is invalid
+            BusinessError: When host does not exist, data is invalid, or host is occupied by another user
         """
         logger.info(
             "Starting to get VNC connection information",
@@ -504,6 +510,7 @@ class BrowserVNCService:
                 extra={
                     "operation": "get_vnc_connection_info",
                     "host_rec_id": host_rec_id,
+                    "user_id": user_id,
                     "is_mock_data": True,
                 },
             )
@@ -571,6 +578,71 @@ class BrowserVNCService:
                         error_code="HOST_STATE_NOT_ALLOWED",
                         code=ServiceErrorCodes.HOST_NOT_Enabled,  # Reuse or similar code
                         http_status_code=400,
+                    )
+
+                # ✅ Check permission for OCCUPIED(2) or EXECUTING(3) state
+                if host_rec.host_state in (2, 3):
+                    # Query latest non-deleted host_exec_log record
+                    exec_log_stmt = (
+                        select(HostExecLog)
+                        .where(
+                            and_(
+                                HostExecLog.host_id == host_id,
+                                HostExecLog.del_flag == 0,
+                            )
+                        )
+                        .order_by(HostExecLog.id.desc())
+                        .limit(1)
+                    )
+                    exec_log_result = await session.execute(exec_log_stmt)
+                    latest_exec_log = exec_log_result.scalar_one_or_none()
+
+                    if latest_exec_log is None:
+                        logger.warning(
+                            "No execution log found for occupied host",
+                            extra={
+                                "host_rec_id": host_rec_id,
+                                "host_state": host_rec.host_state,
+                            },
+                        )
+                        raise BusinessError(
+                            message="Host is occupied but no execution log found",
+                            error_code="HOST_OCCUPIED_NO_LOG",
+                            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                            http_status_code=400,
+                        )
+
+                    # Check if user_id matches
+                    if latest_exec_log.user_id != user_id:
+                        logger.warning(
+                            "Host is occupied by another user",
+                            extra={
+                                "host_rec_id": host_rec_id,
+                                "current_user_id": user_id,
+                                "owner_user_id": latest_exec_log.user_id,
+                                "host_state": host_rec.host_state,
+                            },
+                        )
+                        raise BusinessError(
+                            message="Host is already occupied by another user",
+                            message_key="error.host.occupied_by_other",
+                            error_code="HOST_OCCUPIED_BY_OTHER",
+                            code=ServiceErrorCodes.HOST_OPERATION_FAILED,
+                            http_status_code=400,
+                            details={
+                                "host_id": host_id,
+                                "current_user_id": user_id,
+                                "owner_user_id": latest_exec_log.user_id,
+                            },
+                        )
+
+                    logger.info(
+                        "User verified as owner of occupied host",
+                        extra={
+                            "host_rec_id": host_rec_id,
+                            "user_id": user_id,
+                            "host_state": host_rec.host_state,
+                        },
                     )
 
                 # Check if VNC connection information is complete

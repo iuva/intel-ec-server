@@ -276,7 +276,7 @@ async def delete_host(
     "/disable",
     response_model=SuccessResponse,
     summary="Disable host",
-    description="Disable host (set appr_state=0)",
+    description="Disable host (set appr_state=0, only FREE state can be disabled)",
     responses={
         200: {
             "description": "Disable successful",
@@ -307,6 +307,17 @@ async def delete_host(
                                 "error_code": "HOST_NOT_FOUND",
                             },
                         },
+                        "state_invalid": {
+                            "summary": "Host state does not allow disable",
+                            "value": {
+                                "code": 53004,
+                                "message": (
+                                    "Host state does not allow disable, "
+                                    "current state: 2, required state: 0 (free)"
+                                ),
+                                "error_code": "HOST_DISABLE_STATE_INVALID",
+                            },
+                        },
                         "disable_failed": {
                             "summary": "Disable failed",
                             "value": {
@@ -331,8 +342,10 @@ async def disable_host(
     """Disable host
 
     Business logic:
-    1. Update host_rec table appr_state field to 0 (disabled) based on host_id
-    2. If host is already disabled, return friendly prompt
+    1. Check if host exists and is not deleted
+    2. Check if host state is 0 (FREE), only FREE state can be disabled
+    3. Update host_rec table appr_state field to 0 (disabled), host_state to 7 (DISABLED)
+    4. If host is already disabled, return friendly prompt
 
     Args:
         request: Request object containing host ID
@@ -344,7 +357,7 @@ async def disable_host(
         SuccessResponse: Disable successful response
 
     Raises:
-        BusinessError: When host does not exist or disable fails
+        BusinessError: When host does not exist, host is not in FREE state, or disable fails
     """
     logger.info(
         "Received admin backend host disable request",
@@ -419,7 +432,7 @@ async def disable_host(
                                 "code": 53005,
                                 "message": (
                                     "Host state does not allow force offline, "
-                                    "current state: 2, required state: 0 (free)"
+                                    "current state: 5, allowed states: 0-3 (FREE, LOCKED, OCCUPIED, EXECUTING)"
                                 ),
                                 "error_code": "HOST_FORCE_OFFLINE_STATE_INVALID",
                             },
@@ -451,8 +464,10 @@ async def force_offline_host(
 
     Business logic:
     1. Check if host exists and is not deleted
-    2. Check if host state is 0 (free state), only free state can go offline
+    2. Check if host state is < 4 (business state: FREE/LOCKED/OCCUPIED/EXECUTING)
+       Non-business states (>=4): OFFLINE/INACTIVE/HW_CHANGE/DISABLED/UPDATING cannot be force offline
     3. Update host_rec table host_state field to 4 (offline state)
+    4. Send WebSocket notification to the host if connected
 
     Args:
         request: Request object containing host ID
@@ -464,7 +479,7 @@ async def force_offline_host(
         SuccessResponse: Force offline successful response
 
     Raises:
-        BusinessError: When host does not exist, host state is not free, or update fails
+        BusinessError: When host does not exist, host state is not business state, or update fails
     """
     logger.info(
         "Received admin backend host force offline request",

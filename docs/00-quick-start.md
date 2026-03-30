@@ -20,25 +20,44 @@ cd intel-cw-ms
 
 ### 步骤 2: 配置环境变量
 
-```bash
-# 复制环境变量模板
-cp .env.example .env
+本项目使用 `.env` 文件管理环境变量，不同环境使用不同的配置文件：
 
-# 编辑 .env 文件，配置外部 MySQL 和 Redis 连接信息
-# 必须配置以下项：
-# - MYSQL_HOST（您的 MySQL 主机地址）
-# - MYSQL_PORT（MySQL 端口，默认 3306）
-# - MYSQL_USER（MySQL 用户名）
-# - MYSQL_PASSWORD（MySQL 密码）
-# - MYSQL_DATABASE（数据库名称，默认 intel_cw）
-# - REDIS_HOST（您的 Redis 主机地址）
+| 文件 | 用途 | 适用场景 |
+|------|------|----------|
+| `.env.example` | 配置模板 | 仅供参考，不直接使用 |
+| `.env.local` | 本地开发配置 | 本地启动服务时使用 |
+| `.env.docker` | Docker 部署配置 | Docker Compose 启动时使用 |
+
+#### 本地开发配置
+
+```bash
+# 复制本地开发配置模板
+cp .env.example .env.local
+
+# 编辑 .env.local 文件，配置以下必需项：
+# - MARIADB_HOST（MariaDB 主机地址）
+# - MARIADB_PORT（MariaDB 端口，默认 3306）
+# - MARIADB_USER（MariaDB 用户名）
+# - MARIADB_PASSWORD（MariaDB 密码）
+# - MARIADB_DATABASE（数据库名称，默认 intel_cw）
+# - REDIS_HOST（Redis 主机地址）
 # - REDIS_PORT（Redis 端口，默认 6379）
 # - REDIS_PASSWORD（Redis 密码，如果有）
 # - JWT_SECRET_KEY（JWT 密钥，至少 32 个字符）
-# - HARDWARE_API_URL（硬件服务 API 地址，默认 http://hardware-service:8000）
+# - PYTHONPATH（项目根目录绝对路径）
 ```
 
-**重要提示**: 本项目使用外部 MySQL 和 Redis 服务，不会在 Docker Compose 中启动这些服务。请确保您已有可用的 MySQL 和 Redis 实例。详细配置说明请参考 [外部服务配置指南](./external-services-config.md)。
+#### Docker 部署配置
+
+```bash
+# 复制 Docker 部署配置模板
+cp .env.example .env.docker
+
+# 编辑 .env.docker 文件，配置数据库和 Redis 连接信息
+# 注意：Docker 部署时使用容器名称作为服务地址
+```
+
+**重要提示**: 本项目使用外部 MySQL/MariaDB 和 Redis 服务，不会在 Docker Compose 中启动这些服务。请确保您已有可用的数据库实例。详细配置说明请参考 [外部服务配置指南](./external-services-config.md)。
 
 ### 步骤 3: 安装 Python 依赖（本地开发）
 
