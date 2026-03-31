@@ -428,7 +428,8 @@ class AgentWebSocketManager:
                     current_host = await self.host_service.get_host_by_id(agent_id)
                     current_host_state = current_host.get("host_state")
 
-                    if current_host_state is not None and current_host_state < 5:
+                    # Temporary disconnection should only be effective for idle periods
+                    if current_host_state is not None and current_host_state == 0:
                         await self.host_service.update_host_status(agent_id, HostStatusUpdate(status="offline"))
                     else:
                         logger.info(
