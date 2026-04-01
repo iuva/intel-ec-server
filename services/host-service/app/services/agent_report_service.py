@@ -128,8 +128,26 @@ class AgentReportService:
             False if no matching row or update failed.
         """
         try:
+
+
+
             session_factory = self.session_factory
             async with session_factory() as session:
+
+                host_stmt = select(HostRec).where(
+                    and_(
+                        HostRec.id == host_id,
+                        HostRec.del_flag == 0,
+                    )
+                )
+                host_result = await session.execute(host_stmt)
+                host_rec = host_result.scalar_one_or_none()
+
+                current_state = host_rec.host_state
+                if current_state > 4:
+                    return True
+
+
                 # 1. Query latest exec log (no del_flag filter)
                 exec_stmt = (
                     select(HostExecLog)
